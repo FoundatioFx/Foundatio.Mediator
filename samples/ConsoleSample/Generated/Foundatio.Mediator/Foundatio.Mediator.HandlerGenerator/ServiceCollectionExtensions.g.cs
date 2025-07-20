@@ -1,4 +1,8 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿#nullable enable
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Foundatio.Mediator
 {
@@ -8,59 +12,70 @@ namespace Foundatio.Mediator
         {
             services.AddSingleton<IMediator, Mediator>();
 
-            // Register all discovered handlers
-            services.AddScoped<ConsoleSample.Handlers.SyncCalculationHandler>();
-            services.AddScoped<ConsoleSample.Handlers.AsyncCalculationHandler>();
-            services.AddScoped<ConsoleSample.Handlers.SendWelcomeEmailHandler>();
-            services.AddScoped<ConsoleSample.Handlers.CreatePersonalizedGreetingHandler>();
-            services.AddScoped<ConsoleSample.Handlers.OrderEmailNotificationHandler>();
-            services.AddScoped<ConsoleSample.Handlers.OrderSmsNotificationHandler>();
-            services.AddScoped<ConsoleSample.Handlers.OrderAuditHandler>();
-            services.AddScoped<ConsoleSample.Handlers.ProcessOrderHandler>();
-            services.AddScoped<ConsoleSample.Handlers.PingHandler>();
-            services.AddScoped<ConsoleSample.Handlers.GreetingHandler>();
+            // Register HandlerRegistration instances keyed by message type name
+            // Note: Handlers themselves are NOT auto-registered in DI
+            // Users can register them manually if they want specific lifetimes
 
-            // Register handler registrations containing wrapper handlers with metadata
-            services.AddScoped<SyncCalculationHandler_Handle_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.SyncCalculationQuery>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.SyncCalculationQuery>(
-                    sp.GetRequiredService<SyncCalculationHandler_Handle_Wrapper>(), false));
-            services.AddScoped<AsyncCalculationHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.AsyncCalculationQuery>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.AsyncCalculationQuery>(
-                    sp.GetRequiredService<AsyncCalculationHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<SendWelcomeEmailHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.SendWelcomeEmailCommand>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.SendWelcomeEmailCommand>(
-                    sp.GetRequiredService<SendWelcomeEmailHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<CreatePersonalizedGreetingHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.CreatePersonalizedGreetingQuery>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.CreatePersonalizedGreetingQuery>(
-                    sp.GetRequiredService<CreatePersonalizedGreetingHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<OrderEmailNotificationHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>(
-                    sp.GetRequiredService<OrderEmailNotificationHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<OrderSmsNotificationHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>(
-                    sp.GetRequiredService<OrderSmsNotificationHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<OrderAuditHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.OrderCreatedEvent>(
-                    sp.GetRequiredService<OrderAuditHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<ProcessOrderHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.ProcessOrderCommand>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.ProcessOrderCommand>(
-                    sp.GetRequiredService<ProcessOrderHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<PingHandler_HandleAsync_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.PingCommand>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.PingCommand>(
-                    sp.GetRequiredService<PingHandler_HandleAsync_Wrapper>(), true));
-            services.AddScoped<GreetingHandler_Handle_Wrapper>();
-            services.AddScoped<HandlerRegistration<ConsoleSample.Messages.GreetingQuery>>(sp =>
-                new HandlerRegistration<ConsoleSample.Messages.GreetingQuery>(
-                    sp.GetRequiredService<GreetingHandler_Handle_Wrapper>(), false));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.SyncCalculationQuery",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.SyncCalculationQuery",
+                    SyncCalculationHandler_Handle_SyncCalculationQuery_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.AsyncCalculationQuery",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.AsyncCalculationQuery",
+                    AsyncCalculationHandler_HandleAsync_AsyncCalculationQuery_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.SendWelcomeEmailCommand",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.SendWelcomeEmailCommand",
+                    SendWelcomeEmailHandler_HandleAsync_SendWelcomeEmailCommand_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.CreatePersonalizedGreetingQuery",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.CreatePersonalizedGreetingQuery",
+                    CreatePersonalizedGreetingHandler_HandleAsync_CreatePersonalizedGreetingQuery_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.OrderCreatedEvent",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.OrderCreatedEvent",
+                    OrderEmailNotificationHandler_HandleAsync_OrderCreatedEvent_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.OrderCreatedEvent",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.OrderCreatedEvent",
+                    OrderSmsNotificationHandler_HandleAsync_OrderCreatedEvent_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.OrderCreatedEvent",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.OrderCreatedEvent",
+                    OrderAuditHandler_HandleAsync_OrderCreatedEvent_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.ProcessOrderCommand",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.ProcessOrderCommand",
+                    ProcessOrderHandler_HandleAsync_ProcessOrderCommand_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.PingCommand",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.PingCommand",
+                    PingHandler_HandleAsync_PingCommand_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("ConsoleSample.Messages.GreetingQuery",
+                new HandlerRegistration(
+                    "ConsoleSample.Messages.GreetingQuery",
+                    GreetingHandler_Handle_GreetingQuery_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
 
             return services;
         }

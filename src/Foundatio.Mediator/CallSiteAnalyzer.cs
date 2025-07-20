@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Foundatio.Mediator;
@@ -28,6 +29,9 @@ internal static class CallSiteAnalyzer
         var semanticModel = context.SemanticModel;
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return null;
+
+        if (context.SemanticModel.GetInterceptableLocation(invocation) is not { } interceptableLocation)
             return null;
 
         var methodName = memberAccess.Name.Identifier.ValueText;
@@ -68,6 +72,7 @@ internal static class CallSiteAnalyzer
             expectedResponseTypeName,
             isAsync,
             isPublish,
-            invocation.GetLocation());
+            memberAccess.Name.GetLocation(), // Use the method name location, not the entire invocation
+            interceptableLocation);
     }
 }

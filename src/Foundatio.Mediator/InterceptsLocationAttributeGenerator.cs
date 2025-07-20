@@ -1,0 +1,51 @@
+using Microsoft.CodeAnalysis;
+using System.Text;
+
+namespace Foundatio.Mediator;
+
+internal static class InterceptsLocationAttributeGenerator
+{
+    public static void GenerateInterceptsLocationAttribute(SourceProductionContext context, bool interceptorsEnabled)
+    {
+        if (!interceptorsEnabled)
+            return;
+
+        var source = new StringBuilder();
+
+        source.AppendLine("#nullable enable");
+        source.AppendLine("using System;");
+        source.AppendLine();
+        source.AppendLine("namespace System.Runtime.CompilerServices");
+        source.AppendLine("{");
+        source.AppendLine("    /// <summary>");
+        source.AppendLine("    /// Indicates that a method is an interceptor and provides the location of the intercepted call.");
+        source.AppendLine("    /// </summary>");
+        source.AppendLine("    [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = true)]");
+        source.AppendLine("    internal sealed class InterceptsLocationAttribute : global::System.Attribute");
+        source.AppendLine("    {");
+        source.AppendLine("        /// <summary>");
+        source.AppendLine("        /// Initializes a new instance of the <see cref=\"InterceptsLocationAttribute\"/> class.");
+        source.AppendLine("        /// </summary>");
+        source.AppendLine("        /// <param name=\"version\">The version of the location encoding.</param>");
+        source.AppendLine("        /// <param name=\"data\">The encoded location data.</param>");
+        source.AppendLine("        public InterceptsLocationAttribute(int version, string data)");
+        source.AppendLine("        {");
+        source.AppendLine("            Version = version;");
+        source.AppendLine("            Data = data;");
+        source.AppendLine("        }");
+        source.AppendLine();
+        source.AppendLine("        /// <summary>");
+        source.AppendLine("        /// Gets the version of the location encoding.");
+        source.AppendLine("        /// </summary>");
+        source.AppendLine("        public int Version { get; }");
+        source.AppendLine();
+        source.AppendLine("        /// <summary>");
+        source.AppendLine("        /// Gets the encoded location data.");
+        source.AppendLine("        /// </summary>");
+        source.AppendLine("        public string Data { get; }");
+        source.AppendLine("    }");
+        source.AppendLine("}");
+
+        context.AddSource("InterceptsLocationAttribute.g.cs", source.ToString());
+    }
+}

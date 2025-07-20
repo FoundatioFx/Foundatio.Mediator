@@ -1,4 +1,3 @@
-using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Foundatio.Xunit;
@@ -24,27 +23,26 @@ public class HandlerInterfaceTest : TestWithLoggingBase
         var serviceProvider = services.BuildServiceProvider();
 
         var message = new InterfaceTestMessage("Test content");
-        
+
         _logger.LogInformation("=== HANDLER INTERFACE TEST ===");
         _logger.LogInformation("Testing IHandler<TMessage> registration");
 
-        // Act - Verify HandlerRegistration<InterfaceTestMessage> is registered
-        var handlerRegistrations = serviceProvider.GetServices<HandlerRegistration<InterfaceTestMessage>>();
+        // Act - Verify HandlerRegistration for InterfaceTestMessage is registered
+        var handlerRegistrations = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(InterfaceTestMessage).FullName);
         var handlersList = handlerRegistrations.ToList();
-        
+
         _logger.LogInformation("Found {Count} handlers for InterfaceTestMessage", handlersList.Count);
 
         // Assert
         Assert.Single(handlersList);
-        
-        // Act - Test the handler
-        var handlerRegistration = handlersList.First();
-        var handler = handlerRegistration.Handler;
-        await handler.HandleAsync<object>(message, default);
-        
+
+        // Act - Test the handler using mediator
+        var mediator = serviceProvider.GetRequiredService<IMediator>();
+        await mediator.InvokeAsync(message);
+
         var testService = serviceProvider.GetRequiredService<HandlerInterfaceTestService>();
         _logger.LogInformation("Handler executed - CallCount: {Count}", testService.CallCount);
-        
+
         // Assert
         Assert.Equal(1, testService.CallCount);
     }
@@ -60,27 +58,26 @@ public class HandlerInterfaceTest : TestWithLoggingBase
         var serviceProvider = services.BuildServiceProvider();
 
         var query = new InterfaceTestQuery("Test query");
-        
+
         _logger.LogInformation("=== HANDLER INTERFACE WITH RESPONSE TEST ===");
         _logger.LogInformation("Testing IHandler<TMessage, TResponse> registration");
 
-        // Act - Verify HandlerRegistration<InterfaceTestQuery> is registered
-        var handlerRegistrations = serviceProvider.GetServices<HandlerRegistration<InterfaceTestQuery>>();
+        // Act - Verify HandlerRegistration for InterfaceTestQuery is registered
+        var handlerRegistrations = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(InterfaceTestQuery).FullName);
         var handlersList = handlerRegistrations.ToList();
-        
+
         _logger.LogInformation("Found {Count} handlers for InterfaceTestQuery with string response", handlersList.Count);
 
         // Assert
         Assert.Single(handlersList);
-        
-        // Act - Test the handler
-        var handlerRegistration = handlersList.First();
-        var handler = handlerRegistration.Handler;
-        var result = await handler.HandleAsync<string>(query, default);
-        
+
+        // Act - Test the handler using mediator
+        var mediator = serviceProvider.GetRequiredService<IMediator>();
+        var result = await mediator.InvokeAsync<string>(query);
+
         var testService = serviceProvider.GetRequiredService<HandlerInterfaceTestService>();
         _logger.LogInformation("Handler executed - Result: {Result}, CallCount: {Count}", result, testService.CallCount);
-        
+
         // Assert
         Assert.Equal("Response: Test query", result);
         Assert.Equal(1, testService.CallCount);

@@ -3,6 +3,7 @@ using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+// Create application host
 var builder = Host.CreateApplicationBuilder(args);
 
 // Configure all services

@@ -1,0 +1,271 @@
+using Microsoft.CodeAnalysis;
+using System.Text;
+
+namespace Foundatio.Mediator;
+
+internal static class InterceptorGenerator
+{
+    public static void GenerateInterceptors(
+        List<HandlerInfo> handlers,
+        List<CallSiteInfo> callSites,
+        SourceProductionContext context)
+    {
+        if (callSites.Count == 0)
+            return;
+
+        var handlerLookup = handlers
+            .GroupBy(h => h.MessageTypeName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var interceptorMethods = new List<InterceptorMethod>();
+
+        // Group call sites by their signature to avoid generating duplicate interceptors
+        // Only process Invoke calls, skip Publish calls
+        var callSiteGroups = callSites
+            .Where(cs => !cs.MethodName.StartsWith("Publish")) // Only process Invoke calls
+            .GroupBy(cs => new CallSiteKey(cs.MethodName, cs.MessageTypeName, cs.ExpectedResponseTypeName))
+            .ToList();
+
+        int methodCounter = 0;
+        foreach (var group in callSiteGroups)
+        {
+            var key = group.Key;
+            var callSitesForMethod = group.ToList();
+
+            if (!handlerLookup.TryGetValue(key.MessageTypeName, out var handlersForMessage))
+                continue; // Handler not found, skip (validation will catch this)
+
+            // For invoke operations, we need exactly one handler
+            if (handlersForMessage.Count > 1)
+                continue; // Multiple handlers for invoke, skip (validation will catch this)
+
+            if (handlersForMessage.Count == 0)
+                continue; // No handlers, skip
+
+            var interceptorMethod = GenerateInterceptorMethod(key, callSitesForMethod, handlersForMessage[0], methodCounter++);
+            if (interceptorMethod != null)
+                interceptorMethods.Add(interceptorMethod);
+        }
+
+        if (interceptorMethods.Count > 0)
+        {
+            var source = GenerateInterceptorClass(interceptorMethods);
+            context.AddSource("MediatorInterceptors.g.cs", source);
+        }
+    }
+
+    private static InterceptorMethod? GenerateInterceptorMethod(
+        CallSiteKey key,
+        List<CallSiteInfo> callSites,
+        HandlerInfo handlerInfo,
+        int methodIndex)
+    {
+        var methodName = key.MethodName;
+        var messageTypeName = key.MessageTypeName;
+        var expectedResponseTypeName = key.ExpectedResponseTypeName;
+
+        // Generate unique method name for the interceptor
+        var interceptorMethodName = $"Intercept{methodName}{methodIndex}";
+
+        var isAsync = methodName.EndsWith("Async");
+        var isGeneric = !string.IsNullOrEmpty(expectedResponseTypeName);
+        var isPublish = methodName.StartsWith("Publish");
+
+        // Build the interceptor attributes for all call sites
+        var interceptorAttributes = callSites
+            .Select(cs => GenerateInterceptorAttribute(cs))
+            .Where(attr => !string.IsNullOrEmpty(attr))
+            .Cast<string>()
+            .ToList();
+
+        if (interceptorAttributes.Count == 0)
+            return null;
+
+        return new InterceptorMethod(
+            interceptorMethodName,
+            methodName,
+            messageTypeName,
+            expectedResponseTypeName,
+            isAsync,
+            isGeneric,
+            isPublish,
+            interceptorAttributes,
+            handlerInfo);
+    }
+
+    private static string? GenerateInterceptorAttribute(CallSiteInfo callSite)
+    {
+        var location = callSite.InterceptableLocation;
+        return $"[global::System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.GetDisplayLocation()}";
+    }
+
+    private static string GenerateInterceptorClass(List<InterceptorMethod> interceptorMethods)
+    {
+        var source = new StringBuilder();
+
+        // First, define the InterceptsLocationAttribute
+        source.AppendLine("#nullable enable");
+        source.AppendLine("using System;");
+        source.AppendLine("using System.Linq;");
+        source.AppendLine("using System.Collections.Generic;");
+        source.AppendLine("using System.Threading;");
+        source.AppendLine("using System.Threading.Tasks;");
+        source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+        source.AppendLine();
+        source.AppendLine("namespace System.Runtime.CompilerServices");
+        source.AppendLine("{");
+        source.AppendLine("    [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = true)]");
+        source.AppendLine("    sealed file class InterceptsLocationAttribute : global::System.Attribute");
+        source.AppendLine("    {");
+        source.AppendLine("        public InterceptsLocationAttribute(int version, string data)");
+        source.AppendLine("        {");
+        source.AppendLine("            _ = version;");
+        source.AppendLine("            _ = data;");
+        source.AppendLine("        }");
+        source.AppendLine("    }");
+        source.AppendLine("}");
+        source.AppendLine();
+
+        // Generate the interceptor class
+        source.AppendLine("namespace Foundatio.Mediator");
+        source.AppendLine("{");
+        source.AppendLine("    file static class MediatorInterceptors");
+        source.AppendLine("    {");
+
+        foreach (var method in interceptorMethods)
+        {
+            GenerateInterceptorMethodImplementation(source, method);
+        }
+
+        source.AppendLine("    }");
+        source.AppendLine("}");
+
+        return source.ToString();
+    }
+
+    private static void GenerateInterceptorMethodImplementation(StringBuilder source, InterceptorMethod method)
+    {
+        // Add interceptor attributes
+        foreach (var attribute in method.InterceptorAttributes)
+        {
+            source.AppendLine($"        {attribute}");
+        }
+
+        // Generate method signature
+        var returnType = GenerateReturnType(method);
+        var parameters = GenerateParameters(method);
+
+        source.AppendLine($"        public static {returnType} {method.InterceptorMethodName}({parameters})");
+        source.AppendLine("        {");
+
+        // Generate method body
+        GenerateInterceptorMethodBody(source, method);
+
+        source.AppendLine("        }");
+        source.AppendLine();
+    }
+
+    private static string GenerateReturnType(InterceptorMethod method)
+    {
+        if (method.IsPublish)
+        {
+            return method.IsAsync ? "global::System.Threading.Tasks.ValueTask" : "void";
+        }
+
+        if (method.IsGeneric)
+        {
+            return method.IsAsync ? $"global::System.Threading.Tasks.ValueTask<{method.ExpectedResponseTypeName}>" : method.ExpectedResponseTypeName;
+        }
+
+        return method.IsAsync ? "global::System.Threading.Tasks.ValueTask" : "void";
+    }
+
+    private static string GenerateParameters(InterceptorMethod method)
+    {
+        var parameters = new List<string>
+        {
+            "this global::Foundatio.Mediator.IMediator mediator",
+            "object message"
+        };
+
+        parameters.Add("global::System.Threading.CancellationToken cancellationToken = default");
+
+        return string.Join(", ", parameters);
+    }
+
+    private static void GenerateInterceptorMethodBody(StringBuilder source, InterceptorMethod method)
+    {
+        var messageTypeName = method.MessageTypeName;
+
+        // Generate static wrapper class name using the same logic as HandlerWrapperGenerator
+        var wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(method.HandlerInfo);
+        var staticMethodName = HandlerWrapperGenerator.GetStaticMethodName(method.HandlerInfo);
+
+        // Cast the message to the correct type
+        source.AppendLine($"            var typedMessage = ({messageTypeName})message;");
+        source.AppendLine();
+
+        // Call the static handler directly
+        source.AppendLine($"            // Call the static handler directly for better performance");
+
+        if (method.IsGeneric)
+        {
+            if (method.IsAsync)
+            {
+                source.AppendLine($"            var result = await global::Foundatio.Mediator.{wrapperClassName}.{staticMethodName}(mediator, typedMessage, cancellationToken, typeof({method.ExpectedResponseTypeName}));");
+                source.AppendLine($"            return ({method.ExpectedResponseTypeName})result;");
+            }
+            else
+            {
+                source.AppendLine($"            var result = await global::Foundatio.Mediator.{wrapperClassName}.{staticMethodName}(mediator, typedMessage, cancellationToken, typeof({method.ExpectedResponseTypeName}));");
+                source.AppendLine($"            return ({method.ExpectedResponseTypeName})result;");
+            }
+        }
+        else
+        {
+            if (method.IsAsync)
+            {
+                source.AppendLine($"            await global::Foundatio.Mediator.{wrapperClassName}.{staticMethodName}(mediator, typedMessage, cancellationToken, null);");
+            }
+            else
+            {
+                source.AppendLine($"            await global::Foundatio.Mediator.{wrapperClassName}.{staticMethodName}(mediator, typedMessage, cancellationToken, null);");
+            }
+        }
+    }
+
+    private class InterceptorMethod
+    {
+        public string InterceptorMethodName { get; }
+        public string OriginalMethodName { get; }
+        public string MessageTypeName { get; }
+        public string ExpectedResponseTypeName { get; }
+        public bool IsAsync { get; }
+        public bool IsGeneric { get; }
+        public bool IsPublish { get; }
+        public List<string> InterceptorAttributes { get; }
+        public HandlerInfo HandlerInfo { get; }
+
+        public InterceptorMethod(
+            string interceptorMethodName,
+            string originalMethodName,
+            string messageTypeName,
+            string expectedResponseTypeName,
+            bool isAsync,
+            bool isGeneric,
+            bool isPublish,
+            List<string> interceptorAttributes,
+            HandlerInfo handlerInfo)
+        {
+            InterceptorMethodName = interceptorMethodName;
+            OriginalMethodName = originalMethodName;
+            MessageTypeName = messageTypeName;
+            ExpectedResponseTypeName = expectedResponseTypeName;
+            IsAsync = isAsync;
+            IsGeneric = isGeneric;
+            IsPublish = isPublish;
+            InterceptorAttributes = interceptorAttributes;
+            HandlerInfo = handlerInfo;
+        }
+    }
+}

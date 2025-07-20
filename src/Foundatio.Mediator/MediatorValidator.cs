@@ -1,12 +1,10 @@
 using Microsoft.CodeAnalysis;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Foundatio.Mediator;
 
 internal static class MediatorValidator
 {
-    public static void ValidateHandlerConfiguration(List<HandlerToGenerate> handlers, SourceProductionContext context)
+    public static void ValidateHandlerConfiguration(List<HandlerInfo> handlers, SourceProductionContext context)
     {
         var handlersByMessageType = handlers.GroupBy(h => h.MessageTypeName);
 
@@ -19,11 +17,11 @@ internal static class MediatorValidator
             if (messageHandlers.Count > 1)
             {
                 var handlersList = string.Join(", ", messageHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
-                
+
                 // Check if any handler has a return type (indicates invoke usage)
-                var hasReturnTypeHandlers = messageHandlers.Any(h => 
-                    h.ReturnTypeName != "void" && 
-                    h.ReturnTypeName != "System.Threading.Tasks.Task" && 
+                var hasReturnTypeHandlers = messageHandlers.Any(h =>
+                    h.ReturnTypeName != "void" &&
+                    h.ReturnTypeName != "System.Threading.Tasks.Task" &&
                     !string.IsNullOrEmpty(h.ReturnTypeName));
 
                 if (hasReturnTypeHandlers)
@@ -62,7 +60,7 @@ internal static class MediatorValidator
         }
     }
 
-    public static void ValidateCallSites(List<HandlerToGenerate> handlers, List<CallSiteInfo> callSites, SourceProductionContext context)
+    public static void ValidateCallSites(List<HandlerInfo> handlers, List<MiddlewareInfo> middlewares, List<CallSiteInfo> callSites, SourceProductionContext context)
     {
         // Group handlers by message type for quick lookup
         var handlersByMessageType = handlers.GroupBy(h => h.MessageTypeName).ToDictionary(g => g.Key, g => g.ToList());
@@ -92,7 +90,7 @@ internal static class MediatorValidator
             // For Invoke calls, validate async/sync compatibility
             if (!callSite.IsPublish)
             {
-                ValidateInvokeCall(callSite, messageHandlers, context);
+                ValidateInvokeCall(callSite, messageHandlers, middlewares, context);
             }
             else // Publish calls
             {
@@ -101,7 +99,7 @@ internal static class MediatorValidator
         }
     }
 
-    private static void ValidateInvokeCall(CallSiteInfo callSite, List<HandlerToGenerate> messageHandlers, SourceProductionContext context)
+    private static void ValidateInvokeCall(CallSiteInfo callSite, List<HandlerInfo> messageHandlers, List<MiddlewareInfo> middlewares, SourceProductionContext context)
     {
         // Check if multiple handlers exist for Invoke calls
         if (messageHandlers.Count > 1)
@@ -125,16 +123,23 @@ internal static class MediatorValidator
         // Check async/sync compatibility
         if (callSite.IsAsync && !handler.IsAsync)
         {
-            var descriptor = new DiagnosticDescriptor(
-                "FMED006",
-                "Async call with sync handler",
-                "Async {0} call for message type '{1}' but handler '{2}.{3}' is synchronous. Consider making the handler async or use the sync version of the mediator call.",
-                "Foundatio.Mediator",
-                DiagnosticSeverity.Warning,
-                isEnabledByDefault: true);
+            // Check if there's async middleware that would justify the async call
+            var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
+            var hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
-            context.ReportDiagnostic(diagnostic);
+            if (!hasAsyncMiddleware)
+            {
+                var descriptor = new DiagnosticDescriptor(
+                    "FMED006",
+                    "Async call with sync handler",
+                    "Async {0} call for message type '{1}' but handler '{2}.{3}' is synchronous. Consider making the handler async or use the sync version of the mediator call.",
+                    "Foundatio.Mediator",
+                    DiagnosticSeverity.Warning,
+                    isEnabledByDefault: true);
+
+                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
+                context.ReportDiagnostic(diagnostic);
+            }
         }
         else if (!callSite.IsAsync && handler.IsAsync)
         {
@@ -150,10 +155,37 @@ internal static class MediatorValidator
             context.ReportDiagnostic(diagnostic);
         }
 
+        // Check for sync call with async middleware
+        if (!callSite.IsAsync && !handler.IsAsync)
+        {
+            var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
+            var hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
+
+            if (hasAsyncMiddleware)
+            {
+                var asyncMiddlewares = applicableMiddlewares
+                    .Where(m => m.IsAsync)
+                    .Select(m => m.MiddlewareTypeName)
+                    .ToList();
+                var asyncMiddlewaresList = string.Join(", ", asyncMiddlewares);
+
+                var descriptor = new DiagnosticDescriptor(
+                    "FMED012",
+                    "Sync call with async middleware",
+                    "Sync {0} call for message type '{1}' but handler '{2}.{3}' has async middleware: {4}. Use {0}Async instead when async middleware is present.",
+                    "Foundatio.Mediator",
+                    DiagnosticSeverity.Error,
+                    isEnabledByDefault: true);
+
+                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, asyncMiddlewaresList);
+                context.ReportDiagnostic(diagnostic);
+            }
+        }
+
         // For generic Invoke<TResponse> calls, validate return type compatibility
         if (!string.IsNullOrEmpty(callSite.ExpectedResponseTypeName))
         {
-            if (handler.ReturnTypeName == "void" || 
+            if (handler.ReturnTypeName == "void" ||
                 handler.ReturnTypeName == "System.Threading.Tasks.Task" ||
                 string.IsNullOrEmpty(handler.ReturnTypeName))
             {
@@ -186,7 +218,7 @@ internal static class MediatorValidator
         }
     }
 
-    private static void ValidatePublishCall(CallSiteInfo callSite, List<HandlerToGenerate> messageHandlers, SourceProductionContext context)
+    private static void ValidatePublishCall(CallSiteInfo callSite, List<HandlerInfo> messageHandlers, SourceProductionContext context)
     {
         // For Publish calls, validate async/sync compatibility with ALL handlers
         var asyncHandlers = messageHandlers.Where(h => h.IsAsync).ToList();
@@ -220,5 +252,49 @@ internal static class MediatorValidator
             var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, asyncHandlersList);
             context.ReportDiagnostic(diagnostic);
         }
+    }
+
+    private static List<MiddlewareInfo> GetApplicableMiddlewares(List<MiddlewareInfo> middlewares, HandlerInfo handler)
+    {
+        var applicable = new List<MiddlewareInfo>();
+
+        foreach (var middleware in middlewares)
+        {
+            if (IsMiddlewareApplicableToHandler(middleware, handler))
+            {
+                applicable.Add(middleware);
+            }
+        }
+
+        // Sort by priority: message-specific first, then interface-based, then object-based
+        // Within each priority level, sort by Order attribute
+        return applicable
+            .OrderBy(m => m.IsObjectType ? 2 : (m.IsInterfaceType ? 1 : 0)) // Priority: specific=0, interface=1, object=2
+            .ThenBy(m => m.Order)
+            .ToList();
+    }
+
+    private static bool IsMiddlewareApplicableToHandler(MiddlewareInfo middleware, HandlerInfo handler)
+    {
+        // Check if this middleware applies to the handler
+        if (middleware.IsObjectType)
+        {
+            // Object-type middleware applies to all handlers
+            return true;
+        }
+
+        if (middleware.MessageTypeName == handler.MessageTypeName)
+        {
+            // Direct message type match
+            return true;
+        }
+
+        if (middleware.IsInterfaceType && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
+        {
+            // Handler's message type implements the middleware's interface
+            return true;
+        }
+
+        return false;
     }
 }

@@ -4,6 +4,7 @@ using Foundatio.Xunit;
 using Xunit;
 using Xunit.Abstractions;
 
+// Test file for call site validation
 namespace Foundatio.Mediator.Tests;
 
 public class CallSiteValidationTest : TestWithLoggingBase
@@ -19,7 +20,7 @@ public class CallSiteValidationTest : TestWithLoggingBase
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMediator();
-        
+
         var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
 
@@ -28,7 +29,7 @@ public class CallSiteValidationTest : TestWithLoggingBase
 
         // Act & Assert - This should compile and work since there's only one handler
         var result = await mediator.InvokeAsync<string>(command);
-        
+
         _logger.LogInformation("InvokeAsync completed successfully with result: {Result}", result);
         Assert.Equal("Processed: Test Message", result);
     }
@@ -41,7 +42,7 @@ public class CallSiteValidationTest : TestWithLoggingBase
         services.AddLogging();
         services.AddMediator();
         services.AddSingleton<CallSiteTestService>();
-        
+
         var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
         var testService = serviceProvider.GetRequiredService<CallSiteTestService>();

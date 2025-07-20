@@ -6,10 +6,11 @@ namespace Foundatio.Mediator;
 
 internal static class MediatorImplementationGenerator
 {
-    public static string GenerateMediatorImplementation(List<HandlerToGenerate> handlers)
+    public static string GenerateMediatorImplementation(List<HandlerInfo> handlers)
     {
         var source = new StringBuilder();
-        
+
+        source.AppendLine("#nullable enable");
         source.AppendLine("using System;");
         source.AppendLine("using System.Collections.Generic;");
         source.AppendLine("using System.Linq;");
@@ -23,212 +24,128 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("    {");
         source.AppendLine("        private readonly IServiceProvider _serviceProvider;");
         source.AppendLine();
+
+        // Generate constructor
         source.AppendLine("        public Mediator(IServiceProvider serviceProvider)");
         source.AppendLine("        {");
         source.AppendLine("            _serviceProvider = serviceProvider;");
         source.AppendLine("        }");
         source.AppendLine();
 
+        // Expose ServiceProvider for the generated static methods
+        source.AppendLine("        public IServiceProvider ServiceProvider => _serviceProvider;");
+        source.AppendLine();
+
         // Generate InvokeAsync method
         source.AppendLine("        public async ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageType.Name}\");");
+        source.AppendLine("            if (handlersList.Count == 0)");
+        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count > 1)");
-        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.Name}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            if (handlersList.Count > 1)");
+        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use PublishAsync for multiple handlers.\");");
         source.AppendLine();
-        source.AppendLine("            var registration = registrations[0];");
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
-        source.AppendLine();
-        source.AppendLine("            // Call the generic HandleAsync<object> method and ignore the result");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(object));");
-        source.AppendLine("            var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("            await (ValueTask<object>)result!;");
+        source.AppendLine("            var handler = handlersList.First();");
+        source.AppendLine("            await handler.HandleAsync(this, message, cancellationToken, null);");
         source.AppendLine("        }");
         source.AppendLine();
 
-        // Generate Invoke method  
+        // Generate Invoke method (sync)
         source.AppendLine("        public void Invoke(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageType.Name}\");");
+        source.AppendLine("            if (handlersList.Count == 0)");
+        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count > 1)");
-        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.Name}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            if (handlersList.Count > 1)");
+        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use Publish for multiple handlers.\");");
         source.AppendLine();
-        source.AppendLine("            var registration = registrations[0];");
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
+        source.AppendLine("            var handler = handlersList.First();");
+        source.AppendLine("            if (handler.IsAsync)");
+        source.AppendLine("                throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageTypeName}. Use InvokeAsync instead.\");");
         source.AppendLine();
-        source.AppendLine("            // Call the generic HandleAsync<object> method and ignore the result");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(object));");
-        source.AppendLine("            var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("            ((ValueTask<object>)result!).GetAwaiter().GetResult();");
+        source.AppendLine("            handler.Handle!(this, message, cancellationToken, null);");
         source.AppendLine("        }");
         source.AppendLine();
 
         // Generate InvokeAsync<TResponse> method
         source.AppendLine("        public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageType.Name}\");");
+        source.AppendLine("            if (handlersList.Count == 0)");
+        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count > 1)");
-        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.Name}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            if (handlersList.Count > 1)");
+        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use PublishAsync for multiple handlers.\");");
         source.AppendLine();
-        source.AppendLine("            var registration = registrations[0];");
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
+        source.AppendLine("            var handler = handlersList.First();");
+        source.AppendLine("            var result = await handler.HandleAsync(this, message, cancellationToken, typeof(TResponse));");
         source.AppendLine();
-        source.AppendLine("            // Call the generic HandleAsync<TResponse> method");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(TResponse));");
-        source.AppendLine("            var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("            return await (ValueTask<TResponse>)result!;");
+        source.AppendLine("            return (TResponse)result;");
         source.AppendLine("        }");
         source.AppendLine();
 
-        // Generate Invoke<TResponse> method
+        // Generate Invoke<TResponse> method (sync)
         source.AppendLine("        public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageType.Name}\");");
+        source.AppendLine("            if (handlersList.Count == 0)");
+        source.AppendLine("                throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count > 1)");
-        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.Name}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            if (handlersList.Count > 1)");
+        source.AppendLine("                throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use Publish for multiple handlers.\");");
         source.AppendLine();
-        source.AppendLine("            var registration = registrations[0];");
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
+        source.AppendLine("            var handler = handlersList.First();");
+        source.AppendLine("            if (handler.IsAsync)");
+        source.AppendLine("                throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageTypeName}. Use InvokeAsync instead.\");");
         source.AppendLine();
-        source.AppendLine("            // Call the generic HandleAsync<TResponse> method synchronously");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(TResponse));");
-        source.AppendLine("            var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("            return ((ValueTask<TResponse>)result!).GetAwaiter().GetResult();");
+        source.AppendLine("            object result = handler.Handle!(this, message, cancellationToken, typeof(TResponse));");
+        source.AppendLine("            return (TResponse)result;");
         source.AppendLine("        }");
         source.AppendLine();
 
         // Generate PublishAsync method
         source.AppendLine("        public async ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                return; // No handlers, no-op");
-        source.AppendLine();
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(object));");
-        source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 1)");
-        source.AppendLine("            {");
-        source.AppendLine("                // Single handler - direct call");
-        source.AppendLine("                var handler = handlerProperty!.GetValue(registrations[0]);");
-        source.AppendLine("                var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("                await (ValueTask<object>)result!;");
-        source.AppendLine("            }");
-        source.AppendLine("            else");
-        source.AppendLine("            {");
-        source.AppendLine("                // Multiple handlers - call all sequentially with error handling");
-        source.AppendLine("                var tasks = new List<Task>();");
-        source.AppendLine("                Exception? firstException = null;");
-        source.AppendLine();
-        source.AppendLine("                foreach (var registration in registrations)");
-        source.AppendLine("                {");
-        source.AppendLine("                    try");
-        source.AppendLine("                    {");
-        source.AppendLine("                        var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("                        var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("                        tasks.Add(((ValueTask<object>)result!).AsTask());");
-        source.AppendLine("                    }");
-        source.AppendLine("                    catch (Exception ex)");
-        source.AppendLine("                    {");
-        source.AppendLine("                        firstException ??= ex;");
-        source.AppendLine("                    }");
-        source.AppendLine("                }");
-        source.AppendLine();
-        source.AppendLine("                // Wait for all async tasks to complete");
-        source.AppendLine("                if (tasks.Count > 0)");
-        source.AppendLine("                {");
-        source.AppendLine("                    try");
-        source.AppendLine("                    {");
-        source.AppendLine("                        await Task.WhenAll(tasks);");
-        source.AppendLine("                    }");
-        source.AppendLine("                    catch (Exception ex)");
-        source.AppendLine("                    {");
-        source.AppendLine("                        firstException ??= ex;");
-        source.AppendLine("                    }");
-        source.AppendLine("                }");
-        source.AppendLine();
-        source.AppendLine("                // Re-throw the first exception if any occurred");
-        source.AppendLine("                if (firstException != null)");
-        source.AppendLine("                    throw firstException;");
-        source.AppendLine("            }");
+        source.AppendLine("            // Execute all handlers (zero to many allowed)");
+        source.AppendLine("            var tasks = handlersList.Select(h => h.HandleAsync(this, message, cancellationToken, null));");
+        source.AppendLine("            await Task.WhenAll(tasks.Select(t => t.AsTask()));");
         source.AppendLine("        }");
         source.AppendLine();
 
-        // Generate Publish method
+        // Generate Publish method (sync)
         source.AppendLine("        public void Publish(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageType = message.GetType();");
-        source.AppendLine("            var registrationType = typeof(HandlerRegistration<>).MakeGenericType(messageType);");
-        source.AppendLine("            var registrations = _serviceProvider.GetServices(registrationType).Cast<object>().ToList();");
+        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
+        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("            var handlersList = handlers.ToList();");
         source.AppendLine();
-        source.AppendLine("            if (registrations.Count == 0)");
-        source.AppendLine("                return; // No handlers, no-op");
+        source.AppendLine("            // Check if any handlers require async execution");
+        source.AppendLine("            if (handlersList.Any(h => h.IsAsync))");
+        source.AppendLine("                throw new InvalidOperationException($\"Cannot use synchronous Publish with async-only handlers for message type {messageTypeName}. Use PublishAsync instead.\");");
         source.AppendLine();
-        source.AppendLine("            var handlerProperty = registrationType.GetProperty(\"Handler\");");
-        source.AppendLine("            var handlerType = typeof(IHandler<>).MakeGenericType(messageType);");
-        source.AppendLine("            var handleAsyncMethod = handlerType.GetMethod(\"HandleAsync\");");
-        source.AppendLine("            var genericMethod = handleAsyncMethod!.MakeGenericMethod(typeof(object));");
-        source.AppendLine();
-        source.AppendLine("            Exception? firstException = null;");
-        source.AppendLine();
-        source.AppendLine("            foreach (var registration in registrations)");
+        source.AppendLine("            // Execute all handlers synchronously");
+        source.AppendLine("            foreach (var handler in handlersList)");
         source.AppendLine("            {");
-        source.AppendLine("                try");
-        source.AppendLine("                {");
-        source.AppendLine("                    var handler = handlerProperty!.GetValue(registration);");
-        source.AppendLine("                    var result = genericMethod.Invoke(handler, new[] { message, cancellationToken });");
-        source.AppendLine("                    ((ValueTask<object>)result!).GetAwaiter().GetResult();");
-        source.AppendLine("                }");
-        source.AppendLine("                catch (Exception ex)");
-        source.AppendLine("                {");
-        source.AppendLine("                    firstException ??= ex;");
-        source.AppendLine("                }");
+        source.AppendLine("                handler.Handle!(this, message, cancellationToken, null);");
         source.AppendLine("            }");
-        source.AppendLine();
-        source.AppendLine("            // Re-throw the first exception if any occurred");
-        source.AppendLine("            if (firstException != null)");
-        source.AppendLine("                throw firstException;");
         source.AppendLine("        }");
 
         source.AppendLine("    }");

@@ -1,4 +1,3 @@
-using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Foundatio.Xunit;
@@ -24,27 +23,25 @@ public class ServiceRegistrationTest : TestWithLoggingBase
         var serviceProvider = services.BuildServiceProvider();
 
         _logger.LogInformation("=== SERVICE REGISTRATION TEST ===");
-        _logger.LogInformation("Verifying that HandlerRegistration<TMessage> interfaces are registered");
+        _logger.LogInformation("Verifying that HandlerRegistration instances are registered");
 
         // Act & Assert - Verify various handler registrations
-        
-        // Test HandlerRegistration<RegistrationTestMessage> registration
-        var messageHandlers = serviceProvider.GetServices<HandlerRegistration<RegistrationTestMessage>>();
-        var messageHandlersList = messageHandlers.ToList();
-        _logger.LogInformation("Found {Count} handlers for RegistrationTestMessage", messageHandlersList.Count);
-        Assert.Single(messageHandlersList);
+        _logger.LogInformation("Verifying keyed handler registrations");
 
-        // Test HandlerRegistration<RegistrationTestQuery> registration
-        var queryHandlers = serviceProvider.GetServices<HandlerRegistration<RegistrationTestQuery>>();
-        var queryHandlersList = queryHandlers.ToList();
-        _logger.LogInformation("Found {Count} handlers for RegistrationTestQuery with string response", queryHandlersList.Count);
-        Assert.Single(queryHandlersList);
+        // Test HandlerRegistration for RegistrationTestMessage registration
+        var messageHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(RegistrationTestMessage).FullName).ToList();
+        _logger.LogInformation("Found {Count} handlers for RegistrationTestMessage", messageHandlers.Count);
+        Assert.Single(messageHandlers);
 
-        // Test HandlerRegistration<RegistrationTestQueryInt> registration
-        var intQueryHandlers = serviceProvider.GetServices<HandlerRegistration<RegistrationTestQueryInt>>();
-        var intQueryHandlersList = intQueryHandlers.ToList();
-        _logger.LogInformation("Found {Count} handlers for RegistrationTestQueryInt with int response", intQueryHandlersList.Count);
-        Assert.Single(intQueryHandlersList);
+        // Test HandlerRegistration for RegistrationTestQuery registration
+        var queryHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(RegistrationTestQuery).FullName).ToList();
+        _logger.LogInformation("Found {Count} handlers for RegistrationTestQuery with string response", queryHandlers.Count);
+        Assert.Single(queryHandlers);
+
+        // Test HandlerRegistration for RegistrationTestQueryInt registration
+        var intQueryHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(RegistrationTestQueryInt).FullName).ToList();
+        _logger.LogInformation("Found {Count} handlers for RegistrationTestQueryInt with int response", intQueryHandlers.Count);
+        Assert.Single(intQueryHandlers);
 
         _logger.LogInformation("All handler interfaces are properly registered!");
     }

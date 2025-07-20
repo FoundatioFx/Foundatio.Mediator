@@ -4,19 +4,16 @@ using ConsoleSample.Services;
 namespace ConsoleSample.Handlers;
 
 // Multiple handlers for the same event (for Publish pattern)
-public class OrderEmailNotificationHandler
+public class OrderEmailNotificationHandler(EmailNotificationService emailService)
 {
-    public async Task HandleAsync(
-        OrderCreatedEvent orderEvent,
-        EmailNotificationService emailService,
-        CancellationToken cancellationToken = default)
+    public async Task HandleAsync(OrderCreatedEvent orderEvent)
     {
         var message = $"Order {orderEvent.OrderId} has been created for ${orderEvent.Amount:F2}";
         await emailService.SendAsync(message);
     }
 }
 
-public class OrderSmsNotificationHandler  
+public class OrderSmsNotificationHandler
 {
     public async Task HandleAsync(
         OrderCreatedEvent orderEvent,

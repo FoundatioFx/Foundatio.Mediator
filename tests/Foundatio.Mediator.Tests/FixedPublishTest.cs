@@ -1,4 +1,3 @@
-using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Foundatio.Xunit;
@@ -26,18 +25,19 @@ public class FixedPublishTest : TestWithLoggingBase
         var testService = serviceProvider.GetRequiredService<FixedTestService>();
 
         var command = new FixedSyncCommand("Fixed Sync Test");
-        
+
         _logger.LogInformation("Starting synchronous Publish test with message: {Message}", command.Message);
 
         // Act
         mediator.Publish(command);
 
         // Assert
-        _logger.LogInformation("Sync Publish completed. CallCount: {CallCount}, Messages: {Messages}", 
+        _logger.LogInformation("Sync Publish completed. CallCount: {CallCount}, Messages: {Messages}",
             testService.CallCount, string.Join(", ", testService.Messages));
-            
-        Assert.Equal(0, testService.CallCount); // No handlers discovered for FixedSyncCommand
-        // No messages should be added since no handlers were called
+
+        Assert.Equal(2, testService.CallCount); // Two handlers should be called for FixedSyncCommand
+        Assert.Contains("FixedSyncCommand1Handler: Fixed Sync Test", testService.Messages);
+        Assert.Contains("FixedSyncCommand2Handler: Fixed Sync Test", testService.Messages);
     }
 
     [Fact]
@@ -53,18 +53,19 @@ public class FixedPublishTest : TestWithLoggingBase
         var testService = serviceProvider.GetRequiredService<FixedTestService>();
 
         var notification = new FixedAsyncNotification("Fixed Async Test");
-        
+
         _logger.LogInformation("Starting async Publish test with message: {Message}", notification.Message);
 
         // Act
         await mediator.PublishAsync(notification);
 
         // Assert
-        _logger.LogInformation("Async Publish completed. CallCount: {CallCount}, Messages: {Messages}", 
+        _logger.LogInformation("Async Publish completed. CallCount: {CallCount}, Messages: {Messages}",
             testService.CallCount, string.Join(", ", testService.Messages));
-            
-        Assert.Equal(0, testService.CallCount); // No handlers discovered for FixedAsyncNotification
-        // No messages should be added since no handlers were called
+
+        Assert.Equal(2, testService.CallCount); // Two handlers should be called for FixedAsyncNotification
+        Assert.Contains("FixedAsync1Handler: Fixed Async Test", testService.Messages);
+        Assert.Contains("FixedAsync2Handler: Fixed Async Test", testService.Messages);
     }
 }
 
@@ -76,12 +77,12 @@ public record FixedAsyncNotification(string Message);
 public class FixedTestService
 {
     private int _callCount;
-    public int CallCount 
-    { 
-        get => _callCount; 
-        set => _callCount = value; 
+    public int CallCount
+    {
+        get => _callCount;
+        set => _callCount = value;
     }
-    
+
     public List<string> Messages { get; } = new();
 
     public void AddMessage(string message)
@@ -148,7 +149,7 @@ public class FixedAsync1Handler
     }
 }
 
-public class FixedAsync2Handler  
+public class FixedAsync2Handler
 {
     private readonly ILogger<FixedAsync2Handler> _logger;
 

@@ -1,6 +1,3 @@
-using System.IO;
-using System.Linq;
-using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 

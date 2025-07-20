@@ -15,7 +15,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5F6E
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{6A7B8C9D-EB4D-4ABE-FC9D-7E0F1A5E6F7A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{7B8C9D0E-FC5E-4BCF-AD8E-8F1A2B6C7D8E}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleSample", "samples\ConsoleSample\ConsoleSample.csproj", "{9FD329F5-36AF-4B65-CA6F-F56F0B6A8E9F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator.Benchmarks", "benchmarks\Foundatio.Mediator.Benchmarks\Foundatio.Mediator.Benchmarks.csproj", "{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -75,6 +79,18 @@ Global
 		{9FD329F5-36AF-4B65-CA6F-F56F0B6A8E9F}.Release|x64.Build.0 = Release|Any CPU
 		{9FD329F5-36AF-4B65-CA6F-F56F0B6A8E9F}.Release|x86.ActiveCfg = Release|Any CPU
 		{9FD329F5-36AF-4B65-CA6F-F56F0B6A8E9F}.Release|x86.Build.0 = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|x64.Build.0 = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Debug|x86.Build.0 = Debug|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|x64.ActiveCfg = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|x64.Build.0 = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|x86.ActiveCfg = Release|Any CPU
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -84,5 +100,6 @@ Global
 		{2C3B6D2E-9F0E-4B7C-AD4E-3F5A6B8C9D0E} = {4E5D8F4A-BF2A-4D9E-CF6A-5B7C9D0E2A3B}
 		{4E5F8A6B-DA3C-4FAD-EB8C-6D9E0F4C5D6E} = {6A7B8C9D-EB4D-4ABE-FC9D-7E0F1A5E6F7A}
 		{9FD329F5-36AF-4B65-CA6F-F56F0B6A8E9F} = {5F6E9A5B-CA3B-4EAF-DA7B-6C8D0E3B4C5D}
+		{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F} = {7B8C9D0E-FC5E-4BCF-AD8E-8F1A2B6C7D8E}
 	EndGlobalSection
 EndGlobal

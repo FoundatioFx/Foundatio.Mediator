@@ -1,4 +1,3 @@
-using Foundatio.Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Foundatio.Xunit;
@@ -32,9 +31,9 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         var command = new ComprehensiveCommand("Execute command");
         await mediator.InvokeAsync(command);
         Assert.Equal(1, testService.CallCount);
-        
+
         // Verify the wrapper is registered
-        var commandHandlers = serviceProvider.GetServices<HandlerRegistration<ComprehensiveCommand>>();
+        var commandHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(ComprehensiveCommand).FullName).ToList();
         Assert.Single(commandHandlers);
 
         // Test 2: IHandler<TMessage, TResponse> wrapper (string return)
@@ -43,9 +42,9 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         var stringResult = await mediator.InvokeAsync<string>(stringQuery);
         Assert.Equal("Result: Get string", stringResult);
         Assert.Equal(2, testService.CallCount);
-        
+
         // Verify the wrapper is registered
-        var stringHandlers = serviceProvider.GetServices<HandlerRegistration<ComprehensiveStringQuery>>();
+        var stringHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(ComprehensiveStringQuery).FullName).ToList();
         Assert.Single(stringHandlers);
 
         // Test 3: IHandler<TMessage, TResponse> wrapper (int return)
@@ -54,28 +53,27 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         var intResult = await mediator.InvokeAsync<int>(intQuery);
         Assert.Equal(100, intResult);
         Assert.Equal(3, testService.CallCount);
-        
+
         // Verify the wrapper is registered
-        var intHandlers = serviceProvider.GetServices<HandlerRegistration<ComprehensiveIntQuery>>();
+        var intHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(ComprehensiveIntQuery).FullName).ToList();
         Assert.Single(intHandlers);
 
         // Test 4: Multiple handlers for Publish (current limitation: only first handler is discovered)
         _logger.LogInformation("Testing multiple handlers for Publish scenario...");
         var notification = new ComprehensiveNotification("Notify all");
-        
+
         // First check how many handlers are registered
-        var notificationHandlers = serviceProvider.GetServices<HandlerRegistration<ComprehensiveNotification>>();
-        var notificationHandlersList = notificationHandlers.ToList();
-        _logger.LogInformation("Found {Count} notification handlers registered", notificationHandlersList.Count);
-        
+        var notificationHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(ComprehensiveNotification).FullName).ToList();
+        _logger.LogInformation("Found {Count} notification handlers registered", notificationHandlers.Count);
+
         await mediator.PublishAsync(notification);
         _logger.LogInformation("After PublishAsync, CallCount: {CallCount}", testService.CallCount);
-        
+
         // Current implementation limitation: only discovers first handler per message type
         // We expect the call count to increase by the number of handlers (at least 1)
-        var expectedCallCount = 3 + Math.Max(1, notificationHandlersList.Count); // 3 from previous tests + handlers
+        var expectedCallCount = 3 + Math.Max(1, notificationHandlers.Count); // 3 from previous tests + handlers
         Assert.True(testService.CallCount >= 3, $"Expected CallCount >= 3, but was {testService.CallCount}");
-        
+
         // Note: This is a current limitation - multiple handlers for same message type need additional work
         _logger.LogInformation("Note: Multiple handlers for same message type is a current limitation");
 
@@ -85,9 +83,9 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         await mediator.InvokeAsync(diCommand);
         var expectedFinalCount = testService.CallCount + 1; // Should increment by 1
         Assert.True(testService.CallCount >= 4, $"Expected CallCount >= 4, but was {testService.CallCount}");
-        
+
         // Verify the DI wrapper is registered
-        var diHandlers = serviceProvider.GetServices<HandlerRegistration<ComprehensiveDICommand>>();
+        var diHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(typeof(ComprehensiveDICommand).FullName).ToList();
         Assert.True(diHandlers.Any(), "Expected at least one DI handler to be registered");
 
         _logger.LogInformation("All comprehensive tests passed! ✅");
@@ -221,7 +219,7 @@ public class ComprehensiveDICommandHandler
     private readonly IServiceProvider _serviceProvider;
 
     public ComprehensiveDICommandHandler(
-        ComprehensiveTestService testService, 
+        ComprehensiveTestService testService,
         ILogger<ComprehensiveDICommandHandler> logger,
         IServiceProvider serviceProvider)
     {

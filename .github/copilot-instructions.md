@@ -1,174 +1,232 @@
 # 🧠 Lightweight Mediator Library with Source Generators
 
-## 🎯 Project Goal  
-Build a fast, convention-based C# mediator library using incremental source generators and source interceptors.  
-- **No interfaces or base classes required**
-- **Compile-time handler discovery**
-- **As close to direct method call performance as possible**
+## 🎯 Project Goal
+
+Build a fast, convention-based C# mediator library using incremental source generators and source interceptors.
+
+* **No interfaces or base classes required**
+* **Compile-time handler discovery**
+* **As close to direct method call performance as possible**
+* **High performance: capable of dispatching thousands of handlers efficiently**
 
 ---
 
 ## 👤 Target Users
 
-- Developers using the mediator in vertical slice .NET projects
-- Prefer minimal boilerplate and full DI support
+* Developers using the mediator in vertical slice .NET projects
+* Prefer minimal boilerplate and full DI support
 
 ---
 
 ## 🧱 Core Features
 
 ### 1. Handler Discovery (Convention-Based)
-- Handler classes must end with `Handler` or `Consumer`
-- Valid method names: `Handle`, `Handles`, `HandleAsync`, `HandlesAsync`, `Consume`, `Consumes`, `ConsumeAsync`, `ConsumesAsync`
-- Method signature:
-  - First parameter = **message**
-  - Remaining parameters = resolved via DI
-  - Known args like `CancellationToken` are provided by the mediator
+
+* Handler classes must end with `Handler` or `Consumer`
+* Valid method names:
+
+  * `Handle`, `Handles`, `HandleAsync`, `HandlesAsync`
+  * `Consume`, `Consumes`, `ConsumeAsync`, `ConsumesAsync`
+* Method signature:
+
+  * First parameter = **message**
+  * Remaining parameters = resolved via DI
+  * Known args like `CancellationToken` are injected by the mediator
+
+---
 
 ### 2. Incremental Source Generator
-- Uses incremental source generators for:
-  - Discovering handlers
-  - Emitting dispatch code
-  - Validating signatures
-- Based on this project [NetEscapades.EnumGenerators](https://github.com/andrewlock/NetEscapades.EnumGenerators)
-- Based on this article series [Creating a source generator](https://andrewlock.net/series/creating-a-source-generator/)
-- Set `EmitCompilerGeneratedFiles` to `true` and `CompilerGeneratedFilesOutputPath` to `Generated` to specify output directory for generated files and see what the generator produces.
 
-### 3. DI Integration
-- Uses `Microsoft.Extensions.DependencyInjection`
-- Supports:
-  - Constructor injection
-  - Parameter injection for handler methods and middleware
-- Generate a handler class for each discovered handler that wraps the discovered handler method and implements an `IHandler<TMessage>`
-  - The generated handler class is registered in the DI container as `IHandler<TMessage>`
-  - `IHandler<TMessage>` is a simple interface with a single method `ValueTask HandleAsync(TMessage message, CancellationToken cancellationToken)`
-- When discovering handlers at runtime, call DI `GetServices` to resolve all handlers for a message type
+* Uses C# incremental source generators for:
 
-### 4. Lightweight Dispatch
+  * Discovering handler methods
+  * Emitting static handler wrappers
+  * Validating method signatures
+* Generator inspired by:
 
-#### Supported APIs
-- `Invoke(message, CancellationToken = default)`
-- `Invoke<TResponse>(message, CancellationToken = default)`
-- `InvokeAsync(message, CancellationToken = default)`
-- `InvokeAsync<TResponse>(message, CancellationToken = default)`
+  * [NetEscapades.EnumGenerators](https://github.com/andrewlock/NetEscapades.EnumGenerators)
+  * [Creating a Source Generator series](https://andrewlock.net/series/creating-a-source-generator/)
+* Use `EmitCompilerGeneratedFiles=true` and `CompilerGeneratedFilesOutputPath=Generated` for output inspection
 
-#### Behavior
-- Handlers can return **any type**
-- Compile-time error if a sync method is used but only an async handler exists
-- Invoke calls are for exactly one handler
-  - Run-time and compile-time error if no handler exists for a message type
-  - Run-time and compile-time error if more than one handler exists for a message type that is invoked
-- Uses generated code for near-zero overhead
-- Performance is critical and the mediator should be able to handle 1000s of handler types with minimal overhead
+---
 
-### 5. Publish Support
-- `Publish(message, CancellationToken = default)`
-- `PublishAsync(message, CancellationToken = default)`
-- All notification handlers are called inline
-- Publish calls are for zero to many handlers
-- Multiple handlers for the message type are all guaranteed to be called
-- Global option to:
-  - Run in parallel or sequentially
-  - If any fail, all are attempted, and the first exception is thrown
+### 3. New Static Handler Codegen Strategy
 
-### 6. Middleware Support
-- Supports custom middleware classes with:
-  - `Before(...)` / `BeforeAsync(...)`
-  - `After(...)` / `AfterAsync(...)`
-  - `Finally(...)` / `FinallyAsync(...)`
-- `Before` can:
-  - Return object/tuple for use in `After`/`Finally`
-  - Return `HandlerResult` to short-circuit handler execution
-- Middleware methods can access:
-  - The message
-  - `CancellationToken`
-  - DI-resolved services
+* **No `IHandler<TMessage>` interface**
+* For each discovered handler, generate a static async method:
 
-### 7. Cross-Project Support
-- Works across multiple assemblies in vertical slice architectures
-- Uses metadata references / MSBuild context
+  ```csharp
+  public static ValueTask<object> HandleAsync(IMediator mediator, object message, CancellationToken token, Type? responseType)
+  ```
+* The method:
 
-### 8. Compile-Time Safety
-- Source generator enforces:
-  - One handler per message
-  - Valid signatures
-  - Async method enforcement
-  - Middleware conformance
-- Generates helpful diagnostics for misconfigurations
+  * Casts `message` to expected type
+  * Resolves class and method parameters via DI
+  * Calls the handler method
+  * Handles return values (including tuple/cascading)
 
-### 9. Tuple Return Support & Cascading Messages
-- Handlers can return:
-  - A single object
-  - A tuple with multiple values
-- When using `Invoke<TResponse>()`:
-  - The mediator extracts the value matching `TResponse`
-  - Remaining values are treated as **cascading messages** and automatically published
-  - `Invoke` does **not return** until all cascading messages are published and fully handled
+---
+
+### 4. Handler Registration & Resolution
+
+* For each handler, register a singleton instance of `HandlerRegistration`:
+
+  * Keyed by the fully qualified type name of the message (e.g., `Namespace.MyMessage`)
+  * Stores a delegate:
+
+    ```csharp
+    Func<IMediator, object, CancellationToken, Type?, ValueTask<object>> HandleAsync
+    ```
+* Mediator resolves `IEnumerable<HandlerRegistration>` from DI
+* Filters by message type name
+* Invokes matching handlers using the delegate
+
+---
+
+### 5. Invoke APIs
+
+* Supported variants:
+
+  * `Invoke(message, CancellationToken = default)`
+  * `Invoke<TResponse>(message, CancellationToken = default)`
+  * `InvokeAsync(message, CancellationToken = default)`
+  * `InvokeAsync<TResponse>(message, CancellationToken = default)`
+* **Only one handler** is allowed per message type
+* **Compile-time and runtime validation**:
+
+  * No handler → error
+  * Multiple handlers → error
+  * Sync method used with async-only handler → compile-time error
+
+---
+
+### 6. Publish APIs
+
+* Supported variants:
+
+  * `Publish(message, CancellationToken = default)`
+  * `PublishAsync(message, CancellationToken = default)`
+* **Zero to many handlers** per message
+* All handlers are called inline
+* Global execution mode:
+
+  * Sequential (one-at-a-time)
+  * Parallel (in `Task.WhenAll`)
+* If one handler throws:
+
+  * All others still run
+  * First exception is thrown after all complete
+
+---
+
+### 7. Tuple Return Support & Cascading Messages
+
+* Handlers can return:
+
+  * A single object
+  * A tuple with multiple values
+* When using `Invoke<TResponse>()`:
+
+  * The mediator extracts the value matching `TResponse`
+  * Remaining values are **published automatically** as cascading messages
+  * `Invoke` does **not return** until all cascading messages are handled
+
+---
+
+### 8. Middleware Support
+
+* Middleware classes support:
+
+  * `Before(...)` / `BeforeAsync(...)`
+  * `After(...)` / `AfterAsync(...)`
+  * `Finally(...)` / `FinallyAsync(...)`
+* `Before` can:
+
+  * Return object/tuple to pass to `After` and `Finally`
+  * Return a `HandlerResult` to short-circuit handler execution
+* Methods may take:
+
+  * The message
+  * `CancellationToken`
+  * DI-resolved services
+* `After` runs only on successful handler completion
+* `Finally` runs **always**, regardless of success/failure
+
+---
+
+### 9. Cross-Project Support
+
+* Must support handler discovery across multiple projects (vertical slice architecture)
+* Uses metadata references / MSBuild project graph
+* Works with SDK-style projects
+
+---
+
+### 10. Compile-Time Safety
+
+* Source generator emits diagnostics for:
+
+  * Invalid method signatures
+  * More than one handler for a single message (for `Invoke`)
+  * Missing handler
+  * Async-only handler used with sync API
+  * Middleware misconfiguration
 
 ---
 
 ## 🧪 Development & Testing Guidelines
 
 ### Testing Strategy
-- **Prefer tests with logging output over sample projects** for experimentation and debugging
-- Use `Foundatio.Xunit` with `TestWithLoggingBase` for enhanced test visibility
-- Add comprehensive logging to handlers using `ILogger<T>` dependency injection
-- Tests provide better isolation, repeatability, and detailed output for debugging
 
-### Logging Infrastructure
-- Tests inherit from `TestWithLoggingBase` for structured logging output
-- Handlers should inject `ILogger<T>` for detailed execution tracing
-- Use logging to debug source generator discovery issues and handler execution flow
-- Logging output shows both test-level and handler-level execution details
+* Prefer test-based dev using `Foundatio.Xunit`
+* Use `TestWithLoggingBase` for rich test logging
+* Avoid large samples for dev iteration — rely on tight log-driven test loops
 
-### Debugging Source Generator Issues
-- Create diagnostic tests to inspect service registrations with `AddMediator()`
-- Set `EmitCompilerGeneratedFiles` to `true` and `CompilerGeneratedFilesOutputPath` to `Generated` to specify output directory for generated files and see what the generator produces.
-- Use logging to verify which handlers are discovered vs ignored
-- Single handlers work reliably; multiple handlers for same message type may need investigation
-- Test with simplified handler signatures first (method DI only, no constructor DI)
+### Logging
 
----
+* Handlers and middleware should support `ILogger<T>` injection
+* Log:
 
-## ⚙️ Tech Stack
-
-- .NET 9 or later
-- Incremental Source Generators
-- (Optional) Source Interceptors
-- Microsoft.Extensions.DependencyInjection
+  * Handler execution start/finish
+  * Middleware phases
+  * Tuple/cascading message flow
+  * Source generation metadata (discovery, errors)
 
 ---
 
 ## ✅ Implementation Checklist
 
-- [x] Define handler discovery by class and method naming convention
-- [x] Discover handlers across all referenced projects
-- [x] Generate dispatch logic for:
-  - [x] `Invoke(...)`
-  - [x] `Invoke<TResponse>(...)`
-  - [x] `InvokeAsync(...)`
-  - [x] `InvokeAsync<TResponse>(...)`
-- [x] Generate `Publish` / `PublishAsync` logic
-- [x] Support `CancellationToken` injection
-- [x] Support full dependency injection for handler methods
-- [x] Emit compile-time error if async-only handler is used with sync call
-- [ ] Add global option for `Publish` to run handlers in parallel or sequentially
-- [ ] Add middleware support:
-  - [ ] `Before`, `After`, and `Finally` lifecycle
-  - [ ] Pass return value from `Before` into `After`/`Finally`
-  - [ ] Support short-circuiting with `HandlerResult`
-  - [ ] Inject message, `CancellationToken`, and services
-- [x] DI registration for handlers and middleware
-- [ ] Tuple return value support:
-  - [ ] Match and return expected `TResponse`
-  - [ ] Publish remaining values as cascading messages
-  - [ ] Ensure `Invoke` waits until cascading messages are completed
-- [x] Emit compile-time diagnostics for:
-  - [x] Missing handler
-  - [x] Multiple handlers
-  - [x] Invalid method signature
-  - [x] Async enforcement
-  - [ ] Middleware validation
-- [ ] Optional: add source interceptor support for optimized call-sites
-- [x] Provide sample app using vertical slice pattern
-- [ ] Benchmark vs MediatR, Wolverine, etc.
+### ✅ Core
+
+* [x] Discover handlers using naming convention
+* [ ] Generate static `HandleAsync` method per handler
+* [x] Emit compile-time diagnostics for invalid handlers
+* [ ] Generate and register `HandlerRegistration` per handler
+
+### ✅ Dispatch
+
+* [x] `Invoke(...)` and `InvokeAsync(...)` variants
+* [x] `Publish(...)` and `PublishAsync(...)` variants
+* [ ] Match handler return type to expected `TResponse`
+* [ ] Publish any extra tuple values as cascading messages
+* [ ] Wait for cascading messages before returning from `Invoke`
+
+### 🧠 Middleware
+
+* [ ] Execute `Before` / `After` / `Finally` logic
+* [ ] Support returning `HandlerResult` from `Before`
+* [ ] Pass `Before` return into `After`/`Finally`
+* [ ] Inject message, token, and DI services into middleware
+
+### ⚙️ Runtime
+
+* [ ] Register `HandlerRegistration` keyed by fully qualified message name
+* [ ] Use `GetServices<HandlerRegistration>()` to dispatch
+* [ ] Add config for publish mode: sequential vs parallel
+
+### 🧪 Testing & Debugging
+
+* [x] Enable `EmitCompilerGeneratedFiles` for source inspection
+* [x] Validate generator behavior with method DI only
+* [ ] Add tests for tuple returns and cascading publish
+* [x] Benchmark vs MediatR, Wolverine, etc.

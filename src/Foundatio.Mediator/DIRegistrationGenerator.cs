@@ -1,16 +1,18 @@
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 namespace Foundatio.Mediator;
 
 internal static class DIRegistrationGenerator
 {
-    public static string GenerateDIRegistration(List<HandlerToGenerate> handlers)
+    public static string GenerateDIRegistration(List<HandlerInfo> handlers, List<MiddlewareInfo> middlewares)
     {
         var source = new StringBuilder();
-        
+
+        source.AppendLine("#nullable enable");
         source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+        source.AppendLine("using System;");
+        source.AppendLine("using System.Threading;");
+        source.AppendLine("using System.Threading.Tasks;");
         source.AppendLine();
         source.AppendLine("namespace Foundatio.Mediator");
         source.AppendLine("{");
@@ -20,31 +22,38 @@ internal static class DIRegistrationGenerator
         source.AppendLine("        {");
         source.AppendLine("            services.AddSingleton<IMediator, Mediator>();");
         source.AppendLine();
-        source.AppendLine("            // Register all discovered handlers");
-        
-        var uniqueHandlers = handlers.Select(h => h.HandlerTypeName).Distinct();
-        foreach (var handlerType in uniqueHandlers)
-        {
-            source.AppendLine($"            services.AddScoped<{handlerType}>();");
-        }
-        
+        source.AppendLine("            // Register HandlerRegistration instances keyed by message type name");
+        source.AppendLine("            // Note: Handlers themselves are NOT auto-registered in DI");
+        source.AppendLine("            // Users can register them manually if they want specific lifetimes");
+
         source.AppendLine();
-        source.AppendLine("            // Register handler registrations containing wrapper handlers with metadata");
-        
+
         foreach (var handler in handlers)
         {
             var wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(handler);
-            var isAsync = handler.IsAsync ? "true" : "false";
-            
-            // First register the wrapper itself
-            source.AppendLine($"            services.AddScoped<{wrapperClassName}>();");
-            
-            // Then register the HandlerRegistration (only using TMessage now, no TResponse)
-            source.AppendLine($"            services.AddScoped<HandlerRegistration<{handler.MessageTypeName}>>(sp =>");
-            source.AppendLine($"                new HandlerRegistration<{handler.MessageTypeName}>(");
-            source.AppendLine($"                    sp.GetRequiredService<{wrapperClassName}>(), {isAsync}));");
+
+            // Check if this handler effectively needs to be async due to middleware
+            var isEffectivelyAsync = IsHandlerEffectivelyAsync(handler, middlewares);
+
+            source.AppendLine($"            services.AddKeyedSingleton<HandlerRegistration>(\"{handler.MessageTypeName}\",");
+            source.AppendLine($"                new HandlerRegistration(");
+            source.AppendLine($"                    \"{handler.MessageTypeName}\",");
+
+            if (isEffectivelyAsync)
+            {
+                source.AppendLine($"                    {wrapperClassName}.UntypedHandleAsync,");
+                source.AppendLine("                    null,");
+            }
+            else
+            {
+                // For sync handlers, we need to provide a dummy async wrapper that calls the sync method
+                source.AppendLine($"                    (mediator, message, cancellationToken, responseType) => new ValueTask<object>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                source.AppendLine($"                    {wrapperClassName}.UntypedHandle,");
+            }
+
+            source.AppendLine($"                    {isEffectivelyAsync.ToString().ToLower()}));");
         }
-        
+
         source.AppendLine();
         source.AppendLine("            return services;");
         source.AppendLine("        }");
@@ -52,5 +61,60 @@ internal static class DIRegistrationGenerator
         source.AppendLine("}");
 
         return source.ToString();
+    }
+
+    private static bool IsHandlerEffectivelyAsync(HandlerInfo handler, List<MiddlewareInfo> middlewares)
+    {
+        // If the handler itself is async, then it's definitely async
+        if (handler.IsAsync)
+            return true;
+
+        // Check if any applicable middleware is async
+        var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
+        return applicableMiddlewares.Any(m => m.IsAsync);
+    }
+
+    private static List<MiddlewareInfo> GetApplicableMiddlewares(List<MiddlewareInfo> middlewares, HandlerInfo handler)
+    {
+        var applicable = new List<MiddlewareInfo>();
+
+        foreach (var middleware in middlewares)
+        {
+            if (IsMiddlewareApplicableToHandler(middleware, handler))
+            {
+                applicable.Add(middleware);
+            }
+        }
+
+        // Sort by priority: message-specific first, then interface-based, then object-based
+        // Within each priority level, sort by Order attribute
+        return applicable
+            .OrderBy(m => m.IsObjectType ? 2 : (m.IsInterfaceType ? 1 : 0)) // Priority: specific=0, interface=1, object=2
+            .ThenBy(m => m.Order)
+            .ToList();
+    }
+
+    private static bool IsMiddlewareApplicableToHandler(MiddlewareInfo middleware, HandlerInfo handler)
+    {
+        // Check if this middleware applies to the handler
+        if (middleware.IsObjectType)
+        {
+            // Object-type middleware applies to all handlers
+            return true;
+        }
+
+        if (middleware.MessageTypeName == handler.MessageTypeName)
+        {
+            // Direct message type match
+            return true;
+        }
+
+        if (middleware.IsInterfaceType && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
+        {
+            // Handler's message type implements the middleware's interface
+            return true;
+        }
+
+        return false;
     }
 }

@@ -1,3 +1,5 @@
+using Foundatio.Mediator;
+
 namespace ConsoleSample.Messages;
 
 // Event for multiple handlers (Publish pattern)
@@ -9,4 +11,7 @@ public record OrderCreatedEvent(
 );
 
 // Command for single handler (Invoke pattern)
-public record ProcessOrderCommand(string OrderId, string ProcessingType);
+public record ProcessOrderCommand(string OrderId, string ProcessingType) : ICommand
+{
+    public string CommandId => OrderId;
+}

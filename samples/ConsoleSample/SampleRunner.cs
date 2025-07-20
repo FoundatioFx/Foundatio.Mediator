@@ -34,7 +34,7 @@ public class SampleRunner
         await _mediator.InvokeAsync(new PingCommand("123"));
 
         // Test query with response
-        var greeting = _mediator.Invoke<string>(new GreetingQuery("World"));
+        var greeting = await _mediator.InvokeAsync<string>(new GreetingQuery("World"));
         Console.WriteLine($"Greeting response: {greeting}");
 
         Console.WriteLine("✅ Simple command/query test completed!\n");
@@ -58,7 +58,7 @@ public class SampleRunner
 
         var orderEvent = new OrderCreatedEvent(
             OrderId: "ORD-001",
-            CustomerId: "CUST-123", 
+            CustomerId: "CUST-123",
             Amount: 299.99m,
             ProductName: "Wireless Headphones"
         );
@@ -85,7 +85,7 @@ public class SampleRunner
         Console.WriteLine("5️⃣ Testing Mixed Sync/Async Handlers...\n");
 
         // Sync handler call
-        var syncResult = _mediator.Invoke<string>(new SyncCalculationQuery(10, 5));
+        var syncResult = await _mediator.InvokeAsync<string>(new SyncCalculationQuery(10, 5));
         Console.WriteLine($"Sync calculation result: {syncResult}");
 
         // Async handler call

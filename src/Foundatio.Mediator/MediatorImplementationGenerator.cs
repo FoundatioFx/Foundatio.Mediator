@@ -179,7 +179,7 @@ internal static class MediatorImplementationGenerator
 
         source.AppendLine();
         source.AppendLine("        private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Type, object> _middlewareCache = new();");
-        source.AppendLine("        private static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class");
+        source.AppendLine("        internal static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class");
         source.AppendLine("        {");
         source.AppendLine("            // Check cache first - if it's there, it means it's not registered in DI");
         source.AppendLine("            if (_middlewareCache.TryGetValue(typeof(T), out var cachedInstance))");

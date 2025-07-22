@@ -710,7 +710,7 @@ internal static class HandlerWrapperGenerator
 
     private static void GenerateAsyncSingleMiddlewareExecution(StringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
     {
-        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
         source.AppendLine("            object? beforeResult = null;");
         source.AppendLine(GetHandlerResultDeclaration(handler));
         source.AppendLine(GetExceptionDeclaration());
@@ -834,7 +834,7 @@ internal static class HandlerWrapperGenerator
 
     private static void GenerateSyncSingleMiddlewareExecution(StringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
     {
-        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
         source.AppendLine("            object? beforeResult = null;");
         source.AppendLine(GetHandlerResultDeclaration(handler));
         source.AppendLine(GetExceptionDeclaration());
@@ -962,7 +962,7 @@ internal static class HandlerWrapperGenerator
         {
             var variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
-            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
         }
 
         source.AppendLine("            var beforeResults = new object?[" + middlewares.Count + "];");
@@ -1107,7 +1107,7 @@ internal static class HandlerWrapperGenerator
         {
             var variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
-            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
         }
 
         source.AppendLine("            var beforeResults = new object?[" + middlewares.Count + "];");

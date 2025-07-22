@@ -10,6 +10,7 @@ public readonly record struct HandlerInfo
     public readonly bool IsAsync;
     public readonly bool IsStatic;
     public readonly EquatableArray<ParameterInfo> Parameters;
+    public readonly EquatableArray<string> MessageTypeHierarchy;
 
     public HandlerInfo(
         string handlerTypeName,
@@ -19,7 +20,8 @@ public readonly record struct HandlerInfo
         string originalReturnTypeName,
         bool isAsync,
         bool isStatic,
-        List<ParameterInfo> parameters)
+        List<ParameterInfo> parameters,
+        List<string> messageTypeHierarchy)
     {
         HandlerTypeName = handlerTypeName;
         MessageTypeName = messageTypeName;
@@ -29,6 +31,7 @@ public readonly record struct HandlerInfo
         IsAsync = isAsync;
         IsStatic = isStatic;
         Parameters = new(parameters.ToArray());
+        MessageTypeHierarchy = new(messageTypeHierarchy.ToArray());
     }
 }
 

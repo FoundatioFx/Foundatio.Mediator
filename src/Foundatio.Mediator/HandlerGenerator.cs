@@ -127,6 +127,37 @@ public sealed class HandlerGenerator : IIncrementalGenerator
             var messageType = messageParameter.Type;
             var messageTypeName = messageType.ToDisplayString();
 
+            // Collect message type hierarchy (exact type, interfaces, and base classes)
+            var messageTypeHierarchy = new List<string>();
+
+            // Add the exact message type
+            messageTypeHierarchy.Add(messageTypeName);
+
+            // Add all implemented interfaces
+            if (messageType is INamedTypeSymbol namedMessageType)
+            {
+                foreach (var interfaceType in namedMessageType.AllInterfaces)
+                {
+                    var interfaceTypeName = interfaceType.ToDisplayString();
+                    if (!messageTypeHierarchy.Contains(interfaceTypeName))
+                    {
+                        messageTypeHierarchy.Add(interfaceTypeName);
+                    }
+                }
+
+                // Add all base classes
+                var currentBaseType = namedMessageType.BaseType;
+                while (currentBaseType != null && currentBaseType.SpecialType != SpecialType.System_Object)
+                {
+                    var baseTypeName = currentBaseType.ToDisplayString();
+                    if (!messageTypeHierarchy.Contains(baseTypeName))
+                    {
+                        messageTypeHierarchy.Add(baseTypeName);
+                    }
+                    currentBaseType = currentBaseType.BaseType;
+                }
+            }
+
             var returnTypeName = handlerMethod.ReturnType.ToDisplayString();
             var isAsync = handlerMethod.Name.EndsWith("Async") ||
                          returnTypeName.StartsWith("Task") ||
@@ -166,7 +197,8 @@ public sealed class HandlerGenerator : IIncrementalGenerator
                 returnTypeName, // Store the original return type
                 isAsync,
                 handlerMethod.IsStatic,
-                parameterInfos));
+                parameterInfos,
+                messageTypeHierarchy));
         }
 
         return handlers.Count > 0 ? handlers : null;

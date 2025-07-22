@@ -36,6 +36,36 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("        public IServiceProvider ServiceProvider => _serviceProvider;");
         source.AppendLine();
 
+        // Helper method to get all applicable handlers for a message type
+        source.AppendLine("        private IEnumerable<HandlerRegistration> GetAllApplicableHandlers(object message)");
+        source.AppendLine("        {");
+        source.AppendLine("            var messageType = message.GetType();");
+        source.AppendLine("            var allHandlers = new List<HandlerRegistration>();");
+        source.AppendLine();
+        source.AppendLine("            // Add handlers for the exact message type");
+        source.AppendLine("            var exactHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageType.FullName);");
+        source.AppendLine("            allHandlers.AddRange(exactHandlers);");
+        source.AppendLine();
+        source.AppendLine("            // Add handlers for all implemented interfaces");
+        source.AppendLine("            foreach (var interfaceType in messageType.GetInterfaces())");
+        source.AppendLine("            {");
+        source.AppendLine("                var interfaceHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(interfaceType.FullName);");
+        source.AppendLine("                allHandlers.AddRange(interfaceHandlers);");
+        source.AppendLine("            }");
+        source.AppendLine();
+        source.AppendLine("            // Add handlers for all base classes");
+        source.AppendLine("            var currentType = messageType.BaseType;");
+        source.AppendLine("            while (currentType != null && currentType != typeof(object))");
+        source.AppendLine("            {");
+        source.AppendLine("                var baseHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(currentType.FullName);");
+        source.AppendLine("                allHandlers.AddRange(baseHandlers);");
+        source.AppendLine("                currentType = currentType.BaseType;");
+        source.AppendLine("            }");
+        source.AppendLine();
+        source.AppendLine("            return allHandlers.Distinct();");
+        source.AppendLine("        }");
+        source.AppendLine();
+
         // Generate InvokeAsync method
         source.AppendLine("        public async ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
@@ -120,9 +150,7 @@ internal static class MediatorImplementationGenerator
         // Generate PublishAsync method
         source.AppendLine("        public async ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
-        source.AppendLine("            var handlersList = handlers.ToList();");
+        source.AppendLine("            var handlersList = GetAllApplicableHandlers(message).ToList();");
         source.AppendLine();
         source.AppendLine("            // Execute all handlers (zero to many allowed)");
         source.AppendLine("            var tasks = handlersList.Select(h => h.HandleAsync(this, message, cancellationToken, null));");
@@ -133,13 +161,14 @@ internal static class MediatorImplementationGenerator
         // Generate Publish method (sync)
         source.AppendLine("        public void Publish(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("        {");
-        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
-        source.AppendLine("            var handlersList = handlers.ToList();");
+        source.AppendLine("            var handlersList = GetAllApplicableHandlers(message).ToList();");
         source.AppendLine();
         source.AppendLine("            // Check if any handlers require async execution");
         source.AppendLine("            if (handlersList.Any(h => h.IsAsync))");
+        source.AppendLine("            {");
+        source.AppendLine("                var messageTypeName = message.GetType().FullName;");
         source.AppendLine("                throw new InvalidOperationException($\"Cannot use synchronous Publish with async-only handlers for message type {messageTypeName}. Use PublishAsync instead.\");");
+        source.AppendLine("            }");
         source.AppendLine();
         source.AppendLine("            // Execute all handlers synchronously");
         source.AppendLine("            foreach (var handler in handlersList)");

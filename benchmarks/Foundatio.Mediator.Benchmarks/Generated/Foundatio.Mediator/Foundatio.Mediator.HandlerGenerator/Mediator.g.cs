@@ -19,6 +19,34 @@ namespace Foundatio.Mediator
 
         public IServiceProvider ServiceProvider => _serviceProvider;
 
+        private IEnumerable<HandlerRegistration> GetAllApplicableHandlers(object message)
+        {
+            var messageType = message.GetType();
+            var allHandlers = new List<HandlerRegistration>();
+
+            // Add handlers for the exact message type
+            var exactHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageType.FullName);
+            allHandlers.AddRange(exactHandlers);
+
+            // Add handlers for all implemented interfaces
+            foreach (var interfaceType in messageType.GetInterfaces())
+            {
+                var interfaceHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(interfaceType.FullName);
+                allHandlers.AddRange(interfaceHandlers);
+            }
+
+            // Add handlers for all base classes
+            var currentType = messageType.BaseType;
+            while (currentType != null && currentType != typeof(object))
+            {
+                var baseHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(currentType.FullName);
+                allHandlers.AddRange(baseHandlers);
+                currentType = currentType.BaseType;
+            }
+
+            return allHandlers.Distinct();
+        }
+
         public async ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
         {
             var messageTypeName = message.GetType().FullName;
@@ -94,9 +122,7 @@ namespace Foundatio.Mediator
 
         public async ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
         {
-            var messageTypeName = message.GetType().FullName;
-            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);
-            var handlersList = handlers.ToList();
+            var handlersList = GetAllApplicableHandlers(message).ToList();
 
             // Execute all handlers (zero to many allowed)
             var tasks = handlersList.Select(h => h.HandleAsync(this, message, cancellationToken, null));
@@ -105,13 +131,14 @@ namespace Foundatio.Mediator
 
         public void Publish(object message, CancellationToken cancellationToken = default)
         {
-            var messageTypeName = message.GetType().FullName;
-            var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);
-            var handlersList = handlers.ToList();
+            var handlersList = GetAllApplicableHandlers(message).ToList();
 
             // Check if any handlers require async execution
             if (handlersList.Any(h => h.IsAsync))
+            {
+                var messageTypeName = message.GetType().FullName;
                 throw new InvalidOperationException($"Cannot use synchronous Publish with async-only handlers for message type {messageTypeName}. Use PublishAsync instead.");
+            }
 
             // Execute all handlers synchronously
             foreach (var handler in handlersList)

@@ -35,23 +35,27 @@ internal static class DIRegistrationGenerator
             // Check if this handler effectively needs to be async due to middleware
             var isEffectivelyAsync = IsHandlerEffectivelyAsync(handler, middlewares);
 
-            source.AppendLine($"            services.AddKeyedSingleton<HandlerRegistration>(\"{handler.MessageTypeName}\",");
-            source.AppendLine($"                new HandlerRegistration(");
-            source.AppendLine($"                    \"{handler.MessageTypeName}\",");
-
-            if (isEffectivelyAsync)
+            // Register the handler under all message types in its hierarchy
+            foreach (var messageTypeName in handler.MessageTypeHierarchy)
             {
-                source.AppendLine($"                    {wrapperClassName}.UntypedHandleAsync,");
-                source.AppendLine("                    null,");
-            }
-            else
-            {
-                // For sync handlers, we need to provide a dummy async wrapper that calls the sync method
-                source.AppendLine($"                    (mediator, message, cancellationToken, responseType) => new ValueTask<object>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
-                source.AppendLine($"                    {wrapperClassName}.UntypedHandle,");
-            }
+                source.AppendLine($"            services.AddKeyedSingleton<HandlerRegistration>(\"{messageTypeName}\",");
+                source.AppendLine($"                new HandlerRegistration(");
+                source.AppendLine($"                    \"{handler.MessageTypeName}\","); // Keep the primary message type name for identification
 
-            source.AppendLine($"                    {isEffectivelyAsync.ToString().ToLower()}));");
+                if (isEffectivelyAsync)
+                {
+                    source.AppendLine($"                    {wrapperClassName}.UntypedHandleAsync,");
+                    source.AppendLine("                    null,");
+                }
+                else
+                {
+                    // For sync handlers, we need to provide a dummy async wrapper that calls the sync method
+                    source.AppendLine($"                    (mediator, message, cancellationToken, responseType) => new ValueTask<object>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                    source.AppendLine($"                    {wrapperClassName}.UntypedHandle,");
+                }
+
+                source.AppendLine($"                    {isEffectivelyAsync.ToString().ToLower()}));");
+            }
         }
 
         source.AppendLine();

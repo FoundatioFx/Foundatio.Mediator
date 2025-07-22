@@ -100,6 +100,10 @@ public sealed class HandlerGenerator : IIncrementalGenerator
         if (HasFoundatioIgnoreAttribute(classSymbol))
             return null;
 
+        // Skip handler classes that have generic type parameters
+        if (classSymbol.IsGenericType)
+            return null;
+
         // Find all handler methods in this class
         var handlerMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()

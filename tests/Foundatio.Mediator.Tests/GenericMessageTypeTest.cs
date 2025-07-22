@@ -120,7 +120,7 @@ public class GenericMessageTypeTest : TestWithLoggingBase
     }
 
     [Fact]
-    public async Task PolymorphicMessageHandling_ShouldCallAllApplicableHandlers()
+    public void PolymorphicMessageHandling_ShouldCallAllApplicableHandlers()
     {
         // Clear any previous test results
         NotificationHandler.ReceivedMessages.Clear();

@@ -184,6 +184,18 @@ namespace Foundatio.Mediator
                     PartiallyIgnoredHandler_HandleAsync_ValidMethodMessage_StaticWrapper.UntypedHandleAsync,
                     null,
                     true));
+            services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.TestMessage",
+                new HandlerRegistration(
+                    "Foundatio.Mediator.Tests.TestMessage",
+                    ConcreteTestMessageHandler_HandleAsync_TestMessage_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.AnotherTestMessage",
+                new HandlerRegistration(
+                    "Foundatio.Mediator.Tests.AnotherTestMessage",
+                    (mediator, message, cancellationToken, responseType) => new ValueTask<object>(AnotherTestMessageHandler_Handle_AnotherTestMessage_StaticWrapper.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                    AnotherTestMessageHandler_Handle_AnotherTestMessage_StaticWrapper.UntypedHandle,
+                    false));
             services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.INotification",
                 new HandlerRegistration(
                     "Foundatio.Mediator.Tests.INotification",

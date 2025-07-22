@@ -200,21 +200,7 @@ internal static class MediatorValidator
                 var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.ExpectedResponseTypeName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
                 context.ReportDiagnostic(diagnostic);
             }
-            else if (handler.ReturnTypeName != callSite.ExpectedResponseTypeName)
-            {
-                // This is a more complex check - the types might be compatible but not exactly the same
-                // For now, we'll issue a warning to let the developer know about the mismatch
-                var descriptor = new DiagnosticDescriptor(
-                    "FMED009",
-                    "Return type mismatch",
-                    "{0}<{1}> call for message type '{2}' expects return type '{1}' but handler '{3}.{4}' returns '{5}'. Verify type compatibility.",
-                    "Foundatio.Mediator",
-                    DiagnosticSeverity.Warning,
-                    isEnabledByDefault: true);
-
-                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.ExpectedResponseTypeName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, handler.ReturnTypeName);
-                context.ReportDiagnostic(diagnostic);
-            }
+            // FMED009 diagnostic removed - let the mediator handle type compatibility at runtime
         }
     }
 

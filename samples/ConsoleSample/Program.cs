@@ -13,6 +13,6 @@ var host = builder.Build();
 
 // Get mediator and run samples
 var mediator = host.Services.GetRequiredService<IMediator>();
-var sampleRunner = new SampleRunner(mediator);
+var sampleRunner = new SampleRunner(mediator, host.Services);
 
 await sampleRunner.RunAllSamplesAsync();

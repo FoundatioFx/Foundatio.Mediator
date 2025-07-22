@@ -1,3 +1,4 @@
+namespace Foundatio.Mediator;
 
 /// <summary>
 /// Marker interface for queries in the Foundatio Mediator system.

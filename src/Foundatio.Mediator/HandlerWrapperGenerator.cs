@@ -1298,6 +1298,13 @@ internal static class HandlerWrapperGenerator
             ? GetUnwrappedReturnType(handler)
             : handler.OriginalReturnTypeName;
 
+        // Special handling for Result to Result<T> conversion
+        if (returnType.StartsWith("Foundatio.Mediator.Result<") && returnType != "Foundatio.Mediator.Result")
+        {
+            // Check if the value might be a non-generic Result that needs conversion to Result<T>
+            return $"{handlerResultVar}.Value is Foundatio.Mediator.Result result ? ({returnType})result : ({returnType}?){handlerResultVar}.Value ?? default({returnType})!";
+        }
+
         if (IsReferenceType(returnType))
         {
             // For reference types, provide a null-coalescing fallback to satisfy non-nullable return types

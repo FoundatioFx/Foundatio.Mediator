@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Foundatio.Mediator;
 
 /// <summary>
@@ -68,6 +66,22 @@ public class Result : IResult
     /// </summary>
     /// <returns>null for non-generic Result.</returns>
     public virtual object? GetValue() => null;
+
+    /// <summary>
+    /// Converts this Result to a Result&lt;T&gt; with the same status and properties but with default value.
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <returns>A Result&lt;T&gt; with the same status and properties but with default value.</returns>
+    public Result<T> Cast<T>()
+    {
+        var convertedResult = new Result<T>(Status);
+        convertedResult.Errors = Errors;
+        convertedResult.SuccessMessage = SuccessMessage;
+        convertedResult.CorrelationId = CorrelationId;
+        convertedResult.Location = Location;
+        convertedResult.ValidationErrors = ValidationErrors;
+        return convertedResult;
+    }
 
     /// <summary>
     /// Creates a successful result.

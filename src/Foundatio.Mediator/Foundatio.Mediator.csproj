@@ -1,34 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <IncludeBuildOutput>false</IncludeBuildOutput>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>true</ImplicitUsings>
-    <LangVersion>Latest</LangVersion>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageId>Foundatio.Mediator</PackageId>
-    <Description>A fast, convention-based C# mediator library using incremental source generators</Description>
-    <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.Mediator</PackageProjectUrl>
-    <PackageReleaseNotes>https://github.com/FoundatioFx/Foundatio.Mediator/releases</PackageReleaseNotes>
-    <PackageTags>Foundatio, Mediator, CQRS, Messaging, SourceGenerator, Interceptors</PackageTags>
-    <PackageIcon>foundatio-icon.png</PackageIcon>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <RepositoryUrl>$(PackageProjectUrl)</RepositoryUrl>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <MinVerSkip Condition="'$(Configuration)' == 'Debug'">true</MinVerSkip>
-    <MinVerTagPrefix>v</MinVerTagPrefix>
-    <Copyright>Copyright (c) 2025 Foundatio.  All rights reserved.</Copyright>
-    <Authors>Foundatio</Authors>
-    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-  </PropertyGroup>
+  <Import Project="..\..\build\common.props" />
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
-    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="All" />
   </ItemGroup>
+
+  <PropertyGroup Label="Signing">
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Foundatio.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
 
   <ItemGroup>
     <None Include="../../build/foundatio-icon.png" Pack="true" PackagePath="$(PackageIcon)" />

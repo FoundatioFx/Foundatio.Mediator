@@ -22,7 +22,7 @@ namespace Foundatio.Mediator
             return result ?? new object();
         }
 
-        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "OexwaUhSBGpnrGeZ1ynkbPMSAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(117,41)
+        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "h2bOfUqPvgXfRKAe5B6n1esSAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(117,41)
         [global::System.Runtime.CompilerServices.InterceptsLocation(1, "rmueBE/F28JnldzlDiLzcSkNAABTaW1wbGVCZW5jaG1hcmtzLmNz")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\SimpleBenchmarks.cs(91,41)
         [global::System.Runtime.CompilerServices.InterceptsLocation(1, "SQOA9eT++kGm0vwxLS3pAwMNAABUaHJvdWdocHV0QmVuY2htYXJrcy5jcw==")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\ThroughputBenchmarks.cs(99,43)
         public static async global::System.Threading.Tasks.ValueTask<string> InterceptInvokeAsync0(this global::Foundatio.Mediator.IMediator mediator, object message, global::System.Threading.CancellationToken cancellationToken = default)

@@ -6,16 +6,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
   </ItemGroup>
 
-  <PropertyGroup Label="Signing">
-    <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Foundatio.snk</AssemblyOriginatorKeyFile>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="../../build/foundatio-icon.png" Pack="true" PackagePath="$(PackageIcon)" />
-    <None Include="../../README.md" Pack="true" PackagePath="$(PackageReadmeFile)" />
-  </ItemGroup>
-
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true"
         PackagePath="analyzers/dotnet/cs" Visible="false" />

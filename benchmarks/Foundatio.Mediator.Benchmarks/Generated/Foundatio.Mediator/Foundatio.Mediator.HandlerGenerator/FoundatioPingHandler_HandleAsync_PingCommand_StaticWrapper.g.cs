@@ -22,8 +22,8 @@ namespace Foundatio.Mediator
             return new object();
         }
 
-        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "OexwaUhSBGpnrGeZ1ynkbBARAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(98,34)
-        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "OexwaUhSBGpnrGeZ1ynkbJEiAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(243,34)
+        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "h2bOfUqPvgXfRKAe5B6n1QgRAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(98,34)
+        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "h2bOfUqPvgXfRKAe5B6n1YkiAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(243,34)
         [global::System.Runtime.CompilerServices.InterceptsLocation(1, "rmueBE/F28JnldzlDiLzcUYLAABTaW1wbGVCZW5jaG1hcmtzLmNz")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\SimpleBenchmarks.cs(72,34)
         [global::System.Runtime.CompilerServices.InterceptsLocation(1, "SQOA9eT++kGm0vwxLS3pA28JAABUaHJvdWdocHV0QmVuY2htYXJrcy5jcw==")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\ThroughputBenchmarks.cs(69,43)
         [global::System.Runtime.CompilerServices.InterceptsLocation(1, "SQOA9eT++kGm0vwxLS3pA0sQAABUaHJvdWdocHV0QmVuY2htYXJrcy5jcw==")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\ThroughputBenchmarks.cs(126,38)

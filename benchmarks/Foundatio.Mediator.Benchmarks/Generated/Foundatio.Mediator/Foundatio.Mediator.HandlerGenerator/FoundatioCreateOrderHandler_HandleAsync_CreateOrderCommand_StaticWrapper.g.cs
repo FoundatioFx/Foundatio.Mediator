@@ -22,7 +22,7 @@ namespace Foundatio.Mediator
             return result ?? new object();
         }
 
-        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "OexwaUhSBGpnrGeZ1ynkbOMaAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(181,41)
+        [global::System.Runtime.CompilerServices.InterceptsLocation(1, "h2bOfUqPvgXfRKAe5B6n1dsaAABNZWRpYXRvckJlbmNobWFya3MuY3M=")] // C:\Users\eric\Projects\Foundatio\Foundatio.Mediator\benchmarks\Foundatio.Mediator.Benchmarks\MediatorBenchmarks.cs(181,41)
         public static async global::System.Threading.Tasks.ValueTask<string> InterceptInvokeAsync0(this global::Foundatio.Mediator.IMediator mediator, object message, global::System.Threading.CancellationToken cancellationToken = default)
         {
             var typedMessage = (Foundatio.Mediator.Benchmarks.Messages.CreateOrderCommand)message;

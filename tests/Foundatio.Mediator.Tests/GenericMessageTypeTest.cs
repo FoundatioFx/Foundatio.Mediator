@@ -40,7 +40,7 @@ public class ConcreteMessage
 // Handler that uses concrete message type - should work fine
 public class ConcreteMessageHandler
 {
-    public async Task<string> HandleAsync(ConcreteMessage message, CancellationToken cancellationToken = default)
+    public string Handle(ConcreteMessage message, CancellationToken cancellationToken = default)
     {
         return $"Handled: {message.Value}";
     }

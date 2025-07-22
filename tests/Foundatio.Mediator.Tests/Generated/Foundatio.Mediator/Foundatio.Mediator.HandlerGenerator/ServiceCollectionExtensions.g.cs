@@ -109,9 +109,9 @@ namespace Foundatio.Mediator
             services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.ConcreteMessage",
                 new HandlerRegistration(
                     "Foundatio.Mediator.Tests.ConcreteMessage",
-                    ConcreteMessageHandler_HandleAsync_ConcreteMessage_StaticWrapper.UntypedHandleAsync,
-                    null,
-                    true));
+                    (mediator, message, cancellationToken, responseType) => new ValueTask<object>(ConcreteMessageHandler_Handle_ConcreteMessage_StaticWrapper.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                    ConcreteMessageHandler_Handle_ConcreteMessage_StaticWrapper.UntypedHandle,
+                    false));
             services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.InterfaceTestMessage",
                 new HandlerRegistration(
                     "Foundatio.Mediator.Tests.InterfaceTestMessage",

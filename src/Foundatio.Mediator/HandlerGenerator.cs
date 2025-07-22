@@ -117,8 +117,16 @@ public sealed class HandlerGenerator : IIncrementalGenerator
             if (handlerMethod.Parameters.Length == 0)
                 continue;
 
+            // Skip handler methods that have generic type parameters
+            if (handlerMethod.IsGenericMethod)
+            {
+                continue;
+            }
+
             var messageParameter = handlerMethod.Parameters[0];
-            var messageTypeName = messageParameter.Type.ToDisplayString();
+            var messageType = messageParameter.Type;
+            var messageTypeName = messageType.ToDisplayString();
+
             var returnTypeName = handlerMethod.ReturnType.ToDisplayString();
             var isAsync = handlerMethod.Name.EndsWith("Async") ||
                          returnTypeName.StartsWith("Task") ||

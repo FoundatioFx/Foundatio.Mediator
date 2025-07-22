@@ -100,6 +100,18 @@ namespace Foundatio.Mediator
                     PartiallyIgnoredHandler_HandleAsync_ValidMethodMessage_StaticWrapper.UntypedHandleAsync,
                     null,
                     true));
+            services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.GenericMessage<string>",
+                new HandlerRegistration(
+                    "Foundatio.Mediator.Tests.GenericMessage<string>",
+                    GenericMessageHandler_HandleAsync_GenericMessage_string__StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
+            services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.ConcreteMessage",
+                new HandlerRegistration(
+                    "Foundatio.Mediator.Tests.ConcreteMessage",
+                    ConcreteMessageHandler_HandleAsync_ConcreteMessage_StaticWrapper.UntypedHandleAsync,
+                    null,
+                    true));
             services.AddKeyedSingleton<HandlerRegistration>("Foundatio.Mediator.Tests.InterfaceTestMessage",
                 new HandlerRegistration(
                     "Foundatio.Mediator.Tests.InterfaceTestMessage",

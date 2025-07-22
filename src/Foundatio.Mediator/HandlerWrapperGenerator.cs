@@ -94,12 +94,6 @@ internal static class HandlerWrapperGenerator
             source.AppendLine("        }");
         }
 
-        // Generate GetOrCreateMiddleware methods for any middleware found
-        if (middlewares.Any())
-        {
-            GenerateGetOrCreateMiddlewareMethod(source, middlewares);
-        }
-
         // Add helper method for tuple handling if needed
         var hasReturnValue = handler.ReturnTypeName != "void" &&
                            handler.ReturnTypeName != "System.Threading.Tasks.Task" &&
@@ -716,7 +710,7 @@ internal static class HandlerWrapperGenerator
 
     private static void GenerateAsyncSingleMiddlewareExecution(StringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
     {
-        source.AppendLine($"            var middlewareInstance = GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
         source.AppendLine("            object? beforeResult = null;");
         source.AppendLine(GetHandlerResultDeclaration(handler));
         source.AppendLine(GetExceptionDeclaration());
@@ -840,7 +834,7 @@ internal static class HandlerWrapperGenerator
 
     private static void GenerateSyncSingleMiddlewareExecution(StringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
     {
-        source.AppendLine($"            var middlewareInstance = GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+        source.AppendLine($"            var middlewareInstance = global::Foundatio.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
         source.AppendLine("            object? beforeResult = null;");
         source.AppendLine(GetHandlerResultDeclaration(handler));
         source.AppendLine(GetExceptionDeclaration());
@@ -968,7 +962,7 @@ internal static class HandlerWrapperGenerator
         {
             var variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
-            source.AppendLine($"            var {variableName} = GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
         }
 
         source.AppendLine("            var beforeResults = new object?[" + middlewares.Count + "];");
@@ -1113,7 +1107,7 @@ internal static class HandlerWrapperGenerator
         {
             var variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
-            source.AppendLine($"            var {variableName} = GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine($"            var {variableName} = global::Foundatio.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
         }
 
         source.AppendLine("            var beforeResults = new object?[" + middlewares.Count + "];");
@@ -1252,28 +1246,6 @@ internal static class HandlerWrapperGenerator
         }
 
         source.AppendLine("            }");
-    }
-
-    private static void GenerateGetOrCreateMiddlewareMethod(StringBuilder source, List<MiddlewareInfo> middlewares)
-    {
-        source.AppendLine();
-        source.AppendLine($"        private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Type, object> _middlewareCache = new();");
-        source.AppendLine();
-        source.AppendLine($"        private static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class");
-        source.AppendLine("        {");
-        source.AppendLine("            // Check cache first - if it's there, it means it's not registered in DI");
-        source.AppendLine("            if (_middlewareCache.TryGetValue(typeof(T), out var cachedInstance))");
-        source.AppendLine("                return (T)cachedInstance;");
-        source.AppendLine();
-        source.AppendLine("            // Try to get from DI - if registered, always use DI (respects service lifetime)");
-        source.AppendLine("            var middlewareFromDI = serviceProvider.GetService<T>();");
-        source.AppendLine("            if (middlewareFromDI != null)");
-        source.AppendLine("                return middlewareFromDI;");
-        source.AppendLine();
-        source.AppendLine("            // Not in DI, create and cache our own instance");
-        source.AppendLine("            return (T)_middlewareCache.GetOrAdd(typeof(T), type => ");
-        source.AppendLine("                ActivatorUtilities.CreateInstance<T>(serviceProvider));");
-        source.AppendLine("        }");
     }
 
     /// <summary>

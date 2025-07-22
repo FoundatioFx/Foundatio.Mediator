@@ -36,3 +36,6 @@ _NCrunch_*
 
 # Rider
 .idea
+
+# Generated files
+*.g.cs

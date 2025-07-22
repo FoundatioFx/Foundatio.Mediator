@@ -1,4 +1,4 @@
-# 🧠 Foundatio.Mediator
+# Foundatio.Mediator
 
 **The fastest convention-based C# mediator library with source generators**
 

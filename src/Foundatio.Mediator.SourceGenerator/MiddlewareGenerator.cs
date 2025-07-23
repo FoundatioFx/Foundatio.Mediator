@@ -1,59 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Foundatio.Mediator;
-
-/// <summary>
-/// Information about a discovered middleware class and its methods.
-/// </summary>
-public class MiddlewareInfo
-{
-    public MiddlewareInfo(string middlewareTypeName, string messageTypeName, bool isObjectType, bool isInterfaceType, List<string> interfaceTypes, MiddlewareMethodInfo? beforeMethod, MiddlewareMethodInfo? afterMethod, MiddlewareMethodInfo? finallyMethod, int? order = null)
-    {
-        MiddlewareTypeName = middlewareTypeName;
-        MessageTypeName = messageTypeName;
-        IsObjectType = isObjectType;
-        IsInterfaceType = isInterfaceType;
-        InterfaceTypes = interfaceTypes;
-        BeforeMethod = beforeMethod;
-        AfterMethod = afterMethod;
-        FinallyMethod = finallyMethod;
-        Order = order;
-        IsAsync = (beforeMethod?.IsAsync == true) || (afterMethod?.IsAsync == true) || (finallyMethod?.IsAsync == true);
-    }
-
-    public string MiddlewareTypeName { get; }
-    public string MessageTypeName { get; }
-    public bool IsObjectType { get; }
-    public bool IsInterfaceType { get; }
-    public List<string> InterfaceTypes { get; }
-    public MiddlewareMethodInfo? BeforeMethod { get; }
-    public MiddlewareMethodInfo? AfterMethod { get; }
-    public MiddlewareMethodInfo? FinallyMethod { get; }
-    public int? Order { get; }
-    public bool IsAsync { get; }
-}
-
-/// <summary>
-/// Information about a middleware method.
-/// </summary>
-public class MiddlewareMethodInfo
-{
-    public MiddlewareMethodInfo(string methodName, bool isAsync, string returnTypeName, List<ParameterInfo> parameters)
-    {
-        MethodName = methodName;
-        IsAsync = isAsync;
-        ReturnTypeName = returnTypeName;
-        Parameters = parameters;
-    }
-
-    public string MethodName { get; }
-    public bool IsAsync { get; }
-    public string ReturnTypeName { get; }
-    public List<ParameterInfo> Parameters { get; }
-}
 
 internal static class MiddlewareGenerator
 {
@@ -105,14 +53,14 @@ internal static class MiddlewareGenerator
             if (method.Parameters.Length > 0)
             {
                 var messageParam = method.Parameters[0];
-                var messageTypeName = messageParam.Type.ToDisplayString();
+                string messageTypeName = messageParam.Type.ToDisplayString();
                 messageTypes.Add(messageTypeName);
 
                 if (!messageTypeInfos.ContainsKey(messageTypeName))
                 {
                     var typeSymbol = messageParam.Type;
-                    var isObjectType = typeSymbol.SpecialType == SpecialType.System_Object;
-                    var isInterfaceType = typeSymbol.TypeKind == TypeKind.Interface;
+                    bool isObjectType = typeSymbol.SpecialType == SpecialType.System_Object;
+                    bool isInterfaceType = typeSymbol.TypeKind == TypeKind.Interface;
                     var interfaceTypes = new List<string>();
 
                     // Collect interfaces implemented by the message type
@@ -126,7 +74,7 @@ internal static class MiddlewareGenerator
             }
         }
 
-        foreach (var messageType in messageTypes)
+        foreach (string? messageType in messageTypes)
         {
             var beforeMethod = beforeMethods.FirstOrDefault(m =>
                 m.Parameters.Length > 0 &&
@@ -173,7 +121,7 @@ internal static class MiddlewareGenerator
 
     private static bool IsMiddlewareMethod(IMethodSymbol method, string methodPrefix)
     {
-        var validNames = new[] { methodPrefix, $"{methodPrefix}Async" };
+        string[] validNames = new[] { methodPrefix, $"{methodPrefix}Async" };
 
         if (!validNames.Contains(method.Name) ||
             method.DeclaredAccessibility != Accessibility.Public ||
@@ -187,20 +135,20 @@ internal static class MiddlewareGenerator
 
     private static MiddlewareMethodInfo CreateMiddlewareMethodInfo(IMethodSymbol method)
     {
-        var returnTypeName = method.ReturnType.ToDisplayString();
-        var isAsync = method.Name.EndsWith("Async") ||
-                     returnTypeName.StartsWith("Task") ||
-                     returnTypeName.StartsWith("ValueTask") ||
-                     returnTypeName.StartsWith("System.Threading.Tasks.Task") ||
-                     returnTypeName.StartsWith("System.Threading.Tasks.ValueTask");
+        string returnTypeName = method.ReturnType.ToDisplayString();
+        bool isAsync = method.Name.EndsWith("Async") ||
+                       returnTypeName.StartsWith("Task") ||
+                       returnTypeName.StartsWith("ValueTask") ||
+                       returnTypeName.StartsWith("System.Threading.Tasks.Task") ||
+                       returnTypeName.StartsWith("System.Threading.Tasks.ValueTask");
 
         var parameterInfos = new List<ParameterInfo>();
 
         foreach (var parameter in method.Parameters)
         {
-            var parameterTypeName = parameter.Type.ToDisplayString();
-            var isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]); // First parameter is always the message
-            var isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
+            string parameterTypeName = parameter.Type.ToDisplayString();
+            bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]); // First parameter is always the message
+            bool isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
 
             parameterInfos.Add(new ParameterInfo(
                 parameter.Name,

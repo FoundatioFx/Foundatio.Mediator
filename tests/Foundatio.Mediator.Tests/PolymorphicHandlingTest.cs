@@ -25,7 +25,7 @@ public class PolymorphicHandlingTest : TestWithLoggingBase
     // Concrete event that implements interface and inherits from base class
     public class OrderCreatedEvent : DomainEvent, IEvent
     {
-        public string OrderId { get; set; } = string.Empty;
+        public string OrderId { get; set; } = String.Empty;
         public decimal Amount { get; set; }
         public override string EventName => "OrderCreated";
         public string EventType => EventName;

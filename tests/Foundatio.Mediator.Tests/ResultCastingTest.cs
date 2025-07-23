@@ -6,7 +6,7 @@ public class ResultCastingTest
 {
     public class User
     {
-        public string Name { get; set; } = string.Empty;
+        public string Name { get; set; } = String.Empty;
         public int Id { get; set; }
     }
 

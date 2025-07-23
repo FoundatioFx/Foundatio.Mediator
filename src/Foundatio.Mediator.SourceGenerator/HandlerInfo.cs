@@ -1,3 +1,5 @@
+using Foundatio.Mediator.Utility;
+
 namespace Foundatio.Mediator;
 
 public readonly record struct HandlerInfo
@@ -35,20 +37,12 @@ public readonly record struct HandlerInfo
     }
 }
 
-public readonly record struct ParameterInfo : IEquatable<ParameterInfo>
+public readonly record struct ParameterInfo(string Name, string TypeName, bool IsMessage, bool IsCancellationToken)
 {
-    public readonly string Name;
-    public readonly string TypeName;
-    public readonly bool IsMessage;
-    public readonly bool IsCancellationToken;
-
-    public ParameterInfo(string name, string typeName, bool isMessage, bool isCancellationToken)
-    {
-        Name = name;
-        TypeName = typeName;
-        IsMessage = isMessage;
-        IsCancellationToken = isCancellationToken;
-    }
+    public readonly string Name = Name;
+    public readonly string TypeName = TypeName;
+    public readonly bool IsMessage = IsMessage;
+    public readonly bool IsCancellationToken = IsCancellationToken;
 
     public bool Equals(ParameterInfo other)
     {
@@ -62,7 +56,7 @@ public readonly record struct ParameterInfo : IEquatable<ParameterInfo>
     {
         unchecked
         {
-            var hash = 17;
+            int hash = 17;
             hash = hash * 31 + (Name?.GetHashCode() ?? 0);
             hash = hash * 31 + (TypeName?.GetHashCode() ?? 0);
             hash = hash * 31 + IsMessage.GetHashCode();

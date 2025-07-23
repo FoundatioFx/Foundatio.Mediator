@@ -33,7 +33,7 @@ public class FixedPublishTest : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Sync Publish completed. CallCount: {CallCount}, Messages: {Messages}",
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
 
         Assert.Equal(2, testService.CallCount); // Two handlers should be called for FixedSyncCommand
         Assert.Contains("FixedSyncCommand1Handler: Fixed Sync Test", testService.Messages);
@@ -61,7 +61,7 @@ public class FixedPublishTest : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Async Publish completed. CallCount: {CallCount}, Messages: {Messages}",
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
 
         Assert.Equal(2, testService.CallCount); // Two handlers should be called for FixedAsyncNotification
         Assert.Contains("FixedAsync1Handler: Fixed Async Test", testService.Messages);

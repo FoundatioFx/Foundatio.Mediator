@@ -28,7 +28,7 @@ public class CallSiteValidationTest : TestWithLoggingBase
         _logger.LogInformation("Testing InvokeAsync with single handler for message: {Message}", command.Message);
 
         // Act & Assert - This should compile and work since there's only one handler
-        var result = await mediator.InvokeAsync<string>(command);
+        string result = await mediator.InvokeAsync<string>(command);
 
         _logger.LogInformation("InvokeAsync completed successfully with result: {Result}", result);
         Assert.Equal("Processed: Test Message", result);

@@ -11,6 +11,9 @@ internal static class DIRegistrationGenerator
         source.AppendLine("// Changes to this file may be lost when the code is regenerated.");
         source.AppendLine("// </auto-generated>");
         source.AppendLine();
+        source.AppendLine("using System.Diagnostics;");
+        source.AppendLine("using System.Diagnostics.CodeAnalysis;");
+        source.AppendLine();
     }
 
     public static string GenerateDIRegistration(List<HandlerInfo> handlers, List<MiddlewareInfo> middlewares)
@@ -26,8 +29,12 @@ internal static class DIRegistrationGenerator
         source.AppendLine();
         source.AppendLine("namespace Foundatio.Mediator;");
         source.AppendLine();
+        source.AppendLine("[DebuggerStepThrough]");
+        source.AppendLine("[DebuggerNonUserCode]");
+        source.AppendLine("[ExcludeFromCodeCoverage]");
         source.AppendLine("public static partial class ServiceCollectionExtensions");
         source.AppendLine("{");
+        source.AppendLine("    [DebuggerStepThrough]");
         source.AppendLine("    public static IServiceCollection AddMediator(this IServiceCollection services)");
         source.AppendLine("    {");
         source.AppendLine("        services.AddSingleton<IMediator, Mediator>();");
@@ -40,13 +47,13 @@ internal static class DIRegistrationGenerator
 
         foreach (var handler in handlers)
         {
-            var wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(handler);
+            string wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(handler);
 
             // Check if this handler effectively needs to be async due to middleware
-            var isEffectivelyAsync = IsHandlerEffectivelyAsync(handler, middlewares);
+            bool isEffectivelyAsync = IsHandlerEffectivelyAsync(handler, middlewares);
 
             // Register the handler under all message types in its hierarchy
-            foreach (var messageTypeName in handler.MessageTypeHierarchy)
+            foreach (string? messageTypeName in handler.MessageTypeHierarchy)
             {
                 source.AppendLine($"        services.AddKeyedSingleton<HandlerRegistration>(\"{messageTypeName}\",");
                 source.AppendLine($"            new HandlerRegistration(");

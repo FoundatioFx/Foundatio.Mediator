@@ -18,15 +18,15 @@ public class InterceptorDetectionTest : TestWithLoggingBase
         // by checking if the interceptor source files are generated
 
         // If interceptors are enabled, the Generated folder should contain interceptor files
-        var generatedPath = Path.Combine(Directory.GetCurrentDirectory(), "Generated");
+        string generatedPath = Path.Combine(Directory.GetCurrentDirectory(), "Generated");
         _logger.LogInformation("Looking for generated files in: {GeneratedPath}", generatedPath);
 
         if (Directory.Exists(generatedPath))
         {
-            var interceptorFiles = Directory.GetFiles(generatedPath, "*Interceptors*.cs", SearchOption.AllDirectories);
+            string[] interceptorFiles = Directory.GetFiles(generatedPath, "*Interceptors*.cs", SearchOption.AllDirectories);
             _logger.LogInformation("Found {Count} interceptor files: {Files}",
                 interceptorFiles.Length,
-                string.Join(", ", interceptorFiles.Select(Path.GetFileName)));
+                String.Join(", ", interceptorFiles.Select(Path.GetFileName)));
 
             // If interceptors are enabled, we should have interceptor files
             if (interceptorFiles.Length > 0)
@@ -40,14 +40,14 @@ public class InterceptorDetectionTest : TestWithLoggingBase
         _logger.LogWarning("⚠ No interceptor files found - interceptors may not be enabled or no call sites detected");
 
         // Let's also check the project file properties
-        var projectDir = GetProjectDirectory();
-        var csprojPath = Path.Combine(projectDir, "Foundatio.Mediator.Tests.csproj");
+        string projectDir = GetProjectDirectory();
+        string csprojPath = Path.Combine(projectDir, "Foundatio.Mediator.Tests.csproj");
 
         if (File.Exists(csprojPath))
         {
-            var csprojContent = File.ReadAllText(csprojPath);
-            var hasInterceptorsNamespaces = csprojContent.Contains("InterceptorsNamespaces") ||
-                                          csprojContent.Contains("InterceptorsPreviewNamespaces");
+            string csprojContent = File.ReadAllText(csprojPath);
+            bool hasInterceptorsNamespaces = csprojContent.Contains("InterceptorsNamespaces") ||
+                                             csprojContent.Contains("InterceptorsPreviewNamespaces");
 
             _logger.LogInformation("Project file contains interceptor configuration: {HasConfig}", hasInterceptorsNamespaces);
 

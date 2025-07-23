@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace Foundatio.Mediator;
+namespace Foundatio.Mediator.Utility;
 
 /// <summary>
 /// An array that implements IEquatable for use in source generators
@@ -38,7 +38,7 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
 
         unchecked
         {
-            var hash = 17;
+            int hash = 17;
             foreach (var item in _array)
             {
                 hash = hash * 31 + (item?.GetHashCode() ?? 0);

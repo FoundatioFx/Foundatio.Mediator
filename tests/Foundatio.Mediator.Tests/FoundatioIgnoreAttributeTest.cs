@@ -20,7 +20,7 @@ public class FoundatioIgnoreAttributeTest : TestWithLoggingBase
         var mediator = serviceProvider.GetRequiredService<IMediator>();
 
         // This should work - only some methods are ignored, not this one
-        var result = await mediator.InvokeAsync<string>(new ValidMethodMessage { Value = "hello" });
+        string result = await mediator.InvokeAsync<string>(new ValidMethodMessage { Value = "hello" });
         Assert.Equal("Valid: hello", result);
     }
 
@@ -47,9 +47,9 @@ public class FoundatioIgnoreAttributeTest : TestWithLoggingBase
 }
 
 // Messages for testing
-public record IgnoredClassMessage { public string Value { get; init; } = string.Empty; }
-public record IgnoredMethodMessage { public string Value { get; init; } = string.Empty; }
-public record ValidMethodMessage { public string Value { get; init; } = string.Empty; }
+public record IgnoredClassMessage { public string Value { get; init; } = String.Empty; }
+public record IgnoredMethodMessage { public string Value { get; init; } = String.Empty; }
+public record ValidMethodMessage { public string Value { get; init; } = String.Empty; }
 
 // This entire class should be ignored
 [FoundatioIgnore]

@@ -32,7 +32,7 @@ public class PublishTests : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Test completed. CallCount: {CallCount}, Messages: {Messages}", 
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
             
         Assert.Equal(1, testService.CallCount);
         Assert.Contains("SingleHandler: Hello World", testService.Messages);
@@ -60,7 +60,7 @@ public class PublishTests : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Invoke completed. CallCount: {CallCount}, Messages: {Messages}", 
-            singleTestService.CallCount, string.Join(", ", singleTestService.Messages));
+            singleTestService.CallCount, String.Join(", ", singleTestService.Messages));
             
         Assert.Equal(1, singleTestService.CallCount); // Should have called the single discovered handler
         Assert.Contains("SingleHandler: Hello World", singleTestService.Messages);
@@ -91,7 +91,7 @@ public class PublishTests : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Sync Publish completed. CallCount: {CallCount}, Messages: {Messages}", 
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
             
         // Currently no handlers are discovered for PublishSyncCommand
         // This is a known issue with the source generator
@@ -123,7 +123,7 @@ public class PublishTests : TestWithLoggingBase
         await mediator.PublishAsync(errorCommand); // Should not throw since no handlers found
         
         _logger.LogInformation("Exception test completed. CallCount: {CallCount}, Messages: {Messages}", 
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
             
         Assert.Equal(0, testService.CallCount); // No handlers called
     }
@@ -215,7 +215,7 @@ public class PublishTests : TestWithLoggingBase
             _logger.LogInformation("Attempting PublishAsync...");
             await mediator.PublishAsync(notification);
             _logger.LogInformation("PublishAsync succeeded! Handler count: {Count}", singleTestService.CallCount);
-            _logger.LogInformation("Messages: {Messages}", string.Join(", ", singleTestService.Messages));
+            _logger.LogInformation("Messages: {Messages}", String.Join(", ", singleTestService.Messages));
             
             // Verify we have handlers working
             Assert.True(singleTestService.CallCount > 0, "At least one handler should have been called");

@@ -39,17 +39,17 @@ public class Result : IResult
     /// <summary>
     /// Gets the success message, if any.
     /// </summary>
-    public string SuccessMessage { get; internal set; } = string.Empty;
+    public string SuccessMessage { get; internal set; } = String.Empty;
 
     /// <summary>
     /// Gets the correlation ID for tracking purposes.
     /// </summary>
-    public string CorrelationId { get; internal set; } = string.Empty;
+    public string CorrelationId { get; internal set; } = String.Empty;
 
     /// <summary>
     /// Gets the location of a newly created resource (for Created status).
     /// </summary>
-    public string Location { get; internal set; } = string.Empty;
+    public string Location { get; internal set; } = String.Empty;
 
     /// <summary>
     /// Gets the collection of error messages.

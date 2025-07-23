@@ -98,7 +98,7 @@ public class ThroughputBenchmarks
             var query = _greetingQueries[i % _greetingQueries.Length];
             tasks[i] = _foundatioMediator.InvokeAsync<string>(query).AsTask();
         }
-        var results = await Task.WhenAll(tasks);
+        string[] results = await Task.WhenAll(tasks);
     }
 
     [Benchmark]

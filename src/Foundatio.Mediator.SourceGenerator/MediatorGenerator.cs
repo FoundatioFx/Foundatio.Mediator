@@ -3,17 +3,30 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
+using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
 
 [Generator]
-public sealed class HandlerGenerator : IIncrementalGenerator
+public sealed class MediatorGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Check if interceptors are enabled
         var interceptorsEnabled = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => IsInterceptorsEnabled(provider));
+
+        var interceptionEnabledSetting = context.AnalyzerConfigOptionsProvider
+            .Select((x, _) =>
+                x.GlobalOptions.TryGetValue($"build_property.{Constants.EnabledPropertyName}", out string? enableSwitch)
+                && !enableSwitch.Equals("false", StringComparison.Ordinal));
+
+        var csharpSufficient = context.CompilationProvider
+            .Select((x,_) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
+
+        var settings = interceptionEnabledSetting
+            .Combine(csharpSufficient)
+            .WithTrackingName(TrackingNames.Settings);
 
         // Find all handler classes and their methods
         var handlerDeclarations = context.SyntaxProvider
@@ -59,23 +72,23 @@ public sealed class HandlerGenerator : IIncrementalGenerator
     private static bool IsInterceptorsEnabled(AnalyzerConfigOptionsProvider provider)
     {
         // First, check for explicit InterceptorsNamespaces property (preferred approach)
-        var propertyNames = new[]
-        {
+        string[] propertyNames =
+        [
             "build_property.InterceptorsNamespaces",
             "build_property.InterceptorsPreviewNamespaces"
-        };
+        ];
 
-        foreach (var propertyName in propertyNames)
+        foreach (string propertyName in propertyNames)
         {
-            if (provider.GlobalOptions.TryGetValue(propertyName, out var value) &&
-                !string.IsNullOrEmpty(value))
+            if (provider.GlobalOptions.TryGetValue(propertyName, out string? value) &&
+                !String.IsNullOrEmpty(value))
             {
                 return true;
             }
         }
 
         // For .NET 9+, interceptors are stable - enable if explicitly configured or targeting net9.0+
-        if (provider.GlobalOptions.TryGetValue("build_property.TargetFramework", out var targetFramework))
+        if (provider.GlobalOptions.TryGetValue("build_property.TargetFramework", out string? targetFramework))
         {
             // Enable for .NET 9+ as interceptors are stable there
             if (targetFramework?.StartsWith("net9") == true ||
@@ -129,7 +142,7 @@ public sealed class HandlerGenerator : IIncrementalGenerator
 
             var messageParameter = handlerMethod.Parameters[0];
             var messageType = messageParameter.Type;
-            var messageTypeName = messageType.ToDisplayString();
+            string messageTypeName = messageType.ToDisplayString();
 
             // Collect message type hierarchy (exact type, interfaces, and base classes)
             var messageTypeHierarchy = new List<string>();
@@ -142,7 +155,7 @@ public sealed class HandlerGenerator : IIncrementalGenerator
             {
                 foreach (var interfaceType in namedMessageType.AllInterfaces)
                 {
-                    var interfaceTypeName = interfaceType.ToDisplayString();
+                    string interfaceTypeName = interfaceType.ToDisplayString();
                     if (!messageTypeHierarchy.Contains(interfaceTypeName))
                     {
                         messageTypeHierarchy.Add(interfaceTypeName);
@@ -153,7 +166,7 @@ public sealed class HandlerGenerator : IIncrementalGenerator
                 var currentBaseType = namedMessageType.BaseType;
                 while (currentBaseType != null && currentBaseType.SpecialType != SpecialType.System_Object)
                 {
-                    var baseTypeName = currentBaseType.ToDisplayString();
+                    string baseTypeName = currentBaseType.ToDisplayString();
                     if (!messageTypeHierarchy.Contains(baseTypeName))
                     {
                         messageTypeHierarchy.Add(baseTypeName);
@@ -162,13 +175,13 @@ public sealed class HandlerGenerator : IIncrementalGenerator
                 }
             }
 
-            var returnTypeName = handlerMethod.ReturnType.ToDisplayString();
-            var isAsync = handlerMethod.Name.EndsWith("Async") ||
-                         returnTypeName.StartsWith("Task") ||
-                         returnTypeName.StartsWith("ValueTask");
+            string returnTypeName = handlerMethod.ReturnType.ToDisplayString();
+            bool isAsync = handlerMethod.Name.EndsWith("Async") ||
+                           returnTypeName.StartsWith("Task") ||
+                           returnTypeName.StartsWith("ValueTask");
 
             // Extract the actual return type from Task<T>
-            var actualReturnType = returnTypeName;
+            string actualReturnType = returnTypeName;
             if (returnTypeName.StartsWith("System.Threading.Tasks.Task<"))
             {
                 actualReturnType = returnTypeName.Substring("System.Threading.Tasks.Task<".Length).TrimEnd('>');
@@ -182,9 +195,9 @@ public sealed class HandlerGenerator : IIncrementalGenerator
 
             foreach (var parameter in handlerMethod.Parameters)
             {
-                var parameterTypeName = parameter.Type.ToDisplayString();
-                var isMessage = SymbolEqualityComparer.Default.Equals(parameter, messageParameter);
-                var isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
+                string parameterTypeName = parameter.Type.ToDisplayString();
+                bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, messageParameter);
+                bool isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
 
                 parameterInfos.Add(new ParameterInfo(
                     parameter.Name,
@@ -210,7 +223,7 @@ public sealed class HandlerGenerator : IIncrementalGenerator
 
     private static bool IsHandlerMethod(IMethodSymbol method)
     {
-        var validNames = new[] { "Handle", "Handles", "HandleAsync", "HandlesAsync",
+        string[] validNames = new[] { "Handle", "Handles", "HandleAsync", "HandlesAsync",
                                 "Consume", "Consumes", "ConsumeAsync", "ConsumesAsync" };
 
         if (!validNames.Contains(method.Name) ||
@@ -280,11 +293,11 @@ public sealed class HandlerGenerator : IIncrementalGenerator
         // Generate one wrapper file per handler (now with middleware support)
         HandlerWrapperGenerator.GenerateHandlerWrappers(validHandlers, validMiddlewares, callSites.ToList(), interceptorsEnabled, context);
 
-        var source = MediatorImplementationGenerator.GenerateMediatorImplementation(validHandlers);
+        string source = MediatorImplementationGenerator.GenerateMediatorImplementation(validHandlers);
         context.AddSource("Mediator.g.cs", source);
 
         // Also generate DI registration
-        var diSource = DIRegistrationGenerator.GenerateDIRegistration(validHandlers, validMiddlewares);
+        string diSource = DIRegistrationGenerator.GenerateDIRegistration(validHandlers, validMiddlewares);
         context.AddSource("ServiceCollectionExtensions.g.cs", diSource);
     }
 }

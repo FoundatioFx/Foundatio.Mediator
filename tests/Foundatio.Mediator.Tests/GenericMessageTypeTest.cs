@@ -21,7 +21,7 @@ public abstract class BaseMessage
 public class UserRegisteredEvent : BaseMessage, INotification
 {
     public string Message => $"User {UserId} registered at {Timestamp}";
-    public string UserId { get; set; } = string.Empty;
+    public string UserId { get; set; } = String.Empty;
 }
 
 // Handler for the interface - should handle all INotification messages
@@ -89,7 +89,7 @@ public class GenericMethodHandler
 // Concrete message type
 public class ConcreteMessage
 {
-    public string Value { get; set; } = string.Empty;
+    public string Value { get; set; } = String.Empty;
 }
 
 // Handler that uses concrete message type - should work fine

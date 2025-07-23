@@ -10,9 +10,9 @@ public class ValidationError
     /// </summary>
     public ValidationError()
     {
-        ErrorMessage = string.Empty;
-        Identifier = string.Empty;
-        ErrorCode = string.Empty;
+        ErrorMessage = String.Empty;
+        Identifier = String.Empty;
+        ErrorCode = String.Empty;
     }
 
     /// <summary>
@@ -21,9 +21,9 @@ public class ValidationError
     /// <param name="errorMessage">The error message.</param>
     public ValidationError(string errorMessage)
     {
-        ErrorMessage = errorMessage ?? string.Empty;
-        Identifier = string.Empty;
-        ErrorCode = string.Empty;
+        ErrorMessage = errorMessage ?? String.Empty;
+        Identifier = String.Empty;
+        ErrorCode = String.Empty;
     }
 
     /// <summary>
@@ -33,9 +33,9 @@ public class ValidationError
     /// <param name="errorMessage">The error message.</param>
     public ValidationError(string identifier, string errorMessage)
     {
-        Identifier = identifier ?? string.Empty;
-        ErrorMessage = errorMessage ?? string.Empty;
-        ErrorCode = string.Empty;
+        Identifier = identifier ?? String.Empty;
+        ErrorMessage = errorMessage ?? String.Empty;
+        ErrorCode = String.Empty;
     }
 
     /// <summary>
@@ -47,26 +47,26 @@ public class ValidationError
     /// <param name="severity">The severity level of the validation error.</param>
     public ValidationError(string identifier, string errorMessage, string errorCode, ValidationSeverity severity)
     {
-        Identifier = identifier ?? string.Empty;
-        ErrorMessage = errorMessage ?? string.Empty;
-        ErrorCode = errorCode ?? string.Empty;
+        Identifier = identifier ?? String.Empty;
+        ErrorMessage = errorMessage ?? String.Empty;
+        ErrorCode = errorCode ?? String.Empty;
         Severity = severity;
     }
 
     /// <summary>
     /// Gets or sets the field or property identifier that caused the validation error.
     /// </summary>
-    public string Identifier { get; set; } = string.Empty;
+    public string Identifier { get; set; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the error message describing what went wrong.
     /// </summary>
-    public string ErrorMessage { get; set; } = string.Empty;
+    public string ErrorMessage { get; set; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the error code for categorization purposes.
     /// </summary>
-    public string ErrorCode { get; set; } = string.Empty;
+    public string ErrorCode { get; set; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the severity level of the validation error.
@@ -79,7 +79,7 @@ public class ValidationError
     /// <returns>A string representation of the validation error.</returns>
     public override string ToString()
     {
-        if (!string.IsNullOrEmpty(Identifier))
+        if (!String.IsNullOrEmpty(Identifier))
             return $"{Identifier}: {ErrorMessage}";
 
         return ErrorMessage;

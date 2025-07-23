@@ -69,14 +69,14 @@ public class ServiceRegistrationTest : TestWithLoggingBase
 
         // Act & Assert - Test handler with string return
         var query = new RegistrationTestQuery("Test query");
-        var result = await mediator.InvokeAsync<string>(query);
+        string result = await mediator.InvokeAsync<string>(query);
         Assert.Equal("Response: Test query", result);
         Assert.Equal(2, testService.CallCount);
         _logger.LogInformation("String handler called successfully, returned: {Result}", result);
 
         // Act & Assert - Test handler with int return
         var intQuery = new RegistrationTestQueryInt(42);
-        var intResult = await mediator.InvokeAsync<int>(intQuery);
+        int intResult = await mediator.InvokeAsync<int>(intQuery);
         Assert.Equal(84, intResult);
         Assert.Equal(3, testService.CallCount);
         _logger.LogInformation("Int handler called successfully, returned: {Result}", intResult);

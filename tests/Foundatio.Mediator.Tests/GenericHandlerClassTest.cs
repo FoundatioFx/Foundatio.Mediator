@@ -7,12 +7,12 @@ namespace Foundatio.Mediator.Tests;
 // Test message types
 public class TestMessage
 {
-    public string Value { get; set; } = string.Empty;
+    public string Value { get; set; } = String.Empty;
 }
 
 public class AnotherTestMessage
 {
-    public string Data { get; set; } = string.Empty;
+    public string Data { get; set; } = String.Empty;
 }
 
 // Generic handler class - this should be completely ignored by the source generator
@@ -65,7 +65,7 @@ public class AnotherTestMessageHandler
 
     public string Handle(AnotherTestMessage message)
     {
-        var result = $"Handled: {message.Data}";
+        string result = $"Handled: {message.Data}";
         ReceivedMessages.Add(result);
         return result;
     }

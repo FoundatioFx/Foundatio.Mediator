@@ -25,7 +25,7 @@ public class AsyncCallSyncHandlerWithAsyncMiddlewareTest : TestWithLoggingBase
 
         // Act & Assert - this should work without FMED006 warning
         // because AsyncCallSyncHandlerTestMiddleware has async methods
-        var result = await mediator.InvokeAsync<string>(new AsyncCallSyncHandlerTestMessage("test"));
+        string result = await mediator.InvokeAsync<string>(new AsyncCallSyncHandlerTestMessage("test"));
 
         Assert.Equal("Handled: test", result);
     }

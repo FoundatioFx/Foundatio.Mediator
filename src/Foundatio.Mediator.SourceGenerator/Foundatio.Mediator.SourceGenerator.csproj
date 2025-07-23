@@ -1,6 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\build\common.props" />
 
+  <PropertyGroup>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>Foundatio.Mediator</RootNamespace>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />

@@ -20,8 +20,8 @@ public class OneFilePerHandlerTest
     public void Should_Generate_One_File_Per_Handler()
     {
         // Find the generated files directory for this test project
-        var projectDir = Directory.GetCurrentDirectory();
-        var generatedDir = Path.Combine(projectDir, "obj", "Debug", "net9.0", "generated", "Foundatio.Mediator", "Foundatio.Mediator.HandlerGenerator");
+        string projectDir = Directory.GetCurrentDirectory();
+        string generatedDir = Path.Combine(projectDir, "obj", "Debug", "net9.0", "generated", "Foundatio.Mediator", "Foundatio.Mediator.HandlerGenerator");
         
         // Check if the directory exists (it should after compilation)
         if (!Directory.Exists(generatedDir))
@@ -32,14 +32,14 @@ public class OneFilePerHandlerTest
             return;
         }
 
-        var generatedFiles = Directory.GetFiles(generatedDir, "*.g.cs");
+        string[] generatedFiles = Directory.GetFiles(generatedDir, "*.g.cs");
         
         // We should have separate wrapper files for each handler
-        var wrapperFiles = generatedFiles.Where(f => f.Contains("_Wrapper.g.cs")).ToArray();
+        string[] wrapperFiles = generatedFiles.Where(f => f.Contains("_Wrapper.g.cs")).ToArray();
 
         // We should also have the main files
-        var mediatorFile = generatedFiles.FirstOrDefault(f => f.Contains("Mediator.g.cs"));
-        var serviceCollectionFile = generatedFiles.FirstOrDefault(f => f.Contains("ServiceCollectionExtensions.g.cs"));
+        string? mediatorFile = generatedFiles.FirstOrDefault(f => f.Contains("Mediator.g.cs"));
+        string? serviceCollectionFile = generatedFiles.FirstOrDefault(f => f.Contains("ServiceCollectionExtensions.g.cs"));
 
         // At minimum, we should have wrapper files (if any handlers exist)
         // This test mainly validates that the structure is as expected

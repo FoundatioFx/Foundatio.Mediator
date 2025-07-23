@@ -88,7 +88,7 @@ public class StaticHandlerTest : TestWithLoggingBase
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Use sync call for sync handler
-        var result = mediator.Invoke<string>(new StaticSyncQueryMessage("test"));
+        string result = mediator.Invoke<string>(new StaticSyncQueryMessage("test"));
 
         Assert.Equal("Static response: test", result);
     }
@@ -103,7 +103,7 @@ public class StaticHandlerTest : TestWithLoggingBase
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        var result = await mediator.InvokeAsync<string>(new StaticAsyncQueryMessage("test"));
+        string result = await mediator.InvokeAsync<string>(new StaticAsyncQueryMessage("test"));
 
         Assert.Equal("Static async response: test", result);
     }
@@ -118,7 +118,7 @@ public class StaticHandlerTest : TestWithLoggingBase
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        var result = mediator.Invoke<string>(new StaticQueryWithDIMessage("test-di"));
+        string result = mediator.Invoke<string>(new StaticQueryWithDIMessage("test-di"));
 
         Assert.Equal("Static with DI: test-di", result);
     }

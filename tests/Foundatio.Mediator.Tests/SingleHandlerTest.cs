@@ -34,7 +34,7 @@ public class SingleHandlerTest : TestWithLoggingBase
 
         // Assert
         _logger.LogInformation("Result - CallCount: {Count}, Messages: {Messages}", 
-            testService.CallCount, string.Join(", ", testService.Messages));
+            testService.CallCount, String.Join(", ", testService.Messages));
         
         Assert.Equal(1, testService.CallCount);
         Assert.Contains("SingleHandler: Single Handler Test", testService.Messages);

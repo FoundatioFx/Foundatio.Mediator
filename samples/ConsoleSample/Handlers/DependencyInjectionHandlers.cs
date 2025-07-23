@@ -13,7 +13,7 @@ public class SendWelcomeEmailHandler
         IGreetingService greetingService,
         CancellationToken cancellationToken = default)
     {
-        var greeting = greetingService.CreateGreeting(command.Name);
+        string greeting = greetingService.CreateGreeting(command.Name);
         await emailService.SendEmailAsync(
             command.Email, 
             "Welcome!", 

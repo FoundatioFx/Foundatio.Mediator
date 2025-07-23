@@ -12,6 +12,9 @@ internal static class InterceptorGenerator
         source.AppendLine("// Changes to this file may be lost when the code is regenerated.");
         source.AppendLine("// </auto-generated>");
         source.AppendLine();
+        source.AppendLine("using System.Diagnostics;");
+        source.AppendLine("using System.Diagnostics.CodeAnalysis;");
+        source.AppendLine();
     }
 
     public static void GenerateInterceptors(
@@ -58,7 +61,7 @@ internal static class InterceptorGenerator
 
         if (interceptorMethods.Count > 0)
         {
-            var source = GenerateInterceptorClass(interceptorMethods);
+            string source = GenerateInterceptorClass(interceptorMethods);
             context.AddSource("MediatorInterceptors.g.cs", source);
         }
     }
@@ -69,21 +72,21 @@ internal static class InterceptorGenerator
         HandlerInfo handlerInfo,
         int methodIndex)
     {
-        var methodName = key.MethodName;
-        var messageTypeName = key.MessageTypeName;
-        var expectedResponseTypeName = key.ExpectedResponseTypeName;
+        string methodName = key.MethodName;
+        string messageTypeName = key.MessageTypeName;
+        string expectedResponseTypeName = key.ExpectedResponseTypeName;
 
         // Generate unique method name for the interceptor
-        var interceptorMethodName = $"Intercept{methodName}{methodIndex}";
+        string interceptorMethodName = $"Intercept{methodName}{methodIndex}";
 
-        var isAsync = methodName.EndsWith("Async");
-        var isGeneric = !string.IsNullOrEmpty(expectedResponseTypeName);
-        var isPublish = methodName.StartsWith("Publish");
+        bool isAsync = methodName.EndsWith("Async");
+        bool isGeneric = !String.IsNullOrEmpty(expectedResponseTypeName);
+        bool isPublish = methodName.StartsWith("Publish");
 
         // Build the interceptor attributes for all call sites
         var interceptorAttributes = callSites
             .Select(cs => GenerateInterceptorAttribute(cs))
-            .Where(attr => !string.IsNullOrEmpty(attr))
+            .Where(attr => !String.IsNullOrEmpty(attr))
             .Cast<string>()
             .ToList();
 
@@ -155,14 +158,14 @@ internal static class InterceptorGenerator
     private static void GenerateInterceptorMethodImplementation(StringBuilder source, InterceptorMethod method)
     {
         // Add interceptor attributes
-        foreach (var attribute in method.InterceptorAttributes)
+        foreach (string? attribute in method.InterceptorAttributes)
         {
             source.AppendLine($"    {attribute}");
         }
 
         // Generate method signature
-        var returnType = GenerateReturnType(method);
-        var parameters = GenerateParameters(method);
+        string returnType = GenerateReturnType(method);
+        string parameters = GenerateParameters(method);
 
         source.AppendLine($"    public static {returnType} {method.InterceptorMethodName}({parameters})");
         source.AppendLine("    {");
@@ -199,16 +202,16 @@ internal static class InterceptorGenerator
 
         parameters.Add("global::System.Threading.CancellationToken cancellationToken = default");
 
-        return string.Join(", ", parameters);
+        return String.Join(", ", parameters);
     }
 
     private static void GenerateInterceptorMethodBody(StringBuilder source, InterceptorMethod method)
     {
-        var messageTypeName = method.MessageTypeName;
+        string messageTypeName = method.MessageTypeName;
 
         // Generate static wrapper class name using the same logic as HandlerWrapperGenerator
-        var wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(method.HandlerInfo);
-        var staticMethodName = HandlerWrapperGenerator.GetStaticMethodName(method.HandlerInfo);
+        string wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(method.HandlerInfo);
+        string staticMethodName = HandlerWrapperGenerator.GetStaticMethodName(method.HandlerInfo);
 
         // Cast the message to the correct type
         source.AppendLine($"        var typedMessage = ({messageTypeName})message;");

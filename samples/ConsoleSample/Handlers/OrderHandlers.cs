@@ -8,7 +8,7 @@ public class OrderEmailNotificationHandler(EmailNotificationService emailService
 {
     public async Task HandleAsync(OrderCreatedEvent orderEvent)
     {
-        var message = $"Order {orderEvent.OrderId} has been created for ${orderEvent.Amount:F2}";
+        string message = $"Order {orderEvent.OrderId} has been created for ${orderEvent.Amount:F2}";
         await emailService.SendAsync(message);
     }
 }
@@ -20,7 +20,7 @@ public class OrderSmsNotificationHandler
         SmsNotificationService smsService,
         CancellationToken cancellationToken = default)
     {
-        var message = $"Your order {orderEvent.OrderId} is confirmed!";
+        string message = $"Your order {orderEvent.OrderId} is confirmed!";
         await smsService.SendAsync(message);
     }
 }

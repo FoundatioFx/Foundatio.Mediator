@@ -45,7 +45,7 @@ public class DependencyInjectionTests
         var query = new TestQueryWithDependencies("input");
 
         // Act
-        var result = await _mediator.InvokeAsync<string>(query);
+        string result = await _mediator.InvokeAsync<string>(query);
 
         // Assert
         Assert.Equal("Processed: input", result);

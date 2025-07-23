@@ -31,7 +31,7 @@ public class InterceptorFunctionTest : TestWithLoggingBase
         _logger.LogInformation("Testing interceptor functionality for command: {Message}", command.Message);
 
         // Act - This should be intercepted and call the static handler directly
-        var result = await mediator.InvokeAsync<string>(command);
+        string result = await mediator.InvokeAsync<string>(command);
 
         // Assert
         _logger.LogInformation("InvokeAsync completed with result: {Result}", result);

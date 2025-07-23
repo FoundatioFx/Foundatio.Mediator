@@ -73,7 +73,7 @@ public class HandlerInterfaceTest : TestWithLoggingBase
 
         // Act - Test the handler using mediator
         var mediator = serviceProvider.GetRequiredService<IMediator>();
-        var result = await mediator.InvokeAsync<string>(query);
+        string result = await mediator.InvokeAsync<string>(query);
 
         var testService = serviceProvider.GetRequiredService<HandlerInterfaceTestService>();
         _logger.LogInformation("Handler executed - Result: {Result}, CallCount: {Count}", result, testService.CallCount);

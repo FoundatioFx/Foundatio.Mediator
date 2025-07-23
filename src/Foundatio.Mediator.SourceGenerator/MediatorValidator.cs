@@ -10,19 +10,19 @@ internal static class MediatorValidator
 
         foreach (var group in handlersByMessageType)
         {
-            var messageType = group.Key;
+            string? messageType = group.Key;
             var messageHandlers = group.ToList();
 
             // Check for multiple handlers (warning for publish, error for invoke if needed)
             if (messageHandlers.Count > 1)
             {
-                var handlersList = string.Join(", ", messageHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
+                string handlersList = String.Join(", ", messageHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
 
                 // Check if any handler has a return type (indicates invoke usage)
-                var hasReturnTypeHandlers = messageHandlers.Any(h =>
+                bool hasReturnTypeHandlers = messageHandlers.Any(h =>
                     h.ReturnTypeName != "void" &&
                     h.ReturnTypeName != "System.Threading.Tasks.Task" &&
-                    !string.IsNullOrEmpty(h.ReturnTypeName));
+                    !String.IsNullOrEmpty(h.ReturnTypeName));
 
                 if (hasReturnTypeHandlers)
                 {
@@ -104,7 +104,7 @@ internal static class MediatorValidator
         // Check if multiple handlers exist for Invoke calls
         if (messageHandlers.Count > 1)
         {
-            var handlersList = string.Join(", ", messageHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
+            string handlersList = String.Join(", ", messageHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
             var descriptor = new DiagnosticDescriptor(
                 "FMED005",
                 "Multiple handlers found for Invoke call",
@@ -125,7 +125,7 @@ internal static class MediatorValidator
         {
             // Check if there's async middleware that would justify the async call
             var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
-            var hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
+            bool hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
 
             if (!hasAsyncMiddleware)
             {
@@ -159,7 +159,7 @@ internal static class MediatorValidator
         if (!callSite.IsAsync && !handler.IsAsync)
         {
             var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
-            var hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
+            bool hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
 
             if (hasAsyncMiddleware)
             {
@@ -167,7 +167,7 @@ internal static class MediatorValidator
                     .Where(m => m.IsAsync)
                     .Select(m => m.MiddlewareTypeName)
                     .ToList();
-                var asyncMiddlewaresList = string.Join(", ", asyncMiddlewares);
+                string asyncMiddlewaresList = String.Join(", ", asyncMiddlewares);
 
                 var descriptor = new DiagnosticDescriptor(
                     "FMED012",
@@ -183,11 +183,11 @@ internal static class MediatorValidator
         }
 
         // For generic Invoke<TResponse> calls, validate return type compatibility
-        if (!string.IsNullOrEmpty(callSite.ExpectedResponseTypeName))
+        if (!String.IsNullOrEmpty(callSite.ExpectedResponseTypeName))
         {
             if (handler.ReturnTypeName == "void" ||
                 handler.ReturnTypeName == "System.Threading.Tasks.Task" ||
-                string.IsNullOrEmpty(handler.ReturnTypeName))
+                String.IsNullOrEmpty(handler.ReturnTypeName))
             {
                 var descriptor = new DiagnosticDescriptor(
                     "FMED008",
@@ -212,7 +212,7 @@ internal static class MediatorValidator
 
         if (callSite.IsAsync && syncHandlers.Count > 0)
         {
-            var syncHandlersList = string.Join(", ", syncHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
+            string syncHandlersList = String.Join(", ", syncHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
             var descriptor = new DiagnosticDescriptor(
                 "FMED010",
                 "Async publish with sync handlers",
@@ -226,7 +226,7 @@ internal static class MediatorValidator
         }
         else if (!callSite.IsAsync && asyncHandlers.Count > 0)
         {
-            var asyncHandlersList = string.Join(", ", asyncHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
+            string asyncHandlersList = String.Join(", ", asyncHandlers.Select(h => $"{h.HandlerTypeName}.{h.MethodName}"));
             var descriptor = new DiagnosticDescriptor(
                 "FMED011",
                 "Sync publish with async handlers",

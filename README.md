@@ -10,11 +10,11 @@ Foundatio.Mediator is a high-performance, convention-based mediator library that
 
 ## ✨ Why Choose Foundatio.Mediator?
 
-- **🚀 Blazing Fast** - Only 2x slower than direct method calls, 3x faster than MediatR
+- **🚀 Blazing Fast** - Nearly as fast as direct method calls, 3x faster than MediatR
 - **🎯 Convention-Based** - No interfaces or base classes required
 - **⚡ Source Generated** - Compile-time code generation for optimal performance
 - **🔧 Full DI Integration** - Works seamlessly with Microsoft.Extensions.DependencyInjection
-- **🎪 Middleware Pipeline** - Elegant middleware support with logging, timing, and custom logic
+- **🎪 Middleware Pipeline** - Elegant middleware support
 - **📦 Auto Registration** - Handlers discovered and registered automatically
 - **🔒 Compile-Time Safety** - Rich diagnostics catch errors before runtime
 - **🔧 C# Interceptors** - Direct method calls using cutting-edge C# interceptor technology
@@ -67,7 +67,7 @@ var mediator = serviceProvider.GetRequiredService<IMediator>();
 await mediator.InvokeAsync(new PingCommand("123"));
 
 // Request/response
-var greeting = await mediator.InvokeAsync<string>(new GreetingQuery("World"));
+var greeting = mediator.Invoke<string>(new GreetingQuery("World"));
 Console.WriteLine(greeting); // "Hello, World!"
 ```
 
@@ -107,30 +107,21 @@ public class LoggingMiddleware
     }
 }
 
-public class GlobalMiddleware
+public class ValidationMiddleware
 {
-    public (DateTime Date, TimeSpan Time) Before(object message, CancellationToken cancellationToken)
+    public HandlerResult Before(object message)
     {
-        Console.WriteLine($"🌍 Processing {message.GetType().Name}");
-        return (DateTime.UtcNow, DateTime.UtcNow.TimeOfDay);
-    }
-
-    public async Task After(object message, DateTime start, TimeSpan time,
-        IEmailService emailService, CancellationToken cancellationToken)
-    {
-        await emailService.SendEmailAsync("audit@company.com", "Message Processed",
-            $"Message {message.GetType().Name} processed at {start}");
-        Console.WriteLine($"🌍 Completed {message.GetType().Name}");
-    }
-
-    public void Finally(object message, Exception? exception, CancellationToken cancellationToken)
-    {
-        if (exception != null)
+        if (!TryValidate(message, out var errors))
         {
-            Console.WriteLine($"🌍 Error: {exception.Message}");
+            // If validation fails, short-circuit the handler execution
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
         }
+
+        return HandlerResult.Continue();
     }
 }
+
+var user = mediator.InvokeAsync<Result<User>>(new GetUserQuery(userId), cancellationToken);
 ```
 
 ## 💉 Dependency Injection Made Simple
@@ -274,12 +265,11 @@ dotnet run
 
 The source generator:
 
-1. **Discovers handlers** at compile time by scanning for classes ending with "Handler" or "Consumer"
-2. **Validates method signatures** to ensure they follow the conventions
+1. **Discovers handlers** at compile time by scanning for classes ending with `Handler` or `Consumer`
+2. **Discovers handler methods** looks for methods with names like `Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`
+3. **Parameters** first parameter is the message, remaining parameters are injected via DI
 3. **Generates C# interceptors** for blazing fast same-assembly dispatch using direct method calls
-4. **Registers keyed handlers in DI** as fallback for cross-assembly scenarios and publish operations
-5. **Creates middleware pipelines** with proper before/after/finally execution order
-6. **Generates handler registrations** that span multiple projects for comprehensive handler discovery
+4. **Middleware** with can run `Before`, `After`, and `Finally` around handler execution and can be sync or async
 
 ### 🔧 C# Interceptors - The Secret Sauce
 

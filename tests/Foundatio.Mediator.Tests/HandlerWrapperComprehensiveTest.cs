@@ -39,7 +39,7 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         // Test 2: IHandler<TMessage, TResponse> wrapper (string return)
         _logger.LogInformation("Testing IHandler<TMessage, TResponse> wrapper with string return...");
         var stringQuery = new ComprehensiveStringQuery("Get string");
-        var stringResult = await mediator.InvokeAsync<string>(stringQuery);
+        string stringResult = await mediator.InvokeAsync<string>(stringQuery);
         Assert.Equal("Result: Get string", stringResult);
         Assert.Equal(2, testService.CallCount);
 
@@ -50,7 +50,7 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         // Test 3: IHandler<TMessage, TResponse> wrapper (int return)
         _logger.LogInformation("Testing IHandler<TMessage, TResponse> wrapper with int return...");
         var intQuery = new ComprehensiveIntQuery(10);
-        var intResult = await mediator.InvokeAsync<int>(intQuery);
+        int intResult = await mediator.InvokeAsync<int>(intQuery);
         Assert.Equal(100, intResult);
         Assert.Equal(3, testService.CallCount);
 
@@ -71,7 +71,7 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
 
         // Current implementation limitation: only discovers first handler per message type
         // We expect the call count to increase by the number of handlers (at least 1)
-        var expectedCallCount = 3 + Math.Max(1, notificationHandlers.Count); // 3 from previous tests + handlers
+        int expectedCallCount = 3 + Math.Max(1, notificationHandlers.Count); // 3 from previous tests + handlers
         Assert.True(testService.CallCount >= 3, $"Expected CallCount >= 3, but was {testService.CallCount}");
 
         // Note: This is a current limitation - multiple handlers for same message type need additional work
@@ -81,7 +81,7 @@ public class HandlerWrapperComprehensiveTest : TestWithLoggingBase
         _logger.LogInformation("Testing dependency injection through wrappers...");
         var diCommand = new ComprehensiveDICommand("DI test");
         await mediator.InvokeAsync(diCommand);
-        var expectedFinalCount = testService.CallCount + 1; // Should increment by 1
+        int expectedFinalCount = testService.CallCount + 1; // Should increment by 1
         Assert.True(testService.CallCount >= 4, $"Expected CallCount >= 4, but was {testService.CallCount}");
 
         // Verify the DI wrapper is registered

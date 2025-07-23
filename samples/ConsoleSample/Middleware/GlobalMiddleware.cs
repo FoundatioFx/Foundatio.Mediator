@@ -1,5 +1,3 @@
-using ConsoleSample.Services;
-
 namespace ConsoleSample.Middleware;
 
 public class GlobalMiddleware
@@ -8,12 +6,6 @@ public class GlobalMiddleware
     {
         Console.WriteLine($"🌍 [GlobalMiddleware] Before: Processing message of type {message.GetType().Name}");
         return (DateTime.UtcNow, DateTime.UtcNow.TimeOfDay);
-    }
-
-    public async Task After(object message, DateTime start, TimeSpan time, IEmailService emailService, CancellationToken cancellationToken)
-    {
-        await emailService.SendEmailAsync("test@test.com", $"Hello", $"Message of type {message.GetType().Name} processed successfully at {DateTime.UtcNow}");
-        Console.WriteLine($"🌍 [GlobalMiddleware] After: Completed processing {message.GetType().Name} {start}");
     }
 
     public void Finally(object message, Exception? exception, CancellationToken cancellationToken)

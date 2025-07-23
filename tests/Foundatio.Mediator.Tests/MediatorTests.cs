@@ -33,7 +33,7 @@ public class MediatorTests
         var query = new TestQuery("World");
 
         // Act
-        var result = await _mediator.InvokeAsync<string>(query);
+        string result = await _mediator.InvokeAsync<string>(query);
 
         // Assert
         Assert.Equal("Hello, World!", result);

@@ -22,7 +22,7 @@ namespace Foundatio.Mediator.Tests
             var mediator = serviceProvider.GetRequiredService<IMediator>();
 
             // This should work - it's a normal Foundatio handler
-            var result = await mediator.InvokeAsync<string>(new TestMessageForMassTransitExclusion { Value = "test" });
+            string result = await mediator.InvokeAsync<string>(new TestMessageForMassTransitExclusion { Value = "test" });
             Assert.Equal("Foundatio Handler: test", result);
 
             // Verify that MassTransit handlers are not registered
@@ -42,10 +42,10 @@ namespace Foundatio.Mediator.Tests
 
 
     // Test message for Foundatio handler
-    public record TestMessageForMassTransitExclusion { public string Value { get; init; } = string.Empty; }
+    public record TestMessageForMassTransitExclusion { public string Value { get; init; } = String.Empty; }
 
     // Test message that would be used by MassTransit (but we won't register a MassTransit handler here for simplicity)
-    public record MassTransitMessage { public string Value { get; init; } = string.Empty; }
+    public record MassTransitMessage { public string Value { get; init; } = String.Empty; }
 
     // Normal Foundatio handler - should be picked up
     public class TestMessageForMassTransitExclusionHandler

@@ -16,7 +16,7 @@ internal static class CallSiteAnalyzer
         // Look for member access expressions like mediator.Invoke(...), mediator.InvokeAsync(...), etc.
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
         {
-            var methodName = memberAccess.Name.Identifier.ValueText;
+            string methodName = memberAccess.Name.Identifier.ValueText;
             return methodName is "Invoke" or "InvokeAsync" or "Publish" or "PublishAsync";
         }
 
@@ -34,9 +34,9 @@ internal static class CallSiteAnalyzer
         if (context.SemanticModel.GetInterceptableLocation(invocation) is not { } interceptableLocation)
             return null;
 
-        var methodName = memberAccess.Name.Identifier.ValueText;
-        var isAsync = methodName.EndsWith("Async");
-        var isPublish = methodName.StartsWith("Publish");
+        string methodName = memberAccess.Name.Identifier.ValueText;
+        bool isAsync = methodName.EndsWith("Async");
+        bool isPublish = methodName.StartsWith("Publish");
 
         // Get the method symbol to analyze the call
         var symbolInfo = semanticModel.GetSymbolInfo(invocation.Expression);
@@ -57,7 +57,7 @@ internal static class CallSiteAnalyzer
         if (argumentType.Type == null)
             return null;
 
-        var messageTypeName = argumentType.Type.ToDisplayString();
+        string messageTypeName = argumentType.Type.ToDisplayString();
 
         // For generic methods like Invoke<TResponse>, get the response type
         string expectedResponseTypeName = "";

@@ -10,7 +10,7 @@ public class ProcessOrderMiddleware
         Console.WriteLine($"🔸 [ProcessOrderMiddleware] Before: Processing order {command.OrderId} with type {command.ProcessingType}");
 
         // Add some validation logic
-        if (string.IsNullOrWhiteSpace(command.OrderId))
+        if (String.IsNullOrWhiteSpace(command.OrderId))
         {
             Console.WriteLine($"🔸 [ProcessOrderMiddleware] Invalid order ID, short-circuiting");
             return Task.FromResult(HandlerResult.ShortCircuit("Invalid order ID"));

@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using System.Text;
+using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
 
@@ -121,9 +122,10 @@ internal static class HandlerWrapperGenerator
     public static string GetWrapperClassName(HandlerInfo handler)
     {
         // Create a deterministic wrapper class name based on handler type and method
-        string handlerTypeName = handler.HandlerTypeName.Split('.').Last().Replace("<", "_").Replace(">", "_").Replace(",", "_");
+        // Extract the simple type name from the full type name, handling both . and + separators
+        string handlerTypeName = TypeNameHelper.GetSimpleTypeName(handler.HandlerTypeName);
         string methodName = handler.MethodName;
-        string messageTypeName = handler.MessageTypeName.Split('.').Last().Replace("<", "_").Replace(">", "_").Replace(",", "_");
+        string messageTypeName = TypeNameHelper.GetSimpleTypeName(handler.MessageTypeName);
         return $"{handlerTypeName}_{methodName}_{messageTypeName}_StaticWrapper";
     }
 

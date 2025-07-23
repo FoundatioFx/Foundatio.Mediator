@@ -1,4 +1,5 @@
 using System.Text;
+using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
 
@@ -55,7 +56,9 @@ internal static class DIRegistrationGenerator
             // Register the handler under all message types in its hierarchy
             foreach (string? messageTypeName in handler.MessageTypeHierarchy)
             {
-                source.AppendLine($"        services.AddKeyedSingleton<HandlerRegistration>(\"{messageTypeName}\",");
+                // Convert compile-time format to runtime format for DI registration
+                string runtimeTypeName = TypeNameHelper.ConvertToRuntimeTypeName(messageTypeName);
+                source.AppendLine($"        services.AddKeyedSingleton<HandlerRegistration>(\"{runtimeTypeName}\",");
                 source.AppendLine($"            new HandlerRegistration(");
                 source.AppendLine($"                \"{handler.MessageTypeName}\","); // Keep the primary message type name for identification
 

@@ -57,13 +57,13 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("        var allHandlers = new List<HandlerRegistration>();");
         source.AppendLine();
         source.AppendLine("        // Add handlers for the exact message type");
-        source.AppendLine("        var exactHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageType.FullName);");
+        source.AppendLine("        var exactHandlers = GetHandlersForType(messageType);");
         source.AppendLine("        allHandlers.AddRange(exactHandlers);");
         source.AppendLine();
         source.AppendLine("        // Add handlers for all implemented interfaces");
         source.AppendLine("        foreach (var interfaceType in messageType.GetInterfaces())");
         source.AppendLine("        {");
-        source.AppendLine("            var interfaceHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(interfaceType.FullName);");
+        source.AppendLine("            var interfaceHandlers = GetHandlersForType(interfaceType);");
         source.AppendLine("            allHandlers.AddRange(interfaceHandlers);");
         source.AppendLine("        }");
         source.AppendLine();
@@ -71,7 +71,7 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("        var currentType = messageType.BaseType;");
         source.AppendLine("        while (currentType != null && currentType != typeof(object))");
         source.AppendLine("        {");
-        source.AppendLine("            var baseHandlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(currentType.FullName);");
+        source.AppendLine("            var baseHandlers = GetHandlersForType(currentType);");
         source.AppendLine("            allHandlers.AddRange(baseHandlers);");
         source.AppendLine("            currentType = currentType.BaseType;");
         source.AppendLine("        }");
@@ -80,18 +80,26 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("    }");
         source.AppendLine();
 
+        // Helper method to get handlers for a specific type
+        source.AppendLine("    [DebuggerStepThrough]");
+        source.AppendLine("    private IEnumerable<HandlerRegistration> GetHandlersForType(Type type)");
+        source.AppendLine("    {");
+        source.AppendLine("        return _serviceProvider.GetKeyedServices<HandlerRegistration>(type.FullName);");
+        source.AppendLine("    }");
+        source.AppendLine();
+
         // Generate InvokeAsync method
         source.AppendLine("    public async ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("    {");
-        source.AppendLine("        var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("        var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("        var messageType = message.GetType();");
+        source.AppendLine("        var handlers = GetHandlersForType(messageType);");
         source.AppendLine("        var handlersList = handlers.ToList();");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count == 0)");
-        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
+        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageType.FullName}\");");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count > 1)");
-        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.FullName}. Use PublishAsync for multiple handlers.\");");
         source.AppendLine();
         source.AppendLine("        var handler = handlersList.First();");
         source.AppendLine("        await handler.HandleAsync(this, message, cancellationToken, null);");
@@ -101,19 +109,19 @@ internal static class MediatorImplementationGenerator
         // Generate Invoke method (sync)
         source.AppendLine("    public void Invoke(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("    {");
-        source.AppendLine("        var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("        var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("        var messageType = message.GetType();");
+        source.AppendLine("        var handlers = GetHandlersForType(messageType);");
         source.AppendLine("        var handlersList = handlers.ToList();");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count == 0)");
-        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
+        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageType.FullName}\");");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count > 1)");
-        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use Publish for multiple handlers.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.FullName}. Use Publish for multiple handlers.\");");
         source.AppendLine();
         source.AppendLine("        var handler = handlersList.First();");
         source.AppendLine("        if (handler.IsAsync)");
-        source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageTypeName}. Use InvokeAsync instead.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageType.FullName}. Use InvokeAsync instead.\");");
         source.AppendLine();
         source.AppendLine("        handler.Handle!(this, message, cancellationToken, null);");
         source.AppendLine("    }");
@@ -122,15 +130,15 @@ internal static class MediatorImplementationGenerator
         // Generate InvokeAsync<TResponse> method
         source.AppendLine("    public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("    {");
-        source.AppendLine("        var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("        var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("        var messageType = message.GetType();");
+        source.AppendLine("        var handlers = GetHandlersForType(messageType);");
         source.AppendLine("        var handlersList = handlers.ToList();");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count == 0)");
-        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
+        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageType.FullName}\");");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count > 1)");
-        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use PublishAsync for multiple handlers.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.FullName}. Use PublishAsync for multiple handlers.\");");
         source.AppendLine();
         source.AppendLine("        var handler = handlersList.First();");
         source.AppendLine("        var result = await handler.HandleAsync(this, message, cancellationToken, typeof(TResponse));");
@@ -142,19 +150,19 @@ internal static class MediatorImplementationGenerator
         // Generate Invoke<TResponse> method (sync)
         source.AppendLine("    public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)");
         source.AppendLine("    {");
-        source.AppendLine("        var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("        var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(messageTypeName);");
+        source.AppendLine("        var messageType = message.GetType();");
+        source.AppendLine("        var handlers = GetHandlersForType(messageType);");
         source.AppendLine("        var handlersList = handlers.ToList();");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count == 0)");
-        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageTypeName}\");");
+        source.AppendLine("            throw new InvalidOperationException($\"No handler found for message type {messageType.FullName}\");");
         source.AppendLine();
         source.AppendLine("        if (handlersList.Count > 1)");
-        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageTypeName}. Use Publish for multiple handlers.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Multiple handlers found for message type {messageType.FullName}. Use Publish for multiple handlers.\");");
         source.AppendLine();
         source.AppendLine("        var handler = handlersList.First();");
         source.AppendLine("        if (handler.IsAsync)");
-        source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageTypeName}. Use InvokeAsync instead.\");");
+        source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageType.FullName}. Use InvokeAsync instead.\");");
         source.AppendLine();
         source.AppendLine("        object result = handler.Handle!(this, message, cancellationToken, typeof(TResponse));");
         source.AppendLine("        return (TResponse)result;");

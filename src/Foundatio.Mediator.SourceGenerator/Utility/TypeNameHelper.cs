@@ -37,7 +37,7 @@ internal static class TypeNameHelper
         }
 
         // Build the full type name
-        string namespaceName = typeSymbol.ContainingNamespace?.ToDisplayString();
+        string namespaceName = typeSymbol.ContainingNamespace?.ToDisplayString() ?? String.Empty;
         if (!string.IsNullOrEmpty(namespaceName) && namespaceName != "<global namespace>")
         {
             // Namespace parts use dots

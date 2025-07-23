@@ -4,9 +4,8 @@ namespace ConsoleSample.Middleware;
 
 public class CommandMiddleware
 {
-    public Task<HandlerResult> BeforeAsync(ICommand command, CancellationToken cancellationToken)
+    public void Before(ICommand command)
     {
         Console.WriteLine($"📋 [CommandMiddleware] Before: Processing command of type {command.GetType().Name}");
-        return Task.FromResult(HandlerResult.Continue());
     }
 }

@@ -12,10 +12,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Check if interceptors are enabled
-        var interceptorsEnabled = context.AnalyzerConfigOptionsProvider
-            .Select(static (provider, _) => IsInterceptorsEnabled(provider));
-
         var interceptionEnabledSetting = context.AnalyzerConfigOptionsProvider
             .Select((x, _) =>
                 x.GlobalOptions.TryGetValue($"build_property.{Constants.EnabledPropertyName}", out string? enableSwitch)
@@ -28,36 +24,38 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Combine(csharpSufficient)
             .WithTrackingName(TrackingNames.Settings);
 
-        // Find all handler classes and their methods
-        var handlerDeclarations = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (s, _) => IsPotentialHandlerClass(s),
-                transform: static (ctx, _) => GetHandlersForGeneration(ctx))
-            .Where(static m => m is not null && m.Count > 0)
-            .SelectMany(static (handlers, _) => handlers ?? []); // Flatten the collections
+        var interceptionEnabled = settings
+            .Select((x, _) => x is { Left: true, Right: true });
 
-        // Find all middleware classes and their methods
-        var middlewareDeclarations = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (s, _) => MiddlewareGenerator.IsPotentialMiddlewareClass(s),
-                transform: static (ctx, _) => MiddlewareGenerator.GetMiddlewareForGeneration(ctx))
-            .Where(static m => m is not null && m.Count > 0)
-            .SelectMany(static (middlewares, _) => middlewares ?? []); // Flatten the collections
-
-        // Find all mediator call sites
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (s, _) => CallSiteAnalyzer.IsPotentialMediatorCall(s),
                 transform: static (ctx, _) => CallSiteAnalyzer.GetCallSiteForAnalysis(ctx))
             .Where(static cs => cs.HasValue)
-            .Select(static (cs, _) => cs!.Value);
+            .Select(static (cs, _) => cs!.Value)
+            .WithTrackingName(TrackingNames.CallSites);
 
-        // Combine handlers, middleware, call sites, interceptor availability and generate everything
+        var middlewareDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => MiddlewareGenerator.IsPotentialMiddlewareClass(s),
+                transform: static (ctx, _) => MiddlewareGenerator.GetMiddlewareForGeneration(ctx))
+            .Where(static m => m is not null && m.Count > 0)
+            .SelectMany(static (middlewares, _) => middlewares ?? [])
+            .WithTrackingName(TrackingNames.Middleware);
+
+        var handlerDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsPotentialHandlerClass(s),
+                transform: static (ctx, _) => GetHandlersForGeneration(ctx))
+            .Where(static m => m is not null && m.Count > 0)
+            .SelectMany(static (handlers, _) => handlers ?? [])
+            .WithTrackingName(TrackingNames.Handlers);
+
         var compilationAndData = context.CompilationProvider
             .Combine(handlerDeclarations.Collect())
             .Combine(middlewareDeclarations.Collect())
             .Combine(callSites.Collect())
-            .Combine(interceptorsEnabled);
+            .Combine(interceptionEnabled);
 
         context.RegisterSourceOutput(compilationAndData,
             static (spc, source) => Execute(source.Left.Left.Left.Left, source.Left.Left.Left.Right, source.Left.Left.Right, source.Left.Right, source.Right, spc));
@@ -67,38 +65,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
     {
         return node is ClassDeclarationSyntax { Identifier.ValueText: var name }
                && (name.EndsWith("Handler") || name.EndsWith("Consumer"));
-    }
-
-    private static bool IsInterceptorsEnabled(AnalyzerConfigOptionsProvider provider)
-    {
-        // First, check for explicit InterceptorsNamespaces property (preferred approach)
-        string[] propertyNames =
-        [
-            "build_property.InterceptorsNamespaces",
-            "build_property.InterceptorsPreviewNamespaces"
-        ];
-
-        foreach (string propertyName in propertyNames)
-        {
-            if (provider.GlobalOptions.TryGetValue(propertyName, out string? value) &&
-                !String.IsNullOrEmpty(value))
-            {
-                return true;
-            }
-        }
-
-        // For .NET 9+, interceptors are stable - enable if explicitly configured or targeting net9.0+
-        if (provider.GlobalOptions.TryGetValue("build_property.TargetFramework", out string? targetFramework))
-        {
-            // Enable for .NET 9+ as interceptors are stable there
-            if (targetFramework?.StartsWith("net9") == true ||
-                targetFramework?.StartsWith("net1") == true) // net10+
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static List<HandlerInfo>? GetHandlersForGeneration(GeneratorSyntaxContext context)
@@ -276,7 +242,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             return;
 
         var validHandlers = handlers.ToList();
-        var validMiddlewares = middlewares.IsDefaultOrEmpty ? new List<MiddlewareInfo>() : middlewares.ToList();
+        var validMiddlewares = middlewares.IsDefaultOrEmpty ? [] : middlewares.ToList();
 
         if (validHandlers.Count == 0)
             return;

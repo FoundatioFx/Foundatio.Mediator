@@ -8,15 +8,15 @@ public class GlobalMiddleware
         return (DateTime.UtcNow, DateTime.UtcNow.TimeOfDay);
     }
 
-    public void Finally(object message, Exception? exception, CancellationToken cancellationToken)
+    public void Finally(object message, Exception? exception, DateTime date)
     {
         if (exception != null)
         {
-            Console.WriteLine($"🌍 [GlobalMiddleware] Finally: Error processing {message.GetType().Name}: {exception.Message}");
+            Console.WriteLine($"🌍 [GlobalMiddleware] Finally: Error processing {message.GetType().Name} at {date}: {exception.Message}");
         }
         else
         {
-            Console.WriteLine($"🌍 [GlobalMiddleware] Finally: Successfully completed {message.GetType().Name}");
+            Console.WriteLine($"🌍 [GlobalMiddleware] Finally: Successfully completed {message.GetType().Name} at {date}");
         }
     }
 }

@@ -121,7 +121,7 @@ public class ValidationMiddleware
     }
 }
 
-var user = mediator.InvokeAsync<Result<User>>(new GetUserQuery(userId), cancellationToken);
+var user = await mediator.InvokeAsync<Result<User>>(new GetUserQuery(userId), cancellationToken);
 ```
 
 ## 💉 Dependency Injection Made Simple

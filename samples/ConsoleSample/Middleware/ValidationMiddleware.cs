@@ -4,17 +4,17 @@ using MiniValidation;
 namespace ConsoleSample.Middleware;
 
 /// <summary>
-/// Validation middleware that uses MiniValidator to validate message models before handler execution.
+/// Static validation middleware that uses MiniValidator to validate message models before handler execution.
 /// If validation fails, it short-circuits and returns validation errors as a Result.
 /// </summary>
-public class ValidationMiddleware
+public static class ValidationMiddleware
 {
     /// <summary>
     /// Validates the message before handler execution. If validation fails, returns a short-circuit result.
     /// </summary>
     /// <param name="message">The message to validate.</param>
     /// <returns>A HandlerResult that either continues or short-circuits with validation errors.</returns>
-    public HandlerResult Before(object message)
+    public static HandlerResult Before(object message)
     {
         if (!MiniValidator.TryValidate(message, out var errors))
         {

@@ -777,8 +777,13 @@ internal static class HandlerWrapperGenerator
         string resultVariableName = GetMiddlewareResultVariableName(middleware.MiddlewareTypeName);
         string resultType = GetMiddlewareResultType(middleware);
 
-        source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
-        source.AppendLine();
+        // Only create middleware instance if it's not static
+        if (!middleware.IsStatic)
+        {
+            source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine();
+        }
+
         source.AppendLine($"{resultType} {resultVariableName} = default;");
         source.AppendLine();
         source.AppendLine(GetHandlerResultDeclaration(handler));
@@ -798,12 +803,14 @@ internal static class HandlerWrapperGenerator
                     p.IsCancellationToken ? "cancellationToken" :
                     $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
 
+                string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.BeforeMethod, beforeParams);
+
                 if (middleware.BeforeMethod.IsAsync)
-                    source.AppendLine($"{resultVariableName} = await middlewareInstance.{middleware.BeforeMethod.MethodName}({beforeParams});");
+                    source.AppendLine($"{resultVariableName} = await {beforeMethodCall};");
                 else if (middleware.BeforeMethod.ReturnTypeName != "void")
-                    source.AppendLine($"{resultVariableName} = middlewareInstance.{middleware.BeforeMethod.MethodName}({beforeParams});");
+                    source.AppendLine($"{resultVariableName} = {beforeMethodCall};");
                 else
-                    source.AppendLine($"middlewareInstance.{middleware.BeforeMethod.MethodName}({beforeParams});");
+                    source.AppendLine($"{beforeMethodCall};");
             }
 
             // Only check for HandlerResult if the method can actually return one
@@ -870,14 +877,16 @@ internal static class HandlerWrapperGenerator
                 var methodInfo = middleware.AfterMethod;
                 string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                source.AppendLine($"await middlewareInstance.{methodInfo.MethodName}({args});");
+                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
+                source.AppendLine($"await {afterMethodCall};");
             }
             else if (middleware.AfterMethod != null && !middleware.AfterMethod.IsAsync)
             {
                 var methodInfo = middleware.AfterMethod;
                 string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                source.AppendLine($"middlewareInstance.{methodInfo.MethodName}({args});");
+                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
+                source.AppendLine($"{afterMethodCall};");
             }
 
             if (!IsVoidReturnType(handler.OriginalReturnTypeName))
@@ -909,10 +918,11 @@ internal static class HandlerWrapperGenerator
             {
                 string finallyParams = String.Join(", ", middleware.FinallyMethod.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
+                string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.FinallyMethod, finallyParams);
                 if (middleware.FinallyMethod.IsAsync)
-                    source.AppendLine($"await middlewareInstance.{middleware.FinallyMethod.MethodName}({finallyParams});");
+                    source.AppendLine($"await {finallyMethodCall};");
                 else
-                    source.AppendLine($"middlewareInstance.{middleware.FinallyMethod.MethodName}({finallyParams});");
+                    source.AppendLine($"{finallyMethodCall};");
             }
 
             source.AppendLine("}");
@@ -924,8 +934,13 @@ internal static class HandlerWrapperGenerator
         string resultVariableName = GetMiddlewareResultVariableName(middleware.MiddlewareTypeName);
         string resultType = GetMiddlewareResultType(middleware);
 
-        source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
-        source.AppendLine();
+        // Only create middleware instance if it's not static
+        if (!middleware.IsStatic)
+        {
+            source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
+            source.AppendLine();
+        }
+
         source.AppendLine($"{resultType} {resultVariableName} = default;");
         source.AppendLine();
         source.AppendLine(GetHandlerResultDeclaration(handler));
@@ -943,10 +958,13 @@ internal static class HandlerWrapperGenerator
                     p.IsMessage ? "message" :
                     p.IsCancellationToken ? "cancellationToken" :
                     $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
-                if (!middleware.BeforeMethod.IsAsync)
-                    source.AppendLine($"{resultVariableName} = middlewareInstance.{middleware.BeforeMethod.MethodName}({beforeParams});");
+                string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.BeforeMethod, beforeParams);
+                if (middleware.BeforeMethod.IsAsync)
+                    source.AppendLine($"{resultVariableName} = await {beforeMethodCall};");
+                else if (middleware.BeforeMethod.ReturnTypeName != "void")
+                    source.AppendLine($"{resultVariableName} = {beforeMethodCall};");
                 else
-                    source.AppendLine($"{resultVariableName} = await middlewareInstance.{middleware.BeforeMethod.MethodName}({beforeParams});");
+                    source.AppendLine($"{beforeMethodCall};");
             }
 
             // Only check for HandlerResult if the method can actually return one
@@ -1010,14 +1028,16 @@ internal static class HandlerWrapperGenerator
                 var methodInfo = middleware.AfterMethod;
                 string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                source.AppendLine($"middlewareInstance.{methodInfo.MethodName}({args});");
+                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
+                source.AppendLine($"{afterMethodCall};");
             }
             else if (middleware.AfterMethod != null && middleware.AfterMethod.IsAsync)
             {
                 var methodInfo = middleware.AfterMethod;
                 string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                source.AppendLine($"await middlewareInstance.{methodInfo.MethodName}({args});");
+                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
+                source.AppendLine($"await {afterMethodCall};");
             }
 
             if (IsVoidReturnType(handler.OriginalReturnTypeName))
@@ -1049,10 +1069,11 @@ internal static class HandlerWrapperGenerator
             {
                 string finallyParams = String.Join(", ", middleware.FinallyMethod.Parameters.Select(p =>
                     GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
+                string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.FinallyMethod, finallyParams);
                 if (!middleware.FinallyMethod.IsAsync)
-                    source.AppendLine($"middlewareInstance.{middleware.FinallyMethod.MethodName}({finallyParams});");
+                    source.AppendLine($"{finallyMethodCall};");
                 else
-                    source.AppendLine($"await middlewareInstance.{middleware.FinallyMethod.MethodName}({finallyParams});");
+                    source.AppendLine($"await {finallyMethodCall};");
             }
         }
 
@@ -1070,7 +1091,11 @@ internal static class HandlerWrapperGenerator
             string resultVariableName = GetMiddlewareResultVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
             resultVariableNames[i] = resultVariableName;
-            source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            // Only create middleware instance if it's not static
+            if (!middlewares[i].IsStatic)
+            {
+                source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            }
         }
 
         source.AppendLine();
@@ -1095,7 +1120,6 @@ internal static class HandlerWrapperGenerator
             for (int i = 0; i < middlewares.Count; i++)
             {
                 var middleware = middlewares[i];
-                string middlewareVar = middlewareVariableNames[i];
                 string resultVar = resultVariableNames[i];
                 if (middleware.BeforeMethod != null)
                 {
@@ -1104,12 +1128,13 @@ internal static class HandlerWrapperGenerator
                         p.IsMessage ? "message" :
                         p.IsCancellationToken ? "cancellationToken" :
                         $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
+                    string beforeMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
-                        source.AppendLine($"{resultVar} = await {middlewareVar}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{resultVar} = await {beforeMethodCall};");
                     else if (methodInfo.ReturnTypeName != "void")
-                        source.AppendLine($"{resultVar} = {middlewareVar}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{resultVar} = {beforeMethodCall};");
                     else
-                        source.AppendLine($"{middlewareVar}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{beforeMethodCall};");
                 }
 
                 // Only check for HandlerResult if the method can actually return one
@@ -1173,17 +1198,17 @@ internal static class HandlerWrapperGenerator
             for (int i = 0; i < middlewares.Count; i++)
             {
                 var middleware = middlewares[i];
-                string middlewareVar = middlewareVariableNames[i];
                 string resultVar = resultVariableNames[i];
                 if (middleware.AfterMethod != null)
                 {
                     var methodInfo = middleware.AfterMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
+                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
-                        source.AppendLine($"await {middlewareVar}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"await {afterMethodCall};");
                     else
-                        source.AppendLine($"{middlewareVar}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{afterMethodCall};");
                 }
             }
 
@@ -1221,10 +1246,11 @@ internal static class HandlerWrapperGenerator
                     var methodInfo = middleware.FinallyMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
+                    string finallyMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
-                        source.AppendLine($"await {middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"await {finallyMethodCall};");
                     else
-                        source.AppendLine($"{middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{finallyMethodCall};");
                 }
             }
         }
@@ -1243,7 +1269,11 @@ internal static class HandlerWrapperGenerator
             string resultVariableName = GetMiddlewareResultVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
             resultVariableNames[i] = resultVariableName;
-            source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            // Only create middleware instance if it's not static
+            if (!middlewares[i].IsStatic)
+            {
+                source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
+            }
         }
 
         source.AppendLine();
@@ -1276,12 +1306,13 @@ internal static class HandlerWrapperGenerator
                         p.IsMessage ? "message" :
                         p.IsCancellationToken ? "cancellationToken" :
                         $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
+                    string beforeMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
-                        source.AppendLine($"{resultVar} = await {middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{resultVar} = await {beforeMethodCall};");
                     else if (methodInfo.ReturnTypeName != "void")
-                        source.AppendLine($"{resultVar} = {middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{resultVar} = {beforeMethodCall};");
                     else
-                        source.AppendLine($"{middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{beforeMethodCall};");
                 }
 
                 // Only check for HandlerResult if the method can actually return one
@@ -1353,14 +1384,16 @@ internal static class HandlerWrapperGenerator
                     var methodInfo = middleware.AfterMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    source.AppendLine($"{middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
+                    source.AppendLine($"{afterMethodCall};");
                 }
                 else if (middleware.AfterMethod != null && middleware.AfterMethod.IsAsync)
                 {
                     var methodInfo = middleware.AfterMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    source.AppendLine($"await {middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
+                    source.AppendLine($"await {afterMethodCall};");
                 }
             }
 
@@ -1398,10 +1431,11 @@ internal static class HandlerWrapperGenerator
                     var methodInfo = middleware.FinallyMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
+                    string finallyMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
-                        source.AppendLine($"await {middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"await {finallyMethodCall};");
                     else
-                        source.AppendLine($"{middlewareVariableNames[i]}.{methodInfo.MethodName}({args});");
+                        source.AppendLine($"{finallyMethodCall};");
                 }
             }
         }
@@ -1920,6 +1954,36 @@ internal static class HandlerWrapperGenerator
         else
         {
             return GetSafeCastExpression(hrVariableName, handler, useUnwrappedType);
+        }
+    }
+
+    /// <summary>
+    /// Generates the appropriate method call for middleware (static or instance-based).
+    /// </summary>
+    private static string GenerateMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters)
+    {
+        if (middleware.IsStatic)
+        {
+            return $"{middleware.MiddlewareTypeName}.{method.MethodName}({parameters})";
+        }
+        else
+        {
+            return $"middlewareInstance.{method.MethodName}({parameters})";
+        }
+    }
+
+    /// <summary>
+    /// Generates the appropriate method call for middleware in multi-middleware scenarios (static or instance-based).
+    /// </summary>
+    private static string GenerateMultiMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters, string middlewareVariableName)
+    {
+        if (middleware.IsStatic)
+        {
+            return $"{middleware.MiddlewareTypeName}.{method.MethodName}({parameters})";
+        }
+        else
+        {
+            return $"{middlewareVariableName}.{method.MethodName}({parameters})";
         }
     }
 

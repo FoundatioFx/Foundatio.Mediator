@@ -44,6 +44,11 @@ internal static class MiddlewareGenerator
 
         var middlewares = new List<MiddlewareInfo>();
 
+        // Check if this is a static middleware class
+        // A middleware class is considered static if all its middleware methods are static
+        var allMiddlewareMethods = beforeMethods.Concat(afterMethods).Concat(finallyMethods);
+        bool isStaticMiddleware = allMiddlewareMethods.All(m => m.IsStatic);
+
         // Group methods by message type and collect type information
         var messageTypeInfos = new Dictionary<string, (bool isObjectType, bool isInterfaceType, List<string> interfaceTypes)>();
         var messageTypes = new HashSet<string>();
@@ -111,6 +116,7 @@ internal static class MiddlewareGenerator
                 beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
                 afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
                 finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
+                isStaticMiddleware,
                 order);
 
             middlewares.Add(middleware);
@@ -161,7 +167,8 @@ internal static class MiddlewareGenerator
             method.Name,
             isAsync,
             returnTypeName,
-            parameterInfos);
+            parameterInfos,
+            method.IsStatic);
     }
 
     private static bool HasFoundatioIgnoreAttribute(ISymbol symbol)

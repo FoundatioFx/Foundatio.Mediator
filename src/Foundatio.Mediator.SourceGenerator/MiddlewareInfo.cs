@@ -9,6 +9,7 @@ public class MiddlewareInfo(
     MiddlewareMethodInfo? beforeMethod,
     MiddlewareMethodInfo? afterMethod,
     MiddlewareMethodInfo? finallyMethod,
+    bool isStatic,
     int? order = null)
 {
     public string MiddlewareTypeName { get; } = middlewareTypeName;
@@ -19,6 +20,7 @@ public class MiddlewareInfo(
     public MiddlewareMethodInfo? BeforeMethod { get; } = beforeMethod;
     public MiddlewareMethodInfo? AfterMethod { get; } = afterMethod;
     public MiddlewareMethodInfo? FinallyMethod { get; } = finallyMethod;
+    public bool IsStatic { get; } = isStatic;
     public int? Order { get; } = order;
     public bool IsAsync { get; } = (beforeMethod?.IsAsync == true) || (afterMethod?.IsAsync == true) || (finallyMethod?.IsAsync == true);
 }
@@ -27,10 +29,12 @@ public class MiddlewareMethodInfo(
     string methodName,
     bool isAsync,
     string returnTypeName,
-    List<ParameterInfo> parameters)
+    List<ParameterInfo> parameters,
+    bool isStatic)
 {
     public string MethodName { get; } = methodName;
     public bool IsAsync { get; } = isAsync;
     public string ReturnTypeName { get; } = returnTypeName;
     public List<ParameterInfo> Parameters { get; } = parameters;
+    public bool IsStatic { get; } = isStatic;
 }

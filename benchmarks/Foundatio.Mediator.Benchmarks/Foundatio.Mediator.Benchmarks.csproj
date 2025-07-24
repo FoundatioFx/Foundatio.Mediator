@@ -10,10 +10,12 @@
     <!-- Emit compiler generated files for debugging purposes -->
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <DisableMediatorInterceptors>false</DisableMediatorInterceptors>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
   </PropertyGroup>
 
   <ItemGroup>
+    <CompilerVisibleProperty Include="DisableMediatorInterceptors" />
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
   </ItemGroup>

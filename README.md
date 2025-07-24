@@ -213,22 +213,17 @@ public class LoggingMiddleware
     }
 }
 
-public class ValidationMiddleware
+public static class ValidationMiddleware
 {
-    public HandlerResult Before(object message)
+    public static HandlerResult Before(object message)
     {
-        if (!MiniValidator.TryValidate(message, out var errors))
-        {
-            // Convert validation errors to Result format
-            var validationErrors = errors.SelectMany(kvp =>
-                kvp.Value.Select(errorMessage =>
-                    new ValidationError(kvp.Key, errorMessage))).ToList();
+        if (MiniValidator.TryValidate(message, out var errors))
+            return HandlerResult.Continue();
+        
+        var validationErrors = errors.SelectMany(kvp =>
+            kvp.Value.Select(errorMessage => new ValidationError(kvp.Key, errorMessage))).ToList();
 
-            // Short-circuit handler execution and return validation result
-            return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
-        }
-
-        return HandlerResult.Continue();
+        return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
     }
 }
 ```

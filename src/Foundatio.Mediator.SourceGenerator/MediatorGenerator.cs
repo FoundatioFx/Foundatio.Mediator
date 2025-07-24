@@ -36,8 +36,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         var middlewareDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => MiddlewareGenerator.IsPotentialMiddlewareClass(s),
-                transform: static (ctx, _) => MiddlewareGenerator.GetMiddlewareForGeneration(ctx))
+                predicate: static (s, _) => MiddlewareAnalyzer.IsPotentialMiddlewareClass(s),
+                transform: static (ctx, _) => MiddlewareAnalyzer.GetMiddlewareForGeneration(ctx))
             .Where(static m => m is not null && m.Count > 0)
             .SelectMany(static (middlewares, _) => middlewares ?? [])
             .WithTrackingName(TrackingNames.Middleware);

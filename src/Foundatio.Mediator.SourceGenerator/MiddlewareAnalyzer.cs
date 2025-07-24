@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Foundatio.Mediator;
 
-internal static class MiddlewareGenerator
+internal static class MiddlewareAnalyzer
 {
     public static bool IsPotentialMiddlewareClass(SyntaxNode node)
     {

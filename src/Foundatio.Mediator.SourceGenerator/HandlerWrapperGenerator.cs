@@ -180,13 +180,42 @@ internal static class HandlerWrapperGenerator
         return returnTypeName == "void" || returnTypeName == "System.Threading.Tasks.Task";
     }
 
+    /// <summary>
+    /// Unwraps Task&lt;T&gt; and ValueTask&lt;T&gt; to get the inner type T.
+    /// Returns the original type if it's not a task type.
+    /// </summary>
+    private static string UnwrapTaskType(string returnType)
+    {
+        // Handle System.Threading.Tasks.Task<T>
+        if (returnType.StartsWith("System.Threading.Tasks.Task<") && returnType.EndsWith(">"))
+        {
+            return returnType.Substring("System.Threading.Tasks.Task<".Length, returnType.Length - "System.Threading.Tasks.Task<".Length - 1);
+        }
+        // Handle Task<T>
+        else if (returnType.StartsWith("Task<") && returnType.EndsWith(">"))
+        {
+            return returnType.Substring(5, returnType.Length - 6); // Remove "Task<" and ">"
+        }
+        // Handle System.Threading.Tasks.ValueTask<T>
+        else if (returnType.StartsWith("System.Threading.Tasks.ValueTask<") && returnType.EndsWith(">"))
+        {
+            return returnType.Substring("System.Threading.Tasks.ValueTask<".Length, returnType.Length - "System.Threading.Tasks.ValueTask<".Length - 1);
+        }
+        // Handle ValueTask<T>
+        else if (returnType.StartsWith("ValueTask<") && returnType.EndsWith(">"))
+        {
+            return returnType.Substring(10, returnType.Length - 11); // Remove "ValueTask<" and ">"
+        }
+
+        return returnType;
+    }
+
     private static string GetUnwrappedReturnType(HandlerInfo handler)
     {
         // If it's an async method returning Task<T>, we want just T
-        if (handler.IsAsync && handler.OriginalReturnTypeName.StartsWith("System.Threading.Tasks.Task<"))
+        if (handler.IsAsync)
         {
-            string innerType = handler.OriginalReturnTypeName.Substring("System.Threading.Tasks.Task<".Length);
-            return innerType.Substring(0, innerType.Length - 1); // Remove the closing >
+            return UnwrapTaskType(handler.OriginalReturnTypeName);
         }
 
         // For other types, return as-is
@@ -220,12 +249,6 @@ internal static class HandlerWrapperGenerator
 
         // For sync handlers without async middleware, keep the original return type as-is
         return originalReturnType;
-    }
-
-    public static string GetStaticMethodName(HandlerInfo handler)
-    {
-        // Use consistent method name for the static handler
-        return "HandleAsync";
     }
 
     private static string GenerateMethodCall(HandlerInfo handler, string handlerVariable, string messageVariable, string cancellationTokenVariable)
@@ -291,11 +314,6 @@ internal static class HandlerWrapperGenerator
 
         string typeName = returnTypeName.Replace("System.", "").Replace("?", "");
         return !valueTypes.Contains(typeName) && !typeName.Contains("Task<") || returnTypeName.Contains("?");
-    }
-
-    public static string GetSyncMethodName(HandlerInfo handler)
-    {
-        return $"HandleSyncGeneric_{handler.MessageTypeName.Replace(".", "_").Replace("+", "_")}";
     }
 
     private static void GenerateAsyncHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
@@ -540,87 +558,25 @@ internal static class HandlerWrapperGenerator
         // Generate method signature
         string returnType = GenerateInterceptorReturnType(interceptorIsAsync, isGeneric, expectedResponseTypeName);
         string parameters = "this global::Foundatio.Mediator.IMediator mediator, object message, global::System.Threading.CancellationToken cancellationToken = default";
-
         string stronglyTypedMethodName = GetStronglyTypedMethodName(handler);
 
-        // Generate method signature based on whether the interceptor should be async
-        if (interceptorIsAsync)
+        string asyncModifier = interceptorIsAsync ? "async " : "";
+        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethodName}({parameters})")
+              .AppendLine("{");
+
+        using (source.Indent())
         {
-            source.AppendLine($"public static async {returnType} {interceptorMethodName}({parameters})")
-                  .AppendLine("{");
+            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
+                  .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
 
-            using (source.Indent())
-            {
-                source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
-                      .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
+            // Generate the appropriate method call based on async/sync combinations
+            string awaitKeyword = (interceptorIsAsync && wrapperIsAsync) ? "await " : "";
+            string returnKeyword = isGeneric ? "return " : "";
 
-                if (wrapperIsAsync)
-                {
-                    // Both interceptor and wrapper are async
-                    if (isGeneric)
-                    {
-                        source.AppendLine($"return await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                    else
-                    {
-                        source.AppendLine($"await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                }
-                else
-                {
-                    // Interceptor is async but wrapper is sync (shouldn't happen with current logic)
-                    if (isGeneric)
-                    {
-                        source.AppendLine($"return {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                    else
-                    {
-                        source.AppendLine($"{stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                }
-            }
-
-            source.AppendLine("}");
+            source.AppendLine($"{returnKeyword}{awaitKeyword}{stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
         }
-        else
-        {
-            // For sync interceptors, generate sync method signature
-            source.AppendLine($"public static {returnType} {interceptorMethodName}({parameters})")
-                  .AppendLine("{");
 
-            using (source.Indent())
-            {
-                source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
-                      .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
-
-                if (wrapperIsAsync)
-                {
-                    // Interceptor is sync but wrapper is async - need to wait for result
-                    if (isGeneric)
-                    {
-                        source.AppendLine($"return await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                    else
-                    {
-                        source.AppendLine($"await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                }
-                else
-                {
-                    // Both interceptor and wrapper are sync
-                    if (isGeneric)
-                    {
-                        source.AppendLine($"return {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                    else
-                    {
-                        source.AppendLine($"{stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
-                    }
-                }
-            }
-
-            source.AppendLine("}");
-        }
+        source.AppendLine("}");
     }
 
     private static string GenerateInterceptorAttribute(CallSiteInfo callSite)
@@ -691,40 +647,19 @@ internal static class HandlerWrapperGenerator
         bool hasAsyncMiddleware = applicableMiddlewares.Any(m => m.IsAsync);
         bool needsAsync = handler.IsAsync || hasAsyncMiddleware;
 
-        if (applicableMiddlewares.Count == 1)
+        // Check compatibility for all middleware
+        foreach (var middleware in applicableMiddlewares)
         {
-            // Single middleware case
-            var middleware = applicableMiddlewares[0];
-
-            // Check compatibility
             if (!IsMiddlewareCompatibleWithHandler(middleware, handler))
             {
                 // Generate error or fallback to direct handler execution
                 GenerateDirectHandlerExecution(source, handler);
                 return;
             }
+        }
 
-            if (needsAsync)
-            {
-                GenerateAsyncSingleMiddlewareExecution(source, handler, middleware);
-            }
-            else
-            {
-                GenerateSyncSingleMiddlewareExecution(source, handler, middleware);
-            }
-        }
-        else
-        {
-            // Multiple middleware case
-            if (needsAsync)
-            {
-                GenerateAsyncMultipleMiddlewareExecution(source, handler, applicableMiddlewares);
-            }
-            else
-            {
-                GenerateSyncMultipleMiddlewareExecution(source, handler, applicableMiddlewares);
-            }
-        }
+        // Use unified middleware execution for both single and multiple middleware cases
+        GenerateMiddlewareExecutionCore(source, handler, applicableMiddlewares, needsAsync);
     }
 
     private static bool IsMiddlewareCompatibleWithHandler(MiddlewareInfo middleware, HandlerInfo handler)
@@ -772,315 +707,7 @@ internal static class HandlerWrapperGenerator
         }
     }
 
-    private static void GenerateAsyncSingleMiddlewareExecution(IndentedStringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
-    {
-        string resultVariableName = GetMiddlewareResultVariableName(middleware.MiddlewareTypeName);
-        string resultType = GetMiddlewareResultType(middleware);
-
-        // Only create middleware instance if it's not static
-        if (!middleware.IsStatic)
-        {
-            source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
-            source.AppendLine();
-        }
-
-        source.AppendLine($"{resultType} {resultVariableName} = default;");
-        source.AppendLine();
-        source.AppendLine(GetHandlerResultDeclaration(handler));
-        source.AppendLine(GetExceptionDeclaration());
-        source.AppendLine();
-        source.AppendLine("try");
-
-        using (source.Indent())
-        {
-            source.AppendLine("{");
-
-            // Before middleware
-            if (middleware.BeforeMethod != null)
-            {
-                string beforeParams = String.Join(", ", middleware.BeforeMethod.Parameters.Select(p =>
-                    p.IsMessage ? "message" :
-                    p.IsCancellationToken ? "cancellationToken" :
-                    $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
-
-                string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.BeforeMethod, beforeParams);
-
-                if (middleware.BeforeMethod.IsAsync)
-                    source.AppendLine($"{resultVariableName} = await {beforeMethodCall};");
-                else if (middleware.BeforeMethod.ReturnTypeName != "void")
-                    source.AppendLine($"{resultVariableName} = {beforeMethodCall};");
-                else
-                    source.AppendLine($"{beforeMethodCall};");
-            }
-
-            // Only check for HandlerResult if the method can actually return one
-            if (CanReturnHandlerResult(middleware.BeforeMethod))
-            {
-                source.AppendLine(GenerateShortCircuitCheck(middleware, resultVariableName, "hr"));
-
-                using (source.Indent())
-                {
-                    source.AppendLine("{");
-
-                    if (IsVoidReturnType(handler.OriginalReturnTypeName))
-                    {
-                        source.AppendLine("return;");
-                    }
-                    else
-                    {
-                        // For async wrapper methods, return the unwrapped value directly
-                        source.AppendLine($"return {GetHandlerResultValueExpression(middleware, resultVariableName, "hr", handler, useUnwrappedType: true)};");
-                    }
-
-                    source.AppendLine("}");
-                }
-            }
-
-            // Handler execution
-            string methodCall;
-            if (handler.IsStatic)
-            {
-                methodCall = GenerateStaticMethodCall(handler, "message", "cancellationToken", "serviceProvider");
-            }
-            else
-            {
-                source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
-                methodCall = GenerateMethodCall(handler, "handlerInstance", "message", "cancellationToken");
-            }
-
-            if (IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"{methodCall};");
-                }
-            }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"handlerResult = await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"handlerResult = {methodCall};");
-                }
-            }
-
-            // After middleware
-            if (middleware.AfterMethod != null && middleware.AfterMethod.IsAsync)
-            {
-                var methodInfo = middleware.AfterMethod;
-                string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
-                source.AppendLine($"await {afterMethodCall};");
-            }
-            else if (middleware.AfterMethod != null && !middleware.AfterMethod.IsAsync)
-            {
-                var methodInfo = middleware.AfterMethod;
-                string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
-                source.AppendLine($"{afterMethodCall};");
-            }
-
-            if (!IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                source.AppendLine("return handlerResult;");
-            }
-
-            source.AppendLine("}");
-        }
-
-        source.AppendLine("catch (Exception ex)");
-
-        using (source.Indent())
-        {
-            source.AppendLine("{")
-                  .AppendLine("exception = ex;")
-                  .AppendLine("throw;")
-                  .AppendLine("}");
-        }
-
-        source.AppendLine("finally");
-
-        using (source.Indent())
-        {
-            source.AppendLine("{");
-
-            // Finally middleware
-            if (middleware.FinallyMethod != null)
-            {
-                string finallyParams = String.Join(", ", middleware.FinallyMethod.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.FinallyMethod, finallyParams);
-                if (middleware.FinallyMethod.IsAsync)
-                    source.AppendLine($"await {finallyMethodCall};");
-                else
-                    source.AppendLine($"{finallyMethodCall};");
-            }
-
-            source.AppendLine("}");
-        }
-    }
-
-    private static void GenerateSyncSingleMiddlewareExecution(IndentedStringBuilder source, HandlerInfo handler, MiddlewareInfo middleware)
-    {
-        string resultVariableName = GetMiddlewareResultVariableName(middleware.MiddlewareTypeName);
-        string resultType = GetMiddlewareResultType(middleware);
-
-        // Only create middleware instance if it's not static
-        if (!middleware.IsStatic)
-        {
-            source.AppendLine($"var middlewareInstance = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middleware.MiddlewareTypeName}>(serviceProvider);");
-            source.AppendLine();
-        }
-
-        source.AppendLine($"{resultType} {resultVariableName} = default;");
-        source.AppendLine();
-        source.AppendLine(GetHandlerResultDeclaration(handler));
-        source.AppendLine(GetExceptionDeclaration());
-        source.AppendLine();
-        source.AppendLine("try");
-        source.AppendLine("{");
-
-        using (source.Indent())
-        {
-            // Before middleware
-            if (middleware.BeforeMethod != null)
-            {
-                string beforeParams = String.Join(", ", middleware.BeforeMethod.Parameters.Select(p =>
-                    p.IsMessage ? "message" :
-                    p.IsCancellationToken ? "cancellationToken" :
-                    $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
-                string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.BeforeMethod, beforeParams);
-                if (middleware.BeforeMethod.IsAsync)
-                    source.AppendLine($"{resultVariableName} = await {beforeMethodCall};");
-                else if (middleware.BeforeMethod.ReturnTypeName != "void")
-                    source.AppendLine($"{resultVariableName} = {beforeMethodCall};");
-                else
-                    source.AppendLine($"{beforeMethodCall};");
-            }
-
-            // Only check for HandlerResult if the method can actually return one
-            if (CanReturnHandlerResult(middleware.BeforeMethod))
-            {
-                source.AppendLine(GenerateShortCircuitCheck(middleware, resultVariableName, "hr"));
-                source.AppendLine("{");
-                using (source.Indent())
-                {
-                    if (IsVoidReturnType(handler.OriginalReturnTypeName))
-                    {
-                        source.AppendLine("return;");
-                    }
-                    else
-                    {
-                        // For sync handlers, return the value directly
-                        source.AppendLine($"return {GetHandlerResultValueExpression(middleware, resultVariableName, "hr", handler)};");
-                    }
-                }
-                source.AppendLine("}");
-            }
-
-            // Handler execution
-            string methodCall;
-            if (handler.IsStatic)
-            {
-                methodCall = GenerateStaticMethodCall(handler, "message", "cancellationToken", "serviceProvider");
-            }
-            else
-            {
-                source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
-                methodCall = GenerateMethodCall(handler, "handlerInstance", "message", "cancellationToken");
-            }
-
-            if (IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"{methodCall};");
-                }
-            }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"handlerResult = await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"handlerResult = {methodCall};");
-                }
-            }
-
-            // After middleware
-            if (middleware.AfterMethod != null && !middleware.AfterMethod.IsAsync)
-            {
-                var methodInfo = middleware.AfterMethod;
-                string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
-                source.AppendLine($"{afterMethodCall};");
-            }
-            else if (middleware.AfterMethod != null && middleware.AfterMethod.IsAsync)
-            {
-                var methodInfo = middleware.AfterMethod;
-                string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args);
-                source.AppendLine($"await {afterMethodCall};");
-            }
-
-            if (IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                // For void methods, don't return anything
-            }
-            else
-            {
-                source.AppendLine("return handlerResult;");
-            }
-        }
-
-        source.AppendLine("}");
-        source.AppendLine("catch (Exception ex)");
-        source.AppendLine("{");
-        using (source.Indent())
-        {
-            source.AppendLine("exception = ex;");
-            source.AppendLine("throw;");
-        }
-        source.AppendLine("}");
-        source.AppendLine("finally");
-        source.AppendLine("{");
-
-        using (source.Indent())
-        {
-            // Finally middleware
-            if (middleware.FinallyMethod != null)
-            {
-                string finallyParams = String.Join(", ", middleware.FinallyMethod.Parameters.Select(p =>
-                    GenerateSingleMiddlewareParameterExpression(p, middleware, resultVariableName)));
-                string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, middleware.FinallyMethod, finallyParams);
-                if (!middleware.FinallyMethod.IsAsync)
-                    source.AppendLine($"{finallyMethodCall};");
-                else
-                    source.AppendLine($"await {finallyMethodCall};");
-            }
-        }
-
-        source.AppendLine("}");
-    }
-
-    private static void GenerateAsyncMultipleMiddlewareExecution(IndentedStringBuilder source, HandlerInfo handler, List<MiddlewareInfo> middlewares)
+    private static void GenerateMiddlewareExecutionCore(IndentedStringBuilder source, HandlerInfo handler, List<MiddlewareInfo> middlewares, bool isAsync)
     {
         // Generate middleware instances with descriptive names
         string[] middlewareVariableNames = new string[middlewares.Count];
@@ -1128,7 +755,7 @@ internal static class HandlerWrapperGenerator
                         p.IsMessage ? "message" :
                         p.IsCancellationToken ? "cancellationToken" :
                         $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
-                    string beforeMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
+                    string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"{resultVar} = await {beforeMethodCall};");
                     else if (methodInfo.ReturnTypeName != "void")
@@ -1204,7 +831,7 @@ internal static class HandlerWrapperGenerator
                     var methodInfo = middleware.AfterMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
+                    string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"await {afterMethodCall};");
                     else
@@ -1246,192 +873,7 @@ internal static class HandlerWrapperGenerator
                     var methodInfo = middleware.FinallyMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
                         GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    string finallyMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
-                    if (methodInfo.IsAsync)
-                        source.AppendLine($"await {finallyMethodCall};");
-                    else
-                        source.AppendLine($"{finallyMethodCall};");
-                }
-            }
-        }
-
-        source.AppendLine("}");
-    }
-
-    private static void GenerateSyncMultipleMiddlewareExecution(IndentedStringBuilder source, HandlerInfo handler, List<MiddlewareInfo> middlewares)
-    {
-        // Generate middleware instances with descriptive names
-        string[] middlewareVariableNames = new string[middlewares.Count];
-        string[] resultVariableNames = new string[middlewares.Count];
-        for (int i = 0; i < middlewares.Count; i++)
-        {
-            string variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
-            string resultVariableName = GetMiddlewareResultVariableName(middlewares[i].MiddlewareTypeName);
-            middlewareVariableNames[i] = variableName;
-            resultVariableNames[i] = resultVariableName;
-            // Only create middleware instance if it's not static
-            if (!middlewares[i].IsStatic)
-            {
-                source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
-            }
-        }
-
-        source.AppendLine();
-
-        // Generate individual result variables instead of an array
-        for (int i = 0; i < middlewares.Count; i++)
-        {
-            string resultType = GetMiddlewareResultType(middlewares[i]);
-            source.AppendLine($"{resultType} {resultVariableNames[i]} = default;");
-        }
-
-        source.AppendLine();
-        source.AppendLine(GetHandlerResultDeclaration(handler));
-        source.AppendLine(GetExceptionDeclaration());
-        source.AppendLine();
-        source.AppendLine("try");
-        source.AppendLine("{");
-
-        using (source.Indent())
-        {
-            // Before middleware (in order)
-            for (int i = 0; i < middlewares.Count; i++)
-            {
-                var middleware = middlewares[i];
-                string resultVar = resultVariableNames[i];
-                if (middleware.BeforeMethod != null)
-                {
-                    var methodInfo = middleware.BeforeMethod;
-                    string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        p.IsMessage ? "message" :
-                        p.IsCancellationToken ? "cancellationToken" :
-                        $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
-                    string beforeMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
-                    if (methodInfo.IsAsync)
-                        source.AppendLine($"{resultVar} = await {beforeMethodCall};");
-                    else if (methodInfo.ReturnTypeName != "void")
-                        source.AppendLine($"{resultVar} = {beforeMethodCall};");
-                    else
-                        source.AppendLine($"{beforeMethodCall};");
-                }
-
-                // Only check for HandlerResult if the method can actually return one
-                if (CanReturnHandlerResult(middleware.BeforeMethod))
-                {
-                    source.AppendLine(GenerateShortCircuitCheck(middleware, resultVar, $"hr{i}"));
-                    source.AppendLine("{");
-                    using (source.Indent())
-                    {
-                        if (IsVoidReturnType(handler.OriginalReturnTypeName))
-                        {
-                            source.AppendLine("return;");
-                        }
-                        else
-                        {
-                            source.AppendLine($"return {GetHandlerResultValueExpression(middleware, resultVar, $"hr{i}", handler)};");
-                        }
-                    }
-                    source.AppendLine("}");
-                }
-            }
-
-            source.AppendLine();
-
-            // Handler execution
-            string methodCall;
-            if (handler.IsStatic)
-            {
-                methodCall = GenerateStaticMethodCall(handler, "message", "cancellationToken", "serviceProvider");
-            }
-            else
-            {
-                source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
-                methodCall = GenerateMethodCall(handler, "handlerInstance", "message", "cancellationToken");
-            }
-
-            if (IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                if (handler.IsAsync)
-                {
-                    // In sync wrapper calling async handler, use GetAwaiter().GetResult()
-                    source.AppendLine($"await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"{methodCall};");
-                }
-                }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    // In sync wrapper calling async handler, use GetAwaiter().GetResult()
-                    source.AppendLine($"handlerResult = await {methodCall};");
-                }
-                else
-                {
-                    source.AppendLine($"handlerResult = {methodCall};");
-                }
-            }
-
-            // After middleware (in order)
-            for (int i = 0; i < middlewares.Count; i++)
-            {
-                var middleware = middlewares[i];
-                string resultVar = resultVariableNames[i];
-                if (middleware.AfterMethod != null && !middleware.AfterMethod.IsAsync)
-                {
-                    var methodInfo = middleware.AfterMethod;
-                    string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
-                    source.AppendLine($"{afterMethodCall};");
-                }
-                else if (middleware.AfterMethod != null && middleware.AfterMethod.IsAsync)
-                {
-                    var methodInfo = middleware.AfterMethod;
-                    string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    string afterMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
-                    source.AppendLine($"await {afterMethodCall};");
-                }
-            }
-
-            if (IsVoidReturnType(handler.OriginalReturnTypeName))
-            {
-                // For void methods, don't return anything
-            }
-            else
-            {
-                source.AppendLine($"return ({GetUnwrappedReturnType(handler)})handlerResult;");
-            }
-        }
-
-        source.AppendLine("}");
-        source.AppendLine("catch (Exception ex)");
-        source.AppendLine("{");
-        using (source.Indent())
-        {
-            source.AppendLine("exception = ex;");
-            source.AppendLine("throw;");
-        }
-        source.AppendLine("}");
-        source.AppendLine("finally");
-        source.AppendLine("{");
-
-        using (source.Indent())
-        {
-            // Finally middleware (in reverse order)
-            for (int i = middlewares.Count - 1; i >= 0; i--)
-            {
-                var middleware = middlewares[i];
-                string resultVar = resultVariableNames[i];
-                if (middleware.FinallyMethod != null)
-                {
-                    var methodInfo = middleware.FinallyMethod;
-                    string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
-                    string finallyMethodCall = GenerateMultiMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
+                    string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"await {finallyMethodCall};");
                     else
@@ -1525,10 +967,24 @@ internal static class HandlerWrapperGenerator
     /// </summary>
     private static string GetMiddlewareVariableName(string middlewareTypeName)
     {
+        return GetCamelCaseTypeName(middlewareTypeName);
+    }
+
+    private static string GetMiddlewareResultVariableName(string middlewareTypeName)
+    {
+        return GetCamelCaseTypeName(middlewareTypeName) + "Result";
+    }
+
+    /// <summary>
+    /// Converts a fully qualified type name to camelCase.
+    /// E.g., "ConsoleSample.Middleware.GlobalMiddleware" -> "globalMiddleware"
+    /// </summary>
+    private static string GetCamelCaseTypeName(string typeName)
+    {
         // Extract the simple type name (last part after the last dot)
-        string simpleTypeName = middlewareTypeName.Contains('.')
-            ? middlewareTypeName.Substring(middlewareTypeName.LastIndexOf('.') + 1)
-            : middlewareTypeName;
+        string simpleTypeName = typeName.Contains('.')
+            ? typeName.Substring(typeName.LastIndexOf('.') + 1)
+            : typeName;
 
         // Convert to camelCase
         if (String.IsNullOrEmpty(simpleTypeName))
@@ -1536,21 +992,6 @@ internal static class HandlerWrapperGenerator
 
         // Convert first character to lowercase
         return Char.ToLowerInvariant(simpleTypeName[0]) + simpleTypeName.Substring(1);
-    }
-
-    private static string GetMiddlewareResultVariableName(string middlewareTypeName)
-    {
-        // Extract the simple type name (last part after the last dot)
-        string simpleTypeName = middlewareTypeName.Contains('.')
-            ? middlewareTypeName.Substring(middlewareTypeName.LastIndexOf('.') + 1)
-            : middlewareTypeName;
-
-        // Convert to camelCase and append "Result"
-        if (String.IsNullOrEmpty(simpleTypeName))
-            return "middlewareResult";
-
-        // Convert first character to lowercase and append "Result"
-        return Char.ToLowerInvariant(simpleTypeName[0]) + simpleTypeName.Substring(1) + "Result";
     }
 
     /// <summary>
@@ -1582,50 +1023,6 @@ internal static class HandlerWrapperGenerator
     /// Generates the appropriate parameter expression for middleware methods,
     /// including handling tuple field extraction from Before method results.
     /// </summary>
-    private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, int middlewareIndex)
-    {
-        if (parameter.IsMessage)
-            return "message";
-        if (parameter.IsCancellationToken)
-            return "cancellationToken";
-        if (parameter.Name == "beforeResult")
-            return $"beforeResults[{middlewareIndex}]";
-        if (parameter.Name == "handlerResult")
-            return "handlerResult";
-        if (parameter.Name == "exception")
-            return "exception";
-
-        // Check if this parameter matches the Before method return type or a tuple field
-        if (middleware.BeforeMethod != null)
-        {
-            string beforeReturnType = middleware.BeforeMethod.ReturnTypeName;
-
-            // Direct type match
-            if (parameter.TypeName == beforeReturnType)
-            {
-                return $"(({parameter.TypeName})beforeResults[{middlewareIndex}]!)";
-            }
-
-            // Tuple field extraction
-            if (beforeReturnType.StartsWith("(") && beforeReturnType.EndsWith(")"))
-            {
-                var tupleFields = ParseTupleFields(beforeReturnType);
-                for (int fieldIndex = 0; fieldIndex < tupleFields.Count; fieldIndex++)
-                {
-                    var field = tupleFields[fieldIndex];
-                    if (field.Type == parameter.TypeName)
-                    {
-                        // Generate tuple field access: ((TupleType)beforeResults[i]).Item1
-                        return $"(({beforeReturnType})beforeResults[{middlewareIndex}]!).Item{fieldIndex + 1}";
-                    }
-                }
-            }
-        }
-
-        // Fall back to DI resolution
-        return $"serviceProvider.GetRequiredService<{parameter.TypeName}>()";
-    }
-
     private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName)
     {
         if (parameter.IsMessage)
@@ -1721,59 +1118,6 @@ internal static class HandlerWrapperGenerator
         return fields;
     }
 
-    /// <summary>
-    /// Generates the appropriate parameter expression for single middleware methods,
-    /// including handling tuple field extraction from Before method results.
-    /// </summary>
-    private static string GenerateSingleMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware)
-    {
-        return GenerateSingleMiddlewareParameterExpression(parameter, middleware, "beforeResult");
-    }
-
-    private static string GenerateSingleMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName)
-    {
-        if (parameter.IsMessage)
-            return "message";
-        if (parameter.IsCancellationToken)
-            return "cancellationToken";
-        if (parameter.Name == "beforeResult")
-            return resultVariableName;
-        if (parameter.Name == "handlerResult")
-            return "handlerResult";
-        if (parameter.Name == "exception")
-            return "exception";
-
-        // Check if this parameter matches the Before method return type or a tuple field
-        if (middleware.BeforeMethod != null)
-        {
-            string beforeReturnType = middleware.BeforeMethod.ReturnTypeName;
-
-            // Direct type match
-            if (parameter.TypeName == beforeReturnType)
-            {
-                return $"(({parameter.TypeName}){resultVariableName}!)";
-            }
-
-            // Tuple field extraction
-            if (beforeReturnType.StartsWith("(") && beforeReturnType.EndsWith(")"))
-            {
-                var tupleFields = ParseTupleFields(beforeReturnType);
-                for (int fieldIndex = 0; fieldIndex < tupleFields.Count; fieldIndex++)
-                {
-                    var field = tupleFields[fieldIndex];
-                    if (field.Type == parameter.TypeName)
-                    {
-                        // Generate tuple field access: ((TupleType)resultVariable).Item1
-                        return $"(({beforeReturnType}){resultVariableName}!).Item{fieldIndex + 1}";
-                    }
-                }
-            }
-        }
-
-        // Fall back to DI resolution
-        return $"serviceProvider.GetRequiredService<{parameter.TypeName}>()";
-    }
-
     private static void AddGeneratedFileHeader(IndentedStringBuilder source)
     {
         source.AppendLine("// <auto-generated>");
@@ -1850,20 +1194,12 @@ internal static class HandlerWrapperGenerator
         // since we'll await the call and store the result
         if (middleware.BeforeMethod.IsAsync)
         {
-            // Handle System.Threading.Tasks.Task<T>
-            if (returnType.StartsWith("System.Threading.Tasks.Task<") && returnType.EndsWith(">"))
+            returnType = UnwrapTaskType(returnType);
+
+            // Handle bare Task (no return value)
+            if (returnType == "System.Threading.Tasks.Task" || returnType == "Task")
             {
-                returnType = returnType.Substring("System.Threading.Tasks.Task<".Length, returnType.Length - "System.Threading.Tasks.Task<".Length - 1);
-            }
-            // Handle Task<T>
-            else if (returnType.StartsWith("Task<") && returnType.EndsWith(">"))
-            {
-                returnType = returnType.Substring(5, returnType.Length - 6); // Remove "Task<" and ">"
-            }
-            // Handle System.Threading.Tasks.Task or Task
-            else if (returnType == "System.Threading.Tasks.Task" || returnType == "Task")
-            {
-                return "object?"; // Task with no return value
+                return "object?";
             }
         }
 
@@ -1889,16 +1225,7 @@ internal static class HandlerWrapperGenerator
         // Handle async methods - strip Task<T> wrapper
         if (middleware.BeforeMethod.IsAsync)
         {
-            // Handle System.Threading.Tasks.Task<T>
-            if (returnType.StartsWith("System.Threading.Tasks.Task<") && returnType.EndsWith(">"))
-            {
-                returnType = returnType.Substring("System.Threading.Tasks.Task<".Length, returnType.Length - "System.Threading.Tasks.Task<".Length - 1);
-            }
-            // Handle Task<T>
-            else if (returnType.StartsWith("Task<") && returnType.EndsWith(">"))
-            {
-                returnType = returnType.Substring(5, returnType.Length - 6); // Remove "Task<" and ">"
-            }
+            returnType = UnwrapTaskType(returnType);
         }
 
         // If the return type is exactly HandlerResult (not nullable), we can directly check it
@@ -1928,16 +1255,7 @@ internal static class HandlerWrapperGenerator
         // Handle async methods - strip Task<T> wrapper
         if (middleware.BeforeMethod.IsAsync)
         {
-            // Handle System.Threading.Tasks.Task<T>
-            if (returnType.StartsWith("System.Threading.Tasks.Task<") && returnType.EndsWith(">"))
-            {
-                returnType = returnType.Substring("System.Threading.Tasks.Task<".Length, returnType.Length - "System.Threading.Tasks.Task<".Length - 1);
-            }
-            // Handle Task<T>
-            else if (returnType.StartsWith("Task<") && returnType.EndsWith(">"))
-            {
-                returnType = returnType.Substring(5, returnType.Length - 6); // Remove "Task<" and ">"
-            }
+            returnType = UnwrapTaskType(returnType);
         }
 
         // If the return type is exactly HandlerResult (not nullable), we can directly access it
@@ -1960,22 +1278,7 @@ internal static class HandlerWrapperGenerator
     /// <summary>
     /// Generates the appropriate method call for middleware (static or instance-based).
     /// </summary>
-    private static string GenerateMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters)
-    {
-        if (middleware.IsStatic)
-        {
-            return $"{middleware.MiddlewareTypeName}.{method.MethodName}({parameters})";
-        }
-        else
-        {
-            return $"middlewareInstance.{method.MethodName}({parameters})";
-        }
-    }
-
-    /// <summary>
-    /// Generates the appropriate method call for middleware in multi-middleware scenarios (static or instance-based).
-    /// </summary>
-    private static string GenerateMultiMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters, string middlewareVariableName)
+    private static string GenerateMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters, string middlewareVariableName)
     {
         if (middleware.IsStatic)
         {
@@ -1989,13 +1292,12 @@ internal static class HandlerWrapperGenerator
 
     private static bool IsResultType(string returnTypeName)
     {
-        return returnTypeName == "Result" ||
-               returnTypeName == "Foundatio.Mediator.Result" ||
-               returnTypeName.StartsWith("Result<") ||
-               returnTypeName.StartsWith("Foundatio.Mediator.Result<") ||
-               returnTypeName.StartsWith("System.Threading.Tasks.Task<Result<") ||
-               returnTypeName.StartsWith("System.Threading.Tasks.Task<Foundatio.Mediator.Result<") ||
-               returnTypeName.StartsWith("Task<Result<") ||
-               returnTypeName.StartsWith("Task<Foundatio.Mediator.Result<");
+        // Unwrap any task types to get the core type
+        string coreType = UnwrapTaskType(returnTypeName);
+
+        return coreType == "Result" ||
+               coreType == "Foundatio.Mediator.Result" ||
+               coreType.StartsWith("Result<") ||
+               coreType.StartsWith("Foundatio.Mediator.Result<");
     }
 }

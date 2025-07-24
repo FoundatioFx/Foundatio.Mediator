@@ -1,7 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
 using Foundatio.Mediator.Utility;
 
@@ -14,8 +13,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
     {
         var interceptionEnabledSetting = context.AnalyzerConfigOptionsProvider
             .Select((x, _) =>
-                x.GlobalOptions.TryGetValue($"build_property.{Constants.EnabledPropertyName}", out string? enableSwitch)
-                && !enableSwitch.Equals("false", StringComparison.Ordinal));
+                x.GlobalOptions.TryGetValue($"build_property.{Constants.DisabledPropertyName}", out string? disableSwitch)
+                && disableSwitch.Equals("true", StringComparison.Ordinal));
 
         var csharpSufficient = context.CompilationProvider
             .Select((x,_) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
@@ -25,7 +24,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .WithTrackingName(TrackingNames.Settings);
 
         var interceptionEnabled = settings
-            .Select((x, _) => x is { Left: true, Right: true });
+            .Select((x, _) => x is { Left: false, Right: true });
 
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -181,7 +180,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 isAsync,
                 handlerMethod.IsStatic,
                 parameterInfos,
-                messageTypeHierarchy));
+                messageTypeHierarchy,
+                [])); // Empty call sites initially - will be populated later
         }
 
         return handlers.Count > 0 ? handlers : null;
@@ -247,23 +247,58 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         if (validHandlers.Count == 0)
             return;
 
+        // Group call sites by message type for easier lookup
+        var callSitesByMessage = callSites.ToList()
+            .Where(cs => !cs.IsPublish) // Only include Invoke call sites for interceptors
+            .GroupBy(cs => cs.MessageTypeName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Update handlers with their associated call sites
+        var handlersWithCallSites = new List<HandlerInfo>();
+        foreach (var handler in validHandlers)
+        {
+            callSitesByMessage.TryGetValue(handler.MessageTypeName, out var handlerCallSites);
+            handlerCallSites ??= [];
+
+            // Create new HandlerInfo with call sites if it's different from the current one
+            if (handlerCallSites.Count > 0 || handler.CallSites.AsSpan().Length > 0)
+            {
+                var updatedHandler = new HandlerInfo(
+                    handler.HandlerTypeName,
+                    handler.MessageTypeName,
+                    handler.MethodName,
+                    handler.ReturnTypeName,
+                    handler.OriginalReturnTypeName,
+                    handler.IsAsync,
+                    handler.IsStatic,
+                    handler.Parameters.ToList(),
+                    handler.MessageTypeHierarchy.ToList(),
+                    handlerCallSites);
+                handlersWithCallSites.Add(updatedHandler);
+            }
+            else
+            {
+                handlersWithCallSites.Add(handler);
+            }
+        }
+
         // Validate handler configurations and emit diagnostics
-        MediatorValidator.ValidateHandlerConfiguration(validHandlers, context);
+        MediatorValidator.ValidateHandlerConfiguration(handlersWithCallSites, context);
 
         // Validate call sites against available handlers
-        MediatorValidator.ValidateCallSites(validHandlers, validMiddlewares, callSites.ToList(), context);
+        MediatorValidator.ValidateCallSites(handlersWithCallSites, validMiddlewares, callSites.ToList(), context);
 
         // Generate the InterceptsLocationAttribute if interceptors are enabled
         InterceptsLocationAttributeGenerator.GenerateInterceptsLocationAttribute(context, interceptorsEnabled);
 
-        // Generate one wrapper file per handler (now with middleware support)
-        HandlerWrapperGenerator.GenerateHandlerWrappers(validHandlers, validMiddlewares, callSites.ToList(), interceptorsEnabled, context);
+        // Generate one wrapper file per handler (now with middleware support and call sites embedded)
+        HandlerWrapperGenerator.GenerateHandlerWrappers(handlersWithCallSites, validMiddlewares, interceptorsEnabled, context);
 
-        string source = MediatorImplementationGenerator.GenerateMediatorImplementation(validHandlers);
+        string source = MediatorImplementationGenerator.GenerateMediatorImplementation(handlersWithCallSites);
         context.AddSource("Mediator.g.cs", source);
 
         // Also generate DI registration
-        string diSource = DIRegistrationGenerator.GenerateDIRegistration(validHandlers, validMiddlewares);
+        string diSource = DIRegistrationGenerator.GenerateDIRegistration(handlersWithCallSites, validMiddlewares);
         context.AddSource("ServiceCollectionExtensions.g.cs", diSource);
     }
 }

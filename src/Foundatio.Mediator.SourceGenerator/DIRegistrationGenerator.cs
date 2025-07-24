@@ -70,7 +70,7 @@ internal static class DIRegistrationGenerator
                 else
                 {
                     // For sync handlers, we need to provide a dummy async wrapper that calls the sync method
-                    source.AppendLine($"                (mediator, message, cancellationToken, responseType) => new ValueTask<object>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                    source.AppendLine($"                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
                     source.AppendLine($"                {wrapperClassName}.UntypedHandle,");
                 }
 

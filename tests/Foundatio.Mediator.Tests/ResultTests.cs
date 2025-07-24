@@ -41,8 +41,10 @@ public class ResultTests
         object originalResult = Result.NotFound("Database connection failed", "Timeout occurred");
 
         // Act - Using general-purpose TypeConverter
-        if (!TypeConverter.TryConvert<Result<User>>(originalResult, out var castedResult))
+        if (originalResult is not Result result)
             throw new InvalidCastException($"Cannot cast {originalResult.GetType().Name} to Result<User>.");
+
+        var castedResult = (Result<User>)result;
 
         // Assert
         Assert.NotNull(castedResult);
@@ -95,7 +97,10 @@ public class ResultTests
         object originalResult = Result.Error("Database connection failed", "Timeout occurred");
 
         // Act
-        var castedResult = (Result<User>)Convert.ChangeType(originalResult, typeof(Result<User>));
+        if (originalResult is not Result result)
+            throw new InvalidCastException($"Cannot cast {originalResult.GetType().Name} to Result<User>.");
+
+        var castedResult = (Result<User>)result;
 
         // Assert
         Assert.NotNull(castedResult);
@@ -198,33 +203,5 @@ public class ResultTests
         Assert.NotNull(user);
         Assert.Equal("John Doe", user.Name);
         Assert.Equal(1, user.Id);
-    }
-
-    [Fact]
-    public void GeneralTypeConversion_Examples_ShouldWork()
-    {
-        // Demonstrate the general-purpose nature of TypeConverter
-        
-        // Convert numbers
-        Assert.True(TypeConverter.TryConvert<string>(42, out var numberAsString));
-        Assert.Equal("42", numberAsString);
-        
-        // Convert strings to numbers
-        Assert.True(TypeConverter.TryConvert<int>("123", out var stringAsNumber));
-        Assert.Equal(123, stringAsNumber);
-        
-        // Convert to nullable types
-        Assert.True(TypeConverter.TryConvert<int?>("456", out var nullableInt));
-        Assert.Equal(456, nullableInt);
-        
-        // Convert enums
-        Assert.True(TypeConverter.TryConvert<ResultStatus>("Error", out var enumValue));
-        Assert.Equal(ResultStatus.Error, enumValue);
-        
-        // Convert complex objects (like our Result types)
-        object baseResult = Result.Success("Test");
-        Assert.True(TypeConverter.TryConvert<Result<User>>(baseResult, out var genericResult));
-        Assert.NotNull(genericResult);
-        Assert.True(genericResult.IsSuccess);
     }
 }

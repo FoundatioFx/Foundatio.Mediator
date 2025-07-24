@@ -143,7 +143,7 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("        var handler = handlersList.First();");
         source.AppendLine("        var result = await handler.HandleAsync(this, message, cancellationToken, typeof(TResponse));");
         source.AppendLine();
-        source.AppendLine("        return (TResponse)result;");
+        source.AppendLine("        return (TResponse)result!;");
         source.AppendLine("    }");
         source.AppendLine();
 
@@ -164,8 +164,8 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("        if (handler.IsAsync)");
         source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Invoke with async-only handler for message type {messageType.FullName}. Use InvokeAsync instead.\");");
         source.AppendLine();
-        source.AppendLine("        object result = handler.Handle!(this, message, cancellationToken, typeof(TResponse));");
-        source.AppendLine("        return (TResponse)result;");
+        source.AppendLine("        object? result = handler.Handle!(this, message, cancellationToken, typeof(TResponse));");
+        source.AppendLine("        return (TResponse)result!;");
         source.AppendLine("    }");
         source.AppendLine();
 

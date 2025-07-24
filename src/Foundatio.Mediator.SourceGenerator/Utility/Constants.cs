@@ -2,5 +2,5 @@
 
 public class Constants
 {
-    public const string EnabledPropertyName = "EnableMediatorInterceptors";
+    public const string DisabledPropertyName = "DisableMediatorInterceptors";
 }

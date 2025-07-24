@@ -13,6 +13,7 @@ public readonly record struct HandlerInfo
     public readonly bool IsStatic;
     public readonly EquatableArray<ParameterInfo> Parameters;
     public readonly EquatableArray<string> MessageTypeHierarchy;
+    public readonly EquatableArray<CallSiteInfo> CallSites;
 
     public HandlerInfo(
         string handlerTypeName,
@@ -23,7 +24,8 @@ public readonly record struct HandlerInfo
         bool isAsync,
         bool isStatic,
         List<ParameterInfo> parameters,
-        List<string> messageTypeHierarchy)
+        List<string> messageTypeHierarchy,
+        List<CallSiteInfo> callSites)
     {
         HandlerTypeName = handlerTypeName;
         MessageTypeName = messageTypeName;
@@ -34,6 +36,7 @@ public readonly record struct HandlerInfo
         IsStatic = isStatic;
         Parameters = new(parameters.ToArray());
         MessageTypeHierarchy = new(messageTypeHierarchy.ToArray());
+        CallSites = new(callSites.ToArray());
     }
 }
 

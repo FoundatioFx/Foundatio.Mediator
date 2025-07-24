@@ -180,25 +180,6 @@ internal static class MediatorImplementationGenerator
         source.AppendLine("    }");
         source.AppendLine();
 
-        // Generate Publish method (sync)
-        source.AppendLine("    public void Publish(object message, CancellationToken cancellationToken = default)");
-        source.AppendLine("    {");
-        source.AppendLine("        var handlersList = GetAllApplicableHandlers(message).ToList();");
-        source.AppendLine();
-        source.AppendLine("        // Check if any handlers require async execution");
-        source.AppendLine("        if (handlersList.Any(h => h.IsAsync))");
-        source.AppendLine("        {");
-        source.AppendLine("            var messageTypeName = message.GetType().FullName;");
-        source.AppendLine("            throw new InvalidOperationException($\"Cannot use synchronous Publish with async-only handlers for message type {messageTypeName}. Use PublishAsync instead.\");");
-        source.AppendLine("        }");
-        source.AppendLine();
-        source.AppendLine("        // Execute all handlers synchronously");
-        source.AppendLine("        foreach (var handler in handlersList)");
-        source.AppendLine("        {");
-        source.AppendLine("            handler.Handle!(this, message, cancellationToken, null);");
-        source.AppendLine("        }");
-        source.AppendLine("    }");
-        source.AppendLine();
         source.AppendLine("    private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Type, object> _middlewareCache = new();");
         source.AppendLine("    [DebuggerStepThrough]");
         source.AppendLine("    internal static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class");

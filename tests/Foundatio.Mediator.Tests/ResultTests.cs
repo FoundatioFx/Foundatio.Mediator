@@ -2,7 +2,7 @@ using Xunit;
 
 namespace Foundatio.Mediator.Tests;
 
-public class ResultCastingTest
+public class ResultTests
 {
     public class User
     {
@@ -32,6 +32,26 @@ public class ResultCastingTest
         Assert.Equal(originalResult.CorrelationId, castedResult.CorrelationId);
         Assert.Equal(originalResult.Location, castedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, castedResult.ValidationErrors);
+    }
+
+    [Fact]
+    public void ExplicitCast_FromResultAsObject_ShouldWork()
+    {
+        // Arrange
+        object originalResult = Result.NotFound("Database connection failed", "Timeout occurred");
+
+        // Act - Using general-purpose TypeConverter
+        if (!TypeConverter.TryConvert<Result<User>>(originalResult, out var castedResult))
+            throw new InvalidCastException($"Cannot cast {originalResult.GetType().Name} to Result<User>.");
+
+        // Assert
+        Assert.NotNull(castedResult);
+        Assert.Equal(ResultStatus.NotFound, castedResult.Status);
+        Assert.False(castedResult.IsSuccess);
+        Assert.Null(castedResult.Value); // Should be default(User) which is null
+        Assert.Equal(2, castedResult.Errors.Count());
+        Assert.Contains("Database connection failed", castedResult.Errors);
+        Assert.Contains("Timeout occurred", castedResult.Errors);
     }
 
     [Fact]
@@ -72,10 +92,10 @@ public class ResultCastingTest
     public void ExplicitCast_FromErrorResult_ShouldPreserveErrors()
     {
         // Arrange
-        var originalResult = Result.Error("Database connection failed", "Timeout occurred");
+        object originalResult = Result.Error("Database connection failed", "Timeout occurred");
 
         // Act
-        var castedResult = (Result<User>)originalResult;
+        var castedResult = (Result<User>)Convert.ChangeType(originalResult, typeof(Result<User>));
 
         // Assert
         Assert.NotNull(castedResult);
@@ -163,5 +183,48 @@ public class ResultCastingTest
         Assert.True(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
         Assert.Equal("Test successful", castedResult.SuccessMessage);
+    }
+
+    [Fact]
+    public void ImplicitConversion_ToUser_ShouldWork()
+    {
+        // Arrange
+        var result = Result<User>.Success(new User { Name = "John Doe", Id = 1 });
+
+        // Act - Implicit conversion should work
+        User user = result;
+
+        // Assert
+        Assert.NotNull(user);
+        Assert.Equal("John Doe", user.Name);
+        Assert.Equal(1, user.Id);
+    }
+
+    [Fact]
+    public void GeneralTypeConversion_Examples_ShouldWork()
+    {
+        // Demonstrate the general-purpose nature of TypeConverter
+        
+        // Convert numbers
+        Assert.True(TypeConverter.TryConvert<string>(42, out var numberAsString));
+        Assert.Equal("42", numberAsString);
+        
+        // Convert strings to numbers
+        Assert.True(TypeConverter.TryConvert<int>("123", out var stringAsNumber));
+        Assert.Equal(123, stringAsNumber);
+        
+        // Convert to nullable types
+        Assert.True(TypeConverter.TryConvert<int?>("456", out var nullableInt));
+        Assert.Equal(456, nullableInt);
+        
+        // Convert enums
+        Assert.True(TypeConverter.TryConvert<ResultStatus>("Error", out var enumValue));
+        Assert.Equal(ResultStatus.Error, enumValue);
+        
+        // Convert complex objects (like our Result types)
+        object baseResult = Result.Success("Test");
+        Assert.True(TypeConverter.TryConvert<Result<User>>(baseResult, out var genericResult));
+        Assert.NotNull(genericResult);
+        Assert.True(genericResult.IsSuccess);
     }
 }

@@ -13,34 +13,6 @@ public class FixedPublishTest : TestWithLoggingBase
     }
 
     [Fact]
-    public void Publish_WithTwoSyncHandlers_CallsAllHandlers()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        services.AddLogging(builder => builder.AddTestLogger());
-        services.AddMediator();
-        services.AddSingleton<FixedTestService>();
-        var serviceProvider = services.BuildServiceProvider();
-        var mediator = serviceProvider.GetRequiredService<IMediator>();
-        var testService = serviceProvider.GetRequiredService<FixedTestService>();
-
-        var command = new FixedSyncCommand("Fixed Sync Test");
-
-        _logger.LogInformation("Starting synchronous Publish test with message: {Message}", command.Message);
-
-        // Act
-        mediator.Publish(command);
-
-        // Assert
-        _logger.LogInformation("Sync Publish completed. CallCount: {CallCount}, Messages: {Messages}",
-            testService.CallCount, String.Join(", ", testService.Messages));
-
-        Assert.Equal(2, testService.CallCount); // Two handlers should be called for FixedSyncCommand
-        Assert.Contains("FixedSyncCommand1Handler: Fixed Sync Test", testService.Messages);
-        Assert.Contains("FixedSyncCommand2Handler: Fixed Sync Test", testService.Messages);
-    }
-
-    [Fact]
     public async Task PublishAsync_WithTwoAsyncHandlers_CallsAllHandlers()
     {
         // Arrange

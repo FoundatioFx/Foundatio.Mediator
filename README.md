@@ -100,52 +100,6 @@ var response = result.Status switch
 Console.WriteLine(response);
 ```
 
-## 🎯 Result Types: The Foundation of Robust Message-Oriented Architecture
-
-The built-in `Result` and `Result<T>` types are fundamental to Foundatio.Mediator's design, providing a discriminated union pattern that's essential for message-oriented architectures. Instead of relying on exceptions for control flow, Result types enable explicit, type-safe handling of all operation outcomes.
-
-### Why Result Types Are Critical
-
-**Message-oriented architectures benefit from Result types because:**
-
-- **🎯 Explicit Error Handling** - All possible outcomes are represented in the type system
-- **🚫 No Hidden Exceptions** - Errors are data, not exceptional control flow
-- **📊 Rich Status Information** - Beyond success/failure: validation, conflicts, authorization, etc.
-- **🔄 Composable Operations** - Chain operations with confidence about what can happen
-- **📈 Better Observability** - Track success rates, error patterns, and business metrics
-- **🛡️ Defensive Programming** - Force consumers to handle all possible scenarios
-
-**Traditional Exception-Based Approach:**
-
-```csharp
-try
-{
-    var user = await mediator.InvokeAsync<User>(new GetUserQuery(id));
-    // What could go wrong? NotFound? Unauthorized? Validation? Who knows!
-}
-catch (NotFoundException ex) { /* Handle */ }
-catch (UnauthorizedException ex) { /* Handle */ }
-catch (ValidationException ex) { /* Handle */ }
-// Did we catch everything? Are we sure?
-```
-
-**Result-Based Approach:**
-
-```csharp
-var result = await mediator.InvokeAsync<Result<User>>(new GetUserQuery(id));
-
-var response = result.Status switch
-{
-    ResultStatus.Ok => $"Found user: {result.Value.Name}",
-    ResultStatus.NotFound => "User not found",
-    ResultStatus.Unauthorized => "Access denied",
-    ResultStatus.Invalid => $"Validation failed: {string.Join(", ", result.Errors.Select(e => e.ErrorMessage))}",
-    _ => "Unexpected status"
-};
-
-// Compiler ensures all scenarios are handled!
-```
-
 ## 🎯 Built-in Result Type - Essential for Message-Oriented Architecture
 
 Foundatio.Mediator includes a comprehensive `Result` and `Result<T>` type that acts as a discriminated union, allowing handlers to return different operation outcomes without exceptions. This is crucial for message-oriented architectures where you need to handle various scenarios gracefully.
@@ -161,24 +115,6 @@ In message-oriented systems, operations can have many outcomes beyond just succe
 - **Created** responses with location information
 
 The Result type captures all these scenarios in a type-safe way without throwing exceptions.
-
-### Available Result Statuses
-
-```csharp
-public enum ResultStatus
-{
-    Ok,           // Operation successful
-    Created,      // Resource created successfully
-    NoContent,    // Success with no data to return
-    Error,        // General error occurred
-    Invalid,      // Validation failed
-    NotFound,     // Resource not found
-    Unauthorized, // Authentication required
-    Forbidden,    // Authorization failed
-    Conflict,     // Business rule conflict
-    CriticalError // Critical system error
-}
-```
 
 ### Result Creation Methods
 
@@ -241,7 +177,6 @@ public class UserHandler
     }
 }
 ```
-
 
 ## 🎪 Beautiful Middleware Pipeline
 

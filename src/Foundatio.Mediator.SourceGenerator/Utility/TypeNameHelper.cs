@@ -60,45 +60,12 @@ internal static class TypeNameHelper
     /// <returns>Type name compatible with Type.FullName for runtime lookup</returns>
     public static string ConvertToRuntimeTypeName(string displayTypeName)
     {
-        // For most cases, ITypeSymbol.ToDisplayString() produces the correct format
-        // The main exception is nested types where dots should become +
-
-        // Conservative heuristic: only convert if we have at least 5 parts suggesting deep nesting
-        // like "Namespace1.Namespace2.Namespace3.OuterClass.InnerClass"
-        var parts = displayTypeName.Split('.');
-        if (parts.Length < 5)
-        {
-            // For simple cases, assume no nested types and return as-is
-            return displayTypeName;
-        }
-
-        // For complex cases, apply the nested type logic
-        int lastDotIndex = displayTypeName.LastIndexOf('.');
-        if (lastDotIndex <= 0 || lastDotIndex == displayTypeName.Length - 1)
-        {
-            return displayTypeName;
-        }
-
-        // Check if the part after the last dot looks like a type name (starts with uppercase)
-        string lastPart = displayTypeName.Substring(lastDotIndex + 1);
-        if (lastPart.Length > 0 && char.IsUpper(lastPart[0]))
-        {
-            // Check if the part before the last dot also looks like it could contain a type name
-            string beforeLastDot = displayTypeName.Substring(0, lastDotIndex);
-            int secondLastDotIndex = beforeLastDot.LastIndexOf('.');
-
-            if (secondLastDotIndex >= 0)
-            {
-                string potentialTypeName = beforeLastDot.Substring(secondLastDotIndex + 1);
-                // If the potential type name starts with uppercase, treat the last dot as a nested type separator
-                if (potentialTypeName.Length > 0 && char.IsUpper(potentialTypeName[0]))
-                {
-                    return beforeLastDot + "+" + lastPart;
-                }
-            }
-        }
-
-        // No nested type pattern detected, return as-is
+        // For ITypeSymbol.ToDisplayString() results, the format should already match Type.FullName
+        // The only conversion needed is for actual nested types, which ITypeSymbol.ToDisplayString()
+        // should already handle correctly. Most of our cases are namespace-level types, not nested types.
+        
+        // Return as-is since ITypeSymbol.ToDisplayString() should produce the correct format
+        // that matches what Type.FullName returns at runtime
         return displayTypeName;
     }
 

@@ -30,6 +30,7 @@ internal static class HandlerWrapperGenerator
               .AppendLine("using System.Collections.Generic;")
               .AppendLine("using System.Linq;")
               .AppendLine("using System.Reflection;")
+              .AppendLine("using System.Runtime.CompilerServices;")
               .AppendLine("using System.Threading;")
               .AppendLine("using System.Threading.Tasks;")
               .AppendLine("using Microsoft.Extensions.DependencyInjection;")
@@ -121,6 +122,13 @@ internal static class HandlerWrapperGenerator
 
         using (source.Indent())
         {
+            // Get mediator for cascading messages if needed
+            bool needsMediator = IsTupleReturnType(handler.ReturnTypeName);
+            if (needsMediator)
+            {
+                source.AppendLine("var mediator = serviceProvider.GetRequiredService<IMediator>();");
+            }
+
             if (middlewares.Any())
             {
                 // Generate middleware-aware execution
@@ -324,8 +332,7 @@ internal static class HandlerWrapperGenerator
         using (source.Indent())
         {
             // Cast message to expected type and call strongly typed method
-            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
-                  .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
+            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;");
 
             bool hasReturnValue = handler.ReturnTypeName != "void" &&
                                   handler.ReturnTypeName != "System.Threading.Tasks.Task" &&
@@ -335,12 +342,12 @@ internal static class HandlerWrapperGenerator
 
             if (hasReturnValue)
             {
-                source.AppendLine($"var result = await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
+                source.AppendLine($"var result = await {stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);");
 
                 // Handle tuple return values and cascading
                 if (IsTupleReturnType(handler.ReturnTypeName))
                 {
-                    source.AppendLine("return await HandleTupleResult(mediator, result, responseType, cancellationToken);");
+                    source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
                 }
                 else
                 {
@@ -397,7 +404,7 @@ internal static class HandlerWrapperGenerator
             else
             {
                 // Handler returns void
-                source.AppendLine($"await {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);")
+                source.AppendLine($"await {stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
                       .AppendLine("return new object();");
             }
         }
@@ -413,8 +420,7 @@ internal static class HandlerWrapperGenerator
         using (source.Indent())
         {
             // Cast message to expected type and call strongly typed method
-            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
-                  .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
+            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;");
 
             bool hasReturnValue = handler.ReturnTypeName != "void" &&
                                   handler.ReturnTypeName != "System.Threading.Tasks.Task" &&
@@ -424,7 +430,7 @@ internal static class HandlerWrapperGenerator
 
             if (hasReturnValue)
             {
-                source.AppendLine($"var result = {stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
+                source.AppendLine($"var result = {stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);");
 
                 // Handle tuple return values and cascading
                 if (IsTupleReturnType(handler.ReturnTypeName))
@@ -488,7 +494,7 @@ internal static class HandlerWrapperGenerator
             else
             {
                 // Handler returns void
-                source.AppendLine($"{stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);")
+                source.AppendLine($"{stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
                       .AppendLine("return new object();");
             }
         }
@@ -566,14 +572,21 @@ internal static class HandlerWrapperGenerator
 
         using (source.Indent())
         {
-            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;")
-                  .AppendLine("var serviceProvider = ((Mediator)mediator).ServiceProvider;");
+            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;");
 
             // Generate the appropriate method call based on async/sync combinations
-            string awaitKeyword = (interceptorIsAsync && wrapperIsAsync) ? "await " : "";
-            string returnKeyword = isGeneric ? "return " : "";
-
-            source.AppendLine($"{returnKeyword}{awaitKeyword}{stronglyTypedMethodName}(typedMessage, serviceProvider, cancellationToken);");
+            if (isGeneric && IsTupleReturnType(handler.ReturnTypeName))
+            {
+                // For generic calls with tuple return types, handle cascading messages
+                source.AppendLine($"var result = {(interceptorIsAsync && wrapperIsAsync ? "await " : "")}{stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
+                      .AppendLine($"return ({expectedResponseTypeName}){(interceptorIsAsync ? "await " : "")}PublishCascadingMessagesAsync(mediator, result, typeof({expectedResponseTypeName}));");
+            }
+            else
+            {
+                string awaitKeyword = (interceptorIsAsync && wrapperIsAsync) ? "await " : "";
+                string returnKeyword = isGeneric ? "return " : "";
+                source.AppendLine($"{returnKeyword}{awaitKeyword}{stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);");
+            }
         }
 
         source.AppendLine("}");
@@ -1148,14 +1161,34 @@ internal static class HandlerWrapperGenerator
     private static void GenerateHandleTupleResult(IndentedStringBuilder source)
     {
         source.AppendLine()
-              .AppendLine("private static async ValueTask<object?> HandleTupleResult(IMediator mediator, object tupleResult, Type? responseType, CancellationToken cancellationToken)")
+              .AppendLine("private static async ValueTask<object?> PublishCascadingMessagesAsync(IMediator mediator, object? result, Type? responseType)")
               .AppendLine("{");
 
         using (source.Indent())
         {
-            source.AppendLine("// TODO: Implement tuple extraction and cascading message publishing")
-                  .AppendLine("// For now, return the tuple as-is")
-                  .AppendLine("return tupleResult;");
+            source.AppendLine("if (result == null)")
+                  .AppendLine("    return null;")
+                  .AppendLine()
+                  .AppendLine("// Check if result is a tuple using ITuple interface")
+                  .AppendLine("if (result is not ITuple tuple)")
+                  .AppendLine("    return result;")
+                  .AppendLine()
+                  .AppendLine("object? foundResult = null;")
+                  .AppendLine()
+                  .AppendLine("for (int i = 0; i < tuple.Length; i++)")
+                  .AppendLine("{")
+                  .AppendLine("    var item = tuple[i];")
+                  .AppendLine("    if (item != null && responseType != null && responseType.IsAssignableFrom(item.GetType()))")
+                  .AppendLine("    {")
+                  .AppendLine("        foundResult = item;")
+                  .AppendLine("    }")
+                  .AppendLine("    else if (item != null)")
+                  .AppendLine("    {")
+                  .AppendLine("        await mediator.PublishAsync(item, CancellationToken.None);")
+                  .AppendLine("    }")
+                  .AppendLine("}")
+                  .AppendLine()
+                  .AppendLine("return foundResult;");
         }
 
         source.AppendLine("}");

@@ -77,9 +77,9 @@ public class SampleRunner
     {
         Console.WriteLine("4️⃣ Testing Invoke with Single Handler...\n");
 
-        var uniqueCommand = new CreateOrder("ORD-001", "CUST-123", 299.99m, "Wireless Headphones");
-        string processResult = await _mediator.InvokeAsync<string>(uniqueCommand);
-        Console.WriteLine($"Process result: {processResult}");
+        var createOrder = new CreateOrder("ORD-001", "CUST-123", 299.99m, "Wireless Headphones");
+        var order = await _mediator.InvokeAsync<Order>(createOrder);
+        Console.WriteLine($"Process result: {order.OrderId}");
 
         Console.WriteLine("✅ Single handler invoke test completed!\n");
     }

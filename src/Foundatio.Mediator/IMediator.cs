@@ -7,6 +7,11 @@ namespace Foundatio.Mediator;
 public interface IMediator
 {
     /// <summary>
+    /// Gets the service provider used for dependency injection.
+    /// </summary>
+    IServiceProvider ServiceProvider { get; }
+
+    /// <summary>
     /// Asynchronously invokes exactly one handler for the specified message.
     /// </summary>
     /// <param name="message">The message to send to a handler.</param>

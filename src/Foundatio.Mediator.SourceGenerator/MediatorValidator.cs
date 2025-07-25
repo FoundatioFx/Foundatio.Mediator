@@ -54,6 +54,24 @@ internal static class MediatorValidator
                 }
             }
 
+            // Check for tuple return handlers that must be async
+            foreach (var handler in messageHandlers)
+            {
+                if (IsTupleReturnType(handler.ReturnTypeName) && !handler.IsAsync)
+                {
+                    var descriptor = new DiagnosticDescriptor(
+                        "FMED013",
+                        "Tuple returning handler must be async",
+                        "Handler '{0}.{1}' returns a tuple type '{2}' but is not async. Tuple returning handlers must be async to support cascading message publishing.",
+                        "Foundatio.Mediator",
+                        DiagnosticSeverity.Error,
+                        isEnabledByDefault: true);
+
+                    var diagnostic = Diagnostic.Create(descriptor, Location.None, handler.HandlerTypeName, handler.MethodName, handler.ReturnTypeName);
+                    context.ReportDiagnostic(diagnostic);
+                }
+            }
+
             // Note: We don't validate sync/async mismatch here at generation time
             // Instead, we'll generate all methods and let the compiler handle missing implementations
             // This allows consumers to use only async methods when appropriate
@@ -182,6 +200,21 @@ internal static class MediatorValidator
             }
         }
 
+        // Check for sync call with tuple-returning handler
+        if (!callSite.IsAsync && IsTupleReturnType(handler.ReturnTypeName))
+        {
+            var descriptor = new DiagnosticDescriptor(
+                "FMED014",
+                "Sync call with tuple-returning handler",
+                "Sync {0} call for message type '{1}' but handler '{2}.{3}' returns a tuple type '{4}'. Tuple-returning handlers require async calls to support cascading message publishing. Use {0}Async instead.",
+                "Foundatio.Mediator",
+                DiagnosticSeverity.Error,
+                isEnabledByDefault: true);
+
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, handler.ReturnTypeName);
+            context.ReportDiagnostic(diagnostic);
+        }
+
         // For generic Invoke<TResponse> calls, validate return type compatibility
         if (!String.IsNullOrEmpty(callSite.ExpectedResponseTypeName))
         {
@@ -282,5 +315,10 @@ internal static class MediatorValidator
         }
 
         return false;
+    }
+
+    private static bool IsTupleReturnType(string returnTypeName)
+    {
+        return returnTypeName.Contains("ValueTuple") || returnTypeName.Contains("Tuple") || returnTypeName.StartsWith("(");
     }
 }

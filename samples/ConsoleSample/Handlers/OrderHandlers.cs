@@ -3,25 +3,12 @@ using ConsoleSample.Services;
 
 namespace ConsoleSample.Handlers;
 
-// Multiple handlers for the same event (for Publish pattern)
 public class OrderEmailNotificationHandler(EmailNotificationService emailService)
 {
     public async Task HandleAsync(OrderCreatedEvent orderEvent)
     {
         string message = $"Order {orderEvent.OrderId} has been created for ${orderEvent.Amount:F2}";
         await emailService.SendAsync(message);
-    }
-}
-
-public class OrderSmsNotificationHandler
-{
-    public async Task HandleAsync(
-        OrderCreatedEvent orderEvent,
-        SmsNotificationService smsService,
-        CancellationToken cancellationToken = default)
-    {
-        string message = $"Your order {orderEvent.OrderId} is confirmed!";
-        await smsService.SendAsync(message);
     }
 }
 
@@ -36,15 +23,21 @@ public class OrderAuditHandler
     }
 }
 
-// Single handler for Invoke pattern
-public class ProcessOrderHandler
+public class CreateOrderHandler
 {
-    public async Task<string> HandleAsync(
-        ProcessOrderCommand command,
+    public async Task<(Order, OrderCreatedEvent)> HandleAsync(
+        CreateOrder command,
         CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"🔄 Processing order {command.OrderId} with type: {command.ProcessingType}");
+        Console.WriteLine($"🔄 Processing order {command.OrderId}");
         await Task.Delay(100, cancellationToken); // Simulate processing
-        return $"Order {command.OrderId} processed successfully with {command.ProcessingType}";
+
+        var order = new Order(command.OrderId, command.CustomerId, command.Amount, command.ProductName);
+        return (order, new OrderCreatedEvent(
+            command.OrderId,
+            command.CustomerId,
+            command.Amount,
+            command.ProductName
+        ));
     }
 }

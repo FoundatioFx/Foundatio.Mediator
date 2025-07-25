@@ -2,16 +2,13 @@ using Foundatio.Mediator;
 
 namespace ConsoleSample.Messages;
 
-// Event for multiple handlers (Publish pattern)
+public record Order(string OrderId, string CustomerId, decimal Amount, string ProductName);
+
 public record OrderCreatedEvent(
     string OrderId,
     string CustomerId,
     decimal Amount,
     string ProductName
-);
+) : INotification;
 
-// Command for single handler (Invoke pattern)
-public record ProcessOrderCommand(string OrderId, string ProcessingType) : ICommand
-{
-    public string CommandId => OrderId;
-}
+public record CreateOrder(string OrderId, string CustomerId, decimal Amount, string ProductName) : ICommand;

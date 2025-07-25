@@ -5,9 +5,9 @@ namespace ConsoleSample.Services;
 
 public class ProcessOrderMiddleware
 {
-    public Task<HandlerResult> BeforeAsync(ProcessOrderCommand command, CancellationToken cancellationToken)
+    public Task<HandlerResult> BeforeAsync(CreateOrder command, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"🔸 [ProcessOrderMiddleware] Before: Processing order {command.OrderId} with type {command.ProcessingType}");
+        Console.WriteLine($"🔸 [ProcessOrderMiddleware] Before: Processing order {command.OrderId}");
 
         // Add some validation logic
         if (String.IsNullOrWhiteSpace(command.OrderId))
@@ -20,7 +20,7 @@ public class ProcessOrderMiddleware
         return Task.FromResult(HandlerResult.Continue($"Validated order {command.OrderId}"));
     }
 
-    public Task AfterAsync(ProcessOrderCommand command, object? beforeResult, string handlerResult, CancellationToken cancellationToken)
+    public Task AfterAsync(CreateOrder command, object? beforeResult, object? handlerResult, CancellationToken cancellationToken)
     {
         Console.WriteLine($"🔸 [ProcessOrderMiddleware] After: Order processing completed");
         Console.WriteLine($"🔸 [ProcessOrderMiddleware] Before result: {beforeResult}");
@@ -28,7 +28,7 @@ public class ProcessOrderMiddleware
         return Task.CompletedTask;
     }
 
-    public Task FinallyAsync(ProcessOrderCommand command, Exception? exception, CancellationToken cancellationToken)
+    public Task FinallyAsync(CreateOrder command, Exception? exception, CancellationToken cancellationToken)
     {
         if (exception != null)
         {

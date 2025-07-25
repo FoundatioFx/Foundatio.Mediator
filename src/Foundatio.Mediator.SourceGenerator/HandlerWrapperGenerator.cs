@@ -1047,6 +1047,18 @@ internal static class HandlerWrapperGenerator
                 return $"{resultVariableName}!";
             }
 
+            // Handle nullable type matching - if parameter is nullable version of the before return type
+            if (parameter.TypeName.EndsWith("?") && parameter.TypeName.TrimEnd('?') == beforeReturnType)
+            {
+                return $"{resultVariableName}";
+            }
+
+            // Handle reverse case - if before return type is nullable and parameter is non-nullable
+            if (beforeReturnType.EndsWith("?") && beforeReturnType.TrimEnd('?') == parameter.TypeName)
+            {
+                return $"{resultVariableName}!";
+            }
+
             // Tuple field extraction
             if (beforeReturnType.StartsWith("(") && beforeReturnType.EndsWith(")"))
             {

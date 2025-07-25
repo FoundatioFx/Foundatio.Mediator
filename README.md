@@ -15,7 +15,8 @@ Foundatio.Mediator is a high-performance, convention-based mediator library that
 - **⚡ Source Generated** - Compile-time code generation for optimal performance
 - **🔧 Full DI Integration** - Works seamlessly with Microsoft.Extensions.DependencyInjection
 - **🎪 Middleware Pipeline** - Elegant middleware support
-- **📦 Auto Registration** - Handlers discovered and registered automatically
+- **� Cascading Messages** - Tuple returns automatically trigger follow-up events
+- **�📦 Auto Registration** - Handlers discovered and registered automatically
 - **🔒 Compile-Time Safety** - Rich diagnostics catch errors before runtime
 - **🔧 C# Interceptors** - Direct method calls using cutting-edge C# interceptor technology
 - **🎯 Built-in Result Type** - Comprehensive discriminated union for handling all operation outcomes
@@ -178,6 +179,100 @@ public class UserHandler
 }
 ```
 
+## 🔄 Cascading Messages - Elegant Event Choreography
+
+Foundatio.Mediator supports **cascading messages** through tuple return types, enabling elegant event choreography where handlers can trigger additional messages automatically. This is perfect for implementing event-driven workflows and the saga pattern.
+
+### How Cascading Messages Work
+
+When a handler returns a tuple, the mediator automatically:
+
+1. **Returns the expected type** to the caller (if specified)
+2. **Publishes remaining tuple items** as cascading events using `PublishAsync`
+3. **Waits for completion** - all cascading messages are processed before the original call completes
+
+### Example: Order Processing with Cascading Events
+
+```csharp
+// Messages
+public record CreateOrder(string ProductName, decimal Amount, string CustomerEmail);
+public record Order(int Id, string ProductName, decimal Amount, string CustomerEmail, DateTime CreatedAt);
+public record OrderCreatedEvent(int OrderId, string CustomerEmail, decimal Amount);
+public record SendWelcomeEmail(string Email, string CustomerName);
+public record UpdateInventory(string ProductName, int Quantity);
+
+// Handler that returns a tuple - triggers cascading messages
+public class CreateOrderHandler
+{
+    public async Task<(Order, OrderCreatedEvent)> HandleAsync(CreateOrder command, CancellationToken cancellationToken)
+    {
+        // Create the order
+        var order = new Order(
+            Id: Random.Shared.Next(1000, 9999),
+            ProductName: command.ProductName,
+            Amount: command.Amount,
+            CustomerEmail: command.CustomerEmail,
+            CreatedAt: DateTime.UtcNow
+        );
+
+        // Create the event that will be published automatically
+        var orderCreatedEvent = new OrderCreatedEvent(order.Id, order.CustomerEmail, order.Amount);
+
+        // Return tuple - Order goes to caller, OrderCreatedEvent gets published
+        return (order, orderCreatedEvent);
+    }
+}
+
+// Handler for the cascading event
+public class OrderCreatedEventHandler
+{
+    public async Task HandleAsync(OrderCreatedEvent orderCreated, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"Order {orderCreated.OrderId} created for ${orderCreated.Amount}");
+
+        // Could trigger more cascading messages by returning a tuple
+        // For example: return (new SendWelcomeEmail(orderCreated.CustomerEmail, "Valued Customer"),);
+    }
+}
+```
+
+### Usage with Cascading Messages
+
+```csharp
+// Only the Order is returned to the caller
+// OrderCreatedEvent is automatically published to all its handlers
+var order = await mediator.InvokeAsync<Order>(new CreateOrder(
+    ProductName: "Amazing Widget",
+    Amount: 29.99m,
+    CustomerEmail: "customer@example.com"
+));
+
+Console.WriteLine($"Created order {order.Id} - cascading events processed automatically!");
+```
+
+### Multiple Cascading Messages
+
+Handlers can return tuples with multiple cascading messages:
+
+```csharp
+public class ComplexOrderHandler
+{
+    public async Task<(Order, OrderCreatedEvent, SendWelcomeEmail, UpdateInventory)> HandleAsync(
+        CreateOrder command,
+        CancellationToken cancellationToken)
+    {
+        var order = new Order(/*...*/);
+
+        return (
+            order,                                           // Returned to caller
+            new OrderCreatedEvent(order.Id, order.CustomerEmail, order.Amount),  // Published
+            new SendWelcomeEmail(order.CustomerEmail, "Valued Customer"),        // Published
+            new UpdateInventory(order.ProductName, -1)                          // Published
+        );
+    }
+}
+```
+
 ## 🎪 Beautiful Middleware Pipeline
 
 Create elegant middleware that runs before, after, and finally around your handlers. Middleware works seamlessly with the Result type for comprehensive error handling:
@@ -219,7 +314,7 @@ public static class ValidationMiddleware
     {
         if (MiniValidator.TryValidate(message, out var errors))
             return HandlerResult.Continue();
-        
+
         var validationErrors = errors.SelectMany(kvp =>
             kvp.Value.Select(errorMessage => new ValidationError(kvp.Key, errorMessage))).ToList();
 

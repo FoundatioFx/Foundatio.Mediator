@@ -1044,7 +1044,7 @@ internal static class HandlerWrapperGenerator
             // Direct type match
             if (parameter.TypeName == beforeReturnType)
             {
-                return $"(({parameter.TypeName}){resultVariableName}!)";
+                return $"{resultVariableName}!";
             }
 
             // Tuple field extraction
@@ -1056,8 +1056,11 @@ internal static class HandlerWrapperGenerator
                     var field = tupleFields[fieldIndex];
                     if (field.Type == parameter.TypeName)
                     {
-                        // Generate tuple field access: ((TupleType)resultVar).Item1
-                        return $"(({beforeReturnType}){resultVariableName}!).Item{fieldIndex + 1}";
+                        // Generate tuple field access using named field if available, otherwise use Item1, Item2, etc.
+                        string fieldAccess = !string.IsNullOrEmpty(field.Name)
+                            ? field.Name!
+                            : $"Item{fieldIndex + 1}";
+                        return $"{resultVariableName}!.Value.{fieldAccess}";
                     }
                 }
             }

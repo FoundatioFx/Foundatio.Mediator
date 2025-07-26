@@ -10,7 +10,7 @@
     <!-- Emit compiler generated files for debugging purposes -->
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-    <DisableMediatorInterceptors>false</DisableMediatorInterceptors>
+    <DisableMediatorInterceptors>true</DisableMediatorInterceptors>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
   </PropertyGroup>
 

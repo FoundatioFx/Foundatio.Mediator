@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Foundatio.Mediator.Utility;
+using System.Text;
 
 namespace Foundatio.Mediator;
 
@@ -405,7 +406,7 @@ internal static class HandlerWrapperGenerator
             {
                 // Handler returns void
                 source.AppendLine($"await {stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
-                      .AppendLine("return new object();");
+                      .AppendLine("return null;");
             }
         }
 
@@ -495,7 +496,7 @@ internal static class HandlerWrapperGenerator
             {
                 // Handler returns void
                 source.AppendLine($"{stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
-                      .AppendLine("return new object();");
+                      .AppendLine("return null;");
             }
         }
 
@@ -581,20 +582,8 @@ internal static class HandlerWrapperGenerator
                 source.AppendLine($"var result = {(interceptorIsAsync && wrapperIsAsync ? "await " : "")}{stronglyTypedMethodName}(typedMessage, mediator.ServiceProvider, cancellationToken);")
                       .AppendLine();
 
-                // For tuple types, we need to publish all items except the first (which is the return value)
-                // This is a simplified implementation that assumes Item2 is always published
-                // In a more complete implementation, you would parse the tuple type and generate appropriate logic
-                if (interceptorIsAsync)
-                {
-                    source.AppendLine("await mediator.PublishAsync(result.Item2, cancellationToken);");
-                }
-                else
-                {
-                    source.AppendLine("mediator.Publish(result.Item2);");
-                }
-
-                source.AppendLine()
-                      .AppendLine("return result.Item1;");
+                // Generate optimized typed code for tuple handling
+                GenerateOptimizedTupleHandling(source, handler, expectedResponseTypeName, interceptorIsAsync);
             }
             else
             {
@@ -763,7 +752,14 @@ internal static class HandlerWrapperGenerator
         }
 
         source.AppendLine();
-        source.AppendLine(GetHandlerResultDeclaration(handler));
+
+        // Only generate handlerResult if it's actually needed
+        bool needsHandlerResult = NeedsHandlerResultVariable(handler, middlewares);
+        if (needsHandlerResult)
+        {
+            source.AppendLine(GetHandlerResultDeclaration(handler));
+        }
+
         source.AppendLine(GetExceptionDeclaration());
         source.AppendLine();
         source.AppendLine("try");
@@ -859,7 +855,7 @@ internal static class HandlerWrapperGenerator
                 {
                     var methodInfo = middleware.AfterMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
+                        GenerateMiddlewareParameterExpression(p, middleware, resultVar, handler)));
                     string afterMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"await {afterMethodCall};");
@@ -901,7 +897,7 @@ internal static class HandlerWrapperGenerator
                 {
                     var methodInfo = middleware.FinallyMethod;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        GenerateMiddlewareParameterExpression(p, middleware, resultVar)));
+                        GenerateMiddlewareParameterExpression(p, middleware, resultVar, handler)));
                     string finallyMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"await {finallyMethodCall};");
@@ -912,6 +908,21 @@ internal static class HandlerWrapperGenerator
         }
 
         source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Determines if the handlerResult variable is needed based on handler return type and middleware usage.
+    /// </summary>
+    private static bool NeedsHandlerResultVariable(HandlerInfo handler, List<MiddlewareInfo> middlewares)
+    {
+        // For void/Task handlers, never generate handlerResult variable - pass null to middleware instead
+        if (IsVoidReturnType(handler.OriginalReturnTypeName))
+        {
+            return false;
+        }
+
+        // For non-void handlers, we always need handlerResult for the return statement
+        return true;
     }
 
     /// <summary>
@@ -1052,7 +1063,7 @@ internal static class HandlerWrapperGenerator
     /// Generates the appropriate parameter expression for middleware methods,
     /// including handling tuple field extraction from Before method results.
     /// </summary>
-    private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName)
+    private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName, HandlerInfo handler)
     {
         if (parameter.IsMessage)
             return "message";
@@ -1061,7 +1072,12 @@ internal static class HandlerWrapperGenerator
         if (parameter.Name == "beforeResult")
             return resultVariableName;
         if (parameter.Name == "handlerResult")
+        {
+            // For void/Task handlers, pass null instead of handlerResult variable
+            if (IsVoidReturnType(handler.OriginalReturnTypeName))
+                return "null";
             return "handlerResult";
+        }
         if (parameter.Name == "exception")
             return "exception";
 
@@ -1172,6 +1188,160 @@ internal static class HandlerWrapperGenerator
         source.AppendLine("using System.Diagnostics;");
         source.AppendLine("using System.Diagnostics.CodeAnalysis;");
         source.AppendLine();
+    }
+
+    private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, string expectedResponseTypeName, bool isAsync)
+    {
+        // Parse the tuple return type to determine which items to return vs publish
+        var tupleFields = ParseTupleReturnType(handler.ReturnTypeName);
+
+        if (tupleFields.Count == 0)
+        {
+            // Fallback - shouldn't happen for tuple types
+            source.AppendLine($"return default({expectedResponseTypeName});");
+            return;
+        }
+
+        // Find which tuple item matches the expected response type
+        int returnItemIndex = -1;
+        var publishItems = new List<int>();
+
+        for (int i = 0; i < tupleFields.Count; i++)
+        {
+            string fieldType = tupleFields[i];
+
+            // Check if this field type matches or is assignable to the expected response type
+            if (IsTypeCompatible(fieldType, expectedResponseTypeName))
+            {
+                if (returnItemIndex == -1)
+                {
+                    returnItemIndex = i;
+                }
+                // If we already found a return item, this becomes a publish item
+                else
+                {
+                    publishItems.Add(i);
+                }
+            }
+            else
+            {
+                publishItems.Add(i);
+            }
+        }
+
+        // Generate publishing code for non-return items
+        source.AppendLine("// publish cascading messages");
+        foreach (int publishIndex in publishItems)
+        {
+            string itemAccess = $"result.Item{publishIndex + 1}";
+            if (isAsync)
+            {
+                source.AppendLine($"await mediator.PublishAsync({itemAccess}, cancellationToken);");
+            }
+            else
+            {
+                source.AppendLine($"mediator.PublishAsync({itemAccess}, CancellationToken.None).GetAwaiter().GetResult();");
+            }
+        }
+
+        source.AppendLine();
+        source.AppendLine("// return the desired type");
+        if (returnItemIndex >= 0)
+        {
+            source.AppendLine($"return result.Item{returnItemIndex + 1};");
+        }
+        else
+        {
+            // No matching item found - return default (this should be caught at compile time)
+            source.AppendLine($"return default({expectedResponseTypeName})!;");
+        }
+    }
+
+    private static List<string> ParseTupleReturnType(string tupleType)
+    {
+        var fields = new List<string>();
+
+        // Handle ValueTuple syntax: (Type1, Type2, Type3)
+        if (tupleType.StartsWith("(") && tupleType.EndsWith(")"))
+        {
+            string content = tupleType.Substring(1, tupleType.Length - 2).Trim();
+            fields.AddRange(SplitTupleFields(content));
+        }
+        // Handle generic ValueTuple syntax: ValueTuple<Type1, Type2>
+        else if (tupleType.Contains("ValueTuple<"))
+        {
+            int startIndex = tupleType.IndexOf('<') + 1;
+            int endIndex = tupleType.LastIndexOf('>');
+            if (startIndex > 0 && endIndex > startIndex)
+            {
+                string typeArgs = tupleType.Substring(startIndex, endIndex - startIndex);
+                fields.AddRange(SplitTupleFields(typeArgs));
+            }
+        }
+
+        return fields;
+    }
+
+    private static List<string> SplitTupleFields(string content)
+    {
+        var fields = new List<string>();
+        var current = new StringBuilder();
+        int depth = 0;
+
+        for (int i = 0; i < content.Length; i++)
+        {
+            char c = content[i];
+
+            if (c == ',' && depth == 0)
+            {
+                string field = current.ToString().Trim();
+                if (!string.IsNullOrEmpty(field))
+                {
+                    // Extract just the type name, ignoring field names
+                    string[] parts = field.Split(' ');
+                    fields.Add(parts[0]); // First part is the type
+                }
+                current.Clear();
+            }
+            else
+            {
+                if (c == '<' || c == '(') depth++;
+                else if (c == '>' || c == ')') depth--;
+                current.Append(c);
+            }
+        }
+
+        // Add the last field
+        string lastField = current.ToString().Trim();
+        if (!string.IsNullOrEmpty(lastField))
+        {
+            string[] parts = lastField.Split(' ');
+            fields.Add(parts[0]); // First part is the type
+        }
+
+        return fields;
+    }
+
+    private static bool IsTypeCompatible(string fieldType, string expectedType)
+    {
+        // Direct match
+        if (fieldType == expectedType)
+            return true;
+
+        // Handle common namespace variations
+        string normalizedFieldType = NormalizeTypeName(fieldType);
+        string normalizedExpectedType = NormalizeTypeName(expectedType);
+
+        return normalizedFieldType == normalizedExpectedType;
+    }
+
+    private static string NormalizeTypeName(string typeName)
+    {
+        // Remove common namespace prefixes for comparison
+        return typeName
+            .Replace("System.", "")
+            .Replace("global::", "")
+            .Trim();
     }
 
     private static void GenerateHandleTupleResult(IndentedStringBuilder source)

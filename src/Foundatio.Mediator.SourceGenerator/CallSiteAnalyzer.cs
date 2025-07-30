@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -13,17 +14,14 @@ internal static class CallSiteAnalyzer
         if (node is not InvocationExpressionSyntax invocation)
             return false;
 
-        // Look for member access expressions like mediator.Invoke(...), mediator.InvokeAsync(...), etc.
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-        {
-            string methodName = memberAccess.Name.Identifier.ValueText;
-            return methodName is "Invoke" or "InvokeAsync" or "Publish" or "PublishAsync";
-        }
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+            return false;
 
-        return false;
+        string methodName = memberAccess.Name.Identifier.ValueText;
+        return methodName is "Invoke" or "InvokeAsync" or "PublishAsync";
     }
 
-    public static CallSiteInfo? GetCallSiteForAnalysis(GeneratorSyntaxContext context)
+    public static CallSiteInfo? GetCallSite(GeneratorSyntaxContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
         var semanticModel = context.SemanticModel;
@@ -34,45 +32,43 @@ internal static class CallSiteAnalyzer
         if (context.SemanticModel.GetInterceptableLocation(invocation) is not { } interceptableLocation)
             return null;
 
-        string methodName = memberAccess.Name.Identifier.ValueText;
-        bool isAsync = methodName.EndsWith("Async");
-        bool isPublish = methodName.StartsWith("Publish");
-
-        // Get the method symbol to analyze the call
         var symbolInfo = semanticModel.GetSymbolInfo(invocation.Expression);
         if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
             return null;
 
-        // Check if this is actually a call to IMediator
         var containingType = methodSymbol.ContainingType;
-        if (containingType == null || containingType.Name != MediatorInterfaceName)
+        if (containingType is not { Name: MediatorInterfaceName })
             return null;
 
-        // Get the message type from the first argument
         if (invocation.ArgumentList.Arguments.Count == 0)
             return null;
+
+        string methodName = memberAccess.Name.Identifier.ValueText;
+        bool isAsync = methodName.EndsWith("Async");
+        bool isPublish = methodName.StartsWith("Publish");
 
         var firstArgument = invocation.ArgumentList.Arguments[0];
         var argumentType = semanticModel.GetTypeInfo(firstArgument.Expression);
         if (argumentType.Type == null)
             return null;
 
-        string messageTypeName = argumentType.Type.ToDisplayString();
+        ITypeSymbol messageType = argumentType.Type;
 
-        // For generic methods like Invoke<TResponse>, get the response type
-        string expectedResponseTypeName = "";
-        if (methodSymbol.IsGenericMethod && methodSymbol.TypeArguments.Length > 0)
+        ITypeSymbol? responseType = null;
+        if (methodSymbol is { IsGenericMethod: true, TypeArguments.Length: 1 })
         {
-            expectedResponseTypeName = methodSymbol.TypeArguments[0].ToDisplayString();
+            responseType = methodSymbol.TypeArguments[0];
         }
 
         return new CallSiteInfo(
             methodName,
-            messageTypeName,
-            expectedResponseTypeName,
+            messageType.ToDisplayString(),
+            messageType.IsNullable(context.SemanticModel.Compilation),
+            responseType?.ToDisplayString(),
+            responseType?.IsNullable(context.SemanticModel.Compilation) ?? false,
             isAsync,
             isPublish,
-            memberAccess.Name.GetLocation(), // Use the method name location, not the entire invocation
+            LocationInfo.CreateFrom(invocation)!,
             interceptableLocation);
     }
 }

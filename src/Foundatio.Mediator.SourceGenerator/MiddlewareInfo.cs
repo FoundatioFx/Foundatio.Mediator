@@ -1,40 +1,26 @@
+using Foundatio.Mediator.Utility;
+
 namespace Foundatio.Mediator;
 
-public class MiddlewareInfo(
-    string middlewareTypeName,
-    string messageTypeName,
-    bool isObjectType,
-    bool isInterfaceType,
-    List<string> interfaceTypes,
-    MiddlewareMethodInfo? beforeMethod,
-    MiddlewareMethodInfo? afterMethod,
-    MiddlewareMethodInfo? finallyMethod,
-    bool isStatic,
-    int? order = null)
+internal readonly record struct MiddlewareInfo
 {
-    public string MiddlewareTypeName { get; } = middlewareTypeName;
-    public string MessageTypeName { get; } = messageTypeName;
-    public bool IsObjectType { get; } = isObjectType;
-    public bool IsInterfaceType { get; } = isInterfaceType;
-    public List<string> InterfaceTypes { get; } = interfaceTypes;
-    public MiddlewareMethodInfo? BeforeMethod { get; } = beforeMethod;
-    public MiddlewareMethodInfo? AfterMethod { get; } = afterMethod;
-    public MiddlewareMethodInfo? FinallyMethod { get; } = finallyMethod;
-    public bool IsStatic { get; } = isStatic;
-    public int? Order { get; } = order;
-    public bool IsAsync { get; } = (beforeMethod?.IsAsync == true) || (afterMethod?.IsAsync == true) || (finallyMethod?.IsAsync == true);
+    public string MiddlewareTypeName { get; init; }
+    public TypeSymbolInfo MessageType { get; init; }
+    public MiddlewareMethodInfo? BeforeMethod { get; init; }
+    public MiddlewareMethodInfo? AfterMethod { get; init; }
+    public MiddlewareMethodInfo? FinallyMethod { get; init; }
+    public bool IsStatic { get; init; }
+    public bool IsAsync => BeforeMethod?.IsAsync == true || AfterMethod?.IsAsync == true || FinallyMethod?.IsAsync == true;
+    public int? Order { get; init; }
 }
 
-public class MiddlewareMethodInfo(
-    string methodName,
-    bool isAsync,
-    string returnTypeName,
-    List<ParameterInfo> parameters,
-    bool isStatic)
+internal readonly record struct MiddlewareMethodInfo
 {
-    public string MethodName { get; } = methodName;
-    public bool IsAsync { get; } = isAsync;
-    public string ReturnTypeName { get; } = returnTypeName;
-    public List<ParameterInfo> Parameters { get; } = parameters;
-    public bool IsStatic { get; } = isStatic;
+    public string MethodName { get; init; }
+    public bool IsAsync => ReturnType.IsTask;
+    public bool HasReturnValue => !ReturnType.IsVoid;
+    public bool IsStatic { get; init; }
+    public TypeSymbolInfo MessageType { get; init; }
+    public TypeSymbolInfo ReturnType { get; init; }
+    public EquatableArray<ParameterInfo> Parameters { get; init; }
 }

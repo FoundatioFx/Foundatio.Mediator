@@ -57,7 +57,7 @@ internal static class MediatorValidator
             // Check for tuple return handlers that must be async
             foreach (var handler in messageHandlers)
             {
-                if (IsTupleReturnType(handler.ReturnTypeName) && !handler.IsAsync)
+                if (handler.ReturnTypeName != null && IsTupleReturnType(handler.ReturnTypeName) && !handler.IsAsync)
                 {
                     var descriptor = new DiagnosticDescriptor(
                         "FMED013",
@@ -99,7 +99,7 @@ internal static class MediatorValidator
                         DiagnosticSeverity.Error,
                         isEnabledByDefault: true);
 
-                    var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MessageTypeName, callSite.MethodName);
+                    var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MessageTypeName, callSite.MethodName);
                     context.ReportDiagnostic(diagnostic);
                 }
                 continue;
@@ -131,7 +131,7 @@ internal static class MediatorValidator
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MessageTypeName, callSite.MethodName, handlersList);
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MessageTypeName, callSite.MethodName, handlersList);
             context.ReportDiagnostic(diagnostic);
             return;
         }
@@ -155,7 +155,7 @@ internal static class MediatorValidator
                     DiagnosticSeverity.Warning,
                     isEnabledByDefault: true);
 
-                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
+                var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
                 context.ReportDiagnostic(diagnostic);
             }
         }
@@ -169,7 +169,7 @@ internal static class MediatorValidator
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
             context.ReportDiagnostic(diagnostic);
         }
 
@@ -195,13 +195,13 @@ internal static class MediatorValidator
                     DiagnosticSeverity.Error,
                     isEnabledByDefault: true);
 
-                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, asyncMiddlewaresList);
+                var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, asyncMiddlewaresList);
                 context.ReportDiagnostic(diagnostic);
             }
         }
 
         // Check for sync call with tuple-returning handler
-        if (!callSite.IsAsync && IsTupleReturnType(handler.ReturnTypeName))
+        if (!callSite.IsAsync && handler.ReturnTypeName != null && IsTupleReturnType(handler.ReturnTypeName))
         {
             var descriptor = new DiagnosticDescriptor(
                 "FMED014",
@@ -211,12 +211,12 @@ internal static class MediatorValidator
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, handler.ReturnTypeName);
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName, handler.ReturnTypeName);
             context.ReportDiagnostic(diagnostic);
         }
 
         // For generic Invoke<TResponse> calls, validate return type compatibility
-        if (!String.IsNullOrEmpty(callSite.ExpectedResponseTypeName))
+        if (!String.IsNullOrEmpty(callSite.ResponseTypeName))
         {
             if (handler.ReturnTypeName == "void" ||
                 handler.ReturnTypeName == "System.Threading.Tasks.Task" ||
@@ -230,7 +230,7 @@ internal static class MediatorValidator
                     DiagnosticSeverity.Error,
                     isEnabledByDefault: true);
 
-                var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.ExpectedResponseTypeName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
+                var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.ResponseTypeName, callSite.MessageTypeName, handler.HandlerTypeName, handler.MethodName);
                 context.ReportDiagnostic(diagnostic);
             }
             // FMED009 diagnostic removed - let the mediator handle type compatibility at runtime
@@ -254,7 +254,7 @@ internal static class MediatorValidator
                 DiagnosticSeverity.Info,
                 isEnabledByDefault: true);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, syncHandlersList);
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, syncHandlersList);
             context.ReportDiagnostic(diagnostic);
         }
         else if (!callSite.IsAsync && asyncHandlers.Count > 0)
@@ -268,7 +268,7 @@ internal static class MediatorValidator
                 DiagnosticSeverity.Warning,
                 isEnabledByDefault: true);
 
-            var diagnostic = Diagnostic.Create(descriptor, callSite.Location, callSite.MethodName, callSite.MessageTypeName, asyncHandlersList);
+            var diagnostic = Diagnostic.Create(descriptor, callSite.Location?.ToLocation() ?? Location.None, callSite.MethodName, callSite.MessageTypeName, asyncHandlersList);
             context.ReportDiagnostic(diagnostic);
         }
     }

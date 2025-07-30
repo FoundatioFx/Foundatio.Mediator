@@ -5,6 +5,8 @@
     <DevelopmentDependency>true</DevelopmentDependency>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>Foundatio.Mediator</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,8 +17,8 @@
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     <None Include="..\Foundatio.Mediator\bin\$(Configuration)\netstandard2.0\Foundatio.Mediator.dll" Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
-    <None Include="Foundatio.Mediator.SourceGenerator.props" Pack="true" PackagePath="build" Visible="true" />
-    <None Include="Foundatio.Mediator.SourceGenerator.targets" Pack="true" PackagePath="build" Visible="true" />
+    <None Include="Foundatio.Mediator.SourceGenerator.props" Pack="true" PackagePath="build" Visible="false" />
+    <None Include="Foundatio.Mediator.SourceGenerator.targets" Pack="true" PackagePath="build" Visible="false" />
   </ItemGroup>
 
 </Project>

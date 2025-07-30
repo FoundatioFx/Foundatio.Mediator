@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -19,24 +20,22 @@ internal static class MiddlewareAnalyzer
         if (semanticModel.GetDeclaredSymbol(classDeclaration) is not INamedTypeSymbol classSymbol)
             return null;
 
-        // Check if the class has the FoundatioIgnore attribute
-        if (HasFoundatioIgnoreAttribute(classSymbol))
+        if (classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation))
             return null;
 
-        // Find all middleware methods in this class
         var beforeMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "Before"))
+            .Where(m => IsMiddlewareBeforeMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         var afterMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "After"))
+            .Where(m => IsMiddlewareAfterMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         var finallyMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "Finally"))
+            .Where(m => IsMiddlewareFinallyMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0)
@@ -44,39 +43,35 @@ internal static class MiddlewareAnalyzer
 
         var middlewares = new List<MiddlewareInfo>();
 
-        // Check if this is a static middleware class
-        // A middleware class is considered static if all its middleware methods are static
-        var allMiddlewareMethods = beforeMethods.Concat(afterMethods).Concat(finallyMethods);
+        var allMiddlewareMethods = beforeMethods.Concat(afterMethods).Concat(finallyMethods).ToArray();
         bool isStaticMiddleware = allMiddlewareMethods.All(m => m.IsStatic);
 
-        // Group methods by message type and collect type information
         var messageTypeInfos = new Dictionary<string, (bool isObjectType, bool isInterfaceType, List<string> interfaceTypes)>();
         var messageTypes = new HashSet<string>();
 
-        foreach (var method in beforeMethods.Concat(afterMethods).Concat(finallyMethods))
+        foreach (var method in allMiddlewareMethods)
         {
-            if (method.Parameters.Length > 0)
+            if (method.Parameters.Length <= 0)
+                continue;
+
+            var messageParam = method.Parameters[0];
+            string messageTypeName = messageParam.Type.ToDisplayString();
+            messageTypes.Add(messageTypeName);
+
+            if (messageTypeInfos.ContainsKey(messageTypeName))
+                continue;
+
+            var typeSymbol = messageParam.Type;
+            bool isObjectType = typeSymbol.SpecialType == SpecialType.System_Object;
+            bool isInterfaceType = typeSymbol.TypeKind == TypeKind.Interface;
+            var interfaceTypes = new List<string>();
+
+            if (!isInterfaceType && !isObjectType)
             {
-                var messageParam = method.Parameters[0];
-                string messageTypeName = messageParam.Type.ToDisplayString();
-                messageTypes.Add(messageTypeName);
-
-                if (!messageTypeInfos.ContainsKey(messageTypeName))
-                {
-                    var typeSymbol = messageParam.Type;
-                    bool isObjectType = typeSymbol.SpecialType == SpecialType.System_Object;
-                    bool isInterfaceType = typeSymbol.TypeKind == TypeKind.Interface;
-                    var interfaceTypes = new List<string>();
-
-                    // Collect interfaces implemented by the message type
-                    if (!isInterfaceType && !isObjectType)
-                    {
-                        interfaceTypes.AddRange(typeSymbol.AllInterfaces.Select(i => i.ToDisplayString()));
-                    }
-
-                    messageTypeInfos[messageTypeName] = (isObjectType, isInterfaceType, interfaceTypes);
-                }
+                interfaceTypes.AddRange(typeSymbol.AllInterfaces.Select(i => i.ToDisplayString()));
             }
+
+            messageTypeInfos[messageTypeName] = (isObjectType, isInterfaceType, interfaceTypes);
         }
 
         foreach (string? messageType in messageTypes)
@@ -93,11 +88,10 @@ internal static class MiddlewareAnalyzer
                 m.Parameters.Length > 0 &&
                 m.Parameters[0].Type.ToDisplayString() == messageType);
 
-            // Extract order from FoundatioOrderAttribute
-            var orderAttribute = classSymbol.GetAttributes()
-                .FirstOrDefault(attr => attr.AttributeClass?.Name == "FoundatioOrderAttribute");
+            var orderAttribute = classSymbol.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.Name == "FoundatioOrderAttribute");
+
             int? order = null;
-            if (orderAttribute != null && orderAttribute.ConstructorArguments.Length > 0)
+            if (orderAttribute is { ConstructorArguments.Length: > 0 })
             {
                 var orderArg = orderAttribute.ConstructorArguments[0];
                 if (orderArg.Value is int orderValue)
@@ -113,10 +107,11 @@ internal static class MiddlewareAnalyzer
                 typeInfo.isObjectType,
                 typeInfo.isInterfaceType,
                 typeInfo.interfaceTypes,
-                beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
-                afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
-                finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
+                beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod, context.SemanticModel.Compilation) : null,
+                afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod, context.SemanticModel.Compilation) : null,
+                finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
                 isStaticMiddleware,
+                allMiddlewareMethods.Any(m => m.ReturnType.IsTask(context.SemanticModel.Compilation)),
                 order);
 
             middlewares.Add(middleware);
@@ -125,56 +120,72 @@ internal static class MiddlewareAnalyzer
         return middlewares.Count > 0 ? middlewares : null;
     }
 
-    private static bool IsMiddlewareMethod(IMethodSymbol method, string methodPrefix)
+    private static bool IsMiddlewareBeforeMethod(IMethodSymbol method, Compilation compilation)
     {
-        string[] validNames = new[] { methodPrefix, $"{methodPrefix}Async" };
-
-        if (!validNames.Contains(method.Name) ||
-            method.DeclaredAccessibility != Accessibility.Public ||
-            HasFoundatioIgnoreAttribute(method))
-        {
-            return false;
-        }
-
-        return true;
+        return MiddlewareBeforeMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
     }
 
-    private static MiddlewareMethodInfo CreateMiddlewareMethodInfo(IMethodSymbol method)
+    private static bool IsMiddlewareAfterMethod(IMethodSymbol method, Compilation compilation)
     {
-        string returnTypeName = method.ReturnType.ToDisplayString();
-        bool isAsync = method.Name.EndsWith("Async") ||
-                       returnTypeName.StartsWith("Task") ||
-                       returnTypeName.StartsWith("ValueTask") ||
-                       returnTypeName.StartsWith("System.Threading.Tasks.Task") ||
-                       returnTypeName.StartsWith("System.Threading.Tasks.ValueTask");
+        return MiddlewareAfterMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
+    }
+
+    private static bool IsMiddlewareFinallyMethod(IMethodSymbol method, Compilation compilation)
+    {
+        return MiddlewareFinallyMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
+    }
+    private static MiddlewareMethodInfo CreateMiddlewareMethodInfo(IMethodSymbol method, Compilation compilation)
+    {
+        var returnType = method.ReturnType.IsVoid(compilation) ? null : method.ReturnType;
+        bool isAsync = method.ReturnType.IsTask(compilation);
+        var originalReturnType = returnType;
+        returnType = isAsync && returnType != null ? method.ReturnType.UnwrapTask(compilation) : returnType;
+        bool isReturnTypeNullable = returnType?.IsNullable(compilation) ?? false;
+        bool isReturnTypeResult = returnType?.IsResult(compilation) ?? false;
+        bool isReturnTypeHandlerResult = returnType?.IsHandlerResult(compilation) ?? false;
+        bool isReturnTypeTuple = returnType is { IsTupleType: true };
+        var returnTypeTupleItems = returnType is { IsTupleType: true }
+            ? returnType.GetTupleItems(compilation)
+            : [];
 
         var parameterInfos = new List<ParameterInfo>();
 
         foreach (var parameter in method.Parameters)
         {
             string parameterTypeName = parameter.Type.ToDisplayString();
-            bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]); // First parameter is always the message
-            bool isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
+            bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]);
+            bool isCancellationToken =  parameter.Type.IsCancellationToken(compilation);
+            bool isNullable = parameter.Type.IsNullable(compilation);
 
             parameterInfos.Add(new ParameterInfo(
                 parameter.Name,
                 parameterTypeName,
                 isMessage,
-                isCancellationToken));
+                isCancellationToken,
+                isNullable));
         }
 
         return new MiddlewareMethodInfo(
             method.Name,
             isAsync,
-            returnTypeName,
-            parameterInfos,
-            method.IsStatic);
+            method.IsStatic,
+            originalReturnType?.ToDisplayString(),
+            returnType?.ToDisplayString(),
+            isReturnTypeNullable,
+            isReturnTypeResult,
+            isReturnTypeTuple,
+            isReturnTypeHandlerResult,
+            returnTypeTupleItems,
+            parameterInfos);
     }
 
-    private static bool HasFoundatioIgnoreAttribute(ISymbol symbol)
-    {
-        return symbol.GetAttributes().Any(attr =>
-            attr.AttributeClass?.Name == "FoundatioIgnoreAttribute" ||
-            attr.AttributeClass?.ToDisplayString() == "Foundatio.Mediator.FoundatioIgnoreAttribute");
-    }
+    private static readonly string[] MiddlewareBeforeMethodNames = [ "Before", "BeforeAsync" ];
+    private static readonly string[] MiddlewareAfterMethodNames = [ "After", "AfterAsync" ];
+    private static readonly string[] MiddlewareFinallyMethodNames = [ "Finally", "FinallyAsync" ];
 }

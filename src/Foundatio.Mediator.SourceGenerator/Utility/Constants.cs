@@ -1,6 +1,6 @@
 ﻿namespace Foundatio.Mediator.Utility;
 
-public class Constants
+internal static class Constants
 {
     public const string DisabledPropertyName = "DisableMediatorInterceptors";
 }

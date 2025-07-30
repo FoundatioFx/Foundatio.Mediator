@@ -22,7 +22,6 @@ internal static class InterceptsLocationAttributeGenerator
         var source = new StringBuilder();
 
         AddGeneratedFileHeader(source);
-        source.AppendLine("#nullable enable");
         source.AppendLine("using System;");
         source.AppendLine();
         source.AppendLine("namespace System.Runtime.CompilerServices;");

@@ -7,9 +7,7 @@ namespace Foundatio.Mediator;
 
 internal static class CallSiteAnalyzer
 {
-    private const string MediatorInterfaceName = "IMediator";
-
-    public static bool IsPotentialMediatorCall(SyntaxNode node)
+    public static bool IsMatch(SyntaxNode node)
     {
         if (node is not InvocationExpressionSyntax invocation)
             return false;
@@ -44,8 +42,7 @@ internal static class CallSiteAnalyzer
             return null;
 
         string methodName = memberAccess.Name.Identifier.ValueText;
-        bool isAsync = methodName.EndsWith("Async");
-        bool isPublish = methodName.StartsWith("Publish");
+        bool isPublish = methodName.Equals("PublishAsync", StringComparison.Ordinal);
 
         var firstArgument = invocation.ArgumentList.Arguments[0];
         var argumentType = semanticModel.GetTypeInfo(firstArgument.Expression);
@@ -60,15 +57,15 @@ internal static class CallSiteAnalyzer
             responseType = methodSymbol.TypeArguments[0];
         }
 
-        return new CallSiteInfo(
-            methodName,
-            messageType.ToDisplayString(),
-            messageType.IsNullable(context.SemanticModel.Compilation),
-            responseType?.ToDisplayString(),
-            responseType?.IsNullable(context.SemanticModel.Compilation) ?? false,
-            isAsync,
-            isPublish,
-            LocationInfo.CreateFrom(invocation)!,
-            interceptableLocation);
+        return new CallSiteInfo
+        {
+            MethodName = methodName,
+            MessageType = TypeSymbolInfo.From(messageType, semanticModel.Compilation),
+            ResponseType = responseType is not null ? TypeSymbolInfo.From(responseType, semanticModel.Compilation) : null,
+            IsPublish = isPublish,
+            Location = LocationInfo.CreateFrom(invocation, interceptableLocation)!.Value,
+        };
     }
+
+    private const string MediatorInterfaceName = "IMediator";
 }

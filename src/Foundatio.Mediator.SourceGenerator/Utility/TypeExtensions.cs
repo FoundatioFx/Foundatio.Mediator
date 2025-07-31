@@ -68,6 +68,17 @@ internal static class TypeExtensions
         return false;
     }
 
+    internal static bool IsObject(this ITypeSymbol typeSymbol, Compilation compilation)
+    {
+        if (typeSymbol is INamedTypeSymbol namedType)
+        {
+            var objectType = compilation.GetSpecialType(SpecialType.System_Object);
+            return SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, objectType);
+        }
+
+        return false;
+    }
+
     internal static bool IsHandlerResult(this ITypeSymbol typeSymbol, Compilation compilation)
     {
         if (typeSymbol is not INamedTypeSymbol namedType)

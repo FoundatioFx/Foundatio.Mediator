@@ -7,7 +7,7 @@ namespace Foundatio.Mediator.Utility;
 /// A thin wrapper over <see cref="StringBuilder" /> that adds indentation to each line built.
 /// </summary>
 [ExcludeFromCodeCoverage]
-public class IndentedStringBuilder
+internal class IndentedStringBuilder
 {
     private const byte IndentSize = 4;
     private byte _indent;

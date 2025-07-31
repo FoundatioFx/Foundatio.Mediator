@@ -16,7 +16,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 && disableSwitch.Equals("true", StringComparison.Ordinal));
 
         var csharpSufficient = context.CompilationProvider
-            .Select((x,_) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
+            .Select((x, _) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
 
         var settings = interceptionEnabledSetting
             .Combine(csharpSufficient)
@@ -33,7 +33,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Select(static (cs, _) => cs!.Value)
             .WithTrackingName(TrackingNames.CallSites);
 
-        var middlewareDeclarations = context.SyntaxProvider
+        var middleware = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (s, _) => MiddlewareAnalyzer.IsMatch(s),
                 transform: static (ctx, _) => MiddlewareAnalyzer.GetMiddleware(ctx))
@@ -41,7 +41,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Select(static (middleware, _) => middleware!.Value)
             .WithTrackingName(TrackingNames.Middleware);
 
-        var handlerDeclarations = context.SyntaxProvider
+        var handlers = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (s, _) => HandlerAnalyzer.IsMatch(s),
                 transform: static (ctx, _) => HandlerAnalyzer.GetHandlers(ctx))
@@ -49,32 +49,24 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .SelectMany(static (handlers, _) => handlers ?? [])
             .WithTrackingName(TrackingNames.Handlers);
 
-        var compilationAndData = context.CompilationProvider
-            .Combine(handlerDeclarations.Collect())
-            .Combine(middlewareDeclarations.Collect())
+        var compilationAndData = handlers.Collect()
+            .Combine(middleware.Collect())
             .Combine(callSites.Collect())
             .Combine(interceptionEnabled)
             .Select(static (spc, _) => (
-                Compilation: spc.Left.Left.Left.Left,
-                Handlers: spc.Left.Left.Left.Right,
+                Handlers: spc.Left.Left.Left,
                 Middleware: spc.Left.Left.Right,
                 CallSites: spc.Left.Right,
                 InterceptorsEnabled: spc.Right
             ));
 
         context.RegisterImplementationSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Compilation, source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, spc));
+            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, spc));
     }
 
-    private static void Execute(Compilation compilation, ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middlewares, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, SourceProductionContext context)
+    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, SourceProductionContext context)
     {
         if (handlers.IsDefaultOrEmpty)
-            return;
-
-        var validHandlers = handlers.ToList();
-        var validMiddlewares = middlewares.IsDefaultOrEmpty ? [] : middlewares.ToList();
-
-        if (validHandlers.Count == 0)
             return;
 
         var callSitesByMessage = callSites.ToList()
@@ -82,28 +74,52 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .GroupBy(cs => cs.MessageType)
             .ToDictionary(g => g.Key, g => g.ToArray());
 
-        var handlersWithCallSites = new List<HandlerInfo>();
-        foreach (var handler in validHandlers)
+        var handlersWithInfo = new List<HandlerInfo>();
+        foreach (var handler in handlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            handlersWithCallSites.Add(handler with { CallSites = new(handlerCallSites) });
+            var applicableMiddleware = GetApplicableMiddlewares(middleware, handler);
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
         }
 
-        // Validate handler configurations and emit diagnostics
-        MediatorValidator.ValidateHandlerConfiguration(handlersWithCallSites, context);
+        InterceptsLocationGenerator.Execute(context, interceptorsEnabled);
 
-        // Validate call sites against available handlers
-        MediatorValidator.ValidateCallSites(handlersWithCallSites, validMiddlewares, callSites.ToList(), context);
+        HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled);
 
-        // Generate the InterceptsLocationAttribute if interceptors are enabled
-        InterceptsLocationAttributeGenerator.GenerateInterceptsLocationAttribute(context, interceptorsEnabled);
+        DIRegistrationGenerator.Execute(context, handlersWithInfo);
+    }
 
-        // Generate one wrapper file per handler (now with middleware support and call sites embedded)
-        HandlerWrapperGenerator.GenerateHandlerWrappers(handlersWithCallSites, validMiddlewares, interceptorsEnabled, context);
+    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler)
+    {
+        var applicable = new List<MiddlewareInfo>();
 
-        // Also generate DI registration
-        string diSource = DIRegistrationGenerator.GenerateDIRegistration(handlersWithCallSites, validMiddlewares);
-        context.AddSource("ServiceCollectionExtensions.g.cs", diSource);
+        foreach (var middleware in middlewares)
+        {
+            if (IsMiddlewareApplicableToHandler(middleware, handler))
+            {
+                applicable.Add(middleware);
+            }
+        }
+
+        return new EquatableArray<MiddlewareInfo>(applicable
+            .OrderBy(m => m.Order)
+            .ThenBy(m => m.MessageType.IsObject ? 2 : (m.MessageType.IsInterface ? 1 : 0)) // Priority: specific=0, interface=1, object=2
+            .ToArray());
+    }
+
+    private static bool IsMiddlewareApplicableToHandler(MiddlewareInfo middleware, HandlerInfo handler)
+    {
+        if (middleware.MessageType.IsObject)
+            return true;
+
+        if (middleware.MessageType.FullName == handler.MessageType.FullName)
+            return true;
+
+        // TODO get all interfaces of handler.MessageType
+        //if (middleware.MessageType.IsInterface && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
+        //    return true;
+
+        return false;
     }
 }
 

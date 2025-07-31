@@ -19,15 +19,12 @@ internal static class CallSiteAnalyzer
         return methodName is "Invoke" or "InvokeAsync" or "PublishAsync";
     }
 
-    public static CallSiteInfo? GetCallSite(GeneratorSyntaxContext context)
+    public static CallSiteInfo? GetCallSite(GeneratorSyntaxContext context, bool interceptorsEnabled)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
         var semanticModel = context.SemanticModel;
 
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
-            return null;
-
-        if (context.SemanticModel.GetInterceptableLocation(invocation) is not { } interceptableLocation)
             return null;
 
         var symbolInfo = semanticModel.GetSymbolInfo(invocation.Expression);
@@ -40,6 +37,10 @@ internal static class CallSiteAnalyzer
 
         if (invocation.ArgumentList.Arguments.Count == 0)
             return null;
+
+        var interceptableLocation = interceptorsEnabled
+            ? context.SemanticModel.GetInterceptableLocation(invocation)
+            : null;
 
         string methodName = memberAccess.Name.Identifier.ValueText;
         bool isPublish = methodName.Equals("PublishAsync", StringComparison.Ordinal);

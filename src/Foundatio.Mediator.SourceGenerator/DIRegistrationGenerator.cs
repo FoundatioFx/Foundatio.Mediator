@@ -1,10 +1,11 @@
 using Foundatio.Mediator.Utility;
+using Microsoft.CodeAnalysis;
 
 namespace Foundatio.Mediator;
 
 internal static class DIRegistrationGenerator
 {
-    public static string GenerateDIRegistration(List<HandlerInfo> handlers, List<MiddlewareInfo> middlewares)
+    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers)
     {
         var source = new IndentedStringBuilder();
 
@@ -32,80 +33,38 @@ internal static class DIRegistrationGenerator
         source.AppendLine("        // Register HandlerRegistration instances keyed by message type name");
         source.AppendLine("        // Note: Handlers themselves are NOT auto-registered in DI");
         source.AppendLine("        // Users can register them manually if they want specific lifetimes");
-
         source.AppendLine();
+        source.IncrementIndent().IncrementIndent();
 
         foreach (var handler in handlers)
         {
-            string wrapperClassName = HandlerWrapperGenerator.GetWrapperClassName(handler);
+            string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
 
-            // Check if this handler effectively needs to be async due to middleware
-            bool isEffectivelyAsync = IsHandlerEffectivelyAsync(handler, middlewares);
+            source.AppendLine($"services.AddKeyedSingleton<HandlerRegistration>(\"{handler.MessageType.FullName}\",");
+            source.AppendLine($"    new HandlerRegistration(");
+            source.AppendLine($"        \"{handler.MessageType.FullName}\",");
 
-            source.AppendLine($"        services.AddKeyedSingleton<HandlerRegistration>(\"{handler.MessageTypeName}\",");
-            source.AppendLine($"            new HandlerRegistration(");
-            source.AppendLine($"                \"{handler.MessageTypeName}\",");
-
-            if (isEffectivelyAsync)
+            if (handler.IsAsync)
             {
-                source.AppendLine($"                {wrapperClassName}.UntypedHandleAsync,");
-                source.AppendLine("                null,");
+                source.AppendLine($"        {handlerClassName}.UntypedHandleAsync,");
+                source.AppendLine($"        null,");
             }
             else
             {
-                source.AppendLine($"                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({wrapperClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
-                source.AppendLine($"                {wrapperClassName}.UntypedHandle,");
+                source.AppendLine($"        (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                source.AppendLine($"        {handlerClassName}.UntypedHandle,");
             }
 
-            source.AppendLine($"                {isEffectivelyAsync.ToString().ToLower()}));");
+            source.AppendLine($"        {handler.IsAsync.ToString().ToLower()});");
         }
 
         source.AppendLine();
-        source.AppendLine("        return services;");
+        source.AppendLine("return services;");
+
+        source.DecrementIndent().DecrementIndent();
         source.AppendLine("    }");
         source.AppendLine("}");
 
-        return source.ToString();
-    }
-
-    private static bool IsHandlerEffectivelyAsync(HandlerInfo handler, List<MiddlewareInfo> middlewares)
-    {
-        if (handler.IsAsync)
-            return true;
-
-        var applicableMiddlewares = GetApplicableMiddlewares(middlewares, handler);
-        return applicableMiddlewares.Any(m => m.IsAsync);
-    }
-
-    private static List<MiddlewareInfo> GetApplicableMiddlewares(List<MiddlewareInfo> middlewares, HandlerInfo handler)
-    {
-        var applicable = new List<MiddlewareInfo>();
-
-        foreach (var middleware in middlewares)
-        {
-            if (IsMiddlewareApplicableToHandler(middleware, handler))
-            {
-                applicable.Add(middleware);
-            }
-        }
-
-        return applicable
-            .OrderBy(m => m.Order)
-            .ThenBy(m => m.IsObjectType ? 2 : (m.IsInterfaceType ? 1 : 0)) // Priority: specific=0, interface=1, object=2
-            .ToList();
-    }
-
-    private static bool IsMiddlewareApplicableToHandler(MiddlewareInfo middleware, HandlerInfo handler)
-    {
-        if (middleware.IsObjectType)
-            return true;
-
-        if (middleware.MessageTypeName == handler.MessageTypeName)
-            return true;
-
-        if (middleware.IsInterfaceType && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
-            return true;
-
-        return false;
+        context.AddSource("ServiceCollectionExtensions.g.cs", source.ToString());
     }
 }

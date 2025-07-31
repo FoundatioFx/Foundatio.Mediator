@@ -68,7 +68,8 @@ internal static class HandlerAnalyzer
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
                 IsStatic = handlerMethod.IsStatic,
                 Parameters = new(parameterInfos.ToArray()),
-                CallSites = []
+                CallSites = [],
+                Middleware = [],
             });
         }
 

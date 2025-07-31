@@ -151,10 +151,9 @@ internal static class TypeExtensions
         return new EquatableArray<TupleItemInfo>(named.TupleElements
             .Select(e => new TupleItemInfo
             {
-                Name = e.Name,
+                Name = e.Name ?? e.CorrespondingTupleField!.Name,
                 Field = e.CorrespondingTupleField!.Name,
-                FullType = e.Type.ToDisplayString(),
-                IsNullable = e.Type.IsNullable(compilation)
+                Type = TypeSymbolInfo.From(e.Type, compilation)
             }).ToArray());
     }
 }

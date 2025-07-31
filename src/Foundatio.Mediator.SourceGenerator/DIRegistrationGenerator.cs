@@ -55,7 +55,7 @@ internal static class DIRegistrationGenerator
                 source.AppendLine($"        {handlerClassName}.UntypedHandle,");
             }
 
-            source.AppendLine($"        {handler.IsAsync.ToString().ToLower()});");
+            source.AppendLine($"        {handler.IsAsync.ToString().ToLower()}));");
         }
 
         source.AppendLine();

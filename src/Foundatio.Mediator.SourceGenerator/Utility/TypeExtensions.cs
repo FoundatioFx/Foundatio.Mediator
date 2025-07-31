@@ -153,7 +153,7 @@ internal static class TypeExtensions
             {
                 Name = e.Name ?? e.CorrespondingTupleField!.Name,
                 Field = e.CorrespondingTupleField!.Name,
-                Type = TypeSymbolInfo.From(e.Type, compilation)
+                //Type = TypeSymbolInfo.From(e.Type, compilation)
             }).ToArray());
     }
 }

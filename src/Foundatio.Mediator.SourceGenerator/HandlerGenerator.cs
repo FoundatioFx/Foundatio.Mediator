@@ -65,6 +65,7 @@ internal static class HandlerGenerator
             // Generate strongly typed method that matches handler signature
             GenerateStronglyTypedMethod(source, handler);
 
+            var middlewares = handler.Middleware.ToList();
             bool hasAsyncMiddleware = middlewares.Any(m => m.IsAsync);
             bool needsAsyncHandleMethod = handler.IsAsync || hasAsyncMiddleware;
             if (needsAsyncHandleMethod)
@@ -87,7 +88,7 @@ internal static class HandlerGenerator
                 GenerateGetOrCreateHandler(source, handler);
             }
 
-            if (handler.HasReturnValue && handler.ReturnTypeIsTuple)
+            if (!handler.ReturnType.IsVoid && handler.ReturnType.IsTuple)
             {
                 GeneratePublishCascadingMessages(source);
             }
@@ -101,7 +102,7 @@ internal static class HandlerGenerator
     public static string GetHandlerClassName(HandlerInfo handler)
     {
         string handlerTypeName = Helpers.GetSimpleTypeName(handler.HandlerTypeName);
-        string messageTypeName = Helpers.GetSimpleTypeName(handler.MessageTypeName);
+        string messageTypeName = Helpers.GetSimpleTypeName(handler.MessageType.FullName);
         return $"{handlerTypeName}_{messageTypeName}_Wrapper";
     }
 
@@ -123,7 +124,7 @@ internal static class HandlerGenerator
 
         string asyncModifier = isAsync ? "async " : "";
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(global::Foundatio.Mediator.IMediator mediator, {handler.MessageTypeName} message, CancellationToken cancellationToken)")
+        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(global::Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, CancellationToken cancellationToken)")
               .AppendLine("{");
 
         using (source.Indent())
@@ -152,7 +153,7 @@ internal static class HandlerGenerator
                 }
 
                 // Handle the return based on the original return type
-                if (!handler.HasReturnValue || handler.ReturnTypeName == "void")
+                if (handler.ReturnType.IsVoid)
                 {
                     // For void methods, call the method without returning anything
                     if (handler.IsAsync)
@@ -187,7 +188,7 @@ internal static class HandlerGenerator
     private static string ReconstructOriginalReturnType(HandlerInfo handler, bool hasAsyncMiddleware = false)
     {
         // Use the original return type directly from the handler method
-        string originalReturnType = handler.OriginalReturnTypeName ?? "void";
+        string originalReturnType = handler.ReturnType.FullName;
 
         // If the handler is already async, preserve its return type
         if (handler.IsAsync)
@@ -199,7 +200,7 @@ internal static class HandlerGenerator
         if (hasAsyncMiddleware)
         {
             // For sync handlers with async middleware, we need to convert return types to async
-            if (originalReturnType == "void")
+            if (handler.ReturnType.IsVoid)
             {
                 return "System.Threading.Tasks.Task";
             }
@@ -219,18 +220,18 @@ internal static class HandlerGenerator
 
         foreach (var param in handler.Parameters)
         {
-            if (param.IsMessage)
+            if (param.IsMessageParameter)
             {
                 parameters.Add(messageVariable);
             }
-            else if (param.IsCancellationToken)
+            else if (param.Type.IsCancellationToken)
             {
                 parameters.Add(cancellationTokenVariable);
             }
             else
             {
                 // This is a dependency that needs to be resolved from DI
-                parameters.Add($"serviceProvider.GetRequiredService<{param.TypeName}>()");
+                parameters.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
             }
         }
 
@@ -244,18 +245,18 @@ internal static class HandlerGenerator
 
         foreach (var param in handler.Parameters)
         {
-            if (param.IsMessage)
+            if (param.IsMessageParameter)
             {
                 parameters.Add(messageVariable);
             }
-            else if (param.IsCancellationToken)
+            else if (param.Type.IsCancellationToken)
             {
                 parameters.Add(cancellationTokenVariable);
             }
             else
             {
                 // This is a dependency that needs to be resolved from DI
-                parameters.Add($"{serviceProviderVariable}.GetRequiredService<{param.TypeName}>()");
+                parameters.Add($"{serviceProviderVariable}.GetRequiredService<{param.Type.FullName}>()");
             }
         }
 
@@ -288,15 +289,15 @@ internal static class HandlerGenerator
 
         using (source.Indent())
         {
-            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;");
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             string stronglyTypedMethodName = GetStronglyTypedMethodName(handler);
 
-            if (handler.HasReturnValue)
+            if (!handler.ReturnType.IsVoid)
             {
                 source.AppendLine($"var result = {(isAsync ? "await " : "")}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
 
-                if (handler.ReturnTypeIsTuple)
+                if (handler.ReturnType.IsTuple)
                 {
                     source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
                 }
@@ -328,7 +329,7 @@ internal static class HandlerGenerator
         source.AppendLine("}");
         source.AppendLine();
 
-        if (handler.ReturnTypeIsResult)
+        if (handler.ReturnType.IsResult)
         {
             source.AppendLine("if (result == null || result.GetType() == responseType || responseType.IsAssignableFrom(result.GetType()))");
             source.AppendLine("{");
@@ -364,7 +365,7 @@ internal static class HandlerGenerator
             source.AppendLine();
         }
 
-        if (handler.HasReturnValue)
+        if (!handler.ReturnType.IsVoid)
             source.AppendLine("return result;");
         else
             source.AppendLine("return null;");
@@ -374,7 +375,7 @@ internal static class HandlerGenerator
     {
         // Group call sites by method signature to generate unique interceptor methods
         var callSiteGroups = callSites
-            .GroupBy(cs => new { cs.MethodName, cs.MessageTypeName, cs.ResponseTypeName })
+            .GroupBy(cs => new { cs.MethodName, MessageTypeName = cs.MessageType.FullName, ResponseTypeName = cs.ResponseType?.FullName })
             .ToList();
 
         int methodCounter = 0;
@@ -440,10 +441,10 @@ internal static class HandlerGenerator
 
         using (source.Indent())
         {
-            source.AppendLine($"var typedMessage = ({handler.MessageTypeName})message;");
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             // Generate the appropriate method call based on async/sync combinations
-            if (isGeneric && handler.ReturnTypeIsTuple)
+            if (isGeneric && handler.ReturnType.IsTuple)
             {
                 // For generic calls with tuple return types, handle cascading messages inline for performance
                 source.AppendLine($"var result = {(interceptorIsAsync && wrapperIsAsync ? "await " : "")}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);")
@@ -465,8 +466,8 @@ internal static class HandlerGenerator
 
     private static string GenerateInterceptorAttribute(CallSiteInfo callSite)
     {
-        var location = callSite.InterceptableLocation;
-        return $"[global::System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.GetDisplayLocation()}";
+        var location = callSite.Location;
+        return $"[global::System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.DisplayLocation}";
     }
 
     private static string GenerateInterceptorReturnType(bool isAsync, bool isGeneric, string expectedResponseTypeName)
@@ -535,7 +536,7 @@ internal static class HandlerGenerator
         }
 
         // Handle the return based on the original return type
-        if (handler.ReturnTypeName == null)
+        if (handler.ReturnType.IsVoid)
         {
             // For void methods, call the method without returning anything
             source.AppendLine($"{methodCall};");
@@ -550,18 +551,19 @@ internal static class HandlerGenerator
     private static void GenerateMiddlewareExecutionCore(IndentedStringBuilder source, HandlerInfo handler, bool isAsync)
     {
         // Generate middleware instances with descriptive names
-        string[] middlewareVariableNames = new string[handler.Middleware.Count];
-        string[] resultVariableNames = new string[handler.Middleware.Count];
-        for (int i = 0; i < handler.Middleware.Count; i++)
+        var middlewares = handler.Middleware.ToList();
+        string[] middlewareVariableNames = new string[middlewares.Count];
+        string[] resultVariableNames = new string[middlewares.Count];
+        for (int i = 0; i < middlewares.Count; i++)
         {
-            string variableName = GetMiddlewareVariableName(handler.Middleware[i].MiddlewareTypeName);
-            string resultVariableName = GetMiddlewareResultVariableName(handler.Middleware[i].MiddlewareTypeName);
+            string variableName = GetMiddlewareVariableName(middlewares[i].MiddlewareTypeName);
+            string resultVariableName = GetMiddlewareResultVariableName(middlewares[i].MiddlewareTypeName);
             middlewareVariableNames[i] = variableName;
             resultVariableNames[i] = resultVariableName;
             // Only create middleware instance if it's not static
-            if (!handler.Middleware[i].IsStatic)
+            if (!middlewares[i].IsStatic)
             {
-                source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{handler.Middleware[i].MiddlewareTypeName}>(serviceProvider);");
+                source.AppendLine($"var {variableName} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{middlewares[i].MiddlewareTypeName}>(serviceProvider);");
             }
         }
 
@@ -600,13 +602,13 @@ internal static class HandlerGenerator
                 {
                     var methodInfo = middleware.BeforeMethod.Value;
                     string args = String.Join(", ", methodInfo.Parameters.Select(p =>
-                        p.IsMessage ? "message" :
-                        p.IsCancellationToken ? "cancellationToken" :
-                        $"serviceProvider.GetRequiredService<{p.TypeName}>()"));
+                        p.IsMessageParameter ? "message" :
+                        p.Type.IsCancellationToken ? "cancellationToken" :
+                        $"serviceProvider.GetRequiredService<{p.Type.FullName}>()"));
                     string beforeMethodCall = GenerateMiddlewareMethodCall(middleware, methodInfo, args, middlewareVariableNames[i]);
                     if (methodInfo.IsAsync)
                         source.AppendLine($"{resultVar} = await {beforeMethodCall};");
-                    else if (methodInfo.ReturnTypeName != "void")
+                    else if (!methodInfo.ReturnType.IsVoid)
                         source.AppendLine($"{resultVar} = {beforeMethodCall};");
                     else
                         source.AppendLine($"{beforeMethodCall};");
@@ -619,7 +621,7 @@ internal static class HandlerGenerator
                     source.AppendLine("{");
                     using (source.Indent())
                     {
-                        if (handler.ReturnTypeName == null)
+                        if (handler.ReturnType.IsVoid)
                         {
                             source.AppendLine("return;");
                         }
@@ -646,7 +648,7 @@ internal static class HandlerGenerator
                 methodCall = GenerateMethodCall(handler, "handlerInstance", "message", "cancellationToken");
             }
 
-            if (handler.ReturnTypeName == null)
+            if (handler.ReturnType.IsVoid)
             {
                 if (handler.IsAsync)
                 {
@@ -688,9 +690,9 @@ internal static class HandlerGenerator
                 }
             }
 
-            if (handler.ReturnTypeName != null)
+            if (!handler.ReturnType.IsVoid)
             {
-                source.AppendLine($"return ({handler.ReturnTypeName})handlerResult;");
+                source.AppendLine($"return ({handler.ReturnType.FullName})handlerResult;");
             }
         }
 
@@ -736,7 +738,7 @@ internal static class HandlerGenerator
     private static bool NeedsHandlerResultVariable(HandlerInfo handler, List<MiddlewareInfo> middlewares)
     {
         // For void/Task handlers, never generate handlerResult variable - pass null to middleware instead
-        if (handler.ReturnTypeName == null)
+        if (handler.ReturnType.IsVoid)
         {
             return false;
         }
@@ -750,10 +752,10 @@ internal static class HandlerGenerator
     /// </summary>
     private static string GetHandlerResultDeclaration(HandlerInfo handler)
     {
-        if (handler.ReturnTypeIsNullable)
-            return $"{handler.ReturnTypeName}? handlerResult = null;";
+        if (handler.ReturnType.IsNullable)
+            return $"{handler.ReturnType.FullName}? handlerResult = null;";
 
-        string returnType = handler.ReturnTypeName ?? "object";
+        string returnType = handler.ReturnType.FullName;
         string defaultValue = GetDefaultValueForHandler(handler, returnType);
         return $"{returnType} handlerResult = {defaultValue};";
     }
@@ -763,9 +765,9 @@ internal static class HandlerGenerator
     /// </summary>
     private static string GetSafeCastExpression(string handlerResultVar, HandlerInfo handler, bool useUnwrappedType = false)
     {
-        string returnType = useUnwrappedType || !handler.HasReturnValue
+        string returnType = useUnwrappedType || handler.ReturnType.IsVoid
             ? GetUnwrappedReturnType(handler)
-            : handler.OriginalReturnTypeName ?? "object";
+            : handler.ReturnType.FullName;
 
         // Special handling for Result to Result<T> conversion
         if (returnType.StartsWith("Foundatio.Mediator.Result<") && returnType != "Foundatio.Mediator.Result")
@@ -775,7 +777,7 @@ internal static class HandlerGenerator
         }
 
         // For reference types, provide a null-coalescing fallback to satisfy non-nullable return types
-        if (handler.ReturnTypeIsNullable || handler.ReturnTypeIsNullable)
+        if (handler.ReturnType.IsNullable)
         {
             string defaultValue = GetDefaultValueForHandler(handler, returnType);
             return $"({returnType}?){handlerResultVar}.Value ?? {defaultValue}";
@@ -852,8 +854,8 @@ internal static class HandlerGenerator
 
         var methodInfo = middleware.BeforeMethod.Value;
 
-        // Use the unwrapped return type for async methods, original for sync methods
-        string returnType = methodInfo.IsAsync ? (methodInfo.ReturnTypeName ?? "object") : (methodInfo.OriginalReturnTypeName ?? "object");
+        // Use the return type for the check
+        string returnType = methodInfo.ReturnType.FullName;
 
         // If the return type is exactly HandlerResult (not nullable), we can directly check it
         if (returnType == "HandlerResult" || returnType == "Foundatio.Mediator.HandlerResult")
@@ -879,8 +881,8 @@ internal static class HandlerGenerator
 
         var methodInfo = middleware.BeforeMethod.Value;
 
-        // Use the unwrapped return type for async methods, original for sync methods
-        string returnType = methodInfo.IsAsync ? (methodInfo.ReturnTypeName ?? "object") : (methodInfo.OriginalReturnTypeName ?? "object");
+        // Use the return type
+        string returnType = methodInfo.ReturnType.FullName;
 
         // If the return type is exactly HandlerResult (not nullable), we can directly access it
         if (returnType == "HandlerResult" || returnType == "Foundatio.Mediator.HandlerResult")
@@ -913,7 +915,7 @@ internal static class HandlerGenerator
 
     private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, string expectedResponseTypeName, bool isAsync)
     {
-        var tupleFields = handler.ReturnTypeTupleItems.ToList();
+        var tupleFields = handler.ReturnType.TupleItems.ToList();
 
         if (tupleFields.Count == 0)
         {
@@ -927,7 +929,7 @@ internal static class HandlerGenerator
         for (int i = 0; i < tupleFields.Count; i++)
         {
             var tupleItem = tupleFields[i];
-            string fieldType = tupleItem.TypeName;
+            string fieldType = tupleItem.TypeFullName;
 
             if (IsTypeCompatible(fieldType, expectedResponseTypeName))
             {
@@ -1025,7 +1027,7 @@ internal static class HandlerGenerator
         if (middleware.BeforeMethod?.HasReturnValue == true)
         {
             var beforeMethod = middleware.BeforeMethod.Value;
-            string returnType = beforeMethod.ReturnTypeName ?? "object?";
+            string returnType = beforeMethod.ReturnType.FullName;
 
             if (!returnType.EndsWith("?") && IsReferenceTypeForNullability(returnType))
             {
@@ -1040,39 +1042,39 @@ internal static class HandlerGenerator
     private static bool CanReturnHandlerResult(MiddlewareMethodInfo? methodInfo)
     {
         if (methodInfo == null) return false;
-        return methodInfo.Value.ReturnTypeIsHandlerResult;
+        return methodInfo.Value.ReturnType.IsHandlerResult;
     }
 
     private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName, HandlerInfo handler)
     {
-        if (parameter.IsMessage)
+        if (parameter.IsMessageParameter)
             return "message";
 
-        if (parameter.IsCancellationToken)
+        if (parameter.Type.IsCancellationToken)
             return "cancellationToken";
 
         // Check if it's exception parameter
-        if (parameter.TypeName == "Exception" || parameter.TypeName == "Exception?" ||
-            parameter.TypeName == "System.Exception" || parameter.TypeName == "System.Exception?")
+        if (parameter.Type.FullName == "Exception" || parameter.Type.FullName == "Exception?" ||
+            parameter.Type.FullName == "System.Exception" || parameter.Type.FullName == "System.Exception?")
             return "exception";
 
         // Check if it's the result from this middleware's Before method
-        if (middleware.BeforeMethod?.ReturnTypeName != null)
+        if (middleware.BeforeMethod?.ReturnType != null)
         {
             // If the Before method returns a simple (non-tuple) type, check direct match
-            if (!middleware.BeforeMethod.Value.ReturnTypeIsTuple)
+            if (!middleware.BeforeMethod.Value.ReturnType.IsTuple)
             {
-                if (parameter.TypeName == middleware.BeforeMethod.Value.ReturnTypeName ||
-                    parameter.TypeName == "object" || parameter.TypeName == "object?")
+                if (parameter.Type.FullName == middleware.BeforeMethod.Value.ReturnType.FullName ||
+                    parameter.Type.FullName == "object" || parameter.Type.FullName == "object?")
                     return resultVariableName;
             }
             else
             {
                 // If the Before method returns a tuple, check if this parameter matches any tuple item
-                var tupleItems = middleware.BeforeMethod.Value.ReturnTypeTupleItems.ToList();
+                var tupleItems = middleware.BeforeMethod.Value.ReturnType.TupleItems.ToList();
                 for (int i = 0; i < tupleItems.Count; i++)
                 {
-                    if (parameter.TypeName == tupleItems[i].TypeName)
+                    if (parameter.Type.FullName == tupleItems[i].TypeFullName)
                     {
                         return $"{resultVariableName}.{GetTupleFieldAccessor(tupleItems[i])}";
                     }
@@ -1081,19 +1083,31 @@ internal static class HandlerGenerator
         }
 
         // Check if it's handler result parameter
-        if (handler.HasReturnValue && (parameter.TypeName == handler.ReturnTypeName || parameter.TypeName == "object"))
+        if (!handler.ReturnType.IsVoid && (parameter.Type.FullName == handler.ReturnType.FullName || parameter.Type.FullName == "object"))
             return "handlerResult";
 
         // Otherwise resolve from DI
-        return $"serviceProvider.GetRequiredService<{parameter.TypeName}>()";
+        return $"serviceProvider.GetRequiredService<{parameter.Type.FullName}>()";
+    }
+
+    private static string GetTupleFieldAccessor(TupleItemInfo tupleItem)
+    {
+        // Use the Field property if available, otherwise fall back to Item{index}
+        if (!string.IsNullOrEmpty(tupleItem.Field))
+        {
+            return tupleItem.Field;
+        }
+
+        // If no field name, use the Name (which should be the field name or item name)
+        return tupleItem.Name;
     }
 
     private static string GetUnwrappedReturnType(HandlerInfo handler)
     {
-        if (handler.ReturnTypeName == null)
+        if (handler.ReturnType.IsVoid)
             return "object";
 
-        return handler.ReturnTypeName;
+        return handler.ReturnType.UnwrappedFullName;
     }
 
     private static string GetDefaultValueForType(bool isNullable, string typeName)
@@ -1118,12 +1132,12 @@ internal static class HandlerGenerator
 
     private static string GetDefaultValueForHandler(HandlerInfo handler, string typeName)
     {
-        return GetDefaultValueForType(handler.ReturnTypeIsNullable, typeName);
+        return GetDefaultValueForType(handler.ReturnType.IsNullable, typeName);
     }
 
     private static string GetDefaultValueForMiddleware(MiddlewareInfo middleware, string typeName)
     {
-        bool isNullable = middleware.BeforeMethod?.ReturnTypeIsNullable ?? false;
+        bool isNullable = middleware.BeforeMethod?.ReturnType.IsNullable ?? false;
         return GetDefaultValueForType(isNullable, typeName);
     }
 

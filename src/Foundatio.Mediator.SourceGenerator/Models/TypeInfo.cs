@@ -108,7 +108,11 @@ internal readonly record struct TupleItemInfo
     /// </summary>
     public string Field { get; init; }
     /// <summary>
-    ///
+    /// The full name of the type of the tuple item, which includes namespace and any generic parameters.
     /// </summary>
-    public TypeSymbolInfo Type { get; init; }
+    public string TypeFullName { get; init; }
+    /// <summary>
+    /// Indicates if the tuple item type is nullable, meaning it can be null or has a nullable reference type.
+    /// </summary>
+    public bool IsNullable { get; init; }
 }

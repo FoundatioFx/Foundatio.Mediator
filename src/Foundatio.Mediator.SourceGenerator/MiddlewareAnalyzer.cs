@@ -53,7 +53,10 @@ internal static class MiddlewareAnalyzer
             ?? afterMethod?.Parameters[0].Type
             ?? finallyMethod?.Parameters[0].Type;
 
-        var isStatic = beforeMethod?.IsStatic == true && afterMethod?.IsStatic == true && finallyMethod?.IsStatic == true;
+        var isStatic = classSymbol.IsStatic
+                    || (beforeMethod != null && beforeMethod.IsStatic)
+                    || (afterMethod != null && afterMethod.IsStatic)
+                    || (finallyMethod != null && finallyMethod.IsStatic);
 
         if (messageType == null)
             return null;
@@ -72,7 +75,8 @@ internal static class MiddlewareAnalyzer
 
         return new MiddlewareInfo
         {
-            MiddlewareTypeName = classSymbol.ToDisplayString(),
+            Identifier = classSymbol.Name.ToIdentifier(),
+            FullName = classSymbol.ToDisplayString(),
             MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
             BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod, context.SemanticModel.Compilation) : null,
             AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod, context.SemanticModel.Compilation) : null,

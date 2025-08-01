@@ -13,24 +13,11 @@ internal static class Helpers
         source.AppendLine();
     }
 
-    /// <summary>
-    /// Gets the simple type name from a full type name, handling both . and + separators.
-    /// This is useful for generating clean class names in code generation.
-    /// </summary>
-    /// <param name="fullTypeName">The full type name including namespace and nested type separators</param>
-    /// <returns>Simple type name suitable for use as a class name</returns>
-    public static string GetSimpleTypeName(string fullTypeName)
+    public static string ToIdentifier(this string name)
     {
-        // Get the last part of the type name, handling both . and + separators
-        int lastDotIndex = fullTypeName.LastIndexOf('.');
-        int lastPlusIndex = fullTypeName.LastIndexOf('+');
-        int lastSeparatorIndex = Math.Max(lastDotIndex, lastPlusIndex);
+        if (string.IsNullOrEmpty(name))
+            return String.Empty;
 
-        string simpleName = lastSeparatorIndex >= 0
-            ? fullTypeName.Substring(lastSeparatorIndex + 1)
-            : fullTypeName;
-
-        // Clean up the name for use as a class name
-        return simpleName.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace("+", "_");
+        return new String(name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
     }
 }

@@ -174,7 +174,7 @@ public class Mediator : IMediator, IServiceProvider
     private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();
 
     [DebuggerStepThrough]
-    internal static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class
+    public static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class
     {
         // Check cache first - if it's there, it means it's not registered in DI
         if (_middlewareCache.TryGetValue(typeof(T), out var cachedInstance))

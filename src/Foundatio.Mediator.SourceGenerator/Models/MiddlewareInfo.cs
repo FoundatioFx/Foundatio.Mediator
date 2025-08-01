@@ -4,7 +4,8 @@ namespace Foundatio.Mediator;
 
 internal readonly record struct MiddlewareInfo
 {
-    public string MiddlewareTypeName { get; init; }
+    public string Identifier { get; init; }
+    public string FullName { get; init; }
     public TypeSymbolInfo MessageType { get; init; }
     public MiddlewareMethodInfo? BeforeMethod { get; init; }
     public MiddlewareMethodInfo? AfterMethod { get; init; }

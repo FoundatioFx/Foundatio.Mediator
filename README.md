@@ -180,7 +180,7 @@ await mediator.PublishAsync(new OrderShipped(orderId));
 
 Foundatio.Mediator delivers exceptional performance, getting remarkably close to direct method calls while providing full mediator pattern benefits:
 
-### Commands (Fire-and-Forget)
+### Commands
 
 | Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
 |-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
@@ -200,7 +200,7 @@ Foundatio.Mediator delivers exceptional performance, getting remarkably close to
 
 ### 🎯 Key Performance Insights
 
-- **🚀 Near-Optimal Performance**: Only **2.05x overhead** for commands and **1.78x overhead** for queries compared to direct method calls
+- **🚀 Near-Optimal Performance**: Only slight overhead vs direct method calls
 - **⚡ Foundatio vs MediatR**: **3.08x faster** for commands, **1.96x faster** for queries
 - **� Foundatio vs MassTransit**: **90x faster** for commands, **195x faster** for queries
 - **💾 Zero Allocation Commands**: Fire-and-forget operations have no GC pressure

@@ -70,7 +70,7 @@ public class EmailHandler
 
 ## 🎪 Simple Middleware Example
 
-Discovered by convention; static or instance:
+Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
 
 ```csharp
 public static class ValidationMiddleware
@@ -78,7 +78,7 @@ public static class ValidationMiddleware
     public static HandlerResult Before(object msg) {
         if (!TryValidate(msg, out var errors))
         {
-            // implictly converted to Result<T>
+            // short-circuit handler results when messages are invalid
             return HandlerResult.ShortCircuit(Result.Invalid(errors));
         }
 
@@ -92,8 +92,10 @@ public static class ValidationMiddleware
 ```csharp
 public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
 {
+    // Stopwatch will be available as a parameter in `Finally` method
     public Stopwatch Before(object msg) => Stopwatch.StartNew();
 
+    // Finally causes before, handler and after to be run in a try catch and is guaranteed to run
     public void Finally(object msg, Stopwatch sw, Exception? ex)
     {
         sw.Stop();

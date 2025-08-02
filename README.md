@@ -149,11 +149,12 @@ var user = await mediator.InvokeAsync<User>(new CreateUser(...));
 
 ## 📦 Publish API & Behavior
 
+Sends a message to zero or more handlers (by convention); all are invoked inline and in parallel.
+If any handler fails, `PublishAsync` throws (aggregates) exceptions.
+
 ```csharp
 await mediator.PublishAsync(new OrderShipped(orderId));
 ```
-
-All handlers run in parallel; if any fail, PublishAsync throws.
 
 ## 📊 Performance Benchmarks
 

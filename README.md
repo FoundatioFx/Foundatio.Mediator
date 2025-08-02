@@ -33,7 +33,7 @@ services.AddMediator();
 
 ## 🧩 Simple Handler Example
 
-Just add a class ending with `Handler` or `Consumer` static or instance. Methods must be named `Handle(Async)` or `Consume(Async)`. Supports multiple handler methods in a single class—for example, a `UserHandler` containing all CRUD methods.
+Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. Supports multiple handler methods in a single class—for example, a `UserHandler` containing all CRUD methods.
 
 ```csharp
 public record Ping(string Text);
@@ -75,10 +75,15 @@ Discovered by convention; static or instance:
 ```csharp
 public static class ValidationMiddleware
 {
-    public static HandlerResult Before(object msg)
-        => MiniValidator.TryValidate(msg, out var errs)
-           ? HandlerResult.Continue()
-           : HandlerResult.ShortCircuit(Result.Invalid(errs));
+    public static HandlerResult Before(object msg) {
+        if (!TryValidate(msg, out var errors))
+        {
+            // implictly converted to Result<T>
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+        }
+
+        return HandlerResult.Continue();
+    }
 }
 ```
 

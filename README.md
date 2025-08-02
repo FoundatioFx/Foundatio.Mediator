@@ -33,7 +33,7 @@ services.AddMediator();
 
 ## 🧩 Simple Handler Example
 
-Just add any class ending with `Handler` or `Consumer`:
+Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. First parameter is required and is always the message. Supports multiple handler methods in a single class—for example, a `UserHandler` containing handlers for all CRUD messages.
 
 ```csharp
 public record Ping(string Text);
@@ -70,32 +70,39 @@ public class EmailHandler
 
 ## 🎪 Simple Middleware Example
 
-Discovered by convention; static or instance with DI:
+Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. First parameter is required and is always the message. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
 
 ```csharp
 public static class ValidationMiddleware
 {
-    public static HandlerResult Before(object msg)
-        => MiniValidator.TryValidate(msg, out var errs)
-           ? HandlerResult.Continue()
-           : HandlerResult.ShortCircuit(Result.Invalid(errs));
+    public static HandlerResult Before(object msg) {
+        if (!TryValidate(msg, out var errors))
+        {
+            // short-circuit handler results when messages are invalid
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+        }
+
+        return HandlerResult.Continue();
+    }
 }
 ```
 
 ## 📝 Logging Middleware Example
 
 ```csharp
-public class LoggingMiddleware
+public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
 {
+    // Stopwatch will be available as a parameter in `Finally` method
     public Stopwatch Before(object msg) => Stopwatch.StartNew();
 
+    // Finally causes before, handler and after to be run in a try catch and is guaranteed to run
     public void Finally(object msg, Stopwatch sw, Exception? ex)
     {
         sw.Stop();
         if (ex != null)
-            Console.WriteLine($"Error in {msg.GetType().Name}: {ex.Message}");
+            log.LogInformation($"Error in {msg.GetType().Name}: {ex.Message}");
         else
-            Console.WriteLine($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
+            log.LogInformation($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
     }
 }
 ```
@@ -105,7 +112,7 @@ public class LoggingMiddleware
 Result\<T> is our built-in discriminated union for message-oriented workflows, capturing success, validation errors, conflicts, not found states, and more—without relying on exceptions.
 
 ```csharp
-public class GetUserHandler
+public class UserHandler
 {
     public async Task<Result<User>> HandleAsync(GetUser query) {
         var user = await _repo.Find(query.Id);
@@ -113,6 +120,19 @@ public class GetUserHandler
             return Result.NotFound($"User {query.Id} not found");
 
         // implicitly converted to Result<User>
+        return user;
+    }
+
+    public async Task<Result<User>> HandleAsync(CreateUser cmd)
+    {
+        var user = new User {
+            Id = Guid.NewGuid(),
+            Name = cmd.Name,
+            Email = cmd.Email,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _repo.AddAsync(user);
         return user;
     }
 }
@@ -160,7 +180,7 @@ await mediator.PublishAsync(new OrderShipped(orderId));
 
 Foundatio.Mediator delivers exceptional performance, getting remarkably close to direct method calls while providing full mediator pattern benefits:
 
-### Commands (Fire-and-Forget)
+### Commands
 
 | Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
 |-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
@@ -180,7 +200,7 @@ Foundatio.Mediator delivers exceptional performance, getting remarkably close to
 
 ### 🎯 Key Performance Insights
 
-- **🚀 Near-Optimal Performance**: Only **2.05x overhead** for commands and **1.78x overhead** for queries compared to direct method calls
+- **🚀 Near-Optimal Performance**: Only slight overhead vs direct method calls
 - **⚡ Foundatio vs MediatR**: **3.08x faster** for commands, **1.96x faster** for queries
 - **� Foundatio vs MassTransit**: **90x faster** for commands, **195x faster** for queries
 - **💾 Zero Allocation Commands**: Fire-and-forget operations have no GC pressure
@@ -218,6 +238,32 @@ Valid handler method names:
 - Method injection: Handler methods can declare any dependencies as parameters
 - Known parameters: `CancellationToken` is automatically provided by the mediator
 - Service resolution: All other parameters are resolved from the DI container
+
+### Ignoring Handlers
+
+- Annotate handler classes or methods with `[FoundatioIgnore]` to exclude them from discovery
+
+## 🎪 Middleware Conventions
+
+- Classes should end with `Middleware`
+- Valid method names:
+  - `Before(...)` / `BeforeAsync(...)`
+  - `After(...)` / `AfterAsync(...)`
+  - `Finally(...)` / `FinallyAsync(...)`
+- First parameter must be the message (can be `object`, an interface, or a concrete type)
+- Lifecycle methods are optional—you can implement any subset (`Before`, `After`, `Finally`)
+- `Before` can return:
+  - a `HandlerResult` to short-circuit execution
+  - a single state value
+  - a tuple of state values
+- Values (single or tuple elements) returned from `Before` are matched by type and injected into `After`/`Finally` parameters
+- `After` runs only on successful handler completion
+- `Finally` always runs, regardless of success or failure
+- Methods may declare additional parameters: `CancellationToken`, DI-resolved services
+
+### Ignoring Middleware
+
+- Annotate middleware classes or methods with `[FoundatioIgnore]` to exclude them from discovery
 
 ## 🔧 API Reference
 

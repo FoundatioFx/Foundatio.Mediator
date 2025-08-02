@@ -1,27 +1,23 @@
 # Foundatio.Mediator
 
-**The fastest convention-based C# mediator library with source generators**
 
 [![NuGet](https://img.shields.io/nuget/v/Foundatio.Mediator.svg)](https://www.nuget.org/packages/Foundatio.Mediator/)
-[![Performance](https://img.shields.io/badge/performance-2x%20close%20to%20direct%20calls-brightgreen)](#performance-benchmarks)
-[![Memory](https://img.shields.io/badge/memory-zero%20allocation-blue)](#performance-benchmarks)
 
-Foundatio.Mediator is a high-performance, convention-based mediator library that leverages C# source generators and cutting-edge interceptors to achieve near-direct method call performance. No interfaces, no base classes, no reflection at runtime—just clean, simple code that flies.
+Blazingly fast, convention-based C# mediator powered by source generators and interceptors.
 
 ## ✨ Why Choose Foundatio.Mediator?
 
-- **🚀 Blazing Fast** - Nearly as fast as direct method calls, 3x faster than MediatR
-- **🎯 Convention-Based** - No interfaces or base classes required
-- **⚡ Source Generated** - Compile-time code generation for optimal performance
-- **🔧 Full DI Integration** - Works seamlessly with Microsoft.Extensions.DependencyInjection
-- **🎪 Middleware Pipeline** - Elegant middleware support
-- **� Cascading Messages** - Tuple returns automatically trigger follow-up events
-- **�📦 Auto Registration** - Handlers discovered and registered automatically
-- **🔒 Compile-Time Safety** - Rich diagnostics catch errors before runtime
-- **🔧 C# Interceptors** - Direct method calls using cutting-edge C# interceptor technology
-- **🎯 Built-in Result Type** - Comprehensive discriminated union for handling all operation outcomes
+- 🚀 Near-direct call performance, zero runtime reflection
+- ⚡ Convention-based handler discovery (no interfaces/base classes)
+- 🔧 Full DI support via Microsoft.Extensions.DependencyInjection
+- 🧩 Plain handler classes or static methods—just drop them in
+- 🎪 Middleware pipeline with Before/After/Finally hooks
+- 🎯 Built-in Result and Result\<T> types for rich status handling
+- 🔄 Automatic cascading messages via tuple returns
+- 🔒 Compile-time diagnostics and validation
+- 📦 Auto-registration with no boilerplate
 
-## 🚀 Quick Start
+## 🚀 Quick Start Guide
 
 ### 1. Install the Package
 
@@ -35,343 +31,129 @@ dotnet add package Foundatio.Mediator
 services.AddMediator();
 ```
 
-### 3. Create Clean, Simple Handlers with Built-in Result Types
+## 🧩 Simple Handler Example
+
+Just add any class ending with `Handler` or `Consumer`:
 
 ```csharp
-// Messages (any class/record)
-public record CreateUserCommand
+public record Ping(string Text);
+
+public static class PingHandler
 {
-    [Required, StringLength(50, MinimumLength = 2)]
-    public string Name { get; set; } = string.Empty;
-
-    [Required, EmailAddress]
-    public string Email { get; set; } = string.Empty;
-
-    [Range(18, 120)]
-    public int Age { get; set; }
+    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
 }
+```
 
-public record User(int Id, string Name, string Email, int Age, DateTime CreatedAt);
+Call it:
 
-// Handlers return Result<T> for comprehensive status handling
-public class CreateUserCommandHandler
+```csharp
+var reply = mediator.Invoke<string>(new Ping("Hello"));
+```
+
+## 🔧 Dependency Injection in Handlers
+
+Supports constructor and method injection:
+
+```csharp
+public class EmailHandler
 {
-    public async Task<Result<User>> HandleAsync(CreateUserCommand command, CancellationToken cancellationToken = default)
+    private readonly IEmailService _svc;
+    public EmailHandler(IEmailService svc) => _svc = svc;
+
+    public Task HandleAsync(SendEmail cmd, ILogger<EmailHandler> log, CancellationToken ct)
     {
-        // Business logic validation
-        if (command.Email == "existing@example.com")
-            return Result.Conflict("A user with this email already exists");
-
-        // Create the user
-        var user = new User(
-            Id: Random.Shared.Next(1000, 9999),
-            Name: command.Name,
-            Email: command.Email,
-            Age: command.Age,
-            CreatedAt: DateTime.UtcNow
-        );
-
-        return user; // Implicit conversion to Result<User>
+        log.LogInformation("Sending to {To}", cmd.To);
+        return _svc.SendAsync(cmd.To, cmd.Subject, cmd.Body, ct);
     }
 }
 ```
 
-### 4. Use the Mediator with Result Pattern
+## 🎪 Simple Middleware Example
+
+Discovered by convention; static or instance with DI:
 
 ```csharp
-var mediator = serviceProvider.GetRequiredService<IMediator>();
-
-// Create a user with comprehensive result handling
-var result = await mediator.InvokeAsync<Result<User>>(new CreateUserCommand
+public static class ValidationMiddleware
 {
-    Name = "John Doe",
-    Email = "john@example.com",
-    Age = 30
-});
-
-// Handle different outcomes with pattern matching
-var response = result.Status switch
-{
-    ResultStatus.Ok => $"User created successfully: {result.Value.Name}",
-    ResultStatus.Invalid => $"Validation failed: {string.Join(", ", result.Errors.Select(e => e.ErrorMessage))}",
-    ResultStatus.Conflict => $"Conflict: {result.ErrorMessage}",
-    _ => "Unexpected result"
-};
-
-Console.WriteLine(response);
-```
-
-## 🎯 Built-in Result Type - Essential for Message-Oriented Architecture
-
-Foundatio.Mediator includes a comprehensive `Result` and `Result<T>` type that acts as a discriminated union, allowing handlers to return different operation outcomes without exceptions. This is crucial for message-oriented architectures where you need to handle various scenarios gracefully.
-
-### Why Result Types Matter
-
-In message-oriented systems, operations can have many outcomes beyond just success/failure:
-
-- **Success** with data
-- **Validation errors** with detailed field-level messages
-- **Business rule violations** (conflicts, unauthorized access)
-- **Not found** scenarios
-- **Created** responses with location information
-
-The Result type captures all these scenarios in a type-safe way without throwing exceptions.
-
-### Result Creation Methods
-
-```csharp
-// Success results
-var user = new User(1, "John", "john@example.com", 30, DateTime.UtcNow);
-return user;                                    // Implicit conversion to Result<User>
-return Result.Ok(user);                        // Explicit success
-return Result.Created(user, "/api/users/1");   // Created with location
-
-// Error results
-return Result.NotFound("User not found");
-return Result.Invalid(validationErrors);
-return Result.Conflict("Email already exists");
-return Result.Unauthorized("Login required");
-
-// Generic results (non-generic Result class)
-return Result.Ok();           // Success with no return value
-return Result.NoContent();    // Success with no content
-```
-
-### Example: Complete CRUD with Result Types
-
-```csharp
-public record GetUserQuery(int Id);
-public record UpdateUserCommand(int Id, string Name, string Email);
-public record DeleteUserCommand(int Id);
-
-public class UserHandler
-{
-    public async Task<Result<User>> HandleAsync(GetUserQuery query)
-    {
-        var user = await _repository.GetByIdAsync(query.Id);
-        return user != null
-            ? Result.Ok(user)
-            : Result.NotFound($"User with ID {query.Id} not found");
-    }
-
-    public async Task<Result<User>> HandleAsync(UpdateUserCommand command)
-    {
-        var existingUser = await _repository.GetByIdAsync(command.Id);
-        if (existingUser == null)
-            return Result.NotFound($"User with ID {command.Id} not found");
-
-        if (await _repository.EmailExistsAsync(command.Email, command.Id))
-            return Result.Conflict("Another user already has this email address");
-
-        var updatedUser = existingUser with { Name = command.Name, Email = command.Email };
-        await _repository.UpdateAsync(updatedUser);
-
-        return Result.Ok(updatedUser);
-    }
-
-    public async Task<Result> HandleAsync(DeleteUserCommand command)
-    {
-        var deleted = await _repository.DeleteAsync(command.Id);
-        return deleted
-            ? Result.NoContent()
-            : Result.NotFound($"User with ID {command.Id} not found");
-    }
+    public static HandlerResult Before(object msg)
+        => MiniValidator.TryValidate(msg, out var errs)
+           ? HandlerResult.Continue()
+           : HandlerResult.ShortCircuit(Result.Invalid(errs));
 }
 ```
 
-## 🔄 Cascading Messages - Elegant Event Choreography
-
-Foundatio.Mediator supports **cascading messages** through tuple return types, enabling elegant event choreography where handlers can trigger additional messages automatically. This is perfect for implementing event-driven workflows and the saga pattern.
-
-### How Cascading Messages Work
-
-When a handler returns a tuple, the mediator automatically:
-
-1. **Returns the expected type** to the caller (if specified)
-2. **Publishes remaining tuple items** as cascading events using `PublishAsync`
-3. **Waits for completion** - all cascading messages are processed before the original call completes
-
-### Example: Order Processing with Cascading Events
-
-```csharp
-// Messages
-public record CreateOrder(string ProductName, decimal Amount, string CustomerEmail);
-public record Order(int Id, string ProductName, decimal Amount, string CustomerEmail, DateTime CreatedAt);
-public record OrderCreatedEvent(int OrderId, string CustomerEmail, decimal Amount);
-public record SendWelcomeEmail(string Email, string CustomerName);
-public record UpdateInventory(string ProductName, int Quantity);
-
-// Handler that returns a tuple - triggers cascading messages
-public class CreateOrderHandler
-{
-    public async Task<(Order, OrderCreatedEvent)> HandleAsync(CreateOrder command, CancellationToken cancellationToken)
-    {
-        // Create the order
-        var order = new Order(
-            Id: Random.Shared.Next(1000, 9999),
-            ProductName: command.ProductName,
-            Amount: command.Amount,
-            CustomerEmail: command.CustomerEmail,
-            CreatedAt: DateTime.UtcNow
-        );
-
-        // Create the event that will be published automatically
-        var orderCreatedEvent = new OrderCreatedEvent(order.Id, order.CustomerEmail, order.Amount);
-
-        // Return tuple - Order goes to caller, OrderCreatedEvent gets published
-        return (order, orderCreatedEvent);
-    }
-}
-
-// Handler for the cascading event
-public class OrderCreatedEventHandler
-{
-    public async Task HandleAsync(OrderCreatedEvent orderCreated, CancellationToken cancellationToken)
-    {
-        Console.WriteLine($"Order {orderCreated.OrderId} created for ${orderCreated.Amount}");
-
-        // Could trigger more cascading messages by returning a tuple
-        // For example: return (new SendWelcomeEmail(orderCreated.CustomerEmail, "Valued Customer"),);
-    }
-}
-```
-
-### Usage with Cascading Messages
-
-```csharp
-// Only the Order is returned to the caller
-// OrderCreatedEvent is automatically published to all its handlers
-var order = await mediator.InvokeAsync<Order>(new CreateOrder(
-    ProductName: "Amazing Widget",
-    Amount: 29.99m,
-    CustomerEmail: "customer@example.com"
-));
-
-Console.WriteLine($"Created order {order.Id} - cascading events processed automatically!");
-```
-
-### Multiple Cascading Messages
-
-Handlers can return tuples with multiple cascading messages:
-
-```csharp
-public class ComplexOrderHandler
-{
-    public async Task<(Order, OrderCreatedEvent, SendWelcomeEmail, UpdateInventory)> HandleAsync(
-        CreateOrder command,
-        CancellationToken cancellationToken)
-    {
-        var order = new Order(/*...*/);
-
-        return (
-            order,                                           // Returned to caller
-            new OrderCreatedEvent(order.Id, order.CustomerEmail, order.Amount),  // Published
-            new SendWelcomeEmail(order.CustomerEmail, "Valued Customer"),        // Published
-            new UpdateInventory(order.ProductName, -1)                          // Published
-        );
-    }
-}
-```
-
-## 🎪 Beautiful Middleware Pipeline
-
-Create elegant middleware that runs before, after, and finally around your handlers. Middleware works seamlessly with the Result type for comprehensive error handling:
+## 📝 Logging Middleware Example
 
 ```csharp
 public class LoggingMiddleware
 {
-    private readonly ILogger<LoggingMiddleware> _logger;
+    public Stopwatch Before(object msg) => Stopwatch.StartNew();
 
-    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
+    public void Finally(object msg, Stopwatch sw, Exception? ex)
     {
-        _logger = logger;
-    }
-
-    public Stopwatch Before(object message)
-    {
-        _logger.LogInformation("Processing {MessageType}", message.GetType().Name);
-        return Stopwatch.StartNew();
-    }
-
-    public void Finally(object message, Stopwatch stopwatch, Exception? exception)
-    {
-        stopwatch.Stop();
-        if (exception != null)
-        {
-            _logger.LogError(exception, "Error processing {MessageType}", message.GetType().Name);
-        }
+        sw.Stop();
+        if (ex != null)
+            Console.WriteLine($"Error in {msg.GetType().Name}: {ex.Message}");
         else
-        {
-            _logger.LogInformation("Completed {MessageType} in {ElapsedMs}ms",
-                message.GetType().Name, stopwatch.ElapsedMilliseconds);
-        }
-    }
-}
-
-public static class ValidationMiddleware
-{
-    public static HandlerResult Before(object message)
-    {
-        if (MiniValidator.TryValidate(message, out var errors))
-            return HandlerResult.Continue();
-
-        var validationErrors = errors.SelectMany(kvp =>
-            kvp.Value.Select(errorMessage => new ValidationError(kvp.Key, errorMessage))).ToList();
-
-        return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
+            Console.WriteLine($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
     }
 }
 ```
 
-With this middleware, your handlers automatically get validation without any boilerplate:
+## 🎯 Using Result\<T> in Handlers
+
+Result\<T> is our built-in discriminated union for message-oriented workflows, capturing success, validation errors, conflicts, not found states, and more—without relying on exceptions.
 
 ```csharp
-// This command will be automatically validated by ValidationMiddleware
-var result = await mediator.InvokeAsync<Result<User>>(new CreateUserCommand
+public class GetUserHandler
 {
-    Name = "", // Invalid - too short
-    Email = "not-an-email", // Invalid - bad format
-    Age = 10 // Invalid - too young
-});
+    public async Task<Result<User>> HandleAsync(GetUser query) {
+        var user = await _repo.Find(query.Id);
+        if (user == null)
+            return Result.NotFound($"User {query.Id} not found");
 
-if (result.Status == ResultStatus.Invalid)
-{
-    foreach (var error in result.Errors)
-        Console.WriteLine($"{error.PropertyName}: {error.ErrorMessage}");
+        // implicitly converted to Result<User>
+        return user;
+    }
 }
 ```
 
-## 💉 Dependency Injection Made Simple
-
-Handlers support both constructor and method-level dependency injection:
+## ➡️ Invocation API Overview
 
 ```csharp
-public class SendWelcomeEmailHandler
+// Async with response
+var user = await mediator.InvokeAsync<User>(new GetUser(id));
+
+// Async without response
+await mediator.InvokeAsync(new Ping("Hi"));
+
+// Sync with response (all handlers and middleware must be sync)
+var reply = mediator.Invoke<string>(new Ping("Hello"));
+```
+
+## 🔄 Tuple Returns & Cascading Messages
+
+Handlers can return tuples; one matches the response, the rest are published:
+
+```csharp
+public async Task<(User user, UserCreated evt)> HandleAsync(CreateUser cmd)
 {
-    private readonly IEmailService _emailService;
-    private readonly IGreetingService _greetingService;
-    private readonly ILogger<SendWelcomeEmailHandler> _logger;
-
-    public SendWelcomeEmailHandler(
-        IEmailService emailService,
-        IGreetingService greetingService,
-        ILogger<SendWelcomeEmailHandler> logger)
-    {
-        _emailService = emailService;
-        _greetingService = greetingService;
-        _logger = logger;
-    }
-
-    public async Task HandleAsync(
-        SendWelcomeEmailCommand command,
-        CancellationToken cancellationToken = default) // Provided by mediator
-    {
-        _logger.LogInformation("Sending welcome email to {Email}", command.Email);
-
-        var greeting = _greetingService.CreateGreeting(command.Name);
-        await _emailService.SendEmailAsync(command.Email, "Welcome!", greeting);
-    }
+    var user = await _repo.Add(cmd);
+    return (user, new UserCreated(user.Id));
 }
+
+// Usage
+var user = await mediator.InvokeAsync<User>(new CreateUser(...));
+// UserCreated is auto-published and handlers invoked inline before this method returns
+```
+
+## 📦 Publish API & Behavior
+
+Sends a message to zero or more handlers (by convention); all are invoked inline and in parallel.
+If any handler fails, `PublishAsync` throws (aggregates) exceptions.
+
+```csharp
+await mediator.PublishAsync(new OrderShipped(orderId));
 ```
 
 ## 📊 Performance Benchmarks
@@ -454,28 +236,7 @@ public interface IMediator
 
     // Publishing (multiple handlers)
     Task PublishAsync(object message, CancellationToken cancellationToken = default);
-    void Publish(object message, CancellationToken cancellationToken = default);
 }
-```
-
-## 🎬 Sample Applications
-
-### ConsoleSample - Comprehensive Demonstration
-
-The `samples/ConsoleSample` project provides a complete demonstration of all Foundatio.Mediator features:
-
-- **Simple Commands & Queries** - Basic fire-and-forget and request/response patterns
-- **Dependency Injection** - Handler methods with injected services and logging
-- **Publish/Subscribe** - Multiple handlers for the same event
-- **Mixed Sync/Async** - Both synchronous and asynchronous handler examples
-- **Middleware Pipeline** - Global and message-specific middleware examples
-- **Service Integration** - Email, SMS, and audit service examples
-
-To run the comprehensive sample:
-
-```bash
-cd samples/ConsoleSample
-dotnet run
 ```
 
 ## ⚙️ How It Works
@@ -516,8 +277,6 @@ foreach (var handler in handlers)
 
 - **Interceptors First** - Same-assembly calls use interceptors for maximum performance
 - **DI Fallback** - Cross-assembly handlers and publish operations use DI registration
-- **Automatic Selection** - The generator chooses the optimal strategy per call site
-- **Keyed Services** - Handlers registered by fully qualified message type name
 - **Zero Runtime Overhead** - Interceptors bypass all runtime lookup completely
 
 **Benefits:**

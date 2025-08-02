@@ -17,7 +17,21 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - 🔒 Compile-time diagnostics and validation
 - 📦 Auto-registration with no boilerplate
 
-## 1. Simple Handler
+## 🚀 Quick Start Guide
+
+### 1. Install the Package
+
+```bash
+dotnet add package Foundatio.Mediator
+```
+
+### 2. Register the Mediator
+
+```csharp
+services.AddMediator();
+```
+
+## 🧩 Simple Handler Example
 
 Just add any class ending with `Handler` or `Consumer`:
 
@@ -36,7 +50,7 @@ Call it:
 var reply = mediator.Invoke<string>(new Ping("Hello"));
 ```
 
-## 2. Dependency Injection in Handlers
+## 🔧 Dependency Injection in Handlers
 
 Supports constructor and method injection:
 
@@ -54,7 +68,7 @@ public class EmailHandler
 }
 ```
 
-## 3. Simple Middleware
+## 🎪 Simple Middleware Example
 
 Discovered by convention; static or instance with DI:
 
@@ -68,7 +82,7 @@ public static class ValidationMiddleware
 }
 ```
 
-## 4. Logging Middleware Example
+## 📝 Logging Middleware Example
 
 ```csharp
 public class LoggingMiddleware
@@ -86,7 +100,9 @@ public class LoggingMiddleware
 }
 ```
 
-## 5. Using Result<T>
+## 🎯 Using Result\<T> in Handlers
+
+Result\<T> is our built-in discriminated union for message-oriented workflows, capturing success, validation errors, conflicts, not found states, and more—without relying on exceptions.
 
 ```csharp
 public class GetUserHandler
@@ -98,7 +114,7 @@ public class GetUserHandler
 }
 ```
 
-## 6. Invocation API
+## ➡️ Invocation API Overview
 
 ```csharp
 // With response
@@ -108,7 +124,7 @@ var user = await mediator.InvokeAsync<User>(new GetUser(id));
 await mediator.InvokeAsync(new Ping("Hi"));
 ```
 
-## 7. Tuple Returns & Cascading Messages
+## 🔄 Tuple Returns & Cascading Messages
 
 Handlers can return tuples; one matches the response, the rest are published:
 
@@ -124,7 +140,7 @@ var user = await mediator.InvokeAsync<User>(new CreateUser(...));
 // UserCreated is auto-published
 ```
 
-## 8. Publish API
+## 📦 Publish API & Behavior
 
 ```csharp
 await mediator.PublishAsync(new OrderShipped(orderId));

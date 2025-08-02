@@ -67,7 +67,7 @@ internal static class HandlerGenerator
 
         GenerateHandleMethod(source, handler);
 
-        // generate untyped handle method
+        GenerateUntypedHandleMethod(source, handler);
 
         GenerateInterceptorMethods(source, handler);
 
@@ -93,6 +93,7 @@ internal static class HandlerGenerator
 
         string asyncModifier = handler.IsAsync ? "async " : "";
         string result, accessor, parameters, defaultValue;
+        bool allowNull = false;
         string returnType = handler.ReturnType.FullName;
 
         var variables = new Dictionary<string, string>();
@@ -107,45 +108,44 @@ internal static class HandlerGenerator
         if (handler.ReturnType.IsTask == false && handler.IsAsync)
         {
             if (handler.ReturnType.IsVoid)
-                returnType = "global::System.Threading.Tasks.ValueTask";
+                returnType = "System.Threading.Tasks.ValueTask";
             else
-                returnType = $"global::System.Threading.Tasks.ValueTask<global::{returnType}>";
+                returnType = $"System.Threading.Tasks.ValueTask<{returnType}>";
         }
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(global::Foundatio.Mediator.IMediator mediator, global::{handler.MessageType.FullName} message, global::System.Threading.CancellationToken cancellationToken)")
+        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
               .AppendLine("{");
 
         source.IncrementIndent();
 
-        source.AppendLine("var serviceProvider = (global::System.IServiceProvider)mediator;");
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine();
 
         // build middleware instances
         foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))
         {
-            source.AppendLine($"var {m.Identifier.ToCamelCase()} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
+            source.AppendLine($"var {m.Identifier.ToCamelCase()} = Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
         }
-
-        source.AppendLine();
+        source.AppendLineIf(handler.Middleware.Any(m => m.IsStatic == false));
 
         // build result variables for before methods
         foreach (var m in beforeMiddleware.Where(m => m.Method.HasReturnValue))
         {
-            bool allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
+            allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
             defaultValue = allowNull ? "null" : "default";
-            var prefix = m.Method.ReturnType.IsTuple ? "" : "global::";
-            source.AppendLine($"{prefix}{m.Method.ReturnType.FullName}{(allowNull ? "?" : "")} {m.Middleware.Identifier.ToCamelCase()}Result = {defaultValue};");
+            source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {m.Middleware.Identifier.ToCamelCase()}Result = {defaultValue};");
         }
+        source.AppendLineIf(beforeMiddleware.Any(m => m.Method.HasReturnValue));
 
-        source.AppendLine();
-        defaultValue = handler.ReturnType.IsNullable ? "null" : "default";
-        source.AppendLine($"{handler.ReturnType.UnwrappedFullName} handlerResult = {defaultValue};");
+        allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
+        defaultValue = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType ? "null" : "default";
+        source.AppendLineIf($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} handlerResult = {defaultValue};", handler.HasReturnValue);
 
         if (shouldUseTryCatch)
         {
             source.AppendLine("""
-                global::System.Exception? exception = null;
+                System.Exception? exception = null;
 
                 try
                 {
@@ -159,7 +159,7 @@ internal static class HandlerGenerator
         // call before middleware
         foreach (var m in beforeMiddleware)
         {
-            asyncModifier = m.Middleware.IsAsync ? "await " : "";
+            asyncModifier = m.Method.IsAsync ? "await " : "";
             result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
             accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
             parameters = BuildParameters(m.Method.Parameters);
@@ -169,8 +169,8 @@ internal static class HandlerGenerator
         source.AppendLineIf(beforeMiddleware.Any());
 
         // call handler
-        asyncModifier = handler.IsAsync ? "await " : "";
-        result = handler.ReturnType.IsVoid ? "" : shouldUseTryCatch ? "handlerResult = " : "return ";
+        asyncModifier = handler.ReturnType.IsTask ? "await " : "";
+        result = handler.ReturnType.IsVoid ? "" : "handlerResult = ";
         accessor = handler.IsStatic ? handler.FullName : $"handlerInstance";
         parameters = BuildParameters(handler.Parameters);
 
@@ -181,7 +181,7 @@ internal static class HandlerGenerator
         // call after middleware
         foreach (var m in afterMiddleware)
         {
-            asyncModifier = m.Middleware.IsAsync ? "await " : "";
+            asyncModifier = m.Method.IsAsync ? "await " : "";
             accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
             parameters = BuildParameters(m.Method.Parameters, variables);
 
@@ -256,7 +256,7 @@ internal static class HandlerGenerator
             }
             else
             {
-                parameterValues.Add($"serviceProvider.GetRequiredService<global::{param.Type.FullName}>()");
+                parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
             }
         }
 
@@ -281,21 +281,26 @@ internal static class HandlerGenerator
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             string stronglyTypedMethodName = GetHandlerMethodName(handler);
+            string asyncModifier = handler.IsAsync ? "await " : "";
+            var result = handler.ReturnType.IsVoid ? "" : "var result = ";
 
-            if (!handler.ReturnType.IsVoid)
+            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
+
+            if (handler.ReturnType.IsTuple)
             {
-                source.AppendLine($"var result = {(handler.IsAsync ? "await " : "")}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
-
-                if (handler.ReturnType.IsTuple)
-                {
-                    source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
-                }
-                else
-                {
-                    GenerateNonTupleResultHandling(source, handler);
-                }
+                source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
+            }
+            else if (handler.HasReturnValue)
+            {
+                GenerateNonTupleResultHandling(source, handler);
+            }
+            else
+            {
+                source.AppendLine("return null;");
             }
         }
+
+        source.AppendLine("}");
     }
 
     private static void GenerateNonTupleResultHandling(IndentedStringBuilder source, HandlerInfo handler)
@@ -413,7 +418,7 @@ internal static class HandlerGenerator
 
         // Generate method signature
         string returnType = GenerateInterceptorReturnType(interceptorIsAsync, isGeneric, expectedResponseTypeName);
-        string parameters = "this global::Foundatio.Mediator.IMediator mediator, object message, global::System.Threading.CancellationToken cancellationToken = default";
+        string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
         string asyncModifier = interceptorIsAsync ? "async " : "";
@@ -448,7 +453,7 @@ internal static class HandlerGenerator
     private static string GenerateInterceptorAttribute(CallSiteInfo callSite)
     {
         var location = callSite.Location;
-        return $"[global::System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.DisplayLocation}";
+        return $"[System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.DisplayLocation}";
     }
 
     private static string GenerateInterceptorReturnType(bool isAsync, bool isGeneric, string expectedResponseTypeName)
@@ -456,11 +461,11 @@ internal static class HandlerGenerator
         if (isGeneric)
         {
             // For generic methods, return the exact same type as the original method
-            return isAsync ? $"global::System.Threading.Tasks.ValueTask<{expectedResponseTypeName}>" : expectedResponseTypeName;
+            return isAsync ? $"System.Threading.Tasks.ValueTask<{expectedResponseTypeName}>" : expectedResponseTypeName;
         }
 
         // For non-generic methods, return the exact same type as the original method
-        return isAsync ? "global::System.Threading.Tasks.ValueTask" : "void";
+        return isAsync ? "System.Threading.Tasks.ValueTask" : "void";
     }
 
     /// <summary>
@@ -476,7 +481,7 @@ internal static class HandlerGenerator
         if (returnType.StartsWith("Foundatio.Mediator.Result<") && returnType != "Foundatio.Mediator.Result")
         {
             // Check if the value might be a non-generic Result that needs conversion to Result<T>
-            return $"{handlerResultVar}.Value is global::Foundatio.Mediator.Result result ? ({returnType})result : ({returnType}?){handlerResultVar}.Value ?? default({returnType})!";
+            return $"{handlerResultVar}.Value is Foundatio.Mediator.Result result ? ({returnType})result : ({returnType}?){handlerResultVar}.Value ?? default({returnType})!";
         }
 
         // For reference types, provide a null-coalescing fallback to satisfy non-nullable return types
@@ -553,7 +558,7 @@ internal static class HandlerGenerator
     private static string GenerateShortCircuitCheck(MiddlewareInfo middleware, string resultVariableName, string hrVariableName)
     {
         if (middleware.BeforeMethod == null)
-            return $"if ({resultVariableName} is global::Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
+            return $"if ({resultVariableName} is Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
 
         var methodInfo = middleware.BeforeMethod.Value;
 
@@ -573,7 +578,7 @@ internal static class HandlerGenerator
         // Otherwise, fall back to pattern matching for object/object? return types
         else
         {
-            return $"if ({resultVariableName} is global::Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
+            return $"if ({resultVariableName} is Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
         }
     }
 

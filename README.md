@@ -121,11 +121,14 @@ public class GetUserHandler
 ## ➡️ Invocation API Overview
 
 ```csharp
-// With response
+// Async with response
 var user = await mediator.InvokeAsync<User>(new GetUser(id));
 
-// Without response
+// Async without response
 await mediator.InvokeAsync(new Ping("Hi"));
+
+// Sync with response (all handlers and middleware must be sync)
+var reply = mediator.Invoke<string>(new Ping("Hello"));
 ```
 
 ## 🔄 Tuple Returns & Cascading Messages

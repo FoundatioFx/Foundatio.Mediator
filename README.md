@@ -237,6 +237,32 @@ Valid handler method names:
 - Known parameters: `CancellationToken` is automatically provided by the mediator
 - Service resolution: All other parameters are resolved from the DI container
 
+### Ignoring Handlers
+
+- Annotate handler classes or methods with `[FoundatioIgnore]` to exclude them from discovery
+
+## 🎪 Middleware Conventions
+
+- Classes should end with `Middleware`
+- Valid method names:
+  - `Before(...)` / `BeforeAsync(...)`
+  - `After(...)` / `AfterAsync(...)`
+  - `Finally(...)` / `FinallyAsync(...)`
+- First parameter must be the message (can be `object`, an interface, or a concrete type)
+- Lifecycle methods are optional—you can implement any subset (`Before`, `After`, `Finally`)
+- `Before` can return:
+  - a `HandlerResult` to short-circuit execution
+  - a single state value
+  - a tuple of state values
+- Values (single or tuple elements) returned from `Before` are matched by type and injected into `After`/`Finally` parameters
+- `After` runs only on successful handler completion
+- `Finally` always runs, regardless of success or failure
+- Methods may declare additional parameters: `CancellationToken`, DI-resolved services
+
+### Ignoring Middleware
+
+- Annotate middleware classes or methods with `[FoundatioIgnore]` to exclude them from discovery
+
 ## 🔧 API Reference
 
 ### IMediator Interface

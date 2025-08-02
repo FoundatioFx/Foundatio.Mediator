@@ -33,7 +33,7 @@ services.AddMediator();
 
 ## 🧩 Simple Handler Example
 
-Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. Supports multiple handler methods in a single class—for example, a `UserHandler` containing all CRUD methods.
+Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. First parameter is required and is always the message. Supports multiple handler methods in a single class—for example, a `UserHandler` containing all CRUD methods.
 
 ```csharp
 public record Ping(string Text);
@@ -70,7 +70,7 @@ public class EmailHandler
 
 ## 🎪 Simple Middleware Example
 
-Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
+Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. First parameter is required and is always the message. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
 
 ```csharp
 public static class ValidationMiddleware

@@ -33,7 +33,7 @@ services.AddMediator();
 
 ## 🧩 Simple Handler Example
 
-Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. First parameter is required and is always the message. Supports multiple handler methods in a single class—for example, a `UserHandler` containing all CRUD methods.
+Just add a class (instance or static) ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. First parameter is required and is always the message. Supports multiple handler methods in a single class—for example, a `UserHandler` containing handlers for all CRUD messages.
 
 ```csharp
 public record Ping(string Text);

@@ -107,10 +107,14 @@ Result\<T> is our built-in discriminated union for message-oriented workflows, c
 ```csharp
 public class GetUserHandler
 {
-    public Task<Result<User>> HandleAsync(GetUser cmd)
-        => _repo.Find(cmd.Id) is { } user
-           ? Task.FromResult(Result.Ok(user))
-           : Task.FromResult(Result.NotFound($"User {cmd.Id} not found"));
+    public async Task<Result<User>> HandleAsync(GetUser cmd) {
+        var user = await _repo.Find(cmd.Id);
+        if (user == null)
+            return Result.NotFound($"User {cmd.Id} not found");
+
+        // implicitly converted to Result<User>
+        return user;
+    }
 }
 ```
 

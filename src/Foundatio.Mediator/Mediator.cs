@@ -1,22 +1,12 @@
-#nullable enable
-
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator;
 
-[ExcludeFromCodeCoverage]
 public class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
-
-    private static readonly ConcurrentDictionary<Type, Func<IMediator, object, CancellationToken, ValueTask>> _invokeAsyncCache = new();
-    private static readonly ConcurrentDictionary<Type, Func<IMediator, object, CancellationToken, object?>> _invokeCache = new();
-    private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), Func<IMediator, object, CancellationToken, ValueTask<object?>>> _invokeAsyncWithResponseCache = new();
-    private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), Func<IMediator, object, CancellationToken, object?>> _invokeWithResponseCache = new();
-    private static readonly ConcurrentDictionary<Type, Func<IMediator, object, CancellationToken, ValueTask<object?>>[]> _publishCache = new();
 
     [DebuggerStepThrough]
     public Mediator(IServiceProvider serviceProvider)
@@ -28,7 +18,7 @@ public class Mediator : IMediator, IServiceProvider
     public object? GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 
     [DebuggerStepThrough]
-    private Func<IMediator, object, CancellationToken, ValueTask<object?>>[] GetAllApplicableHandlers(object message)
+    private PublishAsyncDelegate[] GetAllApplicableHandlers(object message)
     {
         var messageType = message.GetType();
 
@@ -57,7 +47,7 @@ public class Mediator : IMediator, IServiceProvider
             }
 
             return allHandlers.Distinct()
-                .Select<HandlerRegistration, Func<IMediator, object, CancellationToken, ValueTask<object?>>>(h => (mediator, message, cancellationToken) => h.HandleAsync(mediator, message, cancellationToken, null)).ToArray();
+                .Select<HandlerRegistration, PublishAsyncDelegate>(h => async (mediator, message, cancellationToken) => await h.HandleAsync(mediator, message, cancellationToken, null)).ToArray();
         });
     }
 
@@ -129,7 +119,7 @@ public class Mediator : IMediator, IServiceProvider
                 throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList.First();
-            return async (mediator, msg, ct) => await handler.HandleAsync(mediator, msg, ct, key.ResponseType);
+            return (mediator, msg, ct) => handler.HandleAsync(mediator, msg, ct, key.ResponseType);
         });
 
         var result = await cachedFunc(this, message, cancellationToken);
@@ -189,4 +179,20 @@ public class Mediator : IMediator, IServiceProvider
         return (T)_middlewareCache.GetOrAdd(typeof(T), type =>
             ActivatorUtilities.CreateInstance<T>(serviceProvider));
     }
+
+    private delegate ValueTask InvokeAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
+    private static readonly ConcurrentDictionary<Type, InvokeAsyncDelegate> _invokeAsyncCache = new();
+
+    private delegate void InvokeDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
+    private static readonly ConcurrentDictionary<Type, InvokeDelegate> _invokeCache = new();
+
+    private delegate ValueTask<object?> InvokeAsyncResponseDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
+    private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeAsyncResponseDelegate> _invokeAsyncWithResponseCache = new();
+
+    private delegate object? InvokeResponseDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
+    private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
+
+    private delegate ValueTask PublishAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
+    private static readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
+
 }

@@ -180,11 +180,40 @@ internal class IndentedStringBuilder
     /// <returns>This builder so that additional calls can be chained.</returns>
     public virtual IndentedStringBuilder AppendLine(string value)
     {
-        if (value.Length != 0)
-            DoIndent();
+        if (value.Length == 0)
+        {
+            _stringBuilder.AppendLine();
+            _indentPending = true;
+            return this;
+        }
 
-        _stringBuilder.AppendLine(value);
+        // Use StringReader to properly handle all line ending types
+        using var reader = new StringReader(value);
+        bool isFirstLine = true;
 
+        while (reader.ReadLine() is { } line)
+        {
+            if (!isFirstLine)
+            {
+                _stringBuilder.AppendLine();
+                _indentPending = true;
+            }
+
+            if (line.Length > 0)
+            {
+                DoIndent();
+                _stringBuilder.Append(line);
+            }
+            else
+            {
+                // Empty line - just ensure indentation state is correct
+                _indentPending = true;
+            }
+
+            isFirstLine = false;
+        }
+
+        _stringBuilder.AppendLine();
         _indentPending = true;
 
         return this;

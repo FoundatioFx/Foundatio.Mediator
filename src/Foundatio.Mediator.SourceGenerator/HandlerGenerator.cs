@@ -92,14 +92,14 @@ internal static class HandlerGenerator
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
         string asyncModifier = handler.IsAsync ? "async " : "";
-        string result, accessor, parameters;
+        string result, accessor, parameters, defaultValue;
         string returnType = handler.ReturnType.FullName;
 
         var variables = new Dictionary<string, string>();
 
         var beforeMiddleware = handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList();
-        var afterMiddleware = handler.Middleware.Where(m => m.AfterMethod != null).Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList();
-        var finallyMiddleware = handler.Middleware.Where(m => m.FinallyMethod != null).Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList();
+        var afterMiddleware = handler.Middleware.Where(m => m.AfterMethod != null).Reverse().Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList();
+        var finallyMiddleware = handler.Middleware.Where(m => m.FinallyMethod != null).Reverse().Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList();
 
         var shouldUseTryCatch = finallyMiddleware.Any();
 
@@ -124,7 +124,7 @@ internal static class HandlerGenerator
         // build middleware instances
         foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))
         {
-            source.AppendLine($"var middleware{m.Identifier} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
+            source.AppendLine($"var {m.Identifier.ToCamelCase()} = global::Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
         }
 
         source.AppendLine();
@@ -132,20 +132,26 @@ internal static class HandlerGenerator
         // build result variables for before methods
         foreach (var m in beforeMiddleware.Where(m => m.Method.HasReturnValue))
         {
-            var defaultValue = m.Method.ReturnType.IsNullable ? "null" : "default";
-            source.AppendLine($"global::{m.Method.ReturnType.FullName} result{m.Middleware.Identifier} = {defaultValue};");
+            bool allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
+            defaultValue = allowNull ? "null" : "default";
+            var prefix = m.Method.ReturnType.IsTuple ? "" : "global::";
+            source.AppendLine($"{prefix}{m.Method.ReturnType.FullName}{(allowNull ? "?" : "")} {m.Middleware.Identifier.ToCamelCase()}Result = {defaultValue};");
         }
 
         source.AppendLine();
+        defaultValue = handler.ReturnType.IsNullable ? "null" : "default";
+        source.AppendLine($"{handler.ReturnType.UnwrappedFullName} handlerResult = {defaultValue};");
 
         if (shouldUseTryCatch)
         {
             source.AppendLine("""
-                global::System.Exception? exception = null;");
+                global::System.Exception? exception = null;
 
                 try
                 {
                 """);
+
+            variables["System.Exception"] = "exception";
 
             source.IncrementIndent();
         }
@@ -154,8 +160,8 @@ internal static class HandlerGenerator
         foreach (var m in beforeMiddleware)
         {
             asyncModifier = m.Middleware.IsAsync ? "await " : "";
-            result = m.Method.ReturnType.IsVoid ? "" : $"result{m.Middleware.Identifier} = ";
-            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"middleware{m.Middleware.Identifier}";
+            result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
+            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
             parameters = BuildParameters(m.Method.Parameters);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
@@ -164,23 +170,26 @@ internal static class HandlerGenerator
 
         // call handler
         asyncModifier = handler.IsAsync ? "await " : "";
-        result = handler.ReturnType.IsVoid ? "" : $"var handlerResult = ";
+        result = handler.ReturnType.IsVoid ? "" : shouldUseTryCatch ? "handlerResult = " : "return ";
         accessor = handler.IsStatic ? handler.FullName : $"handlerInstance";
         parameters = BuildParameters(handler.Parameters);
+
         source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
         source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
-        source.AppendLine();
+        source.AppendLineIf(handler.HasReturnValue);
 
         // call after middleware
         foreach (var m in afterMiddleware)
         {
             asyncModifier = m.Middleware.IsAsync ? "await " : "";
-            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"middleware{m.Middleware.Identifier}";
-            parameters = BuildParameters(m.Method.Parameters);
+            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
+            parameters = BuildParameters(m.Method.Parameters, variables);
 
             source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
         source.AppendLineIf(afterMiddleware.Any());
+
+        source.AppendLineIf("return handlerResult;", handler.HasReturnValue);
 
         if (shouldUseTryCatch)
         {
@@ -203,8 +212,8 @@ internal static class HandlerGenerator
             foreach (var m in finallyMiddleware)
             {
                 asyncModifier = m.Method.IsAsync ? "await " : "";
-                accessor = m.Method.IsStatic ? m.Middleware.FullName : $"middleware{m.Middleware.Identifier}";
-                parameters = BuildParameters(m.Method.Parameters);
+                accessor = m.Method.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
+                parameters = BuildParameters(m.Method.Parameters, variables);
 
                 source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
             }
@@ -212,21 +221,14 @@ internal static class HandlerGenerator
             source.DecrementIndent();
 
             source.AppendLine("}");
-            source.AppendLine();
-
-            source.DecrementIndent();
         }
 
-        if (handler.HasReturnValue)
-        {
-            source.AppendLine("return handlerResult;");
-        }
-
+        source.DecrementIndent();
         source.AppendLine("}");
         source.AppendLine();
     }
 
-    private static string BuildParameters(EquatableArray<ParameterInfo> parameters)
+    private static string BuildParameters(EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null)
     {
         var parameterValues = new List<string>();
 
@@ -236,14 +238,25 @@ internal static class HandlerGenerator
             {
                 parameterValues.Add("message");
             }
+            else if (param.Type.IsObject && param.Name == "handlerResult")
+            {
+                parameterValues.Add("handlerResult");
+            }
             else if (param.Type.IsCancellationToken)
             {
                 parameterValues.Add("cancellationToken");
             }
+            else if (variables != null && variables.TryGetValue(param.Type.FullName, out string? variableName))
+            {
+                parameterValues.Add(variableName);
+            }
+            else if (variables != null && variables.TryGetValue(param.Type.UnwrappedFullName, out string? unwrappedVariableName))
+            {
+                parameterValues.Add(unwrappedVariableName);
+            }
             else
             {
-                // This is a dependency that needs to be resolved from DI
-                parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                parameterValues.Add($"serviceProvider.GetRequiredService<global::{param.Type.FullName}>()");
             }
         }
 

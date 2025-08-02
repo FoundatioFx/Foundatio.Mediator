@@ -20,4 +20,12 @@ internal static class Helpers
 
         return new String(name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
     }
+
+    public static string ToCamelCase(this string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return String.Empty;
+
+        return char.ToLower(name[0]) + name.Substring(1);
+    }
 }

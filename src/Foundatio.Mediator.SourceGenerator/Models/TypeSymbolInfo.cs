@@ -21,6 +21,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsNullable { get; init; }
     /// <summary>
+    /// Indicates if the type is a reference type, which means it is not a value type and can be null.
+    /// </summary>
+    public bool IsReferenceType { get; init; }
+    /// <summary>
     /// Indicates if the type is a Result type, which is a wrapper around a value that can be null or an error.
     /// </summary>
     public bool IsResult { get; init; }
@@ -65,6 +69,7 @@ internal readonly record struct TypeSymbolInfo
         bool isTask = typeSymbol.IsTask(compilation);
         var unwrappedType = typeSymbol.UnwrapTask(compilation);
         bool isNullable = unwrappedType.IsNullable(compilation);
+        bool isReferenceType = unwrappedType.IsReferenceType;
         var unwrappedNullableType = unwrappedType.UnwrapNullable(compilation);
 
         // void or Task or ValueTask
@@ -84,6 +89,7 @@ internal readonly record struct TypeSymbolInfo
             FullName = typeSymbol.ToDisplayString(),
             UnwrappedFullName = unwrappedType.ToDisplayString(),
             IsNullable = isNullable,
+            IsReferenceType = isReferenceType,
             IsResult = isResult,
             IsVoid = isVoid,
             IsTask = isTask,

@@ -5,7 +5,7 @@
 
 Blazingly fast, convention-based C# mediator powered by source generators and interceptors.
 
-## High-Level Features
+## ✨ Why Choose Foundatio.Mediator?
 
 - 🚀 Near-direct call performance, zero runtime reflection
 - ⚡ Convention-based handler discovery (no interfaces/base classes)

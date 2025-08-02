@@ -33,7 +33,7 @@ services.AddMediator();
 
 ## 🧩 Simple Handler Example
 
-Just add a class ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. Supports multiple handler methods in a single class—for example, a `UserHandler` containing Create, Read, Update, Delete methods.
+Just add a class ending with `Handler` or `Consumer`. Methods must be named `Handle(Async)` or `Consume(Async)`. Classes and methods can be static if they are stateless. Supports multiple handler methods in a single class—for example, a `UserHandler` containing Create, Read, Update, Delete methods.
 
 ```csharp
 public record Ping(string Text);
@@ -70,7 +70,7 @@ public class EmailHandler
 
 ## 🎪 Simple Middleware Example
 
-Discovered by convention; static or instance with DI:
+Discovered by convention; static or instance:
 
 ```csharp
 public static class ValidationMiddleware
@@ -85,7 +85,7 @@ public static class ValidationMiddleware
 ## 📝 Logging Middleware Example
 
 ```csharp
-public class LoggingMiddleware
+public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
 {
     public Stopwatch Before(object msg) => Stopwatch.StartNew();
 
@@ -93,9 +93,9 @@ public class LoggingMiddleware
     {
         sw.Stop();
         if (ex != null)
-            Console.WriteLine($"Error in {msg.GetType().Name}: {ex.Message}");
+            log.LogInformation($"Error in {msg.GetType().Name}: {ex.Message}");
         else
-            Console.WriteLine($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
+            log.LogInformation($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
     }
 }
 ```
@@ -105,7 +105,7 @@ public class LoggingMiddleware
 Result\<T> is our built-in discriminated union for message-oriented workflows, capturing success, validation errors, conflicts, not found states, and more—without relying on exceptions.
 
 ```csharp
-public class GetUserHandler
+public class UserHandler
 {
     public async Task<Result<User>> HandleAsync(GetUser query) {
         var user = await _repo.Find(query.Id);
@@ -113,6 +113,19 @@ public class GetUserHandler
             return Result.NotFound($"User {query.Id} not found");
 
         // implicitly converted to Result<User>
+        return user;
+    }
+
+    public async Task<Result<User>> HandleAsync(CreateUser cmd)
+    {
+        var user = new User {
+            Id = Guid.NewGuid(),
+            Name = cmd.Name,
+            Email = cmd.Email,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _repo.AddAsync(user);
         return user;
     }
 }

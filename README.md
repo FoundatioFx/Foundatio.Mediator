@@ -365,6 +365,13 @@ The source generator provides compile-time errors for:
 - Using sync methods when only async handlers exist
 - Middleware configuration issues
 
+## Remaining Work
+
+- [ ] Simplify tests to use Roslyn source generator testing utilities and have it generate code in memory and do asserts there instead of having all integration tests
+- [ ] Implement multiple assembly support
+  - Ability to call `AddMediator` to entry assembly and have it register handlers in all assemblies
+- [ ] Clean architecture sample app
+
 ## 📄 License
 
 MIT License

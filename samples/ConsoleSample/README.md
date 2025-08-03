@@ -11,7 +11,7 @@ A simplified console application demonstrating all key features of Foundatio.Med
 
 ### 2. CRUD Operations with Result Pattern
 - **OrderHandler** with full CRUD operations
-- **Result&lt;T&gt;** pattern for success/failure handling
+- **`Result<T>`** pattern for success/failure handling
 - Validation with detailed error messages
 - Status codes (Created, NotFound, NoContent, etc.)
 
@@ -53,11 +53,11 @@ public static class SimpleHandler
 ```csharp
 public class OrderHandler
 {
-    public async Task&lt;Result&lt;Order&gt;&gt; HandleAsync(CreateOrder command)
+    public async Task<Result<Order>> HandleAsync(CreateOrder command)
     {
         // Validation
         if (string.IsNullOrWhiteSpace(command.CustomerId))
-            return Result&lt;Order&gt;.Invalid(new ValidationError("CustomerId", "Customer ID is required"));
+            return Result<Order>.Invalid(new ValidationError("CustomerId", "Customer ID is required"));
 
         // Business logic
         var order = new Order(/* ... */);
@@ -65,7 +65,7 @@ public class OrderHandler
         // Event publishing
         await _mediator.PublishAsync(new OrderCreated(/* ... */));
 
-        return Result&lt;Order&gt;.Created(order, $"/orders/{orderId}");
+        return Result<Order>.Created(order, $"/orders/{orderId}");
     }
 }
 ```

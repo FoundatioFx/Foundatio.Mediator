@@ -577,14 +577,7 @@ internal static class HandlerGenerator
 
     private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)
     {
-        // TODO: Error for invoke or invokeasync call with more than one handler
-        // TODO: Error for no handler found for invoke or invokeasync call
-        // TODO: Error for calling sync invoke on async handler, tell them to use InvokeAsync instead
-        // TODO: Error for calling sync invoke on handler that has async middleware, tell them to use InvokeAsync instead
-        // TODO: Error for calling sync invoke on handler that returns tuple, tell them to use InvokeAsync instead because it needs to publish cascading messages
-
         var processedMiddleware = new HashSet<MiddlewareInfo>();
-
         foreach (var handler in handlers)
         {
             foreach (var middleware in handler.Middleware)
@@ -599,6 +592,125 @@ internal static class HandlerGenerator
                     context.ReportDiagnostic(diagnostic.ToDiagnostic());
                 }
             }
+        }
+
+        ValidateCallSites(context, handlers);
+    }
+
+    private static void ValidateCallSites(SourceProductionContext context, List<HandlerInfo> handlers)
+    {
+        // Group handlers by message type for validation
+        var handlersByMessageType = handlers
+            .GroupBy(h => h.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Collect all call sites from all handlers
+        var allCallSites = handlers
+            .SelectMany(h => h.CallSites)
+            .GroupBy(cs => cs.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var kvp in allCallSites)
+        {
+            string messageTypeName = kvp.Key;
+            var callSites = kvp.Value;
+
+            // Get handlers for this message type
+            handlersByMessageType.TryGetValue(messageTypeName, out var handlersForMessage);
+            handlersForMessage ??= new List<HandlerInfo>();
+
+            foreach (var callSite in callSites)
+            {
+                ValidateCallSite(context, callSite, handlersForMessage);
+            }
+        }
+    }
+
+    private static void ValidateCallSite(SourceProductionContext context, CallSiteInfo callSite, List<HandlerInfo> handlersForMessage)
+    {
+        bool isInvokeCall = callSite.MethodName is "Invoke" or "InvokeAsync";
+
+        if (!isInvokeCall)
+            return; // Only validate Invoke calls, not Publish
+
+        // FMED006: No handler found for invoke call
+        if (handlersForMessage.Count == 0)
+        {
+            var diagnostic = new DiagnosticInfo
+            {
+                Identifier = "FMED006",
+                Title = "No handler found for message",
+                Message = $"No handler found for message type '{callSite.MessageType.FullName}'. Invoke calls require exactly one handler.",
+                Severity = DiagnosticSeverity.Error,
+                Location = callSite.Location
+            };
+            context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            return;
+        }
+
+        // FMED007: Multiple handlers found for invoke call
+        if (handlersForMessage.Count > 1)
+        {
+            var handlerNames = string.Join(", ", handlersForMessage.Select(h => h.FullName));
+            var diagnostic = new DiagnosticInfo
+            {
+                Identifier = "FMED007",
+                Title = "Multiple handlers found for message",
+                Message = $"Multiple handlers found for message type '{callSite.MessageType.FullName}': {handlerNames}. Invoke calls require exactly one handler. Use Publish for multiple handlers.",
+                Severity = DiagnosticSeverity.Error,
+                Location = callSite.Location
+            };
+            context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            return;
+        }
+
+        var handler = handlersForMessage[0];
+        bool isAsyncCall = callSite.MethodName == "InvokeAsync";
+
+        // FMED008: Sync invoke on async handler
+        if (!isAsyncCall && handler.IsAsync)
+        {
+            var diagnostic = new DiagnosticInfo
+            {
+                Identifier = "FMED008",
+                Title = "Synchronous invoke on asynchronous handler",
+                Message = $"Cannot use synchronous 'Invoke' on asynchronous handler '{handler.FullName}'. Use 'InvokeAsync' instead.",
+                Severity = DiagnosticSeverity.Error,
+                Location = callSite.Location
+            };
+            context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            return;
+        }
+
+        // FMED009: Sync invoke on handler with async middleware
+        if (!isAsyncCall && !handler.IsAsync && handler.Middleware.Any(m => m.IsAsync))
+        {
+            var asyncMiddleware = string.Join(", ", handler.Middleware.Where(m => m.IsAsync).Select(m => m.FullName));
+            var diagnostic = new DiagnosticInfo
+            {
+                Identifier = "FMED009",
+                Title = "Synchronous invoke on handler with asynchronous middleware",
+                Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' with asynchronous middleware: {asyncMiddleware}. Use 'InvokeAsync' instead.",
+                Severity = DiagnosticSeverity.Error,
+                Location = callSite.Location
+            };
+            context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            return;
+        }
+
+        // FMED010: Sync invoke on handler that returns tuple
+        if (!isAsyncCall && handler.ReturnType.IsTuple)
+        {
+            var diagnostic = new DiagnosticInfo
+            {
+                Identifier = "FMED010",
+                Title = "Synchronous invoke on handler with tuple return type",
+                Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' that returns a tuple. Use 'InvokeAsync' instead because cascading messages need to be published asynchronously.",
+                Severity = DiagnosticSeverity.Error,
+                Location = callSite.Location
+            };
+            context.ReportDiagnostic(diagnostic.ToDiagnostic());
+            return;
         }
     }
 }

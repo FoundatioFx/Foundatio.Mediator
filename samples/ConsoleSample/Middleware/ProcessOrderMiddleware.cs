@@ -20,10 +20,9 @@ public class ProcessOrderMiddleware
         return Task.FromResult(HandlerResult.Continue($"Validated order {command.OrderId}"));
     }
 
-    public Task AfterAsync(CreateOrder command, object? beforeResult, object? handlerResult, CancellationToken cancellationToken)
+    public Task AfterAsync(CreateOrder command, object? handlerResult, CancellationToken cancellationToken)
     {
         Console.WriteLine($"🔸 [ProcessOrderMiddleware] After: Order processing completed");
-        Console.WriteLine($"🔸 [ProcessOrderMiddleware] Before result: {beforeResult}");
         Console.WriteLine($"🔸 [ProcessOrderMiddleware] Handler result: {handlerResult}");
         return Task.CompletedTask;
     }

@@ -136,6 +136,15 @@ internal static class HandlerGenerator
             allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
             defaultValue = allowNull ? "null" : "default";
             source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {m.Middleware.Identifier.ToCamelCase()}Result = {defaultValue};");
+
+            variables[m.Method.ReturnType.FullName] = $"{m.Middleware.Identifier.ToCamelCase()}Result{(allowNull ? "!" : "")}";
+            if (m.Method.ReturnType.IsTuple)
+            {
+                foreach (var tupleItem in m.Method.ReturnType.TupleItems)
+                {
+                    variables[tupleItem.TypeFullName] = $"{m.Middleware.Identifier.ToCamelCase()}Result.{tupleItem.Name}{(allowNull ? "!" : "")}";
+                }
+            }
         }
         source.AppendLineIf(beforeMiddleware.Any(m => m.Method.HasReturnValue));
 
@@ -163,7 +172,7 @@ internal static class HandlerGenerator
             asyncModifier = m.Method.IsAsync ? "await " : "";
             result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
             accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-            parameters = BuildParameters(m.Method.Parameters);
+            parameters = BuildParameters(source, m.Method.Parameters);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
@@ -173,7 +182,7 @@ internal static class HandlerGenerator
         asyncModifier = handler.ReturnType.IsTask ? "await " : "";
         result = handler.ReturnType.IsVoid ? "" : "handlerResult = ";
         accessor = handler.IsStatic ? handler.FullName : $"handlerInstance";
-        parameters = BuildParameters(handler.Parameters);
+        parameters = BuildParameters(source, handler.Parameters);
 
         source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
         source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
@@ -184,7 +193,7 @@ internal static class HandlerGenerator
         {
             asyncModifier = m.Method.IsAsync ? "await " : "";
             accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-            parameters = BuildParameters(m.Method.Parameters, variables);
+            parameters = BuildParameters(source, m.Method.Parameters, variables);
 
             source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
@@ -214,7 +223,7 @@ internal static class HandlerGenerator
             {
                 asyncModifier = m.Method.IsAsync ? "await " : "";
                 accessor = m.Method.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-                parameters = BuildParameters(m.Method.Parameters, variables);
+                parameters = BuildParameters(source, m.Method.Parameters, variables);
 
                 source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
             }
@@ -323,16 +332,19 @@ internal static class HandlerGenerator
             source.AppendLine($"[System.Runtime.CompilerServices.InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        string asyncModifier = responseType.IsTask ? "async " : "";
+        string asyncModifier = handler.IsAsync ? "async " : "";
+        string returnType = methodName.EndsWith("Async") ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
+        if (responseType.IsVoid)
+            returnType = methodName.EndsWith("Async") ? "System.Threading.Tasks.ValueTask" : "void";
         string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
-        source.AppendLine($"public static {asyncModifier}{responseType.FullName} {interceptorMethod}({parameters})");
+        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
 
         source.IncrementIndent();
 
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-        asyncModifier = responseType.IsTask ? "await " : "";
+        asyncModifier = handler.IsAsync ? "await " : "";
         if (handler.ReturnType.IsTuple)
         {
             source.AppendLine($"var result = {asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
@@ -351,12 +363,21 @@ internal static class HandlerGenerator
         source.AppendLine("}");
     }
 
-    private static string BuildParameters(EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null)
+    private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null)
     {
         var parameterValues = new List<string>();
 
+        const bool debugVariables = true;
+
+        foreach (var kvp in variables ?? [])
+        {
+            source.AppendLineIf($"// Variable: {kvp.Key} = {kvp.Value}", debugVariables);
+        }
+
         foreach (var param in parameters)
         {
+            source.AppendLineIf($"// Param: Name='{param.Name}', Type.FullName='{param.Type.FullName}', Type.UnwrappedFullName='{param.Type.UnwrappedFullName}', IsMessageParameter={param.IsMessageParameter}, Type.IsObject={param.Type.IsObject}, Type.IsCancellationToken={param.Type.IsCancellationToken}", debugVariables);
+
             if (param.IsMessageParameter)
             {
                 parameterValues.Add("message");
@@ -376,6 +397,10 @@ internal static class HandlerGenerator
             else if (variables != null && variables.TryGetValue(param.Type.UnwrappedFullName, out string? unwrappedVariableName))
             {
                 parameterValues.Add(unwrappedVariableName);
+            }
+            else if (variables != null && param.Type.UnwrappedFullName.EndsWith("?") && variables.TryGetValue(param.Type.UnwrappedFullName.TrimEnd('?'), out string? nullableVariableName))
+            {
+                parameterValues.Add(nullableVariableName);
             }
             else
             {

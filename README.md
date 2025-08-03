@@ -365,12 +365,16 @@ The source generator provides compile-time errors for:
 - Using sync methods when only async handlers exist
 - Middleware configuration issues
 
-## Remaining Work
+## 📋 Remaining Work
 
 - [ ] Simplify tests to use Roslyn source generator testing utilities and have it generate code in memory and do asserts there instead of having all integration tests
+- [ ] Figure out why targets / props files don't seem to be working
+  - Shouldn't have to add InterceptorsNamespaces to consumer projects
+  - Simple flag to have files generated to project
 - [ ] Implement multiple assembly support
   - Ability to call `AddMediator` to entry assembly and have it register handlers in all assemblies
 - [ ] Clean architecture sample app
+- [ ] Modular monolith architecture sample app
 
 ## 📄 License
 

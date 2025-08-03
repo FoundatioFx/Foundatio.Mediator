@@ -1,153 +1,108 @@
 using ConsoleSample.Messages;
 using Foundatio.Mediator;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace ConsoleSample;
 
 public class SampleRunner
 {
     private readonly IMediator _mediator;
-    private readonly IServiceProvider _serviceProvider;
 
     public SampleRunner(IMediator mediator, IServiceProvider serviceProvider)
     {
         _mediator = mediator;
-        _serviceProvider = serviceProvider;
     }
 
     public async Task RunAllSamplesAsync()
     {
-        Console.WriteLine("🚀 Foundatio.Mediator Comprehensive Sample");
-        Console.WriteLine("==========================================\n");
+        Console.WriteLine("🚀 Foundatio.Mediator Clean Sample");
+        Console.WriteLine("===================================\n");
 
-        await RunSimpleCommandQuerySamples();
-        await RunDependencyInjectionSamples();
-        await RunPublishSamples();
-        await RunSingleHandlerInvokeSamples();
-        await RunMixedSyncAsyncSamples();
-        await RunValidationSamplesAsync();
+        await RunSimpleExamples();
+        await RunOrderCrudExamples();
+        await RunEventPublishingExamples();
 
-        Console.WriteLine("🎉 All samples completed successfully!");
+        Console.WriteLine("\n🎉 All samples completed successfully!");
     }
 
-    private async Task RunSimpleCommandQuerySamples()
+    private async Task RunSimpleExamples()
     {
-        Console.WriteLine("1️⃣ Testing Simple Command and Query...\n");
+        Console.WriteLine("1️⃣ Simple Command and Query Examples");
+        Console.WriteLine("=====================================\n");
 
-        // Test simple command (no response)
-        await _mediator.InvokeAsync(new PingCommand("123"));
+        // Simple command (no response)
+        await _mediator.InvokeAsync(new Ping("Hello from mediator!"));
 
-        // Test query with response
-        string greeting = _mediator.Invoke<string>(new GreetingQuery("World"));
-        Console.WriteLine($"Greeting response: {greeting}");
-
-        Console.WriteLine("✅ Simple command/query test completed!\n");
+        // Simple query (with response)
+        var greeting = _mediator.Invoke<string>(new GetGreeting("World"));
+        Console.WriteLine($"✨ {greeting}\n");
     }
 
-    private async Task RunDependencyInjectionSamples()
+    private async Task RunOrderCrudExamples()
     {
-        Console.WriteLine("2️⃣ Testing Dependency Injection in Handlers...\n");
+        Console.WriteLine("2️⃣ Order CRUD with Result Pattern");
+        Console.WriteLine("==================================\n");
 
-        await _mediator.InvokeAsync(new SendWelcomeEmailCommand("john@example.com", "John Doe"));
+        // Create order
+        Console.WriteLine("📝 Creating order...");
+        var createResult = await _mediator.InvokeAsync<Result<Order>>(new CreateOrder("CUST-001", 299.99m, "Premium widget"));
 
-        string personalizedGreeting = await _mediator.InvokeAsync<string>(new CreatePersonalizedGreetingQuery("Alice"));
-        Console.WriteLine($"Personalized greeting: {personalizedGreeting}");
-
-        Console.WriteLine("✅ Dependency injection test completed!\n");
-    }
-
-    private async Task RunPublishSamples()
-    {
-        Console.WriteLine("3️⃣ Testing Publish with Multiple Handlers...\n");
-
-        var orderEvent = new OrderCreatedEvent(
-            OrderId: "ORD-001",
-            CustomerId: "CUST-123",
-            Amount: 299.99m,
-            ProductName: "Wireless Headphones"
-        );
-
-        Console.WriteLine("📢 Publishing OrderCreatedEvent (should trigger multiple handlers)...");
-        await _mediator.PublishAsync(orderEvent);
-
-        Console.WriteLine("✅ Publish completed - all handlers were called!\n");
-    }
-
-    private async Task RunSingleHandlerInvokeSamples()
-    {
-        Console.WriteLine("4️⃣ Testing Invoke with Single Handler...\n");
-
-        var createOrder = new CreateOrder("ORD-001", "CUST-123", 299.99m, "Wireless Headphones");
-        var order = await _mediator.InvokeAsync<Order>(createOrder);
-        Console.WriteLine($"Process result: {order.OrderId}");
-
-        Console.WriteLine("✅ Single handler invoke test completed!\n");
-    }
-
-    private async Task RunMixedSyncAsyncSamples()
-    {
-        Console.WriteLine("5️⃣ Testing Mixed Sync/Async Handlers...\n");
-
-        // Sync handler call
-        string syncResult = _mediator.Invoke<string>(new SyncCalculationQuery(10, 5));
-        Console.WriteLine($"Sync calculation result: {syncResult}");
-
-        // Async handler call
-        string asyncResult = await _mediator.InvokeAsync<string>(new AsyncCalculationQuery(20, 3));
-        Console.WriteLine($"Async calculation result: {asyncResult}");
-
-        Console.WriteLine("✅ Mixed sync/async test completed!\n");
-    }
-
-    public async Task RunValidationSamplesAsync()
-    {
-        Console.WriteLine("\n🔍 === Validation Middleware Demonstration ===");
-        Console.WriteLine("This sample shows how validation middleware integrates with Result types");
-        Console.WriteLine("The middleware validates input before handlers run, returning validation errors as Results\n");
-
-        var createUserCommand = new CreateUserCommand
+        if (createResult.IsSuccess)
         {
-            Name = "Sample User",
-            Email = "missing@example.com",
-            Age = 35,
-            PhoneNumber = "123-456-7890"
-        };
+            var order = createResult.Value;
+            Console.WriteLine($"✅ Order created: {order.Id} for ${order.Amount:F2}\n");
 
-        var userResult = await _mediator.InvokeAsync<Result<User>>(createUserCommand);
-        Console.WriteLine($"✅ User created successfully: {userResult.Value.Name}");
+            // Get order
+            Console.WriteLine("🔍 Retrieving order...");
+            var getResult = _mediator.Invoke<Result<Order>>(new GetOrder(order.Id));
+            if (getResult.IsSuccess)
+            {
+                Console.WriteLine($"✅ Order found: {getResult.Value.Id} - {getResult.Value.Description}\n");
+            }
 
-        // asking for user will cause any errors to throw since the result type can't be implicitly converted to User
-        var user = await _mediator.InvokeAsync<User>(createUserCommand);
-        Console.WriteLine($"✅ User created successfully: {userResult.Value.Name}");
+            // Update order
+            Console.WriteLine("📝 Updating order...");
+            var updateResult = await _mediator.InvokeAsync<Result<Order>>(new UpdateOrder(order.Id, 399.99m, "Premium widget - Updated"));
+            if (updateResult.IsSuccess)
+            {
+                Console.WriteLine($"✅ Order updated: ${updateResult.Value.Amount:F2}\n");
+            }
 
-        createUserCommand.Email = "existing@example.com";
-
-        userResult = await _mediator.InvokeAsync<Result<User>>(createUserCommand);
-        Console.WriteLine($"❌ User creation failed: {userResult.Errors}");
-
-        // asking for user will cause any errors to throw since the result type can't be implicitly converted to User
-        try
-        {
-            user = await _mediator.InvokeAsync<User>(createUserCommand);
+            // Delete order
+            Console.WriteLine("🗑️ Deleting order...");
+            var deleteResult = await _mediator.InvokeAsync<Result>(new DeleteOrder(order.Id));
+            if (deleteResult.IsSuccess)
+            {
+                Console.WriteLine($"✅ Order deleted successfully\n");
+            }
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"❌ Error creating user: {ex.Message}");
+            Console.WriteLine($"❌ Failed to create order: {string.Join(", ", createResult.Errors)}\n");
         }
 
-        createUserCommand.Email = String.Empty;
-
-        userResult = await _mediator.InvokeAsync<Result<User>>(createUserCommand);
-        Console.WriteLine($"❌ User creation failed: {userResult.Errors}");
-
-        // asking for user will cause any errors to throw since the result type can't be implicitly converted to User
-        try
+        // Demonstrate validation errors
+        Console.WriteLine("🚫 Testing validation errors...");
+        var invalidResult = await _mediator.InvokeAsync<Result<Order>>(new CreateOrder("", -100m, "Invalid order"));
+        if (!invalidResult.IsSuccess)
         {
-            user = await _mediator.InvokeAsync<User>(createUserCommand);
+            Console.WriteLine($"❌ Validation failed as expected: {string.Join(", ", invalidResult.Errors)}\n");
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"❌ Error creating user: {ex.Message}");
-        }
+    }
+
+    private async Task RunEventPublishingExamples()
+    {
+        Console.WriteLine("3️⃣ Event Publishing (Multiple Handlers)");
+        Console.WriteLine("========================================\n");
+
+        Console.WriteLine("📢 Publishing OrderCreated event (will trigger multiple handlers)...");
+        await _mediator.PublishAsync(new OrderCreated("ORD-DEMO-001", "CUST-001", 199.99m, DateTime.UtcNow));
+
+        Console.WriteLine("\n📢 Publishing OrderUpdated event...");
+        await _mediator.PublishAsync(new OrderUpdated("ORD-DEMO-001", 249.99m, DateTime.UtcNow));
+
+        Console.WriteLine("\n📢 Publishing OrderDeleted event...");
+        await _mediator.PublishAsync(new OrderDeleted("ORD-DEMO-001", DateTime.UtcNow));
+
+        Console.WriteLine();
     }
 }

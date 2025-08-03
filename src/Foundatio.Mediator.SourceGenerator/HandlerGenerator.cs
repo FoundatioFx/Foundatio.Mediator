@@ -341,6 +341,7 @@ internal static class HandlerGenerator
     {
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
         string handlerMethod = GetHandlerMethodName(handler);
+        bool methodIsAsync = methodName.EndsWith("Async");
 
         foreach (var callSite in callSites)
         {
@@ -348,9 +349,9 @@ internal static class HandlerGenerator
         }
 
         string asyncModifier = handler.IsAsync ? "async " : "";
-        string returnType = methodName.EndsWith("Async") ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
+        string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
-            returnType = methodName.EndsWith("Async") ? "System.Threading.Tasks.ValueTask" : "void";
+            returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
         string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
         source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
@@ -371,6 +372,11 @@ internal static class HandlerGenerator
         {
             string returnKeyword = responseType.IsVoid ? "" : "return ";
             source.AppendLine($"{returnKeyword}{asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
+        }
+
+        if (methodIsAsync && !handler.IsAsync)
+        {
+            source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
         }
 
         source.DecrementIndent();

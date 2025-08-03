@@ -13,6 +13,7 @@ internal readonly record struct MiddlewareInfo
     public bool IsStatic { get; init; }
     public bool IsAsync => BeforeMethod?.IsAsync == true || AfterMethod?.IsAsync == true || FinallyMethod?.IsAsync == true;
     public int? Order { get; init; }
+    public EquatableArray<DiagnosticInfo> Diagnostics { get; init; }
 }
 
 internal readonly record struct MiddlewareMethodInfo

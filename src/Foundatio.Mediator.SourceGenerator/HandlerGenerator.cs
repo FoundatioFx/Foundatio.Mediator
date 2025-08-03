@@ -11,6 +11,8 @@ internal static class HandlerGenerator
         if (handlers.Count == 0)
             return;
 
+        Validate(context, handlers);
+
         foreach (var handler in handlers)
         {
             try
@@ -571,5 +573,32 @@ internal static class HandlerGenerator
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
         return handler.IsAsync ? "HandleAsync" : "Handle";
+    }
+
+    private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)
+    {
+        // TODO: Error for invoke or invokeasync call with more than one handler
+        // TODO: Error for no handler found for invoke or invokeasync call
+        // TODO: Error for calling sync invoke on async handler, tell them to use InvokeAsync instead
+        // TODO: Error for calling sync invoke on handler that has async middleware, tell them to use InvokeAsync instead
+        // TODO: Error for calling sync invoke on handler that returns tuple, tell them to use InvokeAsync instead because it needs to publish cascading messages
+
+        var processedMiddleware = new HashSet<MiddlewareInfo>();
+
+        foreach (var handler in handlers)
+        {
+            foreach (var middleware in handler.Middleware)
+            {
+                if (processedMiddleware.Contains(middleware))
+                    continue;
+
+                processedMiddleware.Add(middleware);
+
+                foreach (var diagnostic in middleware.Diagnostics)
+                {
+                    context.ReportDiagnostic(diagnostic.ToDiagnostic());
+                }
+            }
+        }
     }
 }

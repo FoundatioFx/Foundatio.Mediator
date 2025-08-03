@@ -42,13 +42,90 @@ internal static class MiddlewareAnalyzer
         if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0)
             return null;
 
-        // TODO: Diagnostic if multiple methods for the same lifecycle stage
-        // TODO: Diagnostic if there are mixed static and instance methods
-        // TODO: Diagnostic if all message types are not the same
+        var diagnostics = new List<DiagnosticInfo>();
+
+        if (beforeMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED001",
+                Title = "Multiple Before Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple Before methods. Only one Before/BeforeAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
+        if (afterMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED002",
+                Title = "Multiple After Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple After methods. Only one After/AfterAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
+        if (finallyMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED003",
+                Title = "Multiple Finally Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple Finally methods. Only one Finally/FinallyAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
 
         var beforeMethod = beforeMethods.FirstOrDefault();
         var afterMethod = afterMethods.FirstOrDefault();
         var finallyMethod = finallyMethods.FirstOrDefault();
+
+        var allMethods = new[] { beforeMethod, afterMethod, finallyMethod }.Where(m => m != null).ToList();
+
+        // Validate mixed static and instance methods
+        if (allMethods.Any() && !classSymbol.IsStatic)
+        {
+            var staticMethods = allMethods.Where(m => m!.IsStatic).ToList();
+            var instanceMethods = allMethods.Where(m => !m!.IsStatic).ToList();
+
+            if (staticMethods.Any() && instanceMethods.Any())
+            {
+                diagnostics.Add(new DiagnosticInfo
+                {
+                    Identifier = "FMED004",
+                    Title = "Mixed Static and Instance Middleware Methods",
+                    Message = $"Middleware '{classSymbol.Name}' has both static and instance methods. All middleware methods must be either static or instance methods consistently.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = LocationInfo.CreateFrom(classDeclaration)
+                });
+            }
+        }
+
+        // Validate all message types are the same
+        if (allMethods.Count > 1)
+        {
+            var messageTypes = allMethods
+                .Where(m => m!.Parameters.Length > 0)
+                .Select(m => m!.Parameters[0].Type)
+                .Distinct(SymbolEqualityComparer.Default)
+                .ToList();
+
+            if (messageTypes.Count > 1)
+            {
+                diagnostics.Add(new DiagnosticInfo
+                {
+                    Identifier = "FMED005",
+                    Title = "Middleware Message Type Mismatch",
+                    Message = $"Middleware '{classSymbol.Name}' handles different message types. All middleware methods in the same class must handle the same message type.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = LocationInfo.CreateFrom(classDeclaration)
+                });
+            }
+        }
 
         ITypeSymbol? messageType = beforeMethod?.Parameters[0].Type
             ?? afterMethod?.Parameters[0].Type
@@ -84,6 +161,7 @@ internal static class MiddlewareAnalyzer
             FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
             IsStatic = isStatic,
             Order = order,
+            Diagnostics = new(diagnostics.ToArray()),
         };
     }
 

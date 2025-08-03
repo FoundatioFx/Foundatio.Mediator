@@ -175,6 +175,19 @@ internal static class HandlerGenerator
             parameters = BuildParameters(source, m.Method.Parameters);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
+
+            if (m.Method.ReturnType.IsHandlerResult)
+            {
+                result = handler.HasReturnValue ? $" ({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result.Value!" : "";
+                if (handler.ReturnType.IsResult)
+                {
+                    result = $" {m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value ?? default({handler.ReturnType.UnwrappedFullName})!";
+                }
+                source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
+                source.AppendLine("{");
+                source.AppendLine($"    return{result};");
+                source.AppendLine("}");
+            }
         }
         source.AppendLineIf(beforeMiddleware.Any());
 
@@ -367,16 +380,16 @@ internal static class HandlerGenerator
     {
         var parameterValues = new List<string>();
 
-        const bool debugVariables = true;
+        const bool outputDebugInfo = false;
 
         foreach (var kvp in variables ?? [])
         {
-            source.AppendLineIf($"// Variable: {kvp.Key} = {kvp.Value}", debugVariables);
+            source.AppendLineIf($"// Variable: {kvp.Key} = {kvp.Value}", outputDebugInfo);
         }
 
         foreach (var param in parameters)
         {
-            source.AppendLineIf($"// Param: Name='{param.Name}', Type.FullName='{param.Type.FullName}', Type.UnwrappedFullName='{param.Type.UnwrappedFullName}', IsMessageParameter={param.IsMessageParameter}, Type.IsObject={param.Type.IsObject}, Type.IsCancellationToken={param.Type.IsCancellationToken}", debugVariables);
+            source.AppendLineIf($"// Param: Name='{param.Name}', Type.FullName='{param.Type.FullName}', Type.UnwrappedFullName='{param.Type.UnwrappedFullName}', IsMessageParameter={param.IsMessageParameter}, Type.IsObject={param.Type.IsObject}, Type.IsCancellationToken={param.Type.IsCancellationToken}", outputDebugInfo);
 
             if (param.IsMessageParameter)
             {
@@ -470,33 +483,6 @@ internal static class HandlerGenerator
                     }
                 }
                 """);
-    }
-
-    private static string GenerateShortCircuitCheck(MiddlewareInfo middleware, string resultVariableName, string hrVariableName)
-    {
-        if (middleware.BeforeMethod == null)
-            return $"if ({resultVariableName} is Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
-
-        var methodInfo = middleware.BeforeMethod.Value;
-
-        // Use the return type for the check
-        string returnType = methodInfo.ReturnType.FullName;
-
-        // If the return type is exactly HandlerResult (not nullable), we can directly check it
-        if (returnType == "HandlerResult" || returnType == "Foundatio.Mediator.HandlerResult")
-        {
-            return $"if ({resultVariableName}.IsShortCircuited)";
-        }
-        // If it's nullable HandlerResult, check for null first
-        else if (returnType == "HandlerResult?" || returnType == "Foundatio.Mediator.HandlerResult?")
-        {
-            return $"if ({resultVariableName}?.IsShortCircuited == true)";
-        }
-        // Otherwise, fall back to pattern matching for object/object? return types
-        else
-        {
-            return $"if ({resultVariableName} is Foundatio.Mediator.HandlerResult {hrVariableName} && {hrVariableName}.IsShortCircuited)";
-        }
     }
 
     private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, TypeSymbolInfo responseType)

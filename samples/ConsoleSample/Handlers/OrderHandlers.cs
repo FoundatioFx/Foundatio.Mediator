@@ -23,9 +23,11 @@ public class OrderAuditHandler
     }
 }
 
+public struct Stuff();
+
 public class CreateOrderHandler
 {
-    public async Task<(Order, OrderCreatedEvent)> HandleAsync(
+    public async Task<(Order Order, OrderCreatedEvent OrderCreated, Stuff Stuff)> HandleAsync(
         CreateOrder command,
         CancellationToken cancellationToken = default)
     {
@@ -38,6 +40,6 @@ public class CreateOrderHandler
             command.CustomerId,
             command.Amount,
             command.ProductName
-        ));
+        ), new Stuff());
     }
 }

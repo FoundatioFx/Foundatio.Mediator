@@ -1,6 +1,6 @@
 ﻿namespace Foundatio.Mediator.Utility;
 
-public class TrackingNames
+internal static class TrackingNames
 {
     public const string Middleware = nameof(Middleware);
     public const string CallSites = nameof(CallSites);

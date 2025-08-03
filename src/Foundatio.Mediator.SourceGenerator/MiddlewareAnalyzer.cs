@@ -1,3 +1,5 @@
+using Foundatio.Mediator.Models;
+using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -5,13 +7,13 @@ namespace Foundatio.Mediator;
 
 internal static class MiddlewareAnalyzer
 {
-    public static bool IsPotentialMiddlewareClass(SyntaxNode node)
+    public static bool IsMatch(SyntaxNode node)
     {
         return node is ClassDeclarationSyntax { Identifier.ValueText: var name }
                && name.EndsWith("Middleware");
     }
 
-    public static List<MiddlewareInfo>? GetMiddlewareForGeneration(GeneratorSyntaxContext context)
+    public static MiddlewareInfo? GetMiddleware(GeneratorSyntaxContext context)
     {
         var classDeclaration = (ClassDeclarationSyntax)context.Node;
         var semanticModel = context.SemanticModel;
@@ -19,162 +21,198 @@ internal static class MiddlewareAnalyzer
         if (semanticModel.GetDeclaredSymbol(classDeclaration) is not INamedTypeSymbol classSymbol)
             return null;
 
-        // Check if the class has the FoundatioIgnore attribute
-        if (HasFoundatioIgnoreAttribute(classSymbol))
+        if (classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation))
             return null;
 
-        // Find all middleware methods in this class
         var beforeMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "Before"))
+            .Where(m => IsMiddlewareBeforeMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         var afterMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "After"))
+            .Where(m => IsMiddlewareAfterMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         var finallyMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsMiddlewareMethod(m, "Finally"))
+            .Where(m => IsMiddlewareFinallyMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
         if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0)
             return null;
 
-        var middlewares = new List<MiddlewareInfo>();
+        var diagnostics = new List<DiagnosticInfo>();
 
-        // Check if this is a static middleware class
-        // A middleware class is considered static if all its middleware methods are static
-        var allMiddlewareMethods = beforeMethods.Concat(afterMethods).Concat(finallyMethods);
-        bool isStaticMiddleware = allMiddlewareMethods.All(m => m.IsStatic);
-
-        // Group methods by message type and collect type information
-        var messageTypeInfos = new Dictionary<string, (bool isObjectType, bool isInterfaceType, List<string> interfaceTypes)>();
-        var messageTypes = new HashSet<string>();
-
-        foreach (var method in beforeMethods.Concat(afterMethods).Concat(finallyMethods))
+        if (beforeMethods.Count > 1)
         {
-            if (method.Parameters.Length > 0)
+            diagnostics.Add(new DiagnosticInfo
             {
-                var messageParam = method.Parameters[0];
-                string messageTypeName = messageParam.Type.ToDisplayString();
-                messageTypes.Add(messageTypeName);
+                Identifier = "FMED001",
+                Title = "Multiple Before Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple Before methods. Only one Before/BeforeAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
 
-                if (!messageTypeInfos.ContainsKey(messageTypeName))
+        if (afterMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED002",
+                Title = "Multiple After Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple After methods. Only one After/AfterAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
+        if (finallyMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED003",
+                Title = "Multiple Finally Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple Finally methods. Only one Finally/FinallyAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
+        var beforeMethod = beforeMethods.FirstOrDefault();
+        var afterMethod = afterMethods.FirstOrDefault();
+        var finallyMethod = finallyMethods.FirstOrDefault();
+
+        var allMethods = new[] { beforeMethod, afterMethod, finallyMethod }.Where(m => m != null).ToList();
+
+        // Validate mixed static and instance methods
+        if (allMethods.Any() && !classSymbol.IsStatic)
+        {
+            var staticMethods = allMethods.Where(m => m!.IsStatic).ToList();
+            var instanceMethods = allMethods.Where(m => !m!.IsStatic).ToList();
+
+            if (staticMethods.Any() && instanceMethods.Any())
+            {
+                diagnostics.Add(new DiagnosticInfo
                 {
-                    var typeSymbol = messageParam.Type;
-                    bool isObjectType = typeSymbol.SpecialType == SpecialType.System_Object;
-                    bool isInterfaceType = typeSymbol.TypeKind == TypeKind.Interface;
-                    var interfaceTypes = new List<string>();
-
-                    // Collect interfaces implemented by the message type
-                    if (!isInterfaceType && !isObjectType)
-                    {
-                        interfaceTypes.AddRange(typeSymbol.AllInterfaces.Select(i => i.ToDisplayString()));
-                    }
-
-                    messageTypeInfos[messageTypeName] = (isObjectType, isInterfaceType, interfaceTypes);
-                }
+                    Identifier = "FMED004",
+                    Title = "Mixed Static and Instance Middleware Methods",
+                    Message = $"Middleware '{classSymbol.Name}' has both static and instance methods. All middleware methods must be either static or instance methods consistently.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = LocationInfo.CreateFrom(classDeclaration)
+                });
             }
         }
 
-        foreach (string? messageType in messageTypes)
+        // Validate all message types are the same
+        if (allMethods.Count > 1)
         {
-            var beforeMethod = beforeMethods.FirstOrDefault(m =>
-                m.Parameters.Length > 0 &&
-                m.Parameters[0].Type.ToDisplayString() == messageType);
+            var messageTypes = allMethods
+                .Where(m => m!.Parameters.Length > 0)
+                .Select(m => m!.Parameters[0].Type)
+                .Distinct(SymbolEqualityComparer.Default)
+                .ToList();
 
-            var afterMethod = afterMethods.FirstOrDefault(m =>
-                m.Parameters.Length > 0 &&
-                m.Parameters[0].Type.ToDisplayString() == messageType);
-
-            var finallyMethod = finallyMethods.FirstOrDefault(m =>
-                m.Parameters.Length > 0 &&
-                m.Parameters[0].Type.ToDisplayString() == messageType);
-
-            // Extract order from FoundatioOrderAttribute
-            var orderAttribute = classSymbol.GetAttributes()
-                .FirstOrDefault(attr => attr.AttributeClass?.Name == "FoundatioOrderAttribute");
-            int? order = null;
-            if (orderAttribute != null && orderAttribute.ConstructorArguments.Length > 0)
+            if (messageTypes.Count > 1)
             {
-                var orderArg = orderAttribute.ConstructorArguments[0];
-                if (orderArg.Value is int orderValue)
+                diagnostics.Add(new DiagnosticInfo
                 {
-                    order = orderValue;
-                }
+                    Identifier = "FMED005",
+                    Title = "Middleware Message Type Mismatch",
+                    Message = $"Middleware '{classSymbol.Name}' handles different message types. All middleware methods in the same class must handle the same message type.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = LocationInfo.CreateFrom(classDeclaration)
+                });
             }
-
-            var typeInfo = messageTypeInfos[messageType];
-            var middleware = new MiddlewareInfo(
-                classSymbol.ToDisplayString(),
-                messageType,
-                typeInfo.isObjectType,
-                typeInfo.isInterfaceType,
-                typeInfo.interfaceTypes,
-                beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
-                afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
-                finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
-                isStaticMiddleware,
-                order);
-
-            middlewares.Add(middleware);
         }
 
-        return middlewares.Count > 0 ? middlewares : null;
-    }
+        ITypeSymbol? messageType = beforeMethod?.Parameters[0].Type
+            ?? afterMethod?.Parameters[0].Type
+            ?? finallyMethod?.Parameters[0].Type;
 
-    private static bool IsMiddlewareMethod(IMethodSymbol method, string methodPrefix)
-    {
-        string[] validNames = new[] { methodPrefix, $"{methodPrefix}Async" };
+        var isStatic = classSymbol.IsStatic
+                    || (beforeMethod != null && beforeMethod.IsStatic)
+                    || (afterMethod != null && afterMethod.IsStatic)
+                    || (finallyMethod != null && finallyMethod.IsStatic);
 
-        if (!validNames.Contains(method.Name) ||
-            method.DeclaredAccessibility != Accessibility.Public ||
-            HasFoundatioIgnoreAttribute(method))
+        if (messageType == null)
+            return null;
+
+        var orderAttribute = classSymbol.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.Name == "FoundatioOrderAttribute");
+
+        int? order = null;
+        if (orderAttribute is { ConstructorArguments.Length: > 0 })
         {
-            return false;
+            var orderArg = orderAttribute.ConstructorArguments[0];
+            if (orderArg.Value is int orderValue)
+            {
+                order = orderValue;
+            }
         }
 
-        return true;
+        return new MiddlewareInfo
+        {
+            Identifier = classSymbol.Name.ToIdentifier(),
+            FullName = classSymbol.ToDisplayString(),
+            MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
+            BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod, context.SemanticModel.Compilation) : null,
+            AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod, context.SemanticModel.Compilation) : null,
+            FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
+            IsStatic = isStatic,
+            Order = order,
+            Diagnostics = new(diagnostics.ToArray()),
+        };
     }
 
-    private static MiddlewareMethodInfo CreateMiddlewareMethodInfo(IMethodSymbol method)
+    private static MiddlewareMethodInfo CreateMiddlewareMethodInfo(IMethodSymbol method, Compilation compilation)
     {
-        string returnTypeName = method.ReturnType.ToDisplayString();
-        bool isAsync = method.Name.EndsWith("Async") ||
-                       returnTypeName.StartsWith("Task") ||
-                       returnTypeName.StartsWith("ValueTask") ||
-                       returnTypeName.StartsWith("System.Threading.Tasks.Task") ||
-                       returnTypeName.StartsWith("System.Threading.Tasks.ValueTask");
-
         var parameterInfos = new List<ParameterInfo>();
 
         foreach (var parameter in method.Parameters)
         {
-            string parameterTypeName = parameter.Type.ToDisplayString();
-            bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]); // First parameter is always the message
-            bool isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
+            bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, method.Parameters[0]);
 
-            parameterInfos.Add(new ParameterInfo(
-                parameter.Name,
-                parameterTypeName,
-                isMessage,
-                isCancellationToken));
+            parameterInfos.Add(new ParameterInfo
+            {
+                Name = parameter.Name,
+                Type = TypeSymbolInfo.From(parameter.Type, compilation),
+                IsMessageParameter = isMessage
+            });
         }
 
-        return new MiddlewareMethodInfo(
-            method.Name,
-            isAsync,
-            returnTypeName,
-            parameterInfos,
-            method.IsStatic);
+        return new MiddlewareMethodInfo
+        {
+            MethodName = method.Name,
+            MessageType = TypeSymbolInfo.From(method.Parameters[0].Type, compilation),
+            ReturnType = TypeSymbolInfo.From(method.ReturnType, compilation),
+            IsStatic = method.IsStatic,
+            Parameters = new(parameterInfos.ToArray())
+        };
     }
 
-    private static bool HasFoundatioIgnoreAttribute(ISymbol symbol)
+    private static bool IsMiddlewareBeforeMethod(IMethodSymbol method, Compilation compilation)
     {
-        return symbol.GetAttributes().Any(attr =>
-            attr.AttributeClass?.Name == "FoundatioIgnoreAttribute" ||
-            attr.AttributeClass?.ToDisplayString() == "Foundatio.Mediator.FoundatioIgnoreAttribute");
+        return MiddlewareBeforeMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
     }
+
+    private static bool IsMiddlewareAfterMethod(IMethodSymbol method, Compilation compilation)
+    {
+        return MiddlewareAfterMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
+    }
+
+    private static bool IsMiddlewareFinallyMethod(IMethodSymbol method, Compilation compilation)
+    {
+        return MiddlewareFinallyMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
+    }
+
+    private static readonly string[] MiddlewareBeforeMethodNames = [ "Before", "BeforeAsync" ];
+    private static readonly string[] MiddlewareAfterMethodNames = [ "After", "AfterAsync" ];
+    private static readonly string[] MiddlewareFinallyMethodNames = [ "Finally", "FinallyAsync" ];
 }

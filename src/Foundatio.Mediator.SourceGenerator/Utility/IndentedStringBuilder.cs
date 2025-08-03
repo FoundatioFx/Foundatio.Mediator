@@ -7,7 +7,7 @@ namespace Foundatio.Mediator.Utility;
 /// A thin wrapper over <see cref="StringBuilder" /> that adds indentation to each line built.
 /// </summary>
 [ExcludeFromCodeCoverage]
-public class IndentedStringBuilder
+internal class IndentedStringBuilder
 {
     private const byte IndentSize = 4;
     private byte _indent;
@@ -180,11 +180,40 @@ public class IndentedStringBuilder
     /// <returns>This builder so that additional calls can be chained.</returns>
     public virtual IndentedStringBuilder AppendLine(string value)
     {
-        if (value.Length != 0)
-            DoIndent();
+        if (value.Length == 0)
+        {
+            _stringBuilder.AppendLine();
+            _indentPending = true;
+            return this;
+        }
 
-        _stringBuilder.AppendLine(value);
+        // Use StringReader to properly handle all line ending types
+        using var reader = new StringReader(value);
+        bool isFirstLine = true;
 
+        while (reader.ReadLine() is { } line)
+        {
+            if (!isFirstLine)
+            {
+                _stringBuilder.AppendLine();
+                _indentPending = true;
+            }
+
+            if (line.Length > 0)
+            {
+                DoIndent();
+                _stringBuilder.Append(line);
+            }
+            else
+            {
+                // Empty line - just ensure indentation state is correct
+                _indentPending = true;
+            }
+
+            isFirstLine = false;
+        }
+
+        _stringBuilder.AppendLine();
         _indentPending = true;
 
         return this;
@@ -259,6 +288,31 @@ public class IndentedStringBuilder
 
         if (c(text))
             AppendLine(text);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Appends a copy of the specified string followed by the default line terminator if <paramref name="condition"/> is met.
+    /// </summary>
+    /// <param name="text">The string to append.</param>
+    /// <param name="condition">The condition. If condition is true, the string will be appended.</param>
+    public IndentedStringBuilder AppendLineIf(string text, bool condition)
+    {
+        if (condition)
+            AppendLine(text);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Appends a blank line if <paramref name="condition"/> is met.
+    /// </summary>
+    /// <param name="condition">The condition delegate to evaluate. If condition is null, String.IsNullOrWhiteSpace method will be used.</param>
+    public IndentedStringBuilder AppendLineIf(bool condition)
+    {
+        if (condition)
+            AppendLine();
 
         return this;
     }

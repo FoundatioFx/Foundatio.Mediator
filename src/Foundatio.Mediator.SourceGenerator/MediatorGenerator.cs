@@ -1,7 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
@@ -17,7 +17,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 && disableSwitch.Equals("true", StringComparison.Ordinal));
 
         var csharpSufficient = context.CompilationProvider
-            .Select((x,_) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
+            .Select((x, _) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
 
         var settings = interceptionEnabledSetting
             .Combine(csharpSufficient)
@@ -28,278 +28,99 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => CallSiteAnalyzer.IsPotentialMediatorCall(s),
-                transform: static (ctx, _) => CallSiteAnalyzer.GetCallSiteForAnalysis(ctx))
+                predicate: static (s, _) => CallSiteAnalyzer.IsMatch(s),
+                transform: static (ctx, _) => CallSiteAnalyzer.GetCallSite(ctx))
             .Where(static cs => cs.HasValue)
             .Select(static (cs, _) => cs!.Value)
             .WithTrackingName(TrackingNames.CallSites);
 
-        var middlewareDeclarations = context.SyntaxProvider
+        var middleware = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => MiddlewareAnalyzer.IsPotentialMiddlewareClass(s),
-                transform: static (ctx, _) => MiddlewareAnalyzer.GetMiddlewareForGeneration(ctx))
-            .Where(static m => m is not null && m.Count > 0)
-            .SelectMany(static (middlewares, _) => middlewares ?? [])
+                predicate: static (s, _) => MiddlewareAnalyzer.IsMatch(s),
+                transform: static (ctx, _) => MiddlewareAnalyzer.GetMiddleware(ctx))
+            .Where(static m => m.HasValue)
+            .Select(static (middleware, _) => middleware!.Value)
             .WithTrackingName(TrackingNames.Middleware);
 
-        var handlerDeclarations = context.SyntaxProvider
+        var handlers = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => IsPotentialHandlerClass(s),
-                transform: static (ctx, _) => GetHandlersForGeneration(ctx))
+                predicate: static (s, _) => HandlerAnalyzer.IsMatch(s),
+                transform: static (ctx, _) => HandlerAnalyzer.GetHandlers(ctx))
             .Where(static m => m is not null && m.Count > 0)
             .SelectMany(static (handlers, _) => handlers ?? [])
             .WithTrackingName(TrackingNames.Handlers);
 
-        var compilationAndData = context.CompilationProvider
-            .Combine(handlerDeclarations.Collect())
-            .Combine(middlewareDeclarations.Collect())
+        var compilationAndData = handlers.Collect()
+            .Combine(middleware.Collect())
             .Combine(callSites.Collect())
-            .Combine(interceptionEnabled);
+            .Combine(interceptionEnabled)
+            .Select(static (spc, _) => (
+                Handlers: spc.Left.Left.Left,
+                Middleware: spc.Left.Left.Right,
+                CallSites: spc.Left.Right,
+                InterceptorsEnabled: spc.Right
+            ));
 
-        context.RegisterSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Left.Left.Left.Left, source.Left.Left.Left.Right, source.Left.Left.Right, source.Left.Right, source.Right, spc));
+        context.RegisterImplementationSourceOutput(compilationAndData,
+            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, spc));
     }
 
-    private static bool IsPotentialHandlerClass(SyntaxNode node)
-    {
-        return node is ClassDeclarationSyntax { Identifier.ValueText: var name }
-               && (name.EndsWith("Handler") || name.EndsWith("Consumer"));
-    }
-
-    private static List<HandlerInfo>? GetHandlersForGeneration(GeneratorSyntaxContext context)
-    {
-        var classDeclaration = (ClassDeclarationSyntax)context.Node;
-        var semanticModel = context.SemanticModel;
-
-        if (semanticModel.GetDeclaredSymbol(classDeclaration) is not { } classSymbol)
-            return null;
-
-        // Check if the class has the FoundatioIgnore attribute
-        if (HasFoundatioIgnoreAttribute(classSymbol))
-            return null;
-
-        // Skip handler classes that have generic type parameters
-        if (classSymbol.IsGenericType)
-            return null;
-
-        // Find all handler methods in this class
-        var handlerMethods = classSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(IsHandlerMethod)
-            .ToList();
-
-        if (handlerMethods.Count == 0)
-            return null;
-
-        var handlers = new List<HandlerInfo>();
-
-        // Generate a HandlerToGenerate for each handler method
-        foreach (var handlerMethod in handlerMethods)
-        {
-            if (handlerMethod.Parameters.Length == 0)
-                continue;
-
-            // Skip handler methods that have generic type parameters
-            if (handlerMethod.IsGenericMethod)
-            {
-                continue;
-            }
-
-            var messageParameter = handlerMethod.Parameters[0];
-            var messageType = messageParameter.Type;
-            string messageTypeName = messageType.ToDisplayString();
-
-            // Collect message type hierarchy (exact type, interfaces, and base classes)
-            var messageTypeHierarchy = new List<string>();
-
-            // Add the exact message type
-            messageTypeHierarchy.Add(messageTypeName);
-
-            // Add all implemented interfaces
-            if (messageType is INamedTypeSymbol namedMessageType)
-            {
-                foreach (var interfaceType in namedMessageType.AllInterfaces)
-                {
-                    string interfaceTypeName = interfaceType.ToDisplayString();
-                    if (!messageTypeHierarchy.Contains(interfaceTypeName))
-                    {
-                        messageTypeHierarchy.Add(interfaceTypeName);
-                    }
-                }
-
-                // Add all base classes
-                var currentBaseType = namedMessageType.BaseType;
-                while (currentBaseType != null && currentBaseType.SpecialType != SpecialType.System_Object)
-                {
-                    string baseTypeName = currentBaseType.ToDisplayString();
-                    if (!messageTypeHierarchy.Contains(baseTypeName))
-                    {
-                        messageTypeHierarchy.Add(baseTypeName);
-                    }
-                    currentBaseType = currentBaseType.BaseType;
-                }
-            }
-
-            string returnTypeName = handlerMethod.ReturnType.ToDisplayString();
-            bool isAsync = handlerMethod.Name.EndsWith("Async") ||
-                           returnTypeName.StartsWith("Task") ||
-                           returnTypeName.StartsWith("ValueTask");
-
-            // Extract the actual return type from Task<T>
-            string actualReturnType = returnTypeName;
-            if (returnTypeName.StartsWith("System.Threading.Tasks.Task<"))
-            {
-                actualReturnType = returnTypeName.Substring("System.Threading.Tasks.Task<".Length).TrimEnd('>');
-            }
-            else if (returnTypeName.StartsWith("Task<"))
-            {
-                actualReturnType = returnTypeName.Substring("Task<".Length).TrimEnd('>');
-            }
-
-            var parameterInfos = new List<ParameterInfo>();
-
-            foreach (var parameter in handlerMethod.Parameters)
-            {
-                string parameterTypeName = parameter.Type.ToDisplayString();
-                bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, messageParameter);
-                bool isCancellationToken = parameterTypeName is "System.Threading.CancellationToken" or "CancellationToken";
-
-                parameterInfos.Add(new ParameterInfo(
-                    parameter.Name,
-                    parameterTypeName,
-                    isMessage,
-                    isCancellationToken));
-            }
-
-            handlers.Add(new HandlerInfo(
-                classSymbol.ToDisplayString(),
-                messageTypeName,
-                handlerMethod.Name,
-                actualReturnType,
-                returnTypeName, // Store the original return type
-                isAsync,
-                handlerMethod.IsStatic,
-                parameterInfos,
-                messageTypeHierarchy,
-                [])); // Empty call sites initially - will be populated later
-        }
-
-        return handlers.Count > 0 ? handlers : null;
-    }
-
-    private static bool IsHandlerMethod(IMethodSymbol method)
-    {
-        string[] validNames = new[] { "Handle", "Handles", "HandleAsync", "HandlesAsync",
-                                "Consume", "Consumes", "ConsumeAsync", "ConsumesAsync" };
-
-        if (!validNames.Contains(method.Name) ||
-            method.DeclaredAccessibility != Accessibility.Public ||
-            HasFoundatioIgnoreAttribute(method))
-        {
-            return false;
-        }
-
-        // Exclude MassTransit consume methods
-        if (IsMassTransitConsumeMethod(method))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsMassTransitConsumeMethod(IMethodSymbol method)
-    {
-        // Check if method name is "Consume" and first parameter is MassTransit.ConsumeContext<T>
-        if (method.Name != "Consume" || method.Parameters.Length == 0)
-        {
-            return false;
-        }
-
-        var firstParameter = method.Parameters[0];
-        var parameterType = firstParameter.Type;
-
-        // Check if the parameter type is ConsumeContext<T> from MassTransit namespace
-        if (parameterType is INamedTypeSymbol namedType)
-        {
-            return namedType.Name == "ConsumeContext" &&
-                   namedType.ContainingNamespace?.ToDisplayString() == "MassTransit";
-        }
-
-        return false;
-    }
-
-    private static bool HasFoundatioIgnoreAttribute(ISymbol symbol)
-    {
-        return symbol.GetAttributes().Any(attr =>
-            attr.AttributeClass?.Name == "FoundatioIgnoreAttribute" ||
-            attr.AttributeClass?.ToDisplayString() == "Foundatio.Mediator.FoundatioIgnoreAttribute");
-    }
-
-    private static void Execute(Compilation compilation, ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middlewares, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, SourceProductionContext context)
+    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, SourceProductionContext context)
     {
         if (handlers.IsDefaultOrEmpty)
             return;
 
-        var validHandlers = handlers.ToList();
-        var validMiddlewares = middlewares.IsDefaultOrEmpty ? [] : middlewares.ToList();
-
-        if (validHandlers.Count == 0)
-            return;
-
-        // Group call sites by message type for easier lookup
         var callSitesByMessage = callSites.ToList()
-            .Where(cs => !cs.IsPublish) // Only include Invoke call sites for interceptors
-            .GroupBy(cs => cs.MessageTypeName)
-            .ToDictionary(g => g.Key, g => g.ToList());
+            .Where(cs => !cs.IsPublish)
+            .GroupBy(cs => cs.MessageType)
+            .ToDictionary(g => g.Key, g => g.ToArray());
 
-        // Update handlers with their associated call sites
-        var handlersWithCallSites = new List<HandlerInfo>();
-        foreach (var handler in validHandlers)
+        var handlersWithInfo = new List<HandlerInfo>();
+        foreach (var handler in handlers)
         {
-            callSitesByMessage.TryGetValue(handler.MessageTypeName, out var handlerCallSites);
-            handlerCallSites ??= [];
+            callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
+            var applicableMiddleware = GetApplicableMiddlewares(middleware, handler);
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
+        }
 
-            // Create new HandlerInfo with call sites if it's different from the current one
-            if (handlerCallSites.Count > 0 || handler.CallSites.AsSpan().Length > 0)
+        InterceptsLocationGenerator.Execute(context, interceptorsEnabled);
+
+        HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled);
+
+        DIRegistrationGenerator.Execute(context, handlersWithInfo);
+    }
+
+    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler)
+    {
+        var applicable = new List<MiddlewareInfo>();
+
+        foreach (var middleware in middlewares)
+        {
+            if (IsMiddlewareApplicableToHandler(middleware, handler))
             {
-                var updatedHandler = new HandlerInfo(
-                    handler.HandlerTypeName,
-                    handler.MessageTypeName,
-                    handler.MethodName,
-                    handler.ReturnTypeName,
-                    handler.OriginalReturnTypeName,
-                    handler.IsAsync,
-                    handler.IsStatic,
-                    handler.Parameters.ToList(),
-                    handler.MessageTypeHierarchy.ToList(),
-                    handlerCallSites);
-                handlersWithCallSites.Add(updatedHandler);
-            }
-            else
-            {
-                handlersWithCallSites.Add(handler);
+                applicable.Add(middleware);
             }
         }
 
-        // Validate handler configurations and emit diagnostics
-        MediatorValidator.ValidateHandlerConfiguration(handlersWithCallSites, context);
+        return new EquatableArray<MiddlewareInfo>(applicable
+            .OrderBy(m => m.Order)
+            .ThenBy(m => m.MessageType.IsObject ? 2 : (m.MessageType.IsInterface ? 1 : 0)) // Priority: specific=0, interface=1, object=2
+            .ToArray());
+    }
 
-        // Validate call sites against available handlers
-        MediatorValidator.ValidateCallSites(handlersWithCallSites, validMiddlewares, callSites.ToList(), context);
+    private static bool IsMiddlewareApplicableToHandler(MiddlewareInfo middleware, HandlerInfo handler)
+    {
+        if (middleware.MessageType.IsObject)
+            return true;
 
-        // Generate the InterceptsLocationAttribute if interceptors are enabled
-        InterceptsLocationAttributeGenerator.GenerateInterceptsLocationAttribute(context, interceptorsEnabled);
+        if (middleware.MessageType.FullName == handler.MessageType.FullName)
+            return true;
 
-        // Generate one wrapper file per handler (now with middleware support and call sites embedded)
-        HandlerWrapperGenerator.GenerateHandlerWrappers(handlersWithCallSites, validMiddlewares, interceptorsEnabled, context);
+        // TODO get all interfaces of handler.MessageType
+        //if (middleware.MessageType.IsInterface && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
+        //    return true;
 
-        string source = MediatorImplementationGenerator.GenerateMediatorImplementation(handlersWithCallSites);
-        context.AddSource("Mediator.g.cs", source);
-
-        // Also generate DI registration
-        string diSource = DIRegistrationGenerator.GenerateDIRegistration(handlersWithCallSites, validMiddlewares);
-        context.AddSource("ServiceCollectionExtensions.g.cs", diSource);
+        return false;
     }
 }
-// Trigger regeneration
+

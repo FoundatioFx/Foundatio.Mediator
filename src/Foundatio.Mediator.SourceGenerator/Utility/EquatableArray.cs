@@ -5,19 +5,30 @@ namespace Foundatio.Mediator.Utility;
 /// <summary>
 /// An array that implements IEquatable for use in source generators
 /// </summary>
-public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnumerable<T>
+public readonly struct EquatableArray<T>(T[] array) : IEquatable<EquatableArray<T>>, IEnumerable<T>
     where T : IEquatable<T>
 {
-    public static readonly EquatableArray<T> Empty = new(Array.Empty<T>());
+    public static readonly EquatableArray<T> Empty = new([]);
 
-    private readonly T[]? _array;
-
-    public EquatableArray(T[] array)
-    {
-        _array = array;
-    }
+    private readonly T[]? _array = array;
 
     public ReadOnlySpan<T> AsSpan() => _array.AsSpan();
+
+    public int Length => _array?.Length ?? 0;
+
+    public T this[int index]
+    {
+        get
+        {
+            if (_array == null)
+                throw new IndexOutOfRangeException("Array is null or index is out of range.");
+
+            if (index < 0 || index >= _array.Length)
+                throw new IndexOutOfRangeException("Array index is out of range.");
+
+            return _array[index];
+        }
+    }
 
     public bool Equals(EquatableArray<T> other)
     {
@@ -49,7 +60,7 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IEnume
 
     public IEnumerator<T> GetEnumerator()
     {
-        return (_array ?? Array.Empty<T>()).AsEnumerable().GetEnumerator();
+        return (_array ?? []).AsEnumerable().GetEnumerator();
     }
 
     IEnumerator IEnumerable.GetEnumerator()

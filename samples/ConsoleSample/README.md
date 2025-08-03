@@ -25,6 +25,11 @@ A simplified console application demonstrating all key features of Foundatio.Med
 - Logger injection and service resolution
 - Clean service configuration
 
+### 5. Middleware Examples
+- **ValidationMiddleware** (static) - Using MiniValidation for automatic validation
+- **LoggingMiddleware** (instance) - Performance tracking and execution logging
+- Ordered execution with `[FoundatioOrder]` attributes
+
 ## 🏗️ Project Structure
 
 ```
@@ -83,6 +88,74 @@ public class OrderAuditHandler
     public void Handle(OrderCreated evt) { /* Log creation */ }
     public void Handle(OrderUpdated evt) { /* Log update */ }
     public void Handle(OrderDeleted evt) { /* Log deletion */ }
+}
+```
+
+### Middleware Examples
+
+#### Static Validation Middleware
+
+```csharp
+[FoundatioOrder(1)]
+public static class ValidationMiddleware
+{
+    public static HandlerResult Before(object message)
+    {
+        if (!MiniValidator.TryValidate(message, out var errors))
+        {
+            var validationErrors = errors.Select(kvp =>
+                new ValidationError(kvp.Key, string.Join(", ", kvp.Value)))
+                .ToArray();
+
+            return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
+        }
+
+        return HandlerResult.Continue();
+    }
+}
+```
+
+#### Instance Logging Middleware
+
+```csharp
+[FoundatioOrder(2)]
+public class LoggingMiddleware
+{
+    private readonly ILogger<LoggingMiddleware> _logger;
+
+    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
+    {
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Called before handler execution - starts timing and logs entry
+    /// </summary>
+    public Stopwatch Before(object message)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        return stopwatch;
+    }
+
+    /// <summary>
+    /// Called always, even if handler fails - ensures cleanup and error logging
+    /// </summary>
+    public void Finally(object message, Stopwatch stopwatch, Exception? exception)
+    {
+        stopwatch?.Stop();
+
+        if (exception != null)
+        {
+            _logger.LogError(exception, "❌ Failed {MessageType} handler after {ElapsedMs}ms",
+                message.GetType().Name, stopwatch?.ElapsedMilliseconds ?? 0);
+
+            Console.WriteLine($"❌ Failed {message.GetType().Name} after {stopwatch?.ElapsedMilliseconds ?? 0}ms: {exception.Message}");
+        }
+        else
+        {
+            _logger.LogDebug("🏁 Finished {MessageType} handler execution", message.GetType().Name);
+        }
+    }
 }
 ```
 

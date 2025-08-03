@@ -18,7 +18,7 @@ public static class SimpleHandler
     }
 }
 
-// Order CRUD handlers with Result pattern
+// Order CRUD handlers with Result pattern and middleware
 public class OrderHandler
 {
     private static readonly Dictionary<string, Order> _orders = new();
@@ -35,13 +35,6 @@ public class OrderHandler
     {
         _logger.LogInformation("Creating order for customer {CustomerId} with amount {Amount}",
             command.CustomerId, command.Amount);
-
-        // Validation
-        if (string.IsNullOrWhiteSpace(command.CustomerId))
-            return Result<Order>.Invalid(new ValidationError("CustomerId", "Customer ID is required"));
-
-        if (command.Amount <= 0)
-            return Result<Order>.Invalid(new ValidationError("Amount", "Amount must be greater than zero"));
 
         var orderId = $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
         var order = new Order(orderId, command.CustomerId, command.Amount, command.Description, DateTime.UtcNow);

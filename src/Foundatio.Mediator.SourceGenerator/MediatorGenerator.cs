@@ -1,6 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Immutable;
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;

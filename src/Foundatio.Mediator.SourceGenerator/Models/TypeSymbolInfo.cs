@@ -1,6 +1,7 @@
+using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 
-namespace Foundatio.Mediator.Utility;
+namespace Foundatio.Mediator.Models;
 
 internal readonly record struct TypeSymbolInfo
 {
@@ -60,6 +61,27 @@ internal readonly record struct TypeSymbolInfo
     /// Contains information about the items in a tuple type, if applicable.
     /// </summary>
     public EquatableArray<TupleItemInfo> TupleItems { get; init; }
+
+    public static TypeSymbolInfo Void()
+    {
+        return new TypeSymbolInfo
+        {
+            Identifier = "void",
+            FullName = "void",
+            UnwrappedFullName = "void",
+            IsNullable = false,
+            IsReferenceType = false,
+            IsResult = false,
+            IsVoid = true,
+            IsTask = false,
+            IsObject = false,
+            IsInterface = false,
+            IsHandlerResult = false,
+            IsCancellationToken = false,
+            IsTuple = false,
+            TupleItems = EquatableArray<TupleItemInfo>.Empty
+        };
+    }
 
     public static TypeSymbolInfo From(ITypeSymbol typeSymbol, Compilation compilation)
     {

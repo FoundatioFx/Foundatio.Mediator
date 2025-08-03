@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Models;
 using Microsoft.CodeAnalysis;
 using Foundatio.Mediator.Utility;
 
@@ -7,7 +8,7 @@ internal static class HandlerGenerator
 {
     public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, bool interceptorsEnabled)
     {
-        if (handlers == null || handlers.Count == 0)
+        if (handlers.Count == 0)
             return;
 
         foreach (var handler in handlers)
@@ -76,7 +77,7 @@ internal static class HandlerGenerator
             GenerateGetOrCreateHandler(source, handler);
         }
 
-        if (!handler.ReturnType.IsVoid && handler.ReturnType.IsTuple)
+        if (handler.ReturnType.IsTuple)
         {
             GeneratePublishCascadingMessages(source);
         }
@@ -228,6 +229,128 @@ internal static class HandlerGenerator
         source.AppendLine();
     }
 
+    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        source.AppendLine(handler.IsAsync
+            ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)"
+            : "public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
+
+        source.AppendLine("{");
+
+        using (source.Indent())
+        {
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+
+            string stronglyTypedMethodName = GetHandlerMethodName(handler);
+            string asyncModifier = handler.IsAsync ? "await " : "";
+            string result = handler.ReturnType.IsVoid ? "" : "var result = ";
+
+            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
+
+            if (handler.ReturnType.IsTuple)
+            {
+                source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
+            }
+            else if (handler.HasReturnValue)
+            {
+                source.AppendLine();
+                source.AppendLine("if (responseType == null)");
+                source.AppendLine("{");
+                source.AppendLine("    return null;");
+                source.AppendLine("}");
+                source.AppendLine();
+
+                if (handler.ReturnType.IsResult)
+                {
+                    source.AppendLine("""
+                        if (result == null || result.GetType() == responseType || responseType.IsAssignableFrom(result.GetType()))
+                        {
+                            return result;
+                        }
+
+                        if (result is IResult r)
+                        {
+                            if (!r.IsSuccess)
+                            {
+                            throw new InvalidCastException($"Handler returned failed result with status {r.Status} for requested type { responseType?.Name ?? "null" }");
+                            }
+
+                            var resultValue = r.GetValue();
+                            if (resultValue != null && responseType.IsAssignableFrom(resultValue.GetType()))
+                            {
+                            return resultValue;
+                            }
+                        }
+                        """);
+                }
+
+                source.AppendLine(!handler.ReturnType.IsVoid ? "return result;" : "return null;");
+            }
+            else
+            {
+                source.AppendLine("return null;");
+            }
+        }
+
+        source.AppendLine("}");
+    }
+
+    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        // group by mediator method and response type
+        var callSiteGroups = handler.CallSites
+            .GroupBy(cs => new { cs.MethodName, cs.ResponseType })
+            .ToList();
+
+        int methodCounter = 0;
+        foreach (var group in callSiteGroups)
+        {
+            var key = group.Key;
+            var groupCallSites = group.ToList();
+
+            source.AppendLine();
+            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, groupCallSites, methodCounter++);
+        }
+    }
+
+    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, List<CallSiteInfo> callSites, int methodIndex)
+    {
+        string interceptorMethod = $"Intercept{methodName}{methodIndex}";
+        string handlerMethod = GetHandlerMethodName(handler);
+
+        foreach (var callSite in callSites)
+        {
+            source.AppendLine($"[System.Runtime.CompilerServices.InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
+        }
+
+        string asyncModifier = responseType.IsTask ? "async " : "";
+        string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
+        source.AppendLine($"public static {asyncModifier}{responseType.FullName} {interceptorMethod}({parameters})");
+        source.AppendLine("{");
+
+        source.IncrementIndent();
+
+        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+
+        asyncModifier = responseType.IsTask ? "await " : "";
+        if (handler.ReturnType.IsTuple)
+        {
+            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
+            source.AppendLine();
+
+            GenerateOptimizedTupleHandling(source, handler, responseType);
+        }
+        else
+        {
+            string returnKeyword = responseType.IsVoid ? "" : "return ";
+            source.AppendLine($"{returnKeyword}{asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
+        }
+
+        source.DecrementIndent();
+
+        source.AppendLine("}");
+    }
+
     private static string BuildParameters(EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null)
     {
         var parameterValues = new List<string>();
@@ -261,237 +384,6 @@ internal static class HandlerGenerator
         }
 
         return String.Join(", ", parameterValues);
-    }
-
-    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
-    {
-        if (handler.IsAsync)
-        {
-            source.AppendLine("public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
-        }
-        else
-        {
-            source.AppendLine("public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
-        }
-
-        source.AppendLine("{");
-
-        using (source.Indent())
-        {
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            string stronglyTypedMethodName = GetHandlerMethodName(handler);
-            string asyncModifier = handler.IsAsync ? "await " : "";
-            var result = handler.ReturnType.IsVoid ? "" : "var result = ";
-
-            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
-
-            if (handler.ReturnType.IsTuple)
-            {
-                source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
-            }
-            else if (handler.HasReturnValue)
-            {
-                GenerateNonTupleResultHandling(source, handler);
-            }
-            else
-            {
-                source.AppendLine("return null;");
-            }
-        }
-
-        source.AppendLine("}");
-    }
-
-    private static void GenerateNonTupleResultHandling(IndentedStringBuilder source, HandlerInfo handler)
-    {
-        source.AppendLine();
-        source.AppendLine("if (responseType == null)");
-        source.AppendLine("{");
-        using (source.Indent())
-        {
-            source.AppendLine("return null;");
-        }
-        source.AppendLine("}");
-        source.AppendLine();
-
-        if (handler.ReturnType.IsResult)
-        {
-            source.AppendLine("if (result == null || result.GetType() == responseType || responseType.IsAssignableFrom(result.GetType()))");
-            source.AppendLine("{");
-            using (source.Indent())
-            {
-                source.AppendLine("return result;");
-            }
-            source.AppendLine("}");
-            source.AppendLine();
-
-            source.AppendLine("if (result is IResult r)");
-            source.AppendLine("{");
-            using (source.Indent())
-            {
-                source.AppendLine("if (!r.IsSuccess)");
-                source.AppendLine("{");
-                using (source.Indent())
-                {
-                    source.AppendLine("throw new InvalidCastException($\"Handler returned failed result with status {r.Status} for requested type {responseType?.Name ?? \"null\"}\");");
-                }
-                source.AppendLine("}");
-                source.AppendLine();
-                source.AppendLine("var resultValue = r.GetValue();");
-                source.AppendLine("if (resultValue != null && responseType.IsAssignableFrom(resultValue.GetType()))");
-                source.AppendLine("{");
-                using (source.Indent())
-                {
-                    source.AppendLine("return resultValue;");
-                }
-                source.AppendLine("}");
-            }
-            source.AppendLine("}");
-            source.AppendLine();
-        }
-
-        if (!handler.ReturnType.IsVoid)
-            source.AppendLine("return result;");
-        else
-            source.AppendLine("return null;");
-    }
-
-    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler)
-    {
-        // Group call sites by method signature to generate unique interceptor methods
-        var callSiteGroups = handler.CallSites
-            .GroupBy(cs => new { cs.MethodName, MessageTypeName = cs.MessageType.FullName, ResponseTypeName = cs.ResponseType?.FullName })
-            .ToList();
-
-        int methodCounter = 0;
-        foreach (var group in callSiteGroups)
-        {
-            var key = group.Key;
-            var groupCallSites = group.ToList();
-
-            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseTypeName ?? "", groupCallSites, methodCounter++, handler.Middleware.ToList());
-        }
-    }
-
-    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, string expectedResponseTypeName, List<CallSiteInfo> callSites, int methodIndex, List<MiddlewareInfo> middlewares)
-    {
-        // Generate unique method name for the interceptor
-        string interceptorMethodName = $"Intercept{methodName}{methodIndex}";
-
-        // Determine if the wrapper method is async (either because the handler is async OR because there are async middleware)
-        bool hasAsyncMiddleware = middlewares.Any(m =>
-            (m.BeforeMethod?.IsAsync == true) ||
-            (m.AfterMethod?.IsAsync == true) ||
-            (m.FinallyMethod?.IsAsync == true));
-
-        bool wrapperIsAsync = handler.IsAsync || hasAsyncMiddleware;
-
-        // The interceptor should match the original call signature (Invoke vs InvokeAsync)
-        bool interceptorIsAsync = methodName.EndsWith("Async");
-        bool isGeneric = !String.IsNullOrEmpty(expectedResponseTypeName);
-
-        // Check for sync interceptor with async wrapper - this should generate a diagnostic error instead
-        if (!interceptorIsAsync && wrapperIsAsync)
-        {
-            // Don't generate interceptor for sync calls with async middleware
-            // This will be caught by the validator and generate FMED012 diagnostic
-            return;
-        }
-
-        // Generate interceptor attributes for all call sites
-        var interceptorAttributes = callSites
-            .Select(GenerateInterceptorAttribute)
-            .Where(attr => !String.IsNullOrEmpty(attr))
-            .ToList();
-
-        if (interceptorAttributes.Count == 0)
-            return;
-
-        source.AppendLine();
-
-        // Add interceptor attributes
-        foreach (string? attribute in interceptorAttributes)
-        {
-            source.AppendLine($"{attribute}");
-        }
-
-        // Generate method signature
-        string returnType = GenerateInterceptorReturnType(interceptorIsAsync, isGeneric, expectedResponseTypeName);
-        string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
-        string stronglyTypedMethodName = GetHandlerMethodName(handler);
-
-        string asyncModifier = interceptorIsAsync ? "async " : "";
-        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethodName}({parameters})")
-              .AppendLine("{");
-
-        using (source.Indent())
-        {
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            // Generate the appropriate method call based on async/sync combinations
-            if (isGeneric && handler.ReturnType.IsTuple)
-            {
-                // For generic calls with tuple return types, handle cascading messages inline for performance
-                source.AppendLine($"var result = {(interceptorIsAsync && wrapperIsAsync ? "await " : "")}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);")
-                      .AppendLine();
-
-                // Generate optimized typed code for tuple handling
-                GenerateOptimizedTupleHandling(source, handler, expectedResponseTypeName, interceptorIsAsync);
-            }
-            else
-            {
-                string awaitKeyword = (interceptorIsAsync && wrapperIsAsync) ? "await " : "";
-                string returnKeyword = isGeneric ? "return " : "";
-                source.AppendLine($"{returnKeyword}{awaitKeyword}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
-            }
-        }
-
-        source.AppendLine("}");
-    }
-
-    private static string GenerateInterceptorAttribute(CallSiteInfo callSite)
-    {
-        var location = callSite.Location;
-        return $"[System.Runtime.CompilerServices.InterceptsLocation({location.Version}, \"{location.Data}\")] // {location.DisplayLocation}";
-    }
-
-    private static string GenerateInterceptorReturnType(bool isAsync, bool isGeneric, string expectedResponseTypeName)
-    {
-        if (isGeneric)
-        {
-            // For generic methods, return the exact same type as the original method
-            return isAsync ? $"System.Threading.Tasks.ValueTask<{expectedResponseTypeName}>" : expectedResponseTypeName;
-        }
-
-        // For non-generic methods, return the exact same type as the original method
-        return isAsync ? "System.Threading.Tasks.ValueTask" : "void";
-    }
-
-    /// <summary>
-    /// Gets a nullable-safe cast expression for HandlerResult.Value.
-    /// </summary>
-    private static string GetSafeCastExpression(string handlerResultVar, HandlerInfo handler, bool useUnwrappedType = false)
-    {
-        string returnType = useUnwrappedType || handler.ReturnType.IsVoid
-            ? handler.ReturnType.UnwrappedFullName
-            : handler.ReturnType.FullName;
-
-        // Special handling for Result to Result<T> conversion
-        if (returnType.StartsWith("Foundatio.Mediator.Result<") && returnType != "Foundatio.Mediator.Result")
-        {
-            // Check if the value might be a non-generic Result that needs conversion to Result<T>
-            return $"{handlerResultVar}.Value is Foundatio.Mediator.Result result ? ({returnType})result : ({returnType}?){handlerResultVar}.Value ?? default({returnType})!";
-        }
-
-        // For reference types, provide a null-coalescing fallback to satisfy non-nullable return types
-        if (handler.ReturnType.IsNullable)
-        {
-            string defaultValue = "default(" + returnType + ")";
-            return $"({returnType}?){handlerResultVar}.Value ?? {defaultValue}";
-        }
-
-        return $"({returnType}){handlerResultVar}.Value!";
     }
 
     private static void GeneratePublishCascadingMessages(IndentedStringBuilder source)
@@ -582,52 +474,13 @@ internal static class HandlerGenerator
         }
     }
 
-    private static string GetHandlerResultValueExpression(MiddlewareInfo middleware, string resultVariableName, string hrVariableName, HandlerInfo handler, bool useUnwrappedType = false)
-    {
-        if (middleware.BeforeMethod == null)
-            return GetSafeCastExpression(hrVariableName, handler, useUnwrappedType);
-
-        var methodInfo = middleware.BeforeMethod.Value;
-
-        // Use the return type
-        string returnType = methodInfo.ReturnType.FullName;
-
-        // If the return type is exactly HandlerResult (not nullable), we can directly access it
-        if (returnType == "HandlerResult" || returnType == "Foundatio.Mediator.HandlerResult")
-        {
-            return GetSafeCastExpression(resultVariableName, handler, useUnwrappedType);
-        }
-        // If it's nullable HandlerResult, use the non-null assertion
-        else if (returnType == "HandlerResult?" || returnType == "Foundatio.Mediator.HandlerResult?")
-        {
-            return GetSafeCastExpression($"{resultVariableName}!", handler, useUnwrappedType);
-        }
-        // Otherwise, fall back to using the pattern-matched variable
-        else
-        {
-            return GetSafeCastExpression(hrVariableName, handler, useUnwrappedType);
-        }
-    }
-
-    private static string GenerateMiddlewareMethodCall(MiddlewareInfo middleware, MiddlewareMethodInfo method, string parameters, string middlewareVariableName)
-    {
-        if (middleware.IsStatic)
-        {
-            return $"{middleware.FullName}.{method.MethodName}({parameters})";
-        }
-        else
-        {
-            return $"{middlewareVariableName}.{method.MethodName}({parameters})";
-        }
-    }
-
-    private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, string expectedResponseTypeName, bool isAsync)
+    private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, TypeSymbolInfo responseType)
     {
         var tupleFields = handler.ReturnType.TupleItems.ToList();
 
         if (tupleFields.Count == 0)
         {
-            source.AppendLine($"return default({expectedResponseTypeName});");
+            source.AppendLine($"return default({responseType.FullName});");
             return;
         }
 
@@ -639,7 +492,7 @@ internal static class HandlerGenerator
             var tupleItem = tupleFields[i];
             string fieldType = tupleItem.TypeFullName;
 
-            if (fieldType == expectedResponseTypeName)
+            if (fieldType == responseType.FullName)
             {
                 if (returnItemIndex == -1)
                 {
@@ -663,7 +516,7 @@ internal static class HandlerGenerator
 
             bool needsNullCheck = tupleItem.IsNullable;
 
-            if (isAsync)
+            if (responseType.IsTask)
             {
                 if (needsNullCheck)
                 {
@@ -695,52 +548,8 @@ internal static class HandlerGenerator
         }
         else
         {
-            source.AppendLine($"return default({expectedResponseTypeName})!;");
+            source.AppendLine($"return default({responseType.UnwrappedFullName})!;");
         }
-    }
-
-    private static string GenerateMiddlewareParameterExpression(ParameterInfo parameter, MiddlewareInfo middleware, string resultVariableName, HandlerInfo handler)
-    {
-        if (parameter.IsMessageParameter)
-            return "message";
-
-        if (parameter.Type.IsCancellationToken)
-            return "cancellationToken";
-
-        // Check if it's exception parameter
-        if (parameter.Type.FullName.Contains("Exception"))
-            return "exception";
-
-        // Check if it's the result from this middleware's Before method
-        if (middleware.BeforeMethod?.ReturnType != null)
-        {
-            // If the Before method returns a simple (non-tuple) type, check direct match
-            if (!middleware.BeforeMethod.Value.ReturnType.IsTuple)
-            {
-                if (parameter.Type.FullName == middleware.BeforeMethod.Value.ReturnType.FullName ||
-                    parameter.Type.FullName == "object" || parameter.Type.FullName == "object?")
-                    return resultVariableName;
-            }
-            else
-            {
-                // If the Before method returns a tuple, check if this parameter matches any tuple item
-                var tupleItems = middleware.BeforeMethod.Value.ReturnType.TupleItems.ToList();
-                for (int i = 0; i < tupleItems.Count; i++)
-                {
-                    if (parameter.Type.FullName == tupleItems[i].TypeFullName)
-                    {
-                        return $"{resultVariableName}.{tupleItems[i].Name}";
-                    }
-                }
-            }
-        }
-
-        // Check if it's handler result parameter
-        if (!handler.ReturnType.IsVoid && (parameter.Type.FullName == handler.ReturnType.FullName || parameter.Type.FullName == "object"))
-            return "handlerResult";
-
-        // Otherwise resolve from DI
-        return $"serviceProvider.GetRequiredService<{parameter.Type.FullName}>()";
     }
 
     public static string GetHandlerClassName(HandlerInfo handler)

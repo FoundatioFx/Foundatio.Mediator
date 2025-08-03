@@ -1,6 +1,6 @@
 using Foundatio.Mediator.Utility;
 
-namespace Foundatio.Mediator;
+namespace Foundatio.Mediator.Models;
 
 internal readonly record struct HandlerInfo
 {

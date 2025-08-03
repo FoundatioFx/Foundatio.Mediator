@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -60,7 +61,7 @@ internal static class CallSiteAnalyzer
         {
             MethodName = methodName,
             MessageType = TypeSymbolInfo.From(messageType, semanticModel.Compilation),
-            ResponseType = responseType is not null ? TypeSymbolInfo.From(responseType, semanticModel.Compilation) : null,
+            ResponseType = responseType is not null ? TypeSymbolInfo.From(responseType, semanticModel.Compilation) : TypeSymbolInfo.Void(),
             IsPublish = isPublish,
             Location = LocationInfo.CreateFrom(invocation, interceptableLocation)!.Value,
         };

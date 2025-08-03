@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

@@ -5,27 +5,32 @@ A simplified console application demonstrating all key features of Foundatio.Med
 ## 🎯 What This Sample Demonstrates
 
 ### 1. Simple Command and Query Handlers
+
 - **Static handlers** with minimal setup
 - Convention-based discovery (classes ending in `Handler`)
 - Simple `Handle` methods for messages
 
 ### 2. CRUD Operations with Result Pattern
+
 - **OrderHandler** with full CRUD operations
 - **`Result<T>`** pattern for success/failure handling
 - Validation with detailed error messages
 - Status codes (Created, NotFound, NoContent, etc.)
 
 ### 3. Event Publishing & Multiple Handlers
+
 - **PublishAsync** for events with multiple handlers
 - Event-driven architecture examples
 - Audit logging and notifications
 
 ### 4. Dependency Injection
+
 - Automatic handler registration via source generator
 - Logger injection and service resolution
 - Clean service configuration
 
 ### 5. Middleware Examples
+
 - **ValidationMiddleware** (static) - Using MiniValidation for automatic validation
 - **LoggingMiddleware** (instance) - Performance tracking and execution logging
 - Ordered execution with `[FoundatioOrder]` attributes
@@ -38,6 +43,9 @@ ConsoleSample/
 │   └── Messages.cs          # All message types (commands, queries, events)
 ├── Handlers/
 │   └── Handlers.cs          # All handler implementations
+├── Middleware/
+│   ├── ValidationMiddleware.cs  # Static validation middleware
+│   └── LoggingMiddleware.cs     # Instance logging middleware
 ├── Program.cs               # Application entry point
 ├── SampleRunner.cs          # Demo orchestration
 └── ServiceConfiguration.cs  # DI setup
@@ -46,6 +54,7 @@ ConsoleSample/
 ## 🔧 Key Features Shown
 
 ### Static Handlers (SimpleHandler)
+
 ```csharp
 public static class SimpleHandler
 {
@@ -55,6 +64,7 @@ public static class SimpleHandler
 ```
 
 ### Instance Handlers with Result Pattern (OrderHandler)
+
 ```csharp
 public class OrderHandler
 {
@@ -76,6 +86,7 @@ public class OrderHandler
 ```
 
 ### Event Handlers
+
 ```csharp
 public class OrderNotificationHandler
 {
@@ -121,40 +132,21 @@ public static class ValidationMiddleware
 [FoundatioOrder(2)]
 public class LoggingMiddleware
 {
-    private readonly ILogger<LoggingMiddleware> _logger;
-
-    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
-    {
-        _logger = logger;
-    }
-
-    /// <summary>
-    /// Called before handler execution - starts timing and logs entry
-    /// </summary>
     public Stopwatch Before(object message)
     {
         var stopwatch = Stopwatch.StartNew();
         return stopwatch;
     }
 
-    /// <summary>
-    /// Called always, even if handler fails - ensures cleanup and error logging
-    /// </summary>
     public void Finally(object message, Stopwatch stopwatch, Exception? exception)
     {
         stopwatch?.Stop();
 
         if (exception != null)
-        {
-            _logger.LogError(exception, "❌ Failed {MessageType} handler after {ElapsedMs}ms",
+            _logger.LogError(exception, "❌ Failed {MessageType} after {ElapsedMs}ms",
                 message.GetType().Name, stopwatch?.ElapsedMilliseconds ?? 0);
-
-            Console.WriteLine($"❌ Failed {message.GetType().Name} after {stopwatch?.ElapsedMilliseconds ?? 0}ms: {exception.Message}");
-        }
         else
-        {
-            _logger.LogDebug("🏁 Finished {MessageType} handler execution", message.GetType().Name);
-        }
+            _logger.LogDebug("🏁 Finished {MessageType} handler", message.GetType().Name);
     }
 }
 ```
@@ -166,6 +158,7 @@ dotnet run
 ```
 
 This will execute all examples showing:
+
 1. Simple ping/greeting operations
 2. Complete order CRUD lifecycle
 3. Event publishing with multiple handlers
@@ -174,6 +167,7 @@ This will execute all examples showing:
 ## 🧠 Source Generator Magic
 
 The sample uses Foundatio.Mediator's source generator to:
+
 - Auto-discover handlers by convention
 - Generate efficient wrapper code
 - Validate call sites at compile time

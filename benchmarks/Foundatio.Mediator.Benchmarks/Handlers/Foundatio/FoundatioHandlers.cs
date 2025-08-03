@@ -1,9 +1,10 @@
 using Foundatio.Mediator.Benchmarks.Messages;
+using Foundatio.Mediator.Benchmarks.Services;
 
 namespace Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
 
-// Foundatio.Mediator handlers using convention-based discovery
-public class FoundatioPingHandler
+// Scenario 1: Command handler (InvokeAsync without response)
+public class FoundatioCommandHandler
 {
     public async Task HandleAsync(PingCommand command, CancellationToken cancellationToken = default)
     {
@@ -12,66 +13,38 @@ public class FoundatioPingHandler
     }
 }
 
-public class FoundatioGreetingHandler
+// Scenario 2: Query handler (InvokeAsync<T>)
+public class FoundatioQueryHandler
 {
-    public async Task<string> HandleAsync(GreetingQuery query, CancellationToken cancellationToken = default)
+    public async Task<Order> HandleAsync(GetOrder query, CancellationToken cancellationToken = default)
     {
         await Task.CompletedTask;
-        return $"Hello, {query.Name}!";
+        return new Order(query.Id, 99.99m, DateTime.UtcNow);
     }
 }
 
-public class FoundatioCreateOrderHandler
-{
-    public async Task<string> HandleAsync(CreateOrderCommand command, CancellationToken cancellationToken = default)
-    {
-        // Simulate order creation
-        await Task.CompletedTask;
-        return $"Order-{Guid.NewGuid():N}";
-    }
-}
-
-public class FoundatioGetOrderDetailsHandler
-{
-    public async Task<OrderDetails> HandleAsync(GetOrderDetailsQuery query)
-    {
-        // Simulate database lookup
-        await Task.CompletedTask;
-        return new OrderDetails(
-            query.OrderId,
-            "Product-123",
-            1,
-            99.99m,
-            "Customer-456",
-            DateTime.UtcNow
-        );
-    }
-}
-
-// Multiple handlers for the same notification (publish scenario)
-public class FoundatioUserRegisteredEmailHandler
+// Scenario 3: Single event handler (PublishAsync with single handler)
+public class FoundatioEventHandler
 {
     public async Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
-        // Simulate sending email
-        await Task.Delay(1, cancellationToken);
+        // Simulate minimal event handling work
+        await Task.CompletedTask;
     }
 }
 
-public class FoundatioUserRegisteredAnalyticsHandler
+// Scenario 4: Query handler with dependency injection
+public class FoundatioQueryWithDependenciesHandler
 {
-    public async Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
-    {
-        // Simulate analytics tracking
-        await Task.Delay(1, cancellationToken);
-    }
-}
+    private readonly IOrderService _orderService;
 
-public class FoundatioUserRegisteredWelcomeHandler
-{
-    public async Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
+    public FoundatioQueryWithDependenciesHandler(IOrderService orderService)
     {
-        // Simulate welcome message
-        await Task.Delay(1, cancellationToken);
+        _orderService = orderService;
+    }
+
+    public async Task<Order> HandleAsync(GetOrderWithDependencies query, CancellationToken cancellationToken = default)
+    {
+        return await _orderService.GetOrderAsync(query.Id, cancellationToken);
     }
 }

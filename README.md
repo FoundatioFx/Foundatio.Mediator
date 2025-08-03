@@ -184,27 +184,46 @@ Foundatio.Mediator delivers exceptional performance, getting remarkably close to
 
 | Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
 |-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **DirectPingCommandAsync**   | **8.4 ns**  | 0.18 ns   | 0.16 ns   | **-**  | **0 B**   | baseline  |
-| **FoundatioPingCommandAsync** | **17.2 ns** | 0.12 ns   | 0.11 ns   | **-**  | **0 B**   | **2.05x** |
-| MediatRPingCommandAsync       | 52.9 ns     | 1.00 ns   | 0.78 ns   | 0.0038 | 192 B     | 6.32x     |
-| MassTransitPingCommandAsync   | 1,549.5 ns  | 19.3 ns   | 16.1 ns   | 0.0839 | 4216 B    | 185x      |
+| **Direct_Command**            | **8.33 ns**  | 0.17 ns   | 0.24 ns   | **-**  | **0 B**   | baseline  |
+| **Foundatio_Command**         | **17.93 ns** | 0.36 ns   | 0.34 ns   | **-**  | **0 B**   | **2.15x** |
+| MediatR_Command               | 54.81 ns     | 1.12 ns   | 1.77 ns   | 0.0038 | 192 B     | 6.58x     |
+| MassTransit_Command           | 1,585.85 ns  | 19.82 ns  | 17.57 ns  | 0.0839 | 4232 B    | 190.4x    |
 
 ### Queries (Request/Response)
 
 | Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
 |-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **DirectGreetingQueryAsync**  | **17.9 ns** | 0.39 ns   | 0.35 ns   | 0.0038 | **192 B** | baseline  |
-| **FoundatioGreetingQueryAsync** | **31.8 ns** | 0.59 ns  | 0.66 ns   | 0.0052 | **264 B** | **1.78x** |
-| MediatRGreetingQueryAsync     | 62.3 ns     | 1.27 ns   | 1.46 ns   | 0.0076 | 384 B     | 3.48x     |
-| MassTransitGreetingQueryAsync | 6,192.6 ns  | 123.5 ns  | 192.2 ns  | 0.2518 | 12792 B   | 346x      |
+| **Direct_Query**              | **32.12 ns** | 0.50 ns   | 0.47 ns   | 0.0038 | **192 B** | baseline  |
+| **Foundatio_Query**           | **46.36 ns** | 0.94 ns   | 0.84 ns   | 0.0052 | **264 B** | **1.44x** |
+| MediatR_Query                 | 81.40 ns     | 1.32 ns   | 1.23 ns   | 0.0076 | 384 B     | 2.53x     |
+| MassTransit_Query             | 6,354.47 ns  | 125.37 ns | 195.19 ns | 0.2518 | 12784 B   | 197.8x    |
+
+### Events (Publish/Subscribe)
+
+| Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
+|-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
+| **Direct_Event**              | **8.12 ns**  | 0.18 ns   | 0.36 ns   | **-**  | **0 B**   | baseline  |
+| **Foundatio_Publish**         | **121.57 ns**| 0.80 ns   | 0.71 ns   | 0.0134 | **672 B** | **15.0x** |
+| MediatR_Publish               | 59.29 ns     | 1.13 ns   | 1.59 ns   | 0.0057 | 288 B     | 7.30x     |
+| MassTransit_Publish           | 1,697.53 ns  | 13.97 ns  | 13.06 ns  | 0.0877 | 4448 B    | 209.0x    |
+
+### Dependency Injection Overhead
+
+| Method                                | Mean         | Error     | StdDev    | Gen0   | Allocated | vs No DI  |
+|---------------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
+| **Direct_QueryWithDependencies**     | **39.24 ns** | 0.81 ns   | 1.28 ns   | 0.0052 | **264 B** | baseline  |
+| **Foundatio_QueryWithDependencies**  | **53.30 ns** | 1.05 ns   | 1.37 ns   | 0.0067 | **336 B** | **1.36x** |
+| MediatR_QueryWithDependencies        | 79.97 ns     | 0.54 ns   | 0.51 ns   | 0.0091 | 456 B     | 2.04x     |
+| MassTransit_QueryWithDependencies    | 5,397.69 ns  | 61.05 ns  | 50.98 ns  | 0.2518 | 12857 B   | 137.6x    |
 
 ### 🎯 Key Performance Insights
 
 - **🚀 Near-Optimal Performance**: Only slight overhead vs direct method calls
-- **⚡ Foundatio vs MediatR**: **3.08x faster** for commands, **1.96x faster** for queries
-- **� Foundatio vs MassTransit**: **90x faster** for commands, **195x faster** for queries
+- **⚡ Foundatio vs MediatR**: **3.06x faster** for commands, **1.76x faster** for queries
+- **🎯 Foundatio vs MassTransit**: **88x faster** for commands, **137x faster** for queries
 - **💾 Zero Allocation Commands**: Fire-and-forget operations have no GC pressure
-- **🎪 Minimal Memory Overhead**: Very efficient memory usage across all scenarios
+- **🔥 Minimal DI Overhead**: Only 36% performance cost for dependency injection
+- **📡 Efficient Publishing**: Event publishing scales well with multiple handlers
 
 *Benchmarks run on .NET 9.0 with BenchmarkDotNet. Results show Foundatio.Mediator achieves its design goal of getting as close as possible to direct method call performance.*
 

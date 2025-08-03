@@ -104,7 +104,6 @@ Build a fast, convention-based C# mediator library using incremental source gene
 
 * Supported variants:
 
-  * `Publish(message, CancellationToken = default)`
   * `PublishAsync(message, CancellationToken = default)`
 * **Zero to many handlers** per message
 * All handlers are called inline
@@ -115,7 +114,8 @@ Build a fast, convention-based C# mediator library using incremental source gene
 * If one handler throws:
 
   * All others still run
-  * First exception is thrown after all complete
+  * If one handler throws, the exception is rethrown after all handlers complete
+  * If multiple handlers throw, an `AggregateException` is thrown with all exceptions
 
 ---
 
@@ -191,42 +191,3 @@ Build a fast, convention-based C# mediator library using incremental source gene
   * Middleware phases
   * Tuple/cascading message flow
   * Source generation metadata (discovery, errors)
-
----
-
-## ✅ Implementation Checklist
-
-### ✅ Core
-
-* [x] Discover handlers using naming convention
-* [ ] Generate static `HandleAsync` method per handler
-* [x] Emit compile-time diagnostics for invalid handlers
-* [ ] Generate and register `HandlerRegistration` per handler
-
-### ✅ Dispatch
-
-* [x] `Invoke(...)` and `InvokeAsync(...)` variants
-* [x] `Publish(...)` and `PublishAsync(...)` variants
-* [ ] Match handler return type to expected `TResponse`
-* [ ] Publish any extra tuple values as cascading messages
-* [ ] Wait for cascading messages before returning from `Invoke`
-
-### 🧠 Middleware
-
-* [ ] Execute `Before` / `After` / `Finally` logic
-* [ ] Support returning `HandlerResult` from `Before`
-* [ ] Pass `Before` return into `After`/`Finally`
-* [ ] Inject message, token, and DI services into middleware
-
-### ⚙️ Runtime
-
-* [ ] Register `HandlerRegistration` keyed by fully qualified message name
-* [ ] Use `GetServices<HandlerRegistration>()` to dispatch
-* [ ] Add config for publish mode: sequential vs parallel
-
-### 🧪 Testing & Debugging
-
-* [x] Enable `EmitCompilerGeneratedFiles` for source inspection
-* [x] Validate generator behavior with method DI only
-* [ ] Add tests for tuple returns and cascading publish
-* [x] Benchmark vs MediatR, Wolverine, etc.

@@ -21,9 +21,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleSample", "samples\Co
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator.Benchmarks", "benchmarks\Foundatio.Mediator.Benchmarks\Foundatio.Mediator.Benchmarks.csproj", "{8C9D0E1F-AD6F-4CD0-BE9F-9A2B3C7D8E0F}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionFolder1", "SolutionFolder1", "{AD86A443-DD0F-4265-A27A-F7BF758B8DC7}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AD86A443-DD0F-4265-A27A-F7BF758B8DC7}"
 	ProjectSection(SolutionItems) = preProject
 		build\common.props = build\common.props
+		.github\copilot-instructions.md = .github\copilot-instructions.md
 	EndProjectSection
 EndProject
 Global

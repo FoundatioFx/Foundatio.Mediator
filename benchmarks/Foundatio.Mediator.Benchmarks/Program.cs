@@ -6,7 +6,7 @@ class Program
 {
     static void Main(string[] args)
     {
-        Console.WriteLine("Running Foundatio.Mediator vs MediatR benchmarks...");
-        var summary = BenchmarkRunner.Run<SimpleBenchmarks>();
+        Console.WriteLine("Running Foundatio.Mediator vs MediatR vs MassTransit benchmarks...");
+        var summary = BenchmarkRunner.Run<CoreBenchmarks>();
     }
 }

@@ -1,10 +1,11 @@
 using Foundatio.Mediator.Benchmarks.Messages;
+using Foundatio.Mediator.Benchmarks.Services;
 using MassTransit;
 
 namespace Foundatio.Mediator.Benchmarks.Handlers.MassTransit;
 
-// MassTransit handlers using their IConsumer interface, named with different suffix so Foundatio won't pick them up
-public class MassTransitPingConsumer : IConsumer<PingCommand>
+// Scenario 1: Command handler (InvokeAsync without response)
+public class MassTransitCommandConsumer : IConsumer<PingCommand>
 {
     public async Task Consume(ConsumeContext<PingCommand> context)
     {
@@ -13,66 +14,39 @@ public class MassTransitPingConsumer : IConsumer<PingCommand>
     }
 }
 
-public class MassTransitGreetingConsumer : IConsumer<GreetingQuery>
+// Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
+public class MassTransitQueryConsumer : IConsumer<GetOrder>
 {
-    public async Task Consume(ConsumeContext<GreetingQuery> context)
+    public async Task Consume(ConsumeContext<GetOrder> context)
     {
         await Task.CompletedTask;
-        await context.RespondAsync(new GreetingResponse($"Hello, {context.Message.Name}!"));
+        await context.RespondAsync(new Order(context.Message.Id, 99.99m, DateTime.UtcNow));
     }
 }
 
-public class MassTransitCreateOrderConsumer : IConsumer<CreateOrderCommand>
-{
-    public async Task Consume(ConsumeContext<CreateOrderCommand> context)
-    {
-        // Simulate order creation
-        await Task.CompletedTask;
-        await context.RespondAsync(new CreateOrderResponse($"Order-{Guid.NewGuid():N}"));
-    }
-}
-
-public class MassTransitGetOrderDetailsConsumer : IConsumer<GetOrderDetailsQuery>
-{
-    public async Task Consume(ConsumeContext<GetOrderDetailsQuery> context)
-    {
-        // Simulate database lookup
-        await Task.CompletedTask;
-        await context.RespondAsync(new OrderDetails(
-            context.Message.OrderId,
-            "Product-123",
-            1,
-            99.99m,
-            "Customer-456",
-            DateTime.UtcNow
-        ));
-    }
-}
-
-// Multiple handlers for the same notification (publish scenario)
-public class MassTransitUserRegisteredEmailConsumer : IConsumer<UserRegisteredEvent>
+// Scenario 3: Single event handler (PublishAsync with single handler)
+public class MassTransitEventConsumer : IConsumer<UserRegisteredEvent>
 {
     public async Task Consume(ConsumeContext<UserRegisteredEvent> context)
     {
-        // Simulate sending email
-        await Task.Delay(1, context.CancellationToken);
+        // Simulate minimal event handling work
+        await Task.CompletedTask;
     }
 }
 
-public class MassTransitUserRegisteredAnalyticsConsumer : IConsumer<UserRegisteredEvent>
+// Scenario 4: Query handler with dependency injection
+public class MassTransitQueryWithDependenciesConsumer : IConsumer<GetOrderWithDependencies>
 {
-    public async Task Consume(ConsumeContext<UserRegisteredEvent> context)
-    {
-        // Simulate analytics tracking
-        await Task.Delay(1, context.CancellationToken);
-    }
-}
+    private readonly IOrderService _orderService;
 
-public class MassTransitUserRegisteredWelcomeConsumer : IConsumer<UserRegisteredEvent>
-{
-    public async Task Consume(ConsumeContext<UserRegisteredEvent> context)
+    public MassTransitQueryWithDependenciesConsumer(IOrderService orderService)
     {
-        // Simulate welcome message
-        await Task.Delay(1, context.CancellationToken);
+        _orderService = orderService;
+    }
+
+    public async Task Consume(ConsumeContext<GetOrderWithDependencies> context)
+    {
+        var order = await _orderService.GetOrderAsync(context.Message.Id);
+        await context.RespondAsync(order);
     }
 }

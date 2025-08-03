@@ -1,11 +1,12 @@
 using Foundatio.Mediator.Benchmarks.Messages;
+using Foundatio.Mediator.Benchmarks.Services;
 using MediatR;
 
 namespace Foundatio.Mediator.Benchmarks.Handlers.MediatR;
 
-// MediatR handlers using their interface-based approach, named with different suffix so Foundatio won't pick them up
+// Scenario 1: Command handler (InvokeAsync without response)
 [FoundatioIgnore]
-public class MediatRPingHandler : IRequestHandler<PingCommand>
+public class MediatRCommandHandler : IRequestHandler<PingCommand>
 {
     public async Task Handle(PingCommand request, CancellationToken cancellationToken)
     {
@@ -14,71 +15,41 @@ public class MediatRPingHandler : IRequestHandler<PingCommand>
     }
 }
 
+// Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
 [FoundatioIgnore]
-public class MediatRGreetingHandler : IRequestHandler<GreetingQuery, string>
+public class MediatRQueryHandler : IRequestHandler<GetOrder, Order>
 {
-    public Task<string> Handle(GreetingQuery request, CancellationToken cancellationToken)
+    public async Task<Order> Handle(GetOrder request, CancellationToken cancellationToken)
     {
-        return Task.FromResult($"Hello, {request.Name}!");
-    }
-}
-
-[FoundatioIgnore]
-public class MediatRCreateOrderHandler : IRequestHandler<CreateOrderCommand, string>
-{
-    public async Task<string> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
-    {
-        // Simulate order creation
         await Task.CompletedTask;
-        return $"Order-{Guid.NewGuid():N}";
+        return new Order(request.Id, 99.99m, DateTime.UtcNow);
     }
 }
 
+// Scenario 3: Single event handler (PublishAsync with single handler)
 [FoundatioIgnore]
-public class MediatRGetOrderDetailsHandler : IRequestHandler<GetOrderDetailsQuery, OrderDetails>
+public class MediatREventHandler : INotificationHandler<UserRegisteredEvent>
 {
-    public async Task<OrderDetails> Handle(GetOrderDetailsQuery request, CancellationToken cancellationToken)
+    public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
     {
-        // Simulate database lookup
+        // Simulate minimal event handling work
         await Task.CompletedTask;
-        return new OrderDetails(
-            request.OrderId,
-            "Product-123",
-            1,
-            99.99m,
-            "Customer-456",
-            DateTime.UtcNow
-        );
     }
 }
 
-// Multiple handlers for the same notification (publish scenario)
+// Scenario 4: Query handler with dependency injection
 [FoundatioIgnore]
-public class MediatRUserRegisteredEmailHandler : INotificationHandler<UserRegisteredEvent>
+public class MediatRQueryWithDependenciesHandler : IRequestHandler<GetOrderWithDependencies, Order>
 {
-    public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
-    {
-        // Simulate sending email
-        await Task.Delay(1, cancellationToken);
-    }
-}
+    private readonly IOrderService _orderService;
 
-[FoundatioIgnore]
-public class MediatRUserRegisteredAnalyticsHandler : INotificationHandler<UserRegisteredEvent>
-{
-    public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
+    public MediatRQueryWithDependenciesHandler(IOrderService orderService)
     {
-        // Simulate analytics tracking
-        await Task.Delay(1, cancellationToken);
+        _orderService = orderService;
     }
-}
 
-[FoundatioIgnore]
-public class MediatRUserRegisteredWelcomeHandler : INotificationHandler<UserRegisteredEvent>
-{
-    public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
+    public async Task<Order> Handle(GetOrderWithDependencies request, CancellationToken cancellationToken)
     {
-        // Simulate welcome message
-        await Task.Delay(1, cancellationToken);
+        return await _orderService.GetOrderAsync(request.Id, cancellationToken);
     }
 }

@@ -20,6 +20,10 @@
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
   </ItemGroup>
 
+  <Target Name="CleanCompilerGeneratedFiles" BeforeTargets="CoreGenerateSourceOutput">
+    <RemoveDir Directories="$(CompilerGeneratedFilesOutputPath)" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" />
     <ProjectReference Include="..\..\src\Foundatio.Mediator.SourceGenerator\Foundatio.Mediator.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

@@ -1,6 +1,5 @@
 <Project InitialTargets="Foundatio_Mediator_Interceptors">
   <Target Name="Foundatio_Mediator_Interceptors">
-    <Message Importance="High" Text="🟢 Foundatio.Mediator.targets was successfully imported and executed. $(DisableMediatorInterceptors)" />
     <PropertyGroup Condition="'$(DisableMediatorInterceptors)' != 'true'">
       <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
       <InterceptorsPreviewNamespaces>$(InterceptorsPreviewNamespaces);Foundatio.Mediator</InterceptorsPreviewNamespaces>

@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" PrivateAssets="All" />
+    <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" PrivateAssets="none" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
   </ItemGroup>
@@ -18,8 +18,8 @@
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\netstandard2.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
-    <None Include="Foundatio.Mediator.props" Pack="true" PackagePath="build" Visible="true" />
-    <None Include="Foundatio.Mediator.targets" Pack="true" PackagePath="build" Visible="true" />
+    <Content Include="Foundatio.Mediator.props" Pack="true" PackagePath="build" Visible="true" />
+    <Content Include="Foundatio.Mediator.targets" Pack="true" PackagePath="build" Visible="true" />
   </ItemGroup>
 
 </Project>

@@ -23,15 +23,13 @@ public class OrderHandler
 {
     private static readonly Dictionary<string, Order> _orders = new();
     private readonly ILogger<OrderHandler> _logger;
-    private readonly IMediator _mediator;
 
-    public OrderHandler(ILogger<OrderHandler> logger, IMediator mediator)
+    public OrderHandler(ILogger<OrderHandler> logger)
     {
         _logger = logger;
-        _mediator = mediator;
     }
 
-    public async Task<Result<Order>> HandleAsync(CreateOrder command)
+    public async Task<(Result<Order> Order, OrderCreated? Event)> HandleAsync(CreateOrder command)
     {
         _logger.LogInformation("Creating order for customer {CustomerId} with amount {Amount}",
             command.CustomerId, command.Amount);
@@ -41,10 +39,9 @@ public class OrderHandler
 
         _orders[orderId] = order;
 
-        // Publish event for other handlers to react
-        await _mediator.PublishAsync(new OrderCreated(orderId, command.CustomerId, command.Amount, order.CreatedAt));
+        await Task.CompletedTask; // Simulate async operation
 
-        return Result<Order>.Created(order, $"/orders/{orderId}");
+        return (Result<Order>.Created(order, $"/orders/{orderId}"), new OrderCreated(orderId, command.CustomerId, command.Amount, order.CreatedAt));
     }
 
     public Result<Order> Handle(GetOrder query)
@@ -53,19 +50,19 @@ public class OrderHandler
 
         if (!_orders.TryGetValue(query.OrderId, out var order))
         {
-            return Result<Order>.NotFound($"Order {query.OrderId} not found");
+            return Result.NotFound($"Order {query.OrderId} not found");
         }
 
         return order; // Implicit conversion to Result<Order>
     }
 
-    public async Task<Result<Order>> HandleAsync(UpdateOrder command)
+    public async Task<(Result<Order> Order, OrderUpdated? Event)> HandleAsync(UpdateOrder command)
     {
         _logger.LogInformation("Updating order {OrderId}", command.OrderId);
 
         if (!_orders.TryGetValue(command.OrderId, out var existingOrder))
         {
-            return Result<Order>.NotFound($"Order {command.OrderId} not found");
+            return (Result.NotFound($"Order {command.OrderId} not found"), null);
         }
 
         var updatedOrder = existingOrder with
@@ -77,26 +74,24 @@ public class OrderHandler
 
         _orders[command.OrderId] = updatedOrder;
 
-        // Publish event
-        await _mediator.PublishAsync(new OrderUpdated(command.OrderId, updatedOrder.Amount, updatedOrder.UpdatedAt.Value));
+        await Task.CompletedTask; // Simulate async operation
 
-        return updatedOrder;
+        return (updatedOrder, new OrderUpdated(command.OrderId, updatedOrder.Amount, updatedOrder.UpdatedAt.Value));
     }
 
-    public async Task<Result> HandleAsync(DeleteOrder command)
+    public async Task<(Result Order, OrderDeleted? Event)> HandleAsync(DeleteOrder command)
     {
         _logger.LogInformation("Deleting order {OrderId}", command.OrderId);
 
         if (!_orders.ContainsKey(command.OrderId))
         {
-            return Result.NotFound($"Order {command.OrderId} not found");
+            return (Result.NotFound($"Order {command.OrderId} not found"), null);
         }
 
         _orders.Remove(command.OrderId);
 
-        // Publish event
-        await _mediator.PublishAsync(new OrderDeleted(command.OrderId, DateTime.UtcNow));
+        await Task.CompletedTask; // Simulate async operation
 
-        return Result.NoContent();
+        return (Result.NoContent(), new OrderDeleted(command.OrderId, DateTime.UtcNow));
     }
 }

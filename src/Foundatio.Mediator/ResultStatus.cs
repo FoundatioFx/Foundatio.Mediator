@@ -21,6 +21,11 @@ public enum ResultStatus
     NoContent,
 
     /// <summary>
+    /// The request was invalid
+    /// </summary>
+    BadRequest,
+
+    /// <summary>
     /// An error occurred during the operation.
     /// </summary>
     Error,

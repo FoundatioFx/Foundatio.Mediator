@@ -183,7 +183,11 @@ internal static class HandlerGenerator
                 result = handler.HasReturnValue ? $" ({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result.Value!" : "";
                 if (handler.ReturnType.IsResult)
                 {
-                    result = $" {m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value ?? default({handler.ReturnType.UnwrappedFullName})!";
+                    result = $" {m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                }
+                else if (handler.ReturnType.IsTuple)
+                {
+                    result = $" (({m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!), {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => i.IsNullable ? "null" : "default"))})";
                 }
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
                 source.AppendLine("{");
@@ -296,13 +300,13 @@ internal static class HandlerGenerator
                         {
                             if (!r.IsSuccess)
                             {
-                            throw new InvalidCastException($"Handler returned failed result with status {r.Status} for requested type { responseType?.Name ?? "null" }");
+                                throw new InvalidCastException($"Handler returned failed result with status {r.Status} for requested type { responseType?.Name ?? "null" }");
                             }
 
                             var resultValue = r.GetValue();
                             if (resultValue != null && responseType.IsAssignableFrom(resultValue.GetType()))
                             {
-                            return resultValue;
+                                return resultValue;
                             }
                         }
                         """);
@@ -341,7 +345,7 @@ internal static class HandlerGenerator
     {
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
         string handlerMethod = GetHandlerMethodName(handler);
-        bool methodIsAsync = methodName.EndsWith("Async");
+        bool methodIsAsync = methodName.EndsWith("Async") || handler.IsAsync;
 
         foreach (var callSite in callSites)
         {
@@ -366,7 +370,17 @@ internal static class HandlerGenerator
             source.AppendLine($"var result = {asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
             source.AppendLine();
 
-            GenerateOptimizedTupleHandling(source, handler, responseType);
+            var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
+            var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
+
+            foreach (var publishItem in publishItems)
+            {
+                source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
+                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await mediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
+            }
+            source.AppendLineIf(publishItems.Any());
+
+            source.AppendLine($"return result.{returnItem.Name};");
         }
         else
         {
@@ -493,87 +507,9 @@ internal static class HandlerGenerator
                 """);
     }
 
-    private static void GenerateOptimizedTupleHandling(IndentedStringBuilder source, HandlerInfo handler, TypeSymbolInfo responseType)
-    {
-        var tupleFields = handler.ReturnType.TupleItems.ToList();
-
-        if (tupleFields.Count == 0)
-        {
-            source.AppendLine($"return default({responseType.FullName});");
-            return;
-        }
-
-        int returnItemIndex = -1;
-        var publishItems = new List<int>();
-
-        for (int i = 0; i < tupleFields.Count; i++)
-        {
-            var tupleItem = tupleFields[i];
-            string fieldType = tupleItem.TypeFullName;
-
-            if (fieldType == responseType.FullName)
-            {
-                if (returnItemIndex == -1)
-                {
-                    returnItemIndex = i;
-                }
-                else
-                {
-                    publishItems.Add(i);
-                }
-            }
-            else
-            {
-                publishItems.Add(i);
-            }
-        }
-
-        foreach (int publishIndex in publishItems)
-        {
-            var tupleItem = tupleFields[publishIndex];
-            string itemAccess = $"result.{tupleItem.Name}";
-
-            bool needsNullCheck = tupleItem.IsNullable;
-
-            if (responseType.IsTask)
-            {
-                if (needsNullCheck)
-                {
-                    source.AppendLine($"if ({itemAccess} != null) await mediator.PublishAsync({itemAccess}, cancellationToken);");
-                }
-                else
-                {
-                    source.AppendLine($"await mediator.PublishAsync({itemAccess}, cancellationToken);");
-                }
-            }
-            else
-            {
-                if (needsNullCheck)
-                {
-                    source.AppendLine($"if ({itemAccess} != null) mediator.PublishAsync({itemAccess}, CancellationToken.None).GetAwaiter().GetResult();");
-                }
-                else
-                {
-                    source.AppendLine($"mediator.PublishAsync({itemAccess}, CancellationToken.None).GetAwaiter().GetResult();");
-                }
-            }
-        }
-
-        source.AppendLine();
-        if (returnItemIndex >= 0)
-        {
-            var returnTupleItem = tupleFields[returnItemIndex];
-            source.AppendLine($"return result.{returnTupleItem.Name};");
-        }
-        else
-        {
-            source.AppendLine($"return default({responseType.UnwrappedFullName})!;");
-        }
-    }
-
     public static string GetHandlerClassName(HandlerInfo handler)
     {
-        return $"{handler.Identifier}_{handler.MessageType.Identifier}_Wrapper";
+        return $"{handler.Identifier}_{handler.MessageType.Identifier}_Handler";
     }
 
     public static string GetHandlerMethodName(HandlerInfo handler)

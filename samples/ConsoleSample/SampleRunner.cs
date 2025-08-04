@@ -77,7 +77,7 @@ public class SampleRunner
         }
         else
         {
-            Console.WriteLine($"❌ Failed to create order: {string.Join(", ", createResult.Errors)}\n");
+            Console.WriteLine($"❌ Failed to create order: {createResult.Message}\n");
         }
 
         // Demonstrate validation errors
@@ -85,7 +85,7 @@ public class SampleRunner
         var invalidResult = await _mediator.InvokeAsync<Result<Order>>(new CreateOrder("", -100m, "Invalid order"));
         if (!invalidResult.IsSuccess)
         {
-            Console.WriteLine($"❌ Validation failed as expected: {string.Join(", ", invalidResult.Errors)}\n");
+            Console.WriteLine($"❌ Validation failed as expected: {invalidResult.Message}\n");
         }
     }
 

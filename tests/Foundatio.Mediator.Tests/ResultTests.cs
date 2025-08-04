@@ -14,7 +14,7 @@ public class ResultTests
     public void ExplicitCast_FromResultToGenericResult_ShouldWork()
     {
         // Arrange
-        var originalResult = Result.Conflict("Resource is locked", "Another user is editing this resource");
+        var originalResult = Result.Conflict("Resource is locked");
 
         // Act - This is the syntax we want to support: (Result<T>)Result.Conflict()
         var castedResult = (Result<User>)originalResult;
@@ -27,9 +27,7 @@ public class ResultTests
         Assert.Equal(typeof(User), castedResult.ValueType);
 
         // Verify all properties are copied
-        Assert.Equal(originalResult.Errors, castedResult.Errors);
-        Assert.Equal(originalResult.SuccessMessage, castedResult.SuccessMessage);
-        Assert.Equal(originalResult.CorrelationId, castedResult.CorrelationId);
+        Assert.Equal(originalResult.Message, castedResult.Message);
         Assert.Equal(originalResult.Location, castedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, castedResult.ValidationErrors);
     }
@@ -38,7 +36,7 @@ public class ResultTests
     public void ExplicitCast_FromResultAsObject_ShouldWork()
     {
         // Arrange
-        object originalResult = Result.NotFound("Database connection failed", "Timeout occurred");
+        object originalResult = Result.NotFound("Database connection failed");
 
         // Act - Using general-purpose TypeConverter
         if (originalResult is not Result result)
@@ -51,9 +49,7 @@ public class ResultTests
         Assert.Equal(ResultStatus.NotFound, castedResult.Status);
         Assert.False(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
-        Assert.Equal(2, castedResult.Errors.Count());
-        Assert.Contains("Database connection failed", castedResult.Errors);
-        Assert.Contains("Timeout occurred", castedResult.Errors);
+        Assert.Equal("Database connection failed", castedResult.Message);
     }
 
     [Fact]
@@ -70,7 +66,7 @@ public class ResultTests
         Assert.Equal(ResultStatus.Ok, castedResult.Status);
         Assert.True(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
-        Assert.Equal("Operation completed successfully", castedResult.SuccessMessage);
+        Assert.Equal("Operation completed successfully", castedResult.Message);
     }
 
     [Fact]
@@ -94,7 +90,7 @@ public class ResultTests
     public void ExplicitCast_FromErrorResult_ShouldPreserveErrors()
     {
         // Arrange
-        object originalResult = Result.Error("Database connection failed", "Timeout occurred");
+        object originalResult = Result.Error("Database connection failed");
 
         // Act
         if (originalResult is not Result result)
@@ -107,9 +103,7 @@ public class ResultTests
         Assert.Equal(ResultStatus.Error, castedResult.Status);
         Assert.False(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
-        Assert.Equal(2, castedResult.Errors.Count());
-        Assert.Contains("Database connection failed", castedResult.Errors);
-        Assert.Contains("Timeout occurred", castedResult.Errors);
+        Assert.Equal("Database connection failed", castedResult.Message);
     }
 
     [Fact]
@@ -150,8 +144,7 @@ public class ResultTests
         Assert.Equal(ResultStatus.NotFound, castedResult.Status);
         Assert.False(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
-        Assert.Single(castedResult.Errors);
-        Assert.Contains("User not found", castedResult.Errors);
+        Assert.Contains("User not found", castedResult.Message);
     }
 
     [Fact]
@@ -169,8 +162,7 @@ public class ResultTests
         Assert.False(castedResult.IsSuccess);
         Assert.Equal(0, castedResult.Value); // Should be default(int) which is 0
         Assert.Equal(typeof(int), castedResult.ValueType);
-        Assert.Single(castedResult.Errors);
-        Assert.Contains("Value is locked", castedResult.Errors);
+        Assert.Equal("Value is locked", castedResult.Message);
     }
 
     [Fact]
@@ -187,7 +179,7 @@ public class ResultTests
         Assert.Equal(ResultStatus.Ok, castedResult.Status);
         Assert.True(castedResult.IsSuccess);
         Assert.Null(castedResult.Value); // Should be default(User) which is null
-        Assert.Equal("Test successful", castedResult.SuccessMessage);
+        Assert.Equal("Test successful", castedResult.Message);
     }
 
     [Fact]

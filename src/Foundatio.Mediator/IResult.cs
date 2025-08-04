@@ -25,4 +25,19 @@ public interface IResult
     /// </summary>
     /// <returns>The result value.</returns>
     object? GetValue();
+
+    /// <summary>
+    /// Gets the status of the result.
+    /// </summary>
+    string Message { get; }
+
+    /// <summary>
+    /// Gets the location of a newly created resource (for Created status).
+    /// </summary>
+    string Location { get; }
+
+    /// <summary>
+    /// Gets the validation errors associated with the result.
+    /// </summary>
+    IEnumerable<ValidationError> ValidationErrors { get; }
 }

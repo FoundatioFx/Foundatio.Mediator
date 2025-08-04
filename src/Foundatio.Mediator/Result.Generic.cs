@@ -30,7 +30,7 @@ public class Result<T> : IResult
     /// <param name="successMessage">The success message.</param>
     protected internal Result(T value, string successMessage) : this(value)
     {
-        SuccessMessage = successMessage;
+        Message = successMessage;
     }
 
     /// <summary>
@@ -73,9 +73,7 @@ public class Result<T> : IResult
     public static implicit operator Result<T>(Result result)
     {
         var convertedResult = new Result<T>(result.Status);
-        convertedResult.Errors = result.Errors;
-        convertedResult.SuccessMessage = result.SuccessMessage;
-        convertedResult.CorrelationId = result.CorrelationId;
+        convertedResult.Message = result.Message;
         convertedResult.Location = result.Location;
         convertedResult.ValidationErrors = result.ValidationErrors;
         return convertedResult;
@@ -102,24 +100,14 @@ public class Result<T> : IResult
     public bool IsSuccess => Status == ResultStatus.Ok || Status == ResultStatus.NoContent || Status == ResultStatus.Created;
 
     /// <summary>
-    /// Gets the success message, if any.
+    /// Gets the message associated with the result.
     /// </summary>
-    public string SuccessMessage { get; internal set; } = String.Empty;
-
-    /// <summary>
-    /// Gets the correlation ID for tracking purposes.
-    /// </summary>
-    public string CorrelationId { get; internal set; } = String.Empty;
+    public string Message { get; internal set; } = String.Empty;
 
     /// <summary>
     /// Gets the location of a newly created resource (for Created status).
     /// </summary>
     public string Location { get; internal set; } = String.Empty;
-
-    /// <summary>
-    /// Gets the collection of error messages.
-    /// </summary>
-    public IEnumerable<string> Errors { get; internal set; } = new List<string>();
 
     /// <summary>
     /// Gets the collection of validation errors.
@@ -176,36 +164,12 @@ public class Result<T> : IResult
     /// <summary>
     /// Creates an error result with a single error message.
     /// </summary>
-    /// <param name="errorMessage">The error message.</param>
+    /// <param name="message">The error message.</param>
     /// <returns>An error result.</returns>
-    public static Result<T> Error(string errorMessage)
+    public static Result<T> Error(string message)
     {
         var result = new Result<T>(ResultStatus.Error);
-        result.Errors = new List<string> { errorMessage };
-        return result;
-    }
-
-    /// <summary>
-    /// Creates an error result with multiple error messages.
-    /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
-    /// <returns>An error result.</returns>
-    public static Result<T> Error(params string[] errorMessages)
-    {
-        var result = new Result<T>(ResultStatus.Error);
-        result.Errors = errorMessages;
-        return result;
-    }
-
-    /// <summary>
-    /// Creates an error result with error messages.
-    /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
-    /// <returns>An error result.</returns>
-    public static Result<T> Error(IEnumerable<string> errorMessages)
-    {
-        var result = new Result<T>(ResultStatus.Error);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
@@ -246,20 +210,32 @@ public class Result<T> : IResult
     }
 
     /// <summary>
+    /// Creates a bad request result with message.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <returns>A bad request result.</returns>
+    public static Result<T> BadRequest(string message)
+    {
+        var result = new Result<T>(ResultStatus.BadRequest);
+        result.Message = message;
+        return result;
+    }
+
+    /// <summary>
     /// Creates a not found result.
     /// </summary>
     /// <returns>A not found result.</returns>
     public static Result<T> NotFound() => new(ResultStatus.NotFound);
 
     /// <summary>
-    /// Creates a not found result with error messages.
+    /// Creates a not found result with message.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>A not found result.</returns>
-    public static Result<T> NotFound(params string[] errorMessages)
+    public static Result<T> NotFound(string message)
     {
         var result = new Result<T>(ResultStatus.NotFound);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
@@ -270,14 +246,14 @@ public class Result<T> : IResult
     public static Result<T> Unauthorized() => new(ResultStatus.Unauthorized);
 
     /// <summary>
-    /// Creates an unauthorized result with error messages.
+    /// Creates an unauthorized result with a message.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>An unauthorized result.</returns>
-    public static Result<T> Unauthorized(params string[] errorMessages)
+    public static Result<T> Unauthorized(string message)
     {
         var result = new Result<T>(ResultStatus.Unauthorized);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
@@ -288,14 +264,14 @@ public class Result<T> : IResult
     public static Result<T> Forbidden() => new(ResultStatus.Forbidden);
 
     /// <summary>
-    /// Creates a forbidden result with error messages.
+    /// Creates a forbidden result with a message.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>A forbidden result.</returns>
-    public static Result<T> Forbidden(params string[] errorMessages)
+    public static Result<T> Forbidden(string message)
     {
         var result = new Result<T>(ResultStatus.Forbidden);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
@@ -306,38 +282,38 @@ public class Result<T> : IResult
     public static Result<T> Conflict() => new(ResultStatus.Conflict);
 
     /// <summary>
-    /// Creates a conflict result with error messages.
+    /// Creates a conflict result with a message.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>A conflict result.</returns>
-    public static Result<T> Conflict(params string[] errorMessages)
+    public static Result<T> Conflict(string message)
     {
         var result = new Result<T>(ResultStatus.Conflict);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
     /// <summary>
     /// Creates a critical error result.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>A critical error result.</returns>
-    public static Result<T> CriticalError(params string[] errorMessages)
+    public static Result<T> CriticalError(string message)
     {
         var result = new Result<T>(ResultStatus.CriticalError);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 
     /// <summary>
     /// Creates an unavailable result.
     /// </summary>
-    /// <param name="errorMessages">The error messages.</param>
+    /// <param name="message">The message.</param>
     /// <returns>An unavailable result.</returns>
-    public static Result<T> Unavailable(params string[] errorMessages)
+    public static Result<T> Unavailable(string message)
     {
         var result = new Result<T>(ResultStatus.Unavailable);
-        result.Errors = errorMessages;
+        result.Message = message;
         return result;
     }
 }

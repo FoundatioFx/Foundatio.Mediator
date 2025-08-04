@@ -154,6 +154,7 @@ internal static class TypeExtensions
             {
                 Name = e.Name ?? e.CorrespondingTupleField!.Name,
                 Field = e.CorrespondingTupleField!.Name,
+                IsNullable = e.Type.IsNullable(compilation),
                 TypeFullName = e.Type.ToDisplayString()
             }).ToArray());
     }

@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator", "src\Foundatio.Mediator\Foundatio.Mediator.csproj", "{1B2A5C1D-8F9E-4A6B-9C3D-2E4F5A6B7C8D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator.Abstractions", "src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj", "{1B2A5C1D-8F9E-4A6B-9C3D-2E4F5A6B7C8D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator.SourceGenerator", "src\Foundatio.Mediator.SourceGenerator\Foundatio.Mediator.SourceGenerator.csproj", "{2C3B6D2E-9F0E-4B7C-AD4E-3F5A6B8C9D0E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator", "src\Foundatio.Mediator\Foundatio.Mediator.csproj", "{2C3B6D2E-9F0E-4B7C-AD4E-3F5A6B8C9D0E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Foundatio.Mediator.Tests", "tests\Foundatio.Mediator.Tests\Foundatio.Mediator.Tests.csproj", "{4E5F8A6B-DA3C-4FAD-EB8C-6D9E0F4C5D6E}"
 EndProject

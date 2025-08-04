@@ -54,18 +54,20 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Combine(middleware.Collect())
             .Combine(callSites.Collect())
             .Combine(interceptionEnabled)
+            .Combine(context.CompilationProvider)
             .Select(static (spc, _) => (
-                Handlers: spc.Left.Left.Left,
-                Middleware: spc.Left.Left.Right,
-                CallSites: spc.Left.Right,
-                InterceptorsEnabled: spc.Right
+                Handlers: spc.Left.Left.Left.Left,
+                Middleware: spc.Left.Left.Left.Right,
+                CallSites: spc.Left.Left.Right,
+                InterceptorsEnabled: spc.Left.Right,
+                Compilation: spc.Right
             ));
 
         context.RegisterImplementationSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, spc));
+            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, source.Compilation, spc));
     }
 
-    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, SourceProductionContext context)
+    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, Compilation compilation, SourceProductionContext context)
     {
         if (handlers.IsDefaultOrEmpty)
             return;
@@ -87,7 +89,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled);
 
-        DIRegistrationGenerator.Execute(context, handlersWithInfo);
+        DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler)

@@ -7,11 +7,13 @@ namespace Foundatio.Mediator;
 public class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly MediatorConfiguration _configuration;
 
     [DebuggerStepThrough]
-    public Mediator(IServiceProvider serviceProvider)
+    public Mediator(IServiceProvider serviceProvider, MediatorConfiguration? configuration = null)
     {
         _serviceProvider = serviceProvider;
+        _configuration = configuration ?? new MediatorConfiguration();
     }
 
     public IServiceProvider ServiceProvider => _serviceProvider;

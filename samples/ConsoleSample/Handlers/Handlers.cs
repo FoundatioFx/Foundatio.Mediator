@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ConsoleSample.Messages;
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
@@ -93,5 +94,30 @@ public class OrderHandler
         await Task.CompletedTask; // Simulate async operation
 
         return (Result.NoContent(), new OrderDeleted(command.OrderId, DateTime.UtcNow));
+    }
+}
+
+// Streaming handler example
+public class StreamingHandler
+{
+    private readonly ILogger<StreamingHandler> _logger;
+
+    public StreamingHandler(ILogger<StreamingHandler> logger)
+    {
+        _logger = logger;
+    }
+
+    public async IAsyncEnumerable<int> HandleAsync(CounterStreamRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            _logger.LogInformation("Streaming value: {Value}", i);
+
+            if (cancellationToken.IsCancellationRequested)
+                yield break;
+
+            await Task.Delay(1000, cancellationToken);
+            yield return i;
+        }
     }
 }

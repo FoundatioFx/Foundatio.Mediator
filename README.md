@@ -375,9 +375,8 @@ The source generator provides compile-time errors for:
   - Ability to call `AddMediator` to entry assembly and have it register handlers in all assemblies
 - [ ] Clean architecture sample app
 - [ ] Modular monolith architecture sample app
-- [ ] Switch source generator package name back to Foundatio.Mediator (maybe Foundatio.Mediator.Abstractions)
 - [ ] Figure out issue with props / targets files not being included
-- [ ] See if we can support streaming with IAsyncEnumerable
+- [ ] Talk about streaming support
 - [ ] Talk about lifetime. Handlers aren't registered in DI by default and are singleton instances. Just add your handler or services to DI if you want a different behavior.
 - [ ] Add GeneratedCodeAttribute
 - [ ] Talk about for tuple returns / cascading messages, if a middleware short circuits the response, the value will be returned as the first tuple item and all others will be null or default.

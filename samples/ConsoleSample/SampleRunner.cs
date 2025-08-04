@@ -19,6 +19,7 @@ public class SampleRunner
 
         await RunSimpleExamples();
         await RunOrderCrudExamples();
+        await RunCounterStreamExample();
         await RunEventPublishingExamples();
 
         Console.WriteLine("\n🎉 All samples completed successfully!");
@@ -87,6 +88,28 @@ public class SampleRunner
         {
             Console.WriteLine($"❌ Validation failed as expected: {invalidResult.Message}\n");
         }
+    }
+
+    private async Task RunCounterStreamExample()
+    {
+        Console.WriteLine("2️⃣ Counter Stream Example");
+        Console.WriteLine("==========================\n");
+
+        Console.WriteLine("🔢 Starting counter stream...");
+
+        CancellationTokenSource cts = new();
+        int count = 10;
+        await foreach (var item in _mediator.Invoke<IAsyncEnumerable<int>>(new CounterStreamRequest(), cts.Token))
+        {
+            count--;
+            if (count == 0)
+            {
+                cts.Cancel();
+            }
+            Console.WriteLine($"Counter: {item}");
+        }
+
+        Console.WriteLine("✅ Counter stream completed.\n");
     }
 
     private async Task RunEventPublishingExamples()

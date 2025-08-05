@@ -60,11 +60,13 @@ internal static class HandlerGenerator
             using System;
 
             namespace Foundatio.Mediator;
-
-            [ExcludeFromCodeCoverage]
-            internal static class {{wrapperClassName}}
-            {
             """);
+
+        source.AppendLine();
+        source.AddGeneratedCodeAttribute();
+        source.AppendLine("[ExcludeFromCodeCoverage]");
+        source.AppendLine($"internal static class {wrapperClassName}");
+        source.AppendLine("{");
 
         source.IncrementIndent();
 

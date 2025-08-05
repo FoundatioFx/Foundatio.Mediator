@@ -15,7 +15,7 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - 🎯 Built-in Result and Result\<T> types for rich status handling
 - 🔄 Automatic cascading messages via tuple returns
 - 🔒 Compile-time diagnostics and validation
-- 📦 Auto-registration with no boilerplate
+- 🐛 Superior debugging experience with short, simple call stacks
 
 ## 🚀 Quick Start Guide
 
@@ -165,6 +165,28 @@ public async Task<(User user, UserCreated evt)> HandleAsync(CreateUser cmd)
 // Usage
 var user = await mediator.InvokeAsync<User>(new CreateUser(...));
 // UserCreated is auto-published and handlers invoked inline before this method returns
+```
+
+### Middleware Short-Circuit Behavior
+
+When middleware short-circuits handler execution by returning a `HandlerResult`, the short-circuited value becomes the first tuple element, while all other tuple elements are set to their default values (null for reference types, default values for value types):
+
+```csharp
+public class ValidationMiddleware
+{
+    public HandlerResult Before(CreateUser cmd) {
+        if (!IsValid(cmd))
+        {
+            var errorResult = Result.Invalid("Invalid user data");
+            return HandlerResult.ShortCircuit(errorResult);
+        }
+        return HandlerResult.Continue();
+    }
+}
+
+// If validation fails, the tuple result will be:
+// (Result.Invalid("Invalid user data"), null)
+// where the User is the error result and UserCreated event is null
 ```
 
 ## 🌊 Streaming Handler Support
@@ -402,8 +424,6 @@ The source generator provides compile-time errors for:
 - [ ] Simplify tests to use Roslyn source generator testing utilities and have it generate code in memory and do asserts there instead of having all integration tests
 - [ ] Clean architecture sample app
 - [ ] Modular monolith architecture sample app
-- [ ] Add GeneratedCodeAttribute
-- [ ] Talk about for tuple returns / cascading messages, if a middleware short circuits the response, the value will be returned as the first tuple item and all others will be null or default.
 
 ## 📄 License
 

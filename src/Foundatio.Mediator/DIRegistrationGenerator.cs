@@ -26,6 +26,7 @@ internal static class DIRegistrationGenerator
         source.AppendLine();
         source.AppendLine("namespace Foundatio.Mediator;");
         source.AppendLine();
+        source.AddGeneratedCodeAttribute();
         source.AppendLine("[DebuggerStepThrough]");
         source.AppendLine("[DebuggerNonUserCode]");
         source.AppendLine("[ExcludeFromCodeCoverage]");

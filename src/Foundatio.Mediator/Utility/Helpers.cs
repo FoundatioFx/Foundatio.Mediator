@@ -13,6 +13,30 @@ internal static class Helpers
         source.AppendLine();
     }
 
+    public static void AddGeneratedCodeAttribute(this IndentedStringBuilder source)
+    {
+        var toolName = "Foundatio.Mediator";
+        var toolVersion = GetToolVersion();
+
+        source.AppendLine($"[global::System.CodeDom.Compiler.GeneratedCode(\"{toolName}\", \"{toolVersion}\")]");
+    }
+
+    private static readonly Lazy<string> _toolVersion = new(() =>
+    {
+        // Get the informational version from the assembly (includes pre-release info like "1.0.0-pre1")
+        var assembly = typeof(Helpers).Assembly;
+        var informationalVersion = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)?.InformationalVersion;
+
+        // Return informational version if available, otherwise fallback to assembly version
+        if (!string.IsNullOrEmpty(informationalVersion))
+            return informationalVersion!;
+
+        var version = assembly.GetName().Version;
+        return version?.ToString() ?? "1.0.0.0";
+    });
+
+    private static string GetToolVersion() => _toolVersion.Value;
+
     public static string ToIdentifier(this string name)
     {
         if (string.IsNullOrEmpty(name))

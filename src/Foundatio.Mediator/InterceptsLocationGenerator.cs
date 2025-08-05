@@ -20,6 +20,7 @@ internal static class InterceptsLocationGenerator
         source.AppendLine("/// <summary>");
         source.AppendLine("/// Indicates that a method is an interceptor and provides the location of the intercepted call.");
         source.AppendLine("/// </summary>");
+        source.AddGeneratedCodeAttribute();
         source.AppendLine("[global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = true)]");
         source.AppendLine("internal sealed class InterceptsLocationAttribute : global::System.Attribute");
         source.AppendLine("{");

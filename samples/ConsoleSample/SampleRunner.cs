@@ -98,7 +98,7 @@ public class SampleRunner
         Console.WriteLine("🔢 Starting counter stream...");
 
         CancellationTokenSource cts = new();
-        int count = 10;
+        int count = 5;
         await foreach (var item in _mediator.Invoke<IAsyncEnumerable<int>>(new CounterStreamRequest(), cts.Token))
         {
             count--;

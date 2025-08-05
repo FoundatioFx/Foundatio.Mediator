@@ -109,14 +109,14 @@ public class StreamingHandler
 
     public async IAsyncEnumerable<int> HandleAsync(CounterStreamRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 25; i++)
         {
             _logger.LogInformation("Streaming value: {Value}", i);
 
             if (cancellationToken.IsCancellationRequested)
                 yield break;
 
-            await Task.Delay(1000, cancellationToken);
+            await Task.Delay(100, cancellationToken);
             yield return i;
         }
     }

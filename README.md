@@ -333,6 +333,10 @@ Valid handler method names:
 - `Finally` always runs, regardless of success or failure
 - Methods may declare additional parameters: `CancellationToken`, DI-resolved services
 
+### Middleware Order
+
+Use `[FoundatioOrder(int)]` to control execution order. Lower values execute first in `Before`, last in `After`/`Finally` (reverse order for proper nesting). Without explicit ordering, middleware follows: message-specific → interface-based → object-based.
+
 ### Ignoring Middleware
 
 - Annotate middleware classes or methods with `[FoundatioIgnore]` to exclude them from discovery

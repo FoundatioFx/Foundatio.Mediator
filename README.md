@@ -221,7 +221,7 @@ await foreach (var item in mediator.Invoke<IAsyncEnumerable<int>>(new CounterStr
 
 ## 📦 Publish API & Behavior
 
-Sends a message to zero or more handlers (by convention); all are invoked inline and in parallel.
+Sends a message to zero or more handlers; all are invoked inline and in parallel.
 If any handler fails, `PublishAsync` throws (aggregates) exceptions.
 
 ```csharp

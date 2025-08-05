@@ -15,6 +15,7 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - 🎯 Built-in Result and Result\<T> types for rich status handling
 - 🔄 Automatic cascading messages via tuple returns
 - 🔒 Compile-time diagnostics and validation
+- 🧪 Easy testing since handlers are plain objects and not tied to messaging framework
 - 🐛 Superior debugging experience with short, simple call stacks
 
 ## 🚀 Quick Start Guide
@@ -139,7 +140,7 @@ public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
     // Stopwatch will be available as a parameter in `Finally` method
     public Stopwatch Before(object msg) => Stopwatch.StartNew();
 
-    // Finally causes before, handler and after to be run in a try catch and is guaranteed to run
+    // Having a Finally causes handler to be run in a try catch and is guaranteed to run
     public void Finally(object msg, Stopwatch sw, Exception? ex)
     {
         sw.Stop();
@@ -156,7 +157,7 @@ public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
 Handlers can return tuples; one matches the response, the rest are published:
 
 ```csharp
-public async Task<(User user, UserCreated evt)> HandleAsync(CreateUser cmd)
+public async Task<(User user, UserCreated? evt)> HandleAsync(CreateUser cmd)
 {
     var user = await _repo.Add(cmd);
     return (user, new UserCreated(user.Id));
@@ -164,7 +165,7 @@ public async Task<(User user, UserCreated evt)> HandleAsync(CreateUser cmd)
 
 // Usage
 var user = await mediator.InvokeAsync<User>(new CreateUser(...));
-// UserCreated is auto-published and handlers invoked inline before this method returns
+// UserCreated is auto-published and any handlers are invoked inline before this method returns
 ```
 
 ### Middleware Short-Circuit Behavior

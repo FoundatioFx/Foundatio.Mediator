@@ -7,7 +7,7 @@ public class OrderHandler
 {
     private static readonly Dictionary<string, Order> _orders = new();
 
-    public async Task<(Result<Order>, OrderCreated)> HandleAsync(CreateOrder command)
+    public async Task<(Result<Order>, OrderCreated?)> HandleAsync(CreateOrder command)
     {
         string orderId = Guid.NewGuid().ToString();
         var order = new Order(

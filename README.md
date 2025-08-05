@@ -57,52 +57,13 @@ Supports constructor and method injection:
 ```csharp
 public class EmailHandler
 {
-    private readonly IEmailService _svc;
-    public EmailHandler(IEmailService svc) => _svc = svc;
+    private readonly ILogger<EmailHandler> _logger;
+    public EmailHandler(ILogger<EmailHandler> logger) => _logger = logger;
 
-    public Task HandleAsync(SendEmail cmd, ILogger<EmailHandler> log, CancellationToken ct)
+    public Task HandleAsync(SendEmail cmd, IEmailService svc, CancellationToken ct)
     {
-        log.LogInformation("Sending to {To}", cmd.To);
-        return _svc.SendAsync(cmd.To, cmd.Subject, cmd.Body, ct);
-    }
-}
-```
-
-## 🎪 Simple Middleware Example
-
-Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. First parameter is required and is always the message. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
-
-```csharp
-public static class ValidationMiddleware
-{
-    public static HandlerResult Before(object msg) {
-        if (!TryValidate(msg, out var errors))
-        {
-            // short-circuit handler results when messages are invalid
-            return HandlerResult.ShortCircuit(Result.Invalid(errors));
-        }
-
-        return HandlerResult.Continue();
-    }
-}
-```
-
-## 📝 Logging Middleware Example
-
-```csharp
-public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
-{
-    // Stopwatch will be available as a parameter in `Finally` method
-    public Stopwatch Before(object msg) => Stopwatch.StartNew();
-
-    // Finally causes before, handler and after to be run in a try catch and is guaranteed to run
-    public void Finally(object msg, Stopwatch sw, Exception? ex)
-    {
-        sw.Stop();
-        if (ex != null)
-            log.LogInformation($"Error in {msg.GetType().Name}: {ex.Message}");
-        else
-            log.LogInformation($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
+        _logger.LogInformation("Sending to {To}", cmd.To);
+        return svc.SendAsync(cmd.To, cmd.Subject, cmd.Body, ct);
     }
 }
 ```
@@ -149,6 +110,45 @@ await mediator.InvokeAsync(new Ping("Hi"));
 
 // Sync with response (all handlers and middleware must be sync)
 var reply = mediator.Invoke<string>(new Ping("Hello"));
+```
+
+## 🎪 Simple Middleware Example
+
+Just add a class (instance or static) ending with `Middleware`. Supports `Before(Async)`, `After(Async)` and `Finally(Async)` lifecycle events. First parameter is required and is always the message. Use `object` for all message types or an interface for a subset of messages. `HandlerResult` can be returned from the `Before` lifecycle method to enable short-circuiting message handling. Other return types from `Before` will be available as parameters to `After` and `Finally`.
+
+```csharp
+public static class ValidationMiddleware
+{
+    public static HandlerResult Before(object msg) {
+        if (!TryValidate(msg, out var errors))
+        {
+            // short-circuit handler results when messages are invalid
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+        }
+
+        return HandlerResult.Continue();
+    }
+}
+```
+
+## 📝 Logging Middleware Example
+
+```csharp
+public class LoggingMiddleware(ILogger<LoggingMiddleware> log)
+{
+    // Stopwatch will be available as a parameter in `Finally` method
+    public Stopwatch Before(object msg) => Stopwatch.StartNew();
+
+    // Finally causes before, handler and after to be run in a try catch and is guaranteed to run
+    public void Finally(object msg, Stopwatch sw, Exception? ex)
+    {
+        sw.Stop();
+        if (ex != null)
+            log.LogInformation($"Error in {msg.GetType().Name}: {ex.Message}");
+        else
+            log.LogInformation($"Handled {msg.GetType().Name} in {sw.ElapsedMilliseconds}ms");
+    }
+}
 ```
 
 ## 🔄 Tuple Returns & Cascading Messages

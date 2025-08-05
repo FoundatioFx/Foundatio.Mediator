@@ -167,6 +167,36 @@ var user = await mediator.InvokeAsync<User>(new CreateUser(...));
 // UserCreated is auto-published and handlers invoked inline before this method returns
 ```
 
+## 🌊 Streaming Handler Support
+
+Handlers can return `IAsyncEnumerable<T>` for streaming scenarios:
+
+```csharp
+public record CounterStreamRequest { }
+
+public class StreamingHandler
+{
+    public async IAsyncEnumerable<int> HandleAsync(CounterStreamRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                yield break;
+
+            await Task.Delay(1000, cancellationToken);
+            yield return i;
+        }
+    }
+}
+
+// Usage
+await foreach (var item in mediator.Invoke<IAsyncEnumerable<int>>(new CounterStreamRequest(), ct))
+{
+    Console.WriteLine($"Counter: {item}");
+}
+```
+
 ## 📦 Publish API & Behavior
 
 Sends a message to zero or more handlers (by convention); all are invoked inline and in parallel.
@@ -257,6 +287,7 @@ Valid handler method names:
 - Method injection: Handler methods can declare any dependencies as parameters
 - Known parameters: `CancellationToken` is automatically provided by the mediator
 - Service resolution: All other parameters are resolved from the DI container
+- Handler lifetime: Handlers are singleton instances by default. Register handlers in DI for custom lifetime behavior
 
 ### Ignoring Handlers
 
@@ -313,6 +344,7 @@ The source generator:
 3. **Parameters** first parameter is the message, remaining parameters are injected via DI
 4. **Generates C# interceptors** for blazing fast same-assembly dispatch using direct method calls
 5. **Middleware** can run `Before`, `After`, and `Finally` around handler execution and can be sync or async
+6. **Handler lifetime** handlers are singleton instances by default (not registered in DI). Register handlers in DI for custom lifetime behavior
 
 ### 🔧 C# Interceptors - The Secret Sauce
 
@@ -368,16 +400,8 @@ The source generator provides compile-time errors for:
 ## 📋 Remaining Work
 
 - [ ] Simplify tests to use Roslyn source generator testing utilities and have it generate code in memory and do asserts there instead of having all integration tests
-- [ ] Figure out why targets / props files don't seem to be working
-  - Shouldn't have to add InterceptorsNamespaces to consumer projects
-  - Simple flag to have files generated to project
-- [ ] Implement multiple assembly support
-  - Ability to call `AddMediator` to entry assembly and have it register handlers in all assemblies
 - [ ] Clean architecture sample app
 - [ ] Modular monolith architecture sample app
-- [ ] Figure out issue with props / targets files not being included
-- [ ] Talk about streaming support
-- [ ] Talk about lifetime. Handlers aren't registered in DI by default and are singleton instances. Just add your handler or services to DI if you want a different behavior.
 - [ ] Add GeneratedCodeAttribute
 - [ ] Talk about for tuple returns / cascading messages, if a middleware short circuits the response, the value will be returned as the first tuple item and all others will be null or default.
 

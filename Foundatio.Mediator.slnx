@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Foundatio.Mediator.Benchmarks/Foundatio.Mediator.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
+    <Project Path="samples/ModularMonolithSample/src/Orders.Module/Orders.Module.csproj" />
+    <Project Path="samples/ModularMonolithSample/src/WebApp/WebApp.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".github/copilot-instructions.md" />
+    <File Path="build/common.props" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj" />
+    <Project Path="src/Foundatio.Mediator/Foundatio.Mediator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />
+  </Folder>
+</Solution>

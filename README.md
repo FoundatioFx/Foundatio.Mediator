@@ -422,8 +422,6 @@ The source generator provides compile-time errors for:
 ## 📋 Remaining Work
 
 - [ ] Simplify tests to use Roslyn source generator testing utilities and have it generate code in memory and do asserts there instead of having all integration tests
-- [ ] Clean architecture sample app
-- [ ] Modular monolith architecture sample app
 
 ## 📄 License
 

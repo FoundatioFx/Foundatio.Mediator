@@ -72,6 +72,12 @@ public class Result : IResult
     }
 
     /// <summary>
+    /// Implicit conversion from Result to HandlerResult.
+    /// </summary>
+    /// <param name="result">The result to convert.</param>
+    public static implicit operator HandlerResult(Result result) => HandlerResult.ShortCircuit(result);
+
+    /// <summary>
     /// Creates a successful result.
     /// </summary>
     /// <returns>A successful result.</returns>

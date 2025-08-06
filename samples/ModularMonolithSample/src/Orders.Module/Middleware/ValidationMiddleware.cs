@@ -13,6 +13,6 @@ public static class ValidationMiddleware
 
         var validationErrors = errors.Select(kvp => new ValidationError(kvp.Key, String.Join(", ", kvp.Value))).ToArray();
 
-        return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
+        return Result.Invalid(validationErrors);
     }
 }

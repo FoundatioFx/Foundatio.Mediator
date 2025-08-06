@@ -327,7 +327,6 @@ Valid handler method names:
 - Lifecycle methods are optional—you can implement any subset (`Before`, `After`, `Finally`)
 - `Before` can return:
   - a `HandlerResult` to short-circuit execution
-  - a `Result?` and if the handler also returns a `Result` or `Result<T>` returning non-null will short-circuit execution
   - a single state value
   - a tuple of state values
 - Values (single or tuple elements) returned from `Before` are matched by type and injected into `After`/`Finally` parameters

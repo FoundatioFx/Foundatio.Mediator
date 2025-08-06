@@ -6,7 +6,7 @@ namespace ConsoleSample.Middleware;
 [FoundatioOrder(1)]
 public static class ValidationMiddleware
 {
-    public static Result? Before(object message)
+    public static HandlerResult Before(object message)
     {
         if (!MiniValidator.TryValidate(message, out var errors))
         {
@@ -15,10 +15,11 @@ public static class ValidationMiddleware
                 .ToArray();
 
             // short-circuit with validation errors
+            // result is implicitly converted to a short-circuited HandlerResult
             return Result.Invalid(validationErrors);
         }
 
         // continue
-        return null;
+        return HandlerResult.Continue();
     }
 }

@@ -196,6 +196,17 @@ internal static class HandlerGenerator
                 source.AppendLine($"    return{result};");
                 source.AppendLine("}");
             }
+            else if (handler.ReturnType.IsResult && m.Method.ReturnType.IsResult && m.Method.ReturnType.IsNullable)
+            {
+                result = "";
+                if (!handler.ReturnType.IsVoid)
+                    result = $" {m.Middleware.Identifier.ToCamelCase()}Result is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result";
+
+                source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result != null)");
+                source.AppendLine("{");
+                source.AppendLine($"    return{result};");
+                source.AppendLine("}");
+            }
         }
         source.AppendLineIf(beforeMiddleware.Any());
 

@@ -90,7 +90,10 @@ internal readonly record struct TypeSymbolInfo
 
         bool isTask = typeSymbol.IsTask(compilation);
         var unwrappedType = typeSymbol.UnwrapTask(compilation);
+        var unwrappedTypeFullName = unwrappedType.ToDisplayString();
         bool isNullable = unwrappedType.IsNullable(compilation);
+        if (isNullable && unwrappedTypeFullName.EndsWith("?"))
+            unwrappedTypeFullName = unwrappedTypeFullName.Substring(0, unwrappedTypeFullName.Length - 1);
         bool isReferenceType = unwrappedType.IsReferenceType;
         var unwrappedNullableType = unwrappedType.UnwrapNullable(compilation);
 
@@ -109,7 +112,7 @@ internal readonly record struct TypeSymbolInfo
         {
             Identifier = typeSymbol.Name.ToIdentifier(),
             FullName = typeSymbol.ToDisplayString(),
-            UnwrappedFullName = unwrappedType.ToDisplayString(),
+            UnwrappedFullName = unwrappedTypeFullName,
             IsNullable = isNullable,
             IsReferenceType = isReferenceType,
             IsResult = isResult,

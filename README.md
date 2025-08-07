@@ -124,7 +124,8 @@ public static class ValidationMiddleware
         if (!TryValidate(msg, out var errors))
         {
             // short-circuit handler results when messages are invalid
-            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+            // implicit conversion to HandlerResult
+            return Result.Invalid(errors);
         }
 
         return HandlerResult.Continue();

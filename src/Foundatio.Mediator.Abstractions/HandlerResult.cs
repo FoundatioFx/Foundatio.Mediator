@@ -34,4 +34,11 @@ public struct HandlerResult
     /// <param name="value">The value to return as the handler result.</param>
     /// <returns>A handler result that short-circuits execution.</returns>
     public static HandlerResult ShortCircuit(object? value = null) => new(value, true);
+
+    /// <summary>
+    /// Implicitly converts any value to a short-circuited HandlerResult.
+    /// </summary>
+    /// <param name="value">The value to short-circuit with.</param>
+    /// <returns>A short-circuited HandlerResult containing the value.</returns>
+    public static implicit operator HandlerResult(Result value) => ShortCircuit(value);
 }

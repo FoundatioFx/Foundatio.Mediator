@@ -58,14 +58,11 @@ var reply = mediator.Invoke<string>(new Ping("Hello"));
 Supports constructor and method injection:
 
 ```csharp
-public class EmailHandler
+public class EmailHandler(ILogger<LoggingMiddleware> log)
 {
-    private readonly ILogger<EmailHandler> _logger;
-    public EmailHandler(ILogger<EmailHandler> logger) => _logger = logger;
-
     public Task HandleAsync(SendEmail cmd, IEmailService svc, CancellationToken ct)
     {
-        _logger.LogInformation("Sending to {To}", cmd.To);
+        log.LogInformation("Sending to {To}", cmd.To);
         return svc.SendAsync(cmd.To, cmd.Subject, cmd.Body, ct);
     }
 }

@@ -110,5 +110,23 @@ public class DiagnosticValidationTests : GeneratorTestBase
 		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
 		Assert.Contains(genDiags, d => d.Id == "FMED010");
 	}
+
+	[Fact]
+	public void FMED006_GenericMessageArgument_NoDiagnostic()
+	{
+		var src = """
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public static class Calls {
+				public static async Task Call<T>(IMediator m, T msg) {
+					await m.InvokeAsync(msg);
+				}
+			}
+			""";
+
+		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
+		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+	}
 }
 

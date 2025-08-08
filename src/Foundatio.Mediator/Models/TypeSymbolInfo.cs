@@ -58,6 +58,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsTuple { get; init; }
     /// <summary>
+    /// Indicates if the type is a generic type parameter (e.g., 'T').
+    /// </summary>
+    public bool IsTypeParameter { get; init; }
+    /// <summary>
     /// Contains information about the items in a tuple type, if applicable.
     /// </summary>
     public EquatableArray<TupleItemInfo> TupleItems { get; init; }
@@ -79,6 +83,7 @@ internal readonly record struct TypeSymbolInfo
             IsHandlerResult = false,
             IsCancellationToken = false,
             IsTuple = false,
+            IsTypeParameter = false,
             TupleItems = EquatableArray<TupleItemInfo>.Empty
         };
     }
@@ -107,6 +112,7 @@ internal readonly record struct TypeSymbolInfo
         bool isCancellationToken = unwrappedNullableType.IsCancellationToken(compilation);
         bool isTuple = unwrappedNullableType is INamedTypeSymbol { IsTupleType: true };
         var tupleItems = unwrappedNullableType.GetTupleItems(compilation);
+        bool isTypeParameter = typeSymbol.TypeKind == TypeKind.TypeParameter;
 
         return new TypeSymbolInfo
         {
@@ -123,6 +129,7 @@ internal readonly record struct TypeSymbolInfo
             IsHandlerResult = isHandlerResult,
             IsCancellationToken = isCancellationToken,
             IsTuple = isTuple,
+            IsTypeParameter = isTypeParameter,
             TupleItems = tupleItems
         };
     }

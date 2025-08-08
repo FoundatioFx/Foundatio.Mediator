@@ -608,6 +608,11 @@ internal static class HandlerGenerator
         if (!isInvokeCall)
             return; // Only validate Invoke calls, not Publish
 
+        // If the message is a generic type parameter (e.g., T), we cannot know the handler at compile time,
+        // so do not emit FMED006/FMDE007 for missing/multiple handlers.
+        if (callSite.MessageType.IsTypeParameter)
+            return;
+
         // FMED006: No handler found for invoke call
         if (handlersForMessage.Count == 0)
         {

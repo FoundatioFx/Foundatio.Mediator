@@ -69,9 +69,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
     private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, Compilation compilation, SourceProductionContext context)
     {
-        if (handlers.IsDefaultOrEmpty)
-            return;
-
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
             .GroupBy(cs => cs.MessageType)
@@ -84,6 +81,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             var applicableMiddleware = GetApplicableMiddlewares(middleware, handler);
             handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
         }
+
+        // Always generate diagnostics related to call sites, even if there are no handlers
+        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites);
+
+        if (handlersWithInfo.Count == 0)
+            return;
 
         InterceptsLocationGenerator.Execute(context, interceptorsEnabled);
 

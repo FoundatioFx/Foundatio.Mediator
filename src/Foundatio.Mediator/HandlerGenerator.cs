@@ -57,7 +57,6 @@ internal static class HandlerGenerator
             using System.Threading;
             using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
-            using System;
 
             namespace Foundatio.Mediator;
             """);
@@ -74,7 +73,7 @@ internal static class HandlerGenerator
 
         GenerateUntypedHandleMethod(source, handler);
 
-        GenerateInterceptorMethods(source, handler);
+        GenerateInterceptorMethods(source, handler, interceptorsEnabled);
 
         if (!handler.IsStatic)
         {
@@ -325,8 +324,11 @@ internal static class HandlerGenerator
         source.AppendLine("}");
     }
 
-    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler)
+    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler, bool interceptorsEnabled)
     {
+        if (!interceptorsEnabled)
+            return;
+
         // group by mediator method and response type
         var callSiteGroups = handler.CallSites
             .GroupBy(cs => new { cs.MethodName, cs.ResponseType })
@@ -570,6 +572,35 @@ internal static class HandlerGenerator
         }
     }
 
+    // Global validation that considers all call sites discovered (including those without matching handlers)
+    public static void ValidateGlobalCallSites(SourceProductionContext context, List<HandlerInfo> handlers, System.Collections.Immutable.ImmutableArray<CallSiteInfo> allDiscoveredCallSites)
+    {
+        // Group handlers by message type for validation
+        var handlersByMessageType = handlers
+            .GroupBy(h => h.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Group all discovered call sites by message type
+        var allCallSites = allDiscoveredCallSites
+            .GroupBy(cs => cs.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var kvp in allCallSites)
+        {
+            string messageTypeName = kvp.Key;
+            var callSites = kvp.Value;
+
+            // Get handlers for this message type
+            handlersByMessageType.TryGetValue(messageTypeName, out var handlersForMessage);
+            handlersForMessage ??= new List<HandlerInfo>();
+
+            foreach (var callSite in callSites)
+            {
+                ValidateCallSite(context, callSite, handlersForMessage);
+            }
+        }
+    }
+
     private static void ValidateCallSite(SourceProductionContext context, CallSiteInfo callSite, List<HandlerInfo> handlersForMessage)
     {
         bool isInvokeCall = callSite.MethodName is "Invoke" or "InvokeAsync";
@@ -611,50 +642,59 @@ internal static class HandlerGenerator
         var handler = handlersForMessage[0];
         bool isAsyncCall = callSite.MethodName == "InvokeAsync";
 
-        // FMED008: Sync invoke on async handler
-        if (!isAsyncCall && handler.IsAsync)
-        {
-            var diagnostic = new DiagnosticInfo
-            {
-                Identifier = "FMED008",
-                Title = "Synchronous invoke on asynchronous handler",
-                Message = $"Cannot use synchronous 'Invoke' on asynchronous handler '{handler.FullName}'. Use 'InvokeAsync' instead.",
-                Severity = DiagnosticSeverity.Error,
-                Location = callSite.Location
-            };
-            context.ReportDiagnostic(diagnostic.ToDiagnostic());
-            return;
-        }
+        // Evaluate specific async characteristics for precise diagnostics
+        bool returnsTask = handler.ReturnType.IsTask;
+        bool returnsTuple = handler.ReturnType.IsTuple;
+        bool hasAsyncMiddleware = handler.Middleware.Any(m => m.IsAsync);
 
-        // FMED009: Sync invoke on handler with async middleware
-        if (!isAsyncCall && !handler.IsAsync && handler.Middleware.Any(m => m.IsAsync))
+        // Prefer the most specific diagnostics first when using synchronous Invoke
+        if (!isAsyncCall)
         {
-            var asyncMiddleware = string.Join(", ", handler.Middleware.Where(m => m.IsAsync).Select(m => m.FullName));
-            var diagnostic = new DiagnosticInfo
+            // FMED010: Sync invoke on handler that returns tuple
+            if (returnsTuple)
             {
-                Identifier = "FMED009",
-                Title = "Synchronous invoke on handler with asynchronous middleware",
-                Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' with asynchronous middleware: {asyncMiddleware}. Use 'InvokeAsync' instead.",
-                Severity = DiagnosticSeverity.Error,
-                Location = callSite.Location
-            };
-            context.ReportDiagnostic(diagnostic.ToDiagnostic());
-            return;
-        }
+                var diagnostic = new DiagnosticInfo
+                {
+                    Identifier = "FMED010",
+                    Title = "Synchronous invoke on handler with tuple return type",
+                    Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' that returns a tuple. Use 'InvokeAsync' instead because cascading messages need to be published asynchronously.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = callSite.Location
+                };
+                context.ReportDiagnostic(diagnostic.ToDiagnostic());
+                return;
+            }
 
-        // FMED010: Sync invoke on handler that returns tuple
-        if (!isAsyncCall && handler.ReturnType.IsTuple)
-        {
-            var diagnostic = new DiagnosticInfo
+            // FMED009: Sync invoke on handler with async middleware
+            if (hasAsyncMiddleware)
             {
-                Identifier = "FMED010",
-                Title = "Synchronous invoke on handler with tuple return type",
-                Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' that returns a tuple. Use 'InvokeAsync' instead because cascading messages need to be published asynchronously.",
-                Severity = DiagnosticSeverity.Error,
-                Location = callSite.Location
-            };
-            context.ReportDiagnostic(diagnostic.ToDiagnostic());
-            return;
+                var asyncMiddleware = string.Join(", ", handler.Middleware.Where(m => m.IsAsync).Select(m => m.FullName));
+                var diagnostic = new DiagnosticInfo
+                {
+                    Identifier = "FMED009",
+                    Title = "Synchronous invoke on handler with asynchronous middleware",
+                    Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' with asynchronous middleware: {asyncMiddleware}. Use 'InvokeAsync' instead.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = callSite.Location
+                };
+                context.ReportDiagnostic(diagnostic.ToDiagnostic());
+                return;
+            }
+
+            // FMED008: Sync invoke on async handler (true async return)
+            if (returnsTask)
+            {
+                var diagnostic = new DiagnosticInfo
+                {
+                    Identifier = "FMED008",
+                    Title = "Synchronous invoke on asynchronous handler",
+                    Message = $"Cannot use synchronous 'Invoke' on asynchronous handler '{handler.FullName}'. Use 'InvokeAsync' instead.",
+                    Severity = DiagnosticSeverity.Error,
+                    Location = callSite.Location
+                };
+                context.ReportDiagnostic(diagnostic.ToDiagnostic());
+                return;
+            }
         }
     }
 }

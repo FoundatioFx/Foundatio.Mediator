@@ -45,9 +45,10 @@ internal static class DIRegistrationGenerator
         {
             string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
 
-            source.AppendLine($"services.AddKeyedSingleton<HandlerRegistration>(\"{handler.MessageType.FullName}\",");
+            // Use reflection FullName so nested types resolve with '+' and match runtime Type.FullName keys
+            source.AppendLine($"services.AddKeyedSingleton<HandlerRegistration>(typeof({handler.MessageType.FullName}).FullName!,");
             source.AppendLine($"    new HandlerRegistration(");
-            source.AppendLine($"        \"{handler.MessageType.FullName}\",");
+            source.AppendLine($"        typeof({handler.MessageType.FullName}).FullName!,");
 
             if (handler.IsAsync)
             {

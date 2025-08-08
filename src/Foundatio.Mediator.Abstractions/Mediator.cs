@@ -48,8 +48,11 @@ public class Mediator : IMediator, IServiceProvider
                 currentType = currentType.BaseType;
             }
 
-            return allHandlers.Distinct()
-                .Select<HandlerRegistration, PublishAsyncDelegate>(h => async (mediator, message, cancellationToken) => await h.HandleAsync(mediator, message, cancellationToken, null)).ToArray();
+            return allHandlers
+                .GroupBy(h => $"{h.MessageTypeName}:{h.HandleAsync.Method.DeclaringType?.FullName}:{h.HandleAsync.Method.Name}")
+                .Select(g => g.First())
+                .Select<HandlerRegistration, PublishAsyncDelegate>(h => async (mediator, msg, cancellationToken) => await h.HandleAsync(mediator, msg, cancellationToken, null))
+                .ToArray();
         });
     }
 

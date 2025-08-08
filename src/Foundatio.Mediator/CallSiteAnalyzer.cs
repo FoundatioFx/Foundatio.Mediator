@@ -28,11 +28,17 @@ internal static class CallSiteAnalyzer
             return null;
 
         var symbolInfo = semanticModel.GetSymbolInfo(invocation.Expression);
-        if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
-            return null;
+        IMethodSymbol? methodSymbol = symbolInfo.Symbol as IMethodSymbol;
+        if (methodSymbol is null)
+        {
+            if (symbolInfo.CandidateSymbols is { Length: > 0 })
+                methodSymbol = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
 
-        var containingType = methodSymbol.ContainingType;
-        if (containingType is not { Name: MediatorInterfaceName })
+            methodSymbol ??= semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+        }
+
+        var containingType = methodSymbol?.ContainingType;
+        if (containingType is null || containingType.Name != MediatorInterfaceName || containingType.ContainingNamespace?.ToDisplayString() != MediatorNamespace)
             return null;
 
         if (invocation.ArgumentList.Arguments.Count == 0)
@@ -67,4 +73,5 @@ internal static class CallSiteAnalyzer
     }
 
     private const string MediatorInterfaceName = "IMediator";
+    private const string MediatorNamespace = "Foundatio.Mediator";
 }

@@ -2,6 +2,17 @@
 
 Use this when coding in this repo. Keep advice specific; reference files/paths.
 
+## Key Principles
+
+All contributions must respect existing formatting and conventions specified in the `.editorconfig` file. You are a distinguished engineer and are expected to deliver high-quality code that adheres to the guidelines in the instruction files.
+
+Let's keep pushing for clarity, usability, and excellence—both in code and user experience.
+
+**See also:**
+
+- [General Coding Guidelines](instructions/general.instructions.md)
+- [Testing Guidelines](instructions/testing.instructions.md)
+
 ## Big picture
 - Convention-based mediator for .NET with source generators + C# interceptors.
 - Two parts: runtime (`src/Foundatio.Mediator.Abstractions`) and generators/analyzers (`src/Foundatio.Mediator`).

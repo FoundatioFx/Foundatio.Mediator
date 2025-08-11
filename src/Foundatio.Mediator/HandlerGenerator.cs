@@ -122,7 +122,16 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        if (handler.IsAsync)
+        {
+            source.AppendLine("await using var scope = ((IServiceProvider)mediator).CreateAsyncScope();");
+            source.AppendLine("var serviceProvider = scope.ServiceProvider;");
+        }
+        else
+        {
+            source.AppendLine("using var scope = ((IServiceProvider)mediator).CreateScope();");
+            source.AppendLine("var serviceProvider = scope.ServiceProvider;");
+        }
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine();
 

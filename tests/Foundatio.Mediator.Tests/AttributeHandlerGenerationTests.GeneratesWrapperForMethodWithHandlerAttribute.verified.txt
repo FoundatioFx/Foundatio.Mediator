@@ -73,8 +73,7 @@ internal static class SomeClass_Ping_Handler
 {
     public static async System.Threading.Tasks.Task<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
     {
-        await using var scope = ((IServiceProvider)mediator).CreateAsyncScope();
-        var serviceProvider = scope.ServiceProvider;
+        var serviceProvider = (System.IServiceProvider)mediator;
 
         string? handlerResult = null;
         var handlerInstance = GetOrCreateHandler(serviceProvider);

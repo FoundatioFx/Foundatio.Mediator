@@ -20,7 +20,7 @@ public static class MediatorExtensions
             configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !a.FullName.StartsWith("System.")).ToList();
         }
 
-        services.AddSingleton<IMediator, Mediator>(sp => new Mediator(sp, configuration));
+        services.AddScoped<IMediator, Mediator>(sp => new Mediator(sp, configuration));
 
         foreach (var assembly in configuration.Assemblies!)
         {

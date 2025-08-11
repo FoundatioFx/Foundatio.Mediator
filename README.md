@@ -366,8 +366,8 @@ public interface IMediator
 
 The source generator:
 
-1. **Discovers handlers** at compile time by scanning for classes ending with `Handler` or `Consumer`
-2. **Discovers handler methods** looks for methods with names like `Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`
+1. **Discovers handlers** at compile time by scanning for classes ending with `Handler` or `Consumer`. Classes can also implement the `IFoundatioHandler` interface or be marked with the `FoundatioHandlerAttribute`.
+2. **Discovers handler methods** looks for methods with names like `Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`. Methods can also be marked with the `FoundatioHandlerAttribute`.
 3. **Parameters** first parameter is the message, remaining parameters are injected via DI
 4. **Generates C# interceptors** for blazing fast same-assembly dispatch using direct method calls
 5. **Middleware** can run `Before`, `After`, and `Finally` around handler execution and can be sync or async

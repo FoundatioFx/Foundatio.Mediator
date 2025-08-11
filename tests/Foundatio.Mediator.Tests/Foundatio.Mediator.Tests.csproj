@@ -16,18 +16,7 @@
   <ItemGroup>
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
-    <Compile Include="TupleReturnTests.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
-  <!-- Prune legacy tests: only build SourceGenerator and Integration tests -->
-  <Compile Remove="**/*.cs" />
-  <Compile Include="BasicHandlerGenerationTests.cs" />
-  <Compile Include="DiagnosticValidationTests.cs" />
-  <Compile Include="DIRegistrationTests.cs" />
-  <Compile Include="GeneratorTestBase.cs" />
-  <Compile Include="InterceptorsToggleTests.cs" />
-  <Compile Include="MiddlewareGenerationTests.cs" />
-  <Compile Include="SourceGenerator/**/*.cs" />
-  <Compile Include="Integration/**/*.cs" />
   </ItemGroup>
 
   <Target Name="CleanCompilerGeneratedFiles" BeforeTargets="CoreGenerateSourceOutput">

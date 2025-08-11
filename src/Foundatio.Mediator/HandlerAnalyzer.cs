@@ -10,31 +10,53 @@ internal static class HandlerAnalyzer
 {
     public static bool IsMatch(SyntaxNode node)
     {
-        if (node is ClassDeclarationSyntax { Identifier.ValueText: var name } classDecl)
+        if (node is not ClassDeclarationSyntax { Identifier.ValueText: var name } classDecl)
+            return false;
+
+        if (name.EndsWith("Handler") || name.EndsWith("Consumer"))
+            return true;
+
+        if (classDecl.BaseList is { Types.Count: > 0 })
         {
-            // Match by naming convention
-            if (name.EndsWith("Handler") || name.EndsWith("Consumer"))
-                return true;
-
-            // Or match classes that implement the IFoundatioHandler marker interface
-            // We only do a cheap syntax check here to keep predicate fast.
-            // Full semantic validation happens in GetHandlers.
-            if (classDecl.BaseList is { Types.Count: > 0 })
+            foreach (var bt in classDecl.BaseList.Types)
             {
-                foreach (var bt in classDecl.BaseList.Types)
+                string? typeName = bt.Type switch
                 {
-                    // Accept unqualified or namespace-qualified names
-                    var typeName = bt.Type switch
-                    {
-                        SimpleNameSyntax sns => sns.Identifier.ValueText,
-                        QualifiedNameSyntax qns => qns.Right.Identifier.ValueText,
-                        AliasQualifiedNameSyntax aq => aq.Name.Identifier.ValueText,
-                        _ => (bt.Type as IdentifierNameSyntax)?.Identifier.ValueText
-                    };
+                    SimpleNameSyntax sns => sns.Identifier.ValueText,
+                    QualifiedNameSyntax qns => qns.Right.Identifier.ValueText,
+                    AliasQualifiedNameSyntax aq => aq.Name.Identifier.ValueText,
+                    _ => (bt.Type as IdentifierNameSyntax)?.Identifier.ValueText
+                };
 
-                    if (typeName == "IFoundatioHandler")
-                        return true;
-                }
+                if (typeName == "IFoundatioHandler")
+                    return true;
+            }
+        }
+
+        if (classDecl.AttributeLists.Count > 0 && classDecl.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "FoundatioHandler" }
+                    or QualifiedNameSyntax
+                    {
+                        Right.Identifier.ValueText: "FoundatioHandler"
+                    }))
+        {
+            return true;
+        }
+
+        foreach (var member in classDecl.Members)
+        {
+            if (member is not MethodDeclarationSyntax m || m.AttributeLists.Count <= 0)
+                continue;
+
+            if (m.AttributeLists.SelectMany(al => al.Attributes)
+                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "FoundatioHandler" }
+                    or QualifiedNameSyntax
+                    {
+                        Right.Identifier.ValueText: "FoundatioHandler"
+                    }))
+            {
+                return true;
             }
         }
 
@@ -51,18 +73,16 @@ internal static class HandlerAnalyzer
             || classSymbol.IsGenericType)
             return [];
 
-        // If the class name doesn't match the convention, also allow the marker interface IFoundatioHandler
+        // Determine if the class should be treated as a handler class
         bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
-        if (!nameMatches)
-        {
-            var implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IFoundatioHandler");
-            if (!implementsMarker)
-                return [];
-        }
+        bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IFoundatioHandler");
+        bool hasClassHandlerAttribute = classSymbol.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
+
+        bool treatAsHandlerClass = nameMatches || implementsMarker || hasClassHandlerAttribute;
 
         var handlerMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => IsHandlerMethod(m, context.SemanticModel.Compilation))
+            .Where(m => IsHandlerMethod(m, context.SemanticModel.Compilation, treatAsHandlerClass))
             .ToList();
 
         if (handlerMethods.Count == 0)
@@ -85,9 +105,7 @@ internal static class HandlerAnalyzer
 
             foreach (var parameter in handlerMethod.Parameters)
             {
-                string parameterTypeName = parameter.Type.ToDisplayString();
                 bool isMessage = SymbolEqualityComparer.Default.Equals(parameter, messageParameter);
-                bool isCancellationToken = parameter.Type.IsCancellationToken(context.SemanticModel.Compilation);
 
                 parameterInfos.Add(new ParameterInfo
                 {
@@ -114,12 +132,16 @@ internal static class HandlerAnalyzer
         return handlers;
     }
 
-    private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation)
+    private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation, bool treatAsHandlerClass)
     {
         if (method.DeclaredAccessibility != Accessibility.Public)
             return false;
 
-        if (!ValidHandlerMethodNames.Contains(method.Name))
+        bool hasMethodHandlerAttribute = method.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
+        if (!treatAsHandlerClass && !hasMethodHandlerAttribute)
+            return false;
+
+        if (treatAsHandlerClass && !ValidHandlerMethodNames.Contains(method.Name))
             return false;
 
         if (method.HasIgnoreAttribute(compilation))

@@ -333,6 +333,7 @@ Valid handler method names:
 - `After` runs only on successful handler completion
 - `Finally` always runs, regardless of success or failure
 - Methods may declare additional parameters: `CancellationToken`, DI-resolved services
+- Middleware lifetime: Middleware are singleton instances by default. Register middleware in DI for custom lifetime behavior
 
 ### Middleware Order
 

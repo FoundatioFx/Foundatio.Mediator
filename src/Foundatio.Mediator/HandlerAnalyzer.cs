@@ -10,8 +10,35 @@ internal static class HandlerAnalyzer
 {
     public static bool IsMatch(SyntaxNode node)
     {
-        return node is ClassDeclarationSyntax { Identifier.ValueText: var name }
-               && (name.EndsWith("Handler") || name.EndsWith("Consumer"));
+        if (node is ClassDeclarationSyntax { Identifier.ValueText: var name } classDecl)
+        {
+            // Match by naming convention
+            if (name.EndsWith("Handler") || name.EndsWith("Consumer"))
+                return true;
+
+            // Or match classes that implement the IFoundatioHandler marker interface
+            // We only do a cheap syntax check here to keep predicate fast.
+            // Full semantic validation happens in GetHandlers.
+            if (classDecl.BaseList is { Types.Count: > 0 })
+            {
+                foreach (var bt in classDecl.BaseList.Types)
+                {
+                    // Accept unqualified or namespace-qualified names
+                    var typeName = bt.Type switch
+                    {
+                        SimpleNameSyntax sns => sns.Identifier.ValueText,
+                        QualifiedNameSyntax qns => qns.Right.Identifier.ValueText,
+                        AliasQualifiedNameSyntax aq => aq.Name.Identifier.ValueText,
+                        _ => (bt.Type as IdentifierNameSyntax)?.Identifier.ValueText
+                    };
+
+                    if (typeName == "IFoundatioHandler")
+                        return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public static List<HandlerInfo> GetHandlers(GeneratorSyntaxContext context)
@@ -23,6 +50,15 @@ internal static class HandlerAnalyzer
             || classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation)
             || classSymbol.IsGenericType)
             return [];
+
+        // If the class name doesn't match the convention, also allow the marker interface IFoundatioHandler
+        bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
+        if (!nameMatches)
+        {
+            var implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IFoundatioHandler");
+            if (!implementsMarker)
+                return [];
+        }
 
         var handlerMethods = classSymbol.GetMembers()
             .OfType<IMethodSymbol>()

@@ -67,6 +67,11 @@ public class MediatorConfigurationBuilder
 {
     private readonly MediatorConfiguration _configuration = new MediatorConfiguration();
 
+    /// <summary>
+    /// Adds the specified assemblies to the mediator configuration.
+    /// </summary>
+    /// <param name="assemblies"></param>
+    /// <returns></returns>
     public MediatorConfigurationBuilder AddAssembly(params Assembly[] assemblies)
     {
         _configuration.Assemblies ??= new List<Assembly>();
@@ -74,10 +79,57 @@ public class MediatorConfigurationBuilder
         return this;
     }
 
+    /// <summary>
+    /// Adds the assembly containing the specified type to the mediator configuration.
+    /// </summary>
+    /// <typeparam name="T">The type whose assembly should be added.</typeparam>
+    /// <returns></returns>
     public MediatorConfigurationBuilder AddAssembly<T>()
     {
         var assembly = typeof(T).Assembly;
         return AddAssembly(assembly);
+    }
+
+    /// <summary>
+    /// Sets the lifetime of the mediator.
+    /// </summary>
+    /// <param name="lifetime"></param>
+    /// <returns></returns>
+    public MediatorConfigurationBuilder SetMediatorLifetime(ServiceLifetime lifetime)
+    {
+        _configuration.MediatorLifetime = lifetime;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the publisher for the mediator.
+    /// </summary>
+    /// <param name="publisher"></param>
+    /// <returns></returns>
+    public MediatorConfigurationBuilder SetPublisher(INotificationPublisher publisher)
+    {
+        _configuration.NotificationPublisher = publisher;
+        return this;
+    }
+
+    /// <summary>
+    /// Uses the ForeachAwaitPublisher for the mediator.
+    /// </summary>
+    /// <returns></returns>
+    public MediatorConfigurationBuilder UseForeachAwaitPublisher()
+    {
+        _configuration.NotificationPublisher = new ForeachAwaitPublisher();
+        return this;
+    }
+
+    /// <summary>
+    /// Uses the TaskWhenAllPublisher for the mediator.
+    /// </summary>
+    /// <returns></returns>
+    public MediatorConfigurationBuilder TaskWhenAllPublisher()
+    {
+        _configuration.NotificationPublisher = new TaskWhenAllPublisher();
+        return this;
     }
 
     public MediatorConfiguration Build() => _configuration;

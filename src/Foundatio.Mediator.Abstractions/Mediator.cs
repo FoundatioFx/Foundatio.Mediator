@@ -19,6 +19,120 @@ public class Mediator : IMediator, IServiceProvider
     public IServiceProvider ServiceProvider => _serviceProvider;
     public object? GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 
+    public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
+    {
+        var handlerFunc = GetInvokeAsyncDelegate(message.GetType());
+        return handlerFunc(this, message, cancellationToken);
+    }
+
+    public void Invoke(object message, CancellationToken cancellationToken = default)
+    {
+        var handlerFunc = GetInvokeDelegate(message.GetType());
+        handlerFunc(this, message, cancellationToken);
+    }
+
+    public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
+    {
+        var handlerFunc = GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
+        var result = await handlerFunc(this, message, cancellationToken);
+        return (TResponse)result!;
+    }
+
+    public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
+    {
+        var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
+        var result = handlerFunc(this, message, cancellationToken);
+        return (TResponse)result!;
+    }
+
+    public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
+    {
+        var handlersList = GetAllApplicableHandlers(message).ToList();
+        return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
+    }
+
+    [DebuggerStepThrough]
+    private InvokeAsyncDelegate GetInvokeAsyncDelegate(Type messageType)
+    {
+        return _invokeAsyncCache.GetOrAdd(messageType, mt =>
+        {
+            var handlers = GetHandlersForType(mt);
+            var handlersList = handlers.ToList();
+
+            if (handlersList.Count == 0)
+                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
+
+            if (handlersList.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use PublishAsync for multiple handlers.");
+
+            var handler = handlersList.First();
+            return async (mediator, msg, ct) => await handler.HandleAsync(mediator, msg, ct, null);
+        });
+    }
+
+    [DebuggerStepThrough]
+    private InvokeDelegate GetInvokeDelegate(Type messageType)
+    {
+        return _invokeCache.GetOrAdd(messageType, mt =>
+        {
+            var handlers = GetHandlersForType(mt);
+            var handlersList = handlers.ToList();
+
+            if (handlersList.Count == 0)
+                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
+
+            if (handlersList.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use Publish for multiple handlers.");
+
+            var handler = handlersList.First();
+            if (handler.IsAsync)
+                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {mt.FullName}. Use InvokeAsync instead.");
+
+            return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, null);
+        });
+    }
+
+    [DebuggerStepThrough]
+    private InvokeAsyncResponseDelegate GetInvokeAsyncResponseDelegate(Type messageType, Type responseType)
+    {
+        return _invokeAsyncWithResponseCache.GetOrAdd((messageType, responseType), key =>
+        {
+            var handlers = GetHandlersForType(key.MessageType);
+            var handlersList = handlers.ToList();
+
+            if (handlersList.Count == 0)
+                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
+
+            if (handlersList.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use PublishAsync for multiple handlers.");
+
+            var handler = handlersList.First();
+            return (mediator, msg, ct) => handler.HandleAsync(mediator, msg, ct, key.ResponseType);
+        });
+    }
+
+    [DebuggerStepThrough]
+    private InvokeResponseDelegate GetInvokeResponseDelegate(Type messageType, Type responseType)
+    {
+        return _invokeWithResponseCache.GetOrAdd((messageType, responseType), key =>
+        {
+            var handlers = GetHandlersForType(key.MessageType);
+            var handlersList = handlers.ToList();
+
+            if (handlersList.Count == 0)
+                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
+
+            if (handlersList.Count > 1)
+                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use Publish for multiple handlers.");
+
+            var handler = handlersList.First();
+            if (handler.IsAsync)
+                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {key.MessageType.FullName}. Use InvokeAsync instead.");
+
+            return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, key.ResponseType);
+        });
+    }
+
     [DebuggerStepThrough]
     private PublishAsyncDelegate[] GetAllApplicableHandlers(object message)
     {
@@ -62,110 +176,6 @@ public class Mediator : IMediator, IServiceProvider
         return _serviceProvider.GetKeyedServices<HandlerRegistration>(type.FullName);
     }
 
-    public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
-    {
-        var messageType = message.GetType();
-        var cachedFunc = _invokeAsyncCache.GetOrAdd(messageType, mt =>
-        {
-            var handlers = GetHandlersForType(mt);
-            var handlersList = handlers.ToList();
-
-            if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
-
-            if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use PublishAsync for multiple handlers.");
-
-            var handler = handlersList.First();
-            return async (mediator, msg, ct) => await handler.HandleAsync(mediator, msg, ct, null);
-        });
-
-        return cachedFunc(this, message, cancellationToken);
-    }
-
-    public void Invoke(object message, CancellationToken cancellationToken = default)
-    {
-        var messageType = message.GetType();
-        var cachedFunc = _invokeCache.GetOrAdd(messageType, mt =>
-        {
-            var handlers = GetHandlersForType(mt);
-            var handlersList = handlers.ToList();
-
-            if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
-
-            if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use Publish for multiple handlers.");
-
-            var handler = handlersList.First();
-            if (handler.IsAsync)
-                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {mt.FullName}. Use InvokeAsync instead.");
-
-            return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, null);
-        });
-
-        cachedFunc(this, message, cancellationToken);
-    }
-
-    public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
-    {
-        var messageType = message.GetType();
-        var responseType = typeof(TResponse);
-        var cacheKey = (messageType, responseType);
-        var cachedFunc = _invokeAsyncWithResponseCache.GetOrAdd(cacheKey, key =>
-        {
-            var handlers = GetHandlersForType(key.MessageType);
-            var handlersList = handlers.ToList();
-
-            if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
-
-            if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use PublishAsync for multiple handlers.");
-
-            var handler = handlersList.First();
-            return (mediator, msg, ct) => handler.HandleAsync(mediator, msg, ct, key.ResponseType);
-        });
-
-        var result = await cachedFunc(this, message, cancellationToken);
-        return (TResponse)result!;
-    }
-
-    public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
-    {
-        var messageType = message.GetType();
-        var responseType = typeof(TResponse);
-        var cacheKey = (messageType, responseType);
-        var cachedFunc = _invokeWithResponseCache.GetOrAdd(cacheKey, key =>
-        {
-            var handlers = GetHandlersForType(key.MessageType);
-            var handlersList = handlers.ToList();
-
-            if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
-
-            if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use Publish for multiple handlers.");
-
-            var handler = handlersList.First();
-            if (handler.IsAsync)
-                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {key.MessageType.FullName}. Use InvokeAsync instead.");
-
-            return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, key.ResponseType);
-        });
-
-        var result = cachedFunc(this, message, cancellationToken);
-        return (TResponse)result!;
-    }
-
-    public async ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
-    {
-        var handlersList = GetAllApplicableHandlers(message).ToList();
-
-        var tasks = handlersList.Select(h => h(this, message, cancellationToken));
-        await Task.WhenAll(tasks.Select(t => t.AsTask()));
-    }
-
     private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();
 
     [DebuggerStepThrough]
@@ -197,7 +207,6 @@ public class Mediator : IMediator, IServiceProvider
     private delegate object? InvokeResponseDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
     private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
 
-    private delegate ValueTask PublishAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
     private static readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
 
 }

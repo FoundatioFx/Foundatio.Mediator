@@ -26,15 +26,13 @@ internal static class Helpers
 
     private static readonly Lazy<string> _toolVersion = new(() =>
     {
-        var productVersion = FileVersionInfo
-            .GetVersionInfo(Assembly.GetExecutingAssembly().Location)
-            .ProductVersion;
+        var asm = typeof(Helpers).Assembly;
 
-        if (!string.IsNullOrEmpty(productVersion))
-            return productVersion!;
+        var infoVersion = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!String.IsNullOrEmpty(infoVersion))
+            return infoVersion!;
 
-        var version = typeof(Helpers).Assembly.GetName().Version;
-        return version?.ToString() ?? "1.0.0.0";
+        return asm.GetName().Version?.ToString() ?? "1.0.0";
     });
 
     private static string GetToolVersion() => _toolVersion.Value;

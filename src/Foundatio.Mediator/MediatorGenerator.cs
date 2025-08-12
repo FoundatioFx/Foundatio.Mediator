@@ -16,6 +16,17 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 x.GlobalOptions.TryGetValue($"build_property.{Constants.DisabledPropertyName}", out string? disableSwitch)
                 && disableSwitch.Equals("true", StringComparison.Ordinal));
 
+        // Read handler lifetime property (None | Singleton | Scoped | Transient). Default: None
+        var handlerLifetimeSetting = context.AnalyzerConfigOptionsProvider
+            .Select((x, _) =>
+            {
+                if (!x.GlobalOptions.TryGetValue($"build_property.{Constants.HandlerLifetimePropertyName}", out string? lifetime) || string.IsNullOrWhiteSpace(lifetime))
+                    return "None";
+
+                return lifetime.Trim();
+            })
+            .WithTrackingName(TrackingNames.Settings);
+
         var csharpSufficient = context.CompilationProvider
             .Select((x, _) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
 
@@ -25,6 +36,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         var interceptionEnabled = settings
             .Select((x, _) => x is { Left: false, Right: true });
+
+        var combinedSettings = interceptionEnabled.Combine(handlerLifetimeSetting);
 
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -53,21 +66,22 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var compilationAndData = handlers.Collect()
             .Combine(middleware.Collect())
             .Combine(callSites.Collect())
-            .Combine(interceptionEnabled)
+            .Combine(combinedSettings)
             .Combine(context.CompilationProvider)
             .Select(static (spc, _) => (
                 Handlers: spc.Left.Left.Left.Left,
                 Middleware: spc.Left.Left.Left.Right,
                 CallSites: spc.Left.Left.Right,
-                InterceptorsEnabled: spc.Left.Right,
+                InterceptorsEnabled: spc.Left.Right.Left,
+                HandlerLifetime: spc.Left.Right.Right,
                 Compilation: spc.Right
             ));
 
         context.RegisterImplementationSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, source.Compilation, spc));
+            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, source.HandlerLifetime, source.Compilation, spc));
     }
 
-    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, Compilation compilation, SourceProductionContext context)
+    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, string handlerLifetime, Compilation compilation, SourceProductionContext context)
     {
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
@@ -92,7 +106,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled);
 
-        DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation);
+    DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, handlerLifetime);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler)

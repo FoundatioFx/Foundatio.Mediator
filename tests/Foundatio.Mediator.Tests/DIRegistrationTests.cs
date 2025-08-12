@@ -35,4 +35,61 @@ public class DIRegistrationTests : GeneratorTestBase
         // If no handlers, MediatorGenerator returns early and DI file isn't generated.
         Assert.DoesNotContain(trees, t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
     }
+
+    [Fact]
+    public void DefaultSingleton_DoesNotRegisterHandlers()
+    {
+        var src = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record A;
+            public class AHandler { public Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
+        Assert.DoesNotContain("AddScoped<AHandler>()", di.Source);
+        Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
+    }
+
+    [Theory]
+    [InlineData("Transient", "AddTransient<AHandler>()")]
+    [InlineData("Scoped", "AddScoped<AHandler>()")]
+    [InlineData("Singleton", "AddSingleton<AHandler>()")]
+    public void RegistersHandlers_WhenConfigured(string lifetime, string expected)
+    {
+        var src = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record A;
+            public class AHandler { public Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorHandlerLifetime", lifetime));
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
+        Assert.Contains(expected, di.Source);
+    }
+
+    [Fact]
+    public void DoesNotRegister_StaticHandlers()
+    {
+        var src = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record A;
+            public class AHandler { public static Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorHandlerLifetime", "Transient"));
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
+        Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
+    }
 }

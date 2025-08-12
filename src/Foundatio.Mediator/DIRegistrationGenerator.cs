@@ -6,7 +6,7 @@ namespace Foundatio.Mediator;
 
 internal static class DIRegistrationGenerator
 {
-    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, Compilation compilation)
+    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, Compilation compilation, string handlerLifetime)
     {
         var assemblyName = compilation.AssemblyName?.ToIdentifier() ?? Guid.NewGuid().ToString("N").Substring(0, 10);
         var className = $"{assemblyName}_MediatorHandlers";
@@ -36,14 +36,30 @@ internal static class DIRegistrationGenerator
         source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
         source.AppendLine("    {");
         source.AppendLine("        // Register HandlerRegistration instances keyed by message type name");
-        source.AppendLine("        // Note: Handlers themselves are NOT auto-registered in DI");
-        source.AppendLine("        // Users can register them manually if they want specific lifetimes");
+        source.AppendLine("        // Optionally register handler classes into DI based on MediatorHandlerLifetime setting");
         source.AppendLine();
         source.IncrementIndent().IncrementIndent();
+
+        bool registerHandlers = !string.Equals(handlerLifetime, "None", StringComparison.OrdinalIgnoreCase);
 
         foreach (var handler in handlers)
         {
             string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
+
+            // Register handler in DI for non-static handler classes when lifetime != Singleton
+            if (registerHandlers && !handler.IsStatic)
+            {
+                var lifetimeMethod = "";
+                if (string.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
+                    lifetimeMethod = "AddTransient";
+                if (string.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
+                    lifetimeMethod = "AddScoped";
+                if (string.Equals(handlerLifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+                    lifetimeMethod = "AddSingleton";
+
+                if (!String.IsNullOrEmpty(lifetimeMethod))
+                    source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
+            }
 
             // Use reflection FullName so nested types resolve with '+' and match runtime Type.FullName keys
             source.AppendLine($"services.AddKeyedSingleton<HandlerRegistration>(typeof({handler.MessageType.FullName}).FullName!,");
@@ -62,6 +78,8 @@ internal static class DIRegistrationGenerator
             }
 
             source.AppendLine($"        {handler.IsAsync.ToString().ToLower()}));");
+
+            source.AppendLine();
         }
 
         source.DecrementIndent().DecrementIndent();

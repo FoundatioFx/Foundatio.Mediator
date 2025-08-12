@@ -150,8 +150,7 @@ public static class Tests_MediatorHandlers
     public static void AddHandlers(this IServiceCollection services)
     {
         // Register HandlerRegistration instances keyed by message type name
-        // Note: Handlers themselves are NOT auto-registered in DI
-        // Users can register them manually if they want specific lifetimes
+        // Optionally register handler classes into DI based on MediatorHandlerLifetime setting
 
         services.AddKeyedSingleton<HandlerRegistration>(typeof(Ping).FullName!,
             new HandlerRegistration(
@@ -159,6 +158,7 @@ public static class Tests_MediatorHandlers
                 PingProcessor_Ping_Handler.UntypedHandleAsync,
                 null,
                 true));
+
     }
 }
 

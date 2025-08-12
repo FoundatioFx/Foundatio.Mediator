@@ -372,7 +372,7 @@ The source generator:
 3. **Parameters** first parameter is the message, remaining parameters are injected via DI
 4. **Generates C# interceptors** for blazing fast same-assembly dispatch using direct method calls
 5. **Middleware** can run `Before`, `After`, and `Finally` around handler execution and can be sync or async
-6. **Handler lifetime** handlers are singleton instances by default (not registered in DI). Register handlers in DI for custom lifetime behavior
+6. **Handler lifetime** handlers are singleton instances by default (not registered in DI). Handlers can be registered in DI manually to control lifetime behavior or the `MediatorHandlerLifetime` setting can be used to auto register handlers in DI.
 
 ### 🔧 C# Interceptors - The Secret Sauce
 

@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Reflection;
+
 namespace Foundatio.Mediator.Utility;
 
 internal static class Helpers
@@ -23,15 +26,14 @@ internal static class Helpers
 
     private static readonly Lazy<string> _toolVersion = new(() =>
     {
-        // Get the informational version from the assembly (includes pre-release info like "1.0.0-pre1")
-        var assembly = typeof(Helpers).Assembly;
-        var informationalVersion = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)?.InformationalVersion;
+        var productVersion = FileVersionInfo
+            .GetVersionInfo(Assembly.GetExecutingAssembly().Location)
+            .ProductVersion;
 
-        // Return informational version if available, otherwise fallback to assembly version
-        if (!string.IsNullOrEmpty(informationalVersion))
-            return informationalVersion!;
+        if (!string.IsNullOrEmpty(productVersion))
+            return productVersion!;
 
-        var version = assembly.GetName().Version;
+        var version = typeof(Helpers).Assembly.GetName().Version;
         return version?.ToString() ?? "1.0.0.0";
     });
 

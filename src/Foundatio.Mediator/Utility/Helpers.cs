@@ -24,7 +24,7 @@ internal static class Helpers
         source.AppendLine($"[global::System.CodeDom.Compiler.GeneratedCode(\"{toolName}\", \"{toolVersion}\")]");
     }
 
-    private static readonly Lazy<string> _toolVersion = new(() =>
+    private static string GetToolVersion()
     {
         var asm = typeof(Helpers).Assembly;
 
@@ -33,9 +33,7 @@ internal static class Helpers
             return infoVersion!;
 
         return asm.GetName().Version?.ToString() ?? "1.0.0";
-    });
-
-    private static string GetToolVersion() => _toolVersion.Value;
+    }
 
     public static string ToIdentifier(this string name)
     {

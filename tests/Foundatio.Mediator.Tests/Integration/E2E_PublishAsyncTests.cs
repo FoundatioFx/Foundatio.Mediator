@@ -27,7 +27,7 @@ public class E2E_PublishAsyncTests
         public Task HandleAsync(E2eEvent message, CancellationToken ct) { _collector.Events.Add("second:" + message.Name); return Task.CompletedTask; }
     }
 
-    [global::Xunit.Fact]
+    [Fact]
     public async Task PublishAsync_FansOut()
     {
         var services = new ServiceCollection();

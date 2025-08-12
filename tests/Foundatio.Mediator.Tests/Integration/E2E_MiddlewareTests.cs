@@ -23,7 +23,7 @@ public class E2E_MiddlewareTests
         public Task HandleAsync(E2eCmd m, CancellationToken ct) { _mw.Steps.Add("handle:" + m.Name); return Task.CompletedTask; }
     }
 
-    [global::Xunit.Fact]
+    [Fact]
     public async Task Middleware_Order_NormalPath()
     {
         var services = new ServiceCollection();

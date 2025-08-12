@@ -14,7 +14,7 @@ public class E2E_InvokeAsyncTests
         public Task<string> HandleAsync(E2ePing message, CancellationToken ct) => Task.FromResult(message.Message + " Pong");
     }
 
-    [global::Xunit.Fact]
+    [Fact]
     public async Task InvokeAsync_ReturnsExpected()
     {
         var services = new ServiceCollection();

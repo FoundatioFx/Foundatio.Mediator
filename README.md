@@ -310,7 +310,7 @@ Valid handler method names:
 - Method injection: Handler methods can declare any dependencies as parameters
 - Known parameters: `CancellationToken` is automatically provided by the mediator
 - Service resolution: All other parameters are resolved from the DI container
-- Handler lifetime: Handlers are singleton instances by default. Register handlers in DI for custom lifetime behavior
+- Handler lifetime: Handlers are singleton instances by default. Register handlers in DI for custom lifetime behavior or use `MediatorHandlerLifetime` to automatically register handlers in DI.
 
 ### Ignoring Handlers
 

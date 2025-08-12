@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
@@ -24,6 +21,6 @@ public class E2E_InvokeAsyncTests
         var mediator = provider.GetRequiredService<IMediator>();
 
         var result = await mediator.InvokeAsync<string>(new E2ePing("Ping"));
-        result.Should().Be("Ping Pong");
+        Assert.Equal("Ping Pong", result);
     }
 }

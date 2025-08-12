@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
@@ -35,6 +33,6 @@ public class E2E_MiddlewareTests
         var mw = provider.GetRequiredService<TrackingMiddleware>();
 
         await mediator.InvokeAsync(new E2eCmd("x"));
-        mw.Steps.Should().BeEquivalentTo(new[]{"before:x","handle:x","after:x","finally:x"});
+        Assert.Equal(new[] { "before:x", "handle:x", "after:x", "finally:x" }, mw.Steps);
     }
 }

@@ -18,8 +18,8 @@ public class TupleReturnTests : GeneratorTestBase
 			}
 			""";
 
-	var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
-	var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
 		Assert.Contains("PublishCascadingMessagesAsync", wrapper.Source);
 		Assert.Contains("PublishAsync(", wrapper.Source);
 	}

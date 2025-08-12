@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
@@ -31,9 +30,8 @@ public class E2E_PublishAsyncTests
     public async Task PublishAsync_FansOut()
     {
         var services = new ServiceCollection();
-    services.AddSingleton<EventCollector>();
-    // Both consumers are in the same assembly; add it once to avoid duplicate registrations
-    services.AddMediator(b => b.AddAssembly<E2eEvent>());
+        services.AddSingleton<EventCollector>();
+        services.AddMediator(b => b.AddAssembly<E2eEvent>());
 
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
@@ -41,6 +39,8 @@ public class E2E_PublishAsyncTests
 
         await mediator.PublishAsync(new E2eEvent("evt"));
 
-        collector.Events.Should().BeEquivalentTo(new[]{"first:E2eEvent","second:evt"});
+        Assert.Collection(collector.Events,
+            e => Assert.Equal("second:evt", e),
+            e => Assert.Equal("first:E2eEvent", e));
     }
 }

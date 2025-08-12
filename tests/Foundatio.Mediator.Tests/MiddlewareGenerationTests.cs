@@ -21,9 +21,9 @@ public class MiddlewareGenerationTests : GeneratorTestBase
 			}
 			""";
 
-	var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
 
-	var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
 		Assert.Contains("MW1Middleware.Before", wrapper.Source);
 		Assert.Contains("MW1Middleware.After", wrapper.Source);
 		Assert.Contains("MW1Middleware.Finally", wrapper.Source);

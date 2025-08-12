@@ -9,7 +9,8 @@
     <!-- Emit compiler generated files for debugging purposes -->
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-    <!--Enable interceptors for testing-->
+    <!--Enable
+    interceptors for testing-->
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
   </PropertyGroup>
 
@@ -34,24 +35,27 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Foundatio.Xunit" Version="11.1.0" />
     <PackageReference Include="GitHubActionsTestLogger" Version="2.4.1" PrivateAssets="All" />
-  <!-- Source generator verification & helpers -->
-  <PackageReference Include="FluentAssertions" Version="6.12.0" />
-  <PackageReference Include="Verify.Xunit" Version="24.2.0" />
-  <PackageReference Include="Verify.DiffPlex" Version="2.3.0" />
-  <PackageReference Include="Verify.SourceGenerators" Version="2.3.0" />
-  <!-- Roslyn packages (use matching overrides to reduce conflicts) -->
-  <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
-  <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
-  <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.14.0" PrivateAssets="all" />
-  <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
-  <PackageReference Include="System.Collections.Immutable" Version="9.0.0" />
+    <!-- Source generator verification & helpers -->
+    <PackageReference Include="Verify.Xunit" Version="24.2.0" />
+    <PackageReference Include="Verify.DiffPlex" Version="2.3.0" />
+    <PackageReference Include="Verify.SourceGenerators" Version="2.3.0" />
+    <!-- Roslyn packages (use matching overrides to reduce conflicts) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0"
+      PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.14.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0"
+      PrivateAssets="all" />
+    <PackageReference Include="System.Collections.Immutable" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-  <!-- Regular reference needed so tests can access generator types -->
-  <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" />
+    <ProjectReference
+      Include="..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
+      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <!-- Regular reference needed so tests can access generator types -->
+    <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" />
   </ItemGroup>
 
   <ItemGroup>

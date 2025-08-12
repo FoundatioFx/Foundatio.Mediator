@@ -16,9 +16,9 @@ public class DIRegistrationTests : GeneratorTestBase
             """;
 
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
-    var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
-    Assert.Contains("AddKeyedSingleton<HandlerRegistration>(typeof(A).FullName!", di.Source);
-    Assert.Contains("AddKeyedSingleton<HandlerRegistration>(typeof(B).FullName!", di.Source);
+        var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
+        Assert.Contains("AddKeyedSingleton<HandlerRegistration>(typeof(A).FullName!", di.Source);
+        Assert.Contains("AddKeyedSingleton<HandlerRegistration>(typeof(B).FullName!", di.Source);
         Assert.Contains("UntypedHandleAsync", di.Source);
         Assert.Contains("UntypedHandle(", di.Source);
     }

@@ -19,7 +19,7 @@ public class InterceptorsToggleTests : GeneratorTestBase
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         Assert.DoesNotContain(trees, t => t.HintName == "InterceptsLocationAttribute.g.cs");
-    var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.DoesNotContain("InterceptsLocation(", wrapper.Source);
     }
 
@@ -40,7 +40,7 @@ public class InterceptorsToggleTests : GeneratorTestBase
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         Assert.Contains(trees, t => t.HintName == "InterceptsLocationAttribute.g.cs");
-    var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("InterceptsLocation(", wrapper.Source);
     }
 }

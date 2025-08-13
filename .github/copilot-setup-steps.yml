@@ -16,19 +16,12 @@ steps:
 
   - name: Restore project dependencies
     description: Restore NuGet packages for all projects
-    run: |
-      dotnet restore src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj
-      dotnet restore src/Foundatio.Mediator/Foundatio.Mediator.csproj
-      dotnet restore tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj
+    run: dotnet restore
 
   - name: Build solution
     description: Build all projects to verify everything works
-    run: |
-      dotnet build src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj
-      dotnet build src/Foundatio.Mediator/Foundatio.Mediator.csproj
-      dotnet build tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj
+    run: dotnet build
 
   - name: Run tests
     description: Run unit tests to ensure everything is working correctly
-    run: |
-      dotnet test tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj
+    run: dotnet test

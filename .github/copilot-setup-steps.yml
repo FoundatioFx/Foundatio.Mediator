@@ -1,0 +1,27 @@
+name: Setup Development Environment
+description: Configure the development environment for Foundatio.Mediator with .NET 9
+
+steps:
+  - name: Setup .NET 9 SDK
+    description: Install .NET 9.0.100 SDK as required by global.json
+    uses: actions/setup-dotnet@v4
+    with:
+      dotnet-version: '9.0.100'
+
+  - name: Verify .NET installation
+    description: Verify that .NET 9 is correctly installed
+    run: |
+      dotnet --version
+      dotnet --list-sdks
+
+  - name: Restore project dependencies
+    description: Restore NuGet packages for all projects
+    run: dotnet restore
+
+  - name: Build solution
+    description: Build all projects to verify everything works
+    run: dotnet build
+
+  - name: Run tests
+    description: Run unit tests to ensure everything is working correctly
+    run: dotnet test

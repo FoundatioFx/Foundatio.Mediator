@@ -1,0 +1,50 @@
+name: Setup Development Environment
+description: Configure the development environment for Foundatio.Mediator with .NET 9
+
+steps:
+  - name: Install .NET 9 SDK
+    description: Install .NET 9.0.100 SDK as required by global.json
+    run: |
+      # Download and install .NET 9 SDK
+      curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --version 9.0.100
+      # Update PATH to include .NET
+      echo 'export PATH="$HOME/.dotnet:$PATH"' >> ~/.bashrc
+      echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> ~/.bashrc
+      source ~/.bashrc
+    platforms:
+      - linux
+      - macos
+
+  - name: Install .NET 9 SDK (Windows)
+    description: Install .NET 9.0.100 SDK on Windows
+    run: |
+      # Download and install .NET 9 SDK for Windows
+      Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile "dotnet-install.ps1"
+      .\dotnet-install.ps1 -Version 9.0.100
+    platforms:
+      - windows
+
+  - name: Verify .NET installation
+    description: Verify that .NET 9 is correctly installed
+    run: |
+      dotnet --version
+      dotnet --list-sdks
+
+  - name: Restore project dependencies
+    description: Restore NuGet packages for all projects
+    run: |
+      dotnet restore src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj
+      dotnet restore src/Foundatio.Mediator/Foundatio.Mediator.csproj
+      dotnet restore tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj
+
+  - name: Build solution
+    description: Build all projects to verify everything works
+    run: |
+      dotnet build src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj
+      dotnet build src/Foundatio.Mediator/Foundatio.Mediator.csproj
+      dotnet build tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj
+
+  - name: Run tests
+    description: Run unit tests to ensure everything is working correctly
+    run: |
+      dotnet test tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj

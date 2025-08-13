@@ -2,27 +2,11 @@ name: Setup Development Environment
 description: Configure the development environment for Foundatio.Mediator with .NET 9
 
 steps:
-  - name: Install .NET 9 SDK
+  - name: Setup .NET 9 SDK
     description: Install .NET 9.0.100 SDK as required by global.json
-    run: |
-      # Download and install .NET 9 SDK
-      curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --version 9.0.100
-      # Update PATH to include .NET
-      echo 'export PATH="$HOME/.dotnet:$PATH"' >> ~/.bashrc
-      echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> ~/.bashrc
-      source ~/.bashrc
-    platforms:
-      - linux
-      - macos
-
-  - name: Install .NET 9 SDK (Windows)
-    description: Install .NET 9.0.100 SDK on Windows
-    run: |
-      # Download and install .NET 9 SDK for Windows
-      Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile "dotnet-install.ps1"
-      .\dotnet-install.ps1 -Version 9.0.100
-    platforms:
-      - windows
+    uses: actions/setup-dotnet@v4
+    with:
+      dotnet-version: '9.0.100'
 
   - name: Verify .NET installation
     description: Verify that .NET 9 is correctly installed

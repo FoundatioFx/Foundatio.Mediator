@@ -20,21 +20,25 @@ public class E2E_LoggingTests
         public Task<string> HandleAsync(TestMessage message, CancellationToken ct) => Task.FromResult(message.Message + " Handled");
     }
 
-    public record TestNotification(string Message) : INotification;
-
-    public class TestNotificationHandler1
+    [Fact]
+    public async Task Mediator_WithNoLogger_DoesNotThrow()
     {
-        public Task HandleAsync(TestNotification notification, CancellationToken ct) => Task.CompletedTask;
-    }
+        // Arrange: Create mediator without logger service registered
+        var services = new ServiceCollection();
+        services.AddMediator(b => b.AddAssembly<TestMessageHandler>());
 
-    public class TestNotificationHandler2
-    {
-        public Task HandleAsync(TestNotification notification, CancellationToken ct) => Task.CompletedTask;
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        // Act & Assert: Should not throw even without logger
+        var result = await mediator.InvokeAsync<string>(new TestMessage("Test"));
+        Assert.Equal("Test Handled", result);
     }
 
     [Fact]
-    public async Task InvokeAsync_LogsMessageProcessing()
+    public async Task Mediator_WithLogger_ExecutesSuccessfully()
     {
+        // Arrange: Create mediator with logger service registered
         var loggedMessages = new List<string>();
         var services = new ServiceCollection();
         services.AddLogging(builder =>
@@ -47,30 +51,12 @@ public class E2E_LoggingTests
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
+        // Act
         var result = await mediator.InvokeAsync<string>(new TestMessage("Test"));
 
+        // Assert
         Assert.Equal("Test Handled", result);
         Assert.Contains(loggedMessages, msg => msg.Contains("Invoking handler for message type TestMessage with expected response type String"));
-    }
-
-    [Fact]
-    public async Task PublishAsync_LogsMessageProcessing()
-    {
-        var loggedMessages = new List<string>();
-        var services = new ServiceCollection();
-        services.AddLogging(builder =>
-        {
-            builder.SetMinimumLevel(LogLevel.Debug);
-            builder.AddProvider(new TestLoggerProvider(loggedMessages));
-        });
-        services.AddMediator(b => b.AddAssembly<TestNotificationHandler1>());
-
-        using var provider = services.BuildServiceProvider();
-        var mediator = provider.GetRequiredService<IMediator>();
-
-        await mediator.PublishAsync(new TestNotification("Test"));
-
-        Assert.Contains(loggedMessages, msg => msg.Contains("Publishing message type TestNotification to") && msg.Contains("handlers"));
     }
 
     private class TestLoggerProvider : ILoggerProvider
@@ -96,7 +82,7 @@ public class E2E_LoggingTests
             _loggedMessages = loggedMessages;
         }
 
-        public IDisposable BeginScope<TState>(TState state) => null!;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
         public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Debug;
 

@@ -5,6 +5,15 @@ using Xunit.Abstractions;
 
 namespace Foundatio.Mediator.Tests;
 
+public record TestPing(string Message) : IQuery;
+public record TestPingVoid(string Message);
+
+public class TestPingHandler
+{
+    public Task<string> HandleAsync(TestPing message, CancellationToken ct) => Task.FromResult(message.Message + " Pong");
+    public Task HandleAsync(TestPingVoid message, CancellationToken ct) => Task.CompletedTask;
+}
+
 public class OpenTelemetryTests(ITestOutputHelper output)
 {
     [Fact]
@@ -20,25 +29,19 @@ public class OpenTelemetryTests(ITestOutputHelper output)
         ActivitySource.AddActivityListener(listener);
 
         var services = new ServiceCollection();
-        services.AddMediator();
+        services.AddMediator(b => b.AddAssembly<TestPingHandler>());
         var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
 
-        // Try to invoke - this will fail but should still create an activity
-        try
-        {
-            await mediator.InvokeAsync<string>(new { Message = "Test" });
-        }
-        catch (InvalidOperationException)
-        {
-            // Expected - no handler registered
-        }
+        // Invoke with a registered handler
+        var result = await mediator.InvokeAsync<string>(new TestPing("Test"));
+        Assert.Equal("Test Pong", result);
 
         var mediatorActivity = activities.FirstOrDefault(a => a.OperationName == "mediator.invoke");
         Assert.NotNull(mediatorActivity);
         Assert.Equal("invoke", mediatorActivity.GetTagItem("messaging.operation"));
-        // The message type will be an anonymous type, so just check it's there
-        Assert.NotNull(mediatorActivity.GetTagItem("messaging.message_type"));
+        Assert.Equal("Foundatio.Mediator.Tests.TestPing", mediatorActivity.GetTagItem("messaging.message_type"));
+        Assert.Equal("System.String", mediatorActivity.GetTagItem("messaging.response_type"));
 
         output.WriteLine($"Activity: {mediatorActivity.OperationName}");
         foreach (var tag in mediatorActivity.Tags)
@@ -63,20 +66,14 @@ public class OpenTelemetryTests(ITestOutputHelper output)
         ActivitySource.AddActivityListener(listener);
 
         var services = new ServiceCollection();
-        services.AddMediator();
+        services.AddMediator(b => b.AddAssembly<TestPingHandler>());
         var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
 
-        try
-        {
-            await mediator.PublishAsync(new { Event = "Test" });
-        }
-        catch
-        {
-            // Ignore errors, we just want to see if activities are created
-        }
+        // Use a proper registered handler for void operation
+        await mediator.InvokeAsync(new TestPingVoid("Test"));
 
-        var mediatorActivity = activities.FirstOrDefault(a => a.OperationName == "mediator.publish");
+        var mediatorActivity = activities.FirstOrDefault(a => a.OperationName == "mediator.invoke");
         // By default, OpenTelemetry should be enabled, so we should get an activity
         Assert.NotNull(mediatorActivity);
         

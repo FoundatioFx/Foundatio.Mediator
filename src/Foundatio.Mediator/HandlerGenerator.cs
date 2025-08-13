@@ -6,7 +6,7 @@ namespace Foundatio.Mediator;
 
 internal static class HandlerGenerator
 {
-    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, bool interceptorsEnabled)
+    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, bool interceptorsEnabled, bool openTelemetryEnabled)
     {
         if (handlers.Count == 0)
             return;
@@ -19,7 +19,7 @@ internal static class HandlerGenerator
             {
                 string wrapperClassName = GetHandlerClassName(handler);
 
-                string source = GenerateHandler(handler, wrapperClassName, interceptorsEnabled);
+                string source = GenerateHandler(handler, wrapperClassName, interceptorsEnabled, openTelemetryEnabled);
                 string fileName = $"{wrapperClassName}.g.cs";
                 context.AddSource(fileName, source);
             }
@@ -40,7 +40,7 @@ internal static class HandlerGenerator
         }
     }
 
-    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, bool interceptorsEnabled)
+    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, bool interceptorsEnabled, bool openTelemetryEnabled)
     {
         var source = new IndentedStringBuilder();
 
@@ -69,9 +69,16 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        GenerateHandleMethod(source, handler);
+        // Add ActivitySource if OpenTelemetry is enabled
+        if (openTelemetryEnabled)
+        {
+            source.AppendLine("private static readonly System.Diagnostics.ActivitySource ActivitySource = new(\"Foundatio.Mediator\");");
+            source.AppendLine();
+        }
 
-        GenerateUntypedHandleMethod(source, handler);
+        GenerateHandleMethod(source, handler, openTelemetryEnabled);
+
+        GenerateUntypedHandleMethod(source, handler, openTelemetryEnabled);
 
         GenerateInterceptorMethods(source, handler, interceptorsEnabled);
 
@@ -91,7 +98,7 @@ internal static class HandlerGenerator
         return source.ToString();
     }
 
-    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, bool openTelemetryEnabled)
     {
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
@@ -205,6 +212,21 @@ internal static class HandlerGenerator
         parameters = BuildParameters(source, handler.Parameters);
 
         source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
+        
+        if (openTelemetryEnabled)
+        {
+            source.AppendLine("using var activity = ActivitySource.StartActivity(\"mediator.invoke\");");
+            source.AppendLine("if (activity != null)");
+            source.AppendLine("{");
+            source.AppendLine($"    activity.SetTag(\"messaging.operation\", \"invoke\");");
+            source.AppendLine($"    activity.SetTag(\"messaging.message_type\", \"{handler.MessageType.FullName}\");");
+            if (handler.HasReturnValue)
+            {
+                source.AppendLine($"    activity.SetTag(\"messaging.response_type\", \"{handler.ReturnType.FullName}\");");
+            }
+            source.AppendLine("}");
+        }
+        
         source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
         source.AppendLineIf(handler.HasReturnValue);
 
@@ -258,7 +280,7 @@ internal static class HandlerGenerator
         source.AppendLine();
     }
 
-    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler, bool openTelemetryEnabled)
     {
         source.AppendLine(handler.IsAsync
             ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)"

@@ -9,10 +9,6 @@ public class Mediator : IMediator, IServiceProvider
     private readonly IServiceProvider _serviceProvider;
     private readonly MediatorConfiguration _configuration;
 
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-    private static readonly ActivitySource ActivitySource = new("Foundatio.Mediator");
-#endif
-
     [DebuggerStepThrough]
     public Mediator(IServiceProvider serviceProvider, MediatorConfiguration? configuration = null)
     {
@@ -25,46 +21,18 @@ public class Mediator : IMediator, IServiceProvider
 
     public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
     {
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-        using var activity = ActivitySource.StartActivity("mediator.invoke");
-        if (activity != null)
-        {
-            var messageType = message.GetType();
-            activity.SetTag("messaging.operation", "invoke");
-            activity.SetTag("messaging.message_type", messageType.FullName);
-        }
-#endif
         var handlerFunc = GetInvokeAsyncDelegate(message.GetType());
         return handlerFunc(this, message, cancellationToken);
     }
 
     public void Invoke(object message, CancellationToken cancellationToken = default)
     {
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-        using var activity = ActivitySource.StartActivity("mediator.invoke");
-        if (activity != null)
-        {
-            var messageType = message.GetType();
-            activity.SetTag("messaging.operation", "invoke");
-            activity.SetTag("messaging.message_type", messageType.FullName);
-        }
-#endif
         var handlerFunc = GetInvokeDelegate(message.GetType());
         handlerFunc(this, message, cancellationToken);
     }
 
     public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
     {
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-        using var activity = ActivitySource.StartActivity("mediator.invoke");
-        if (activity != null)
-        {
-            var messageType = message.GetType();
-            activity.SetTag("messaging.operation", "invoke");
-            activity.SetTag("messaging.message_type", messageType.FullName);
-            activity.SetTag("messaging.response_type", typeof(TResponse).FullName);
-        }
-#endif
         var handlerFunc = GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
         var result = await handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
@@ -72,16 +40,6 @@ public class Mediator : IMediator, IServiceProvider
 
     public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
     {
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-        using var activity = ActivitySource.StartActivity("mediator.invoke");
-        if (activity != null)
-        {
-            var messageType = message.GetType();
-            activity.SetTag("messaging.operation", "invoke");
-            activity.SetTag("messaging.message_type", messageType.FullName);
-            activity.SetTag("messaging.response_type", typeof(TResponse).FullName);
-        }
-#endif
         var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
         var result = handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
@@ -89,18 +47,8 @@ public class Mediator : IMediator, IServiceProvider
 
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
-        var handlersList = GetAllApplicableHandlers(message);
-#if !DISABLE_MEDIATOR_OPENTELEMETRY
-        using var activity = ActivitySource.StartActivity("mediator.publish");
-        if (activity != null)
-        {
-            var messageType = message.GetType();
-            activity.SetTag("messaging.operation", "publish");
-            activity.SetTag("messaging.message_type", messageType.FullName);
-            activity.SetTag("messaging.handler_count", handlersList.Length);
-        }
-#endif
-        return _configuration.NotificationPublisher.PublishAsync(this, handlersList.ToList(), message, cancellationToken);
+        var handlersList = GetAllApplicableHandlers(message).ToList();
+        return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
     }
 
     [DebuggerStepThrough]

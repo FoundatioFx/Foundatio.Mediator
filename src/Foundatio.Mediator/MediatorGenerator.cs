@@ -27,6 +27,17 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             })
             .WithTrackingName(TrackingNames.Settings);
 
+        // Read OpenTelemetry enabled property. Default: true
+        var openTelemetryEnabledSetting = context.AnalyzerConfigOptionsProvider
+            .Select((x, _) =>
+            {
+                if (!x.GlobalOptions.TryGetValue($"build_property.{Constants.OpenTelemetryPropertyName}", out string? enabled))
+                    return true; // Default to enabled
+
+                return !enabled.Equals("false", StringComparison.OrdinalIgnoreCase);
+            })
+            .WithTrackingName(TrackingNames.Settings);
+
         var csharpSufficient = context.CompilationProvider
             .Select((x, _) => x is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 });
 
@@ -37,7 +48,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var interceptionEnabled = settings
             .Select((x, _) => x is { Left: false, Right: true });
 
-        var combinedSettings = interceptionEnabled.Combine(handlerLifetimeSetting);
+        var combinedSettings = interceptionEnabled.Combine(handlerLifetimeSetting).Combine(openTelemetryEnabledSetting);
 
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -72,16 +83,17 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 Handlers: spc.Left.Left.Left.Left,
                 Middleware: spc.Left.Left.Left.Right,
                 CallSites: spc.Left.Left.Right,
-                InterceptorsEnabled: spc.Left.Right.Left,
-                HandlerLifetime: spc.Left.Right.Right,
+                InterceptorsEnabled: spc.Left.Right.Left.Left,
+                HandlerLifetime: spc.Left.Right.Left.Right,
+                OpenTelemetryEnabled: spc.Left.Right.Right,
                 Compilation: spc.Right
             ));
 
         context.RegisterImplementationSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, source.HandlerLifetime, source.Compilation, spc));
+            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.InterceptorsEnabled, source.HandlerLifetime, source.OpenTelemetryEnabled, source.Compilation, spc));
     }
 
-    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, string handlerLifetime, Compilation compilation, SourceProductionContext context)
+    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, bool interceptorsEnabled, string handlerLifetime, bool openTelemetryEnabled, Compilation compilation, SourceProductionContext context)
     {
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
@@ -104,7 +116,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         InterceptsLocationGenerator.Execute(context, interceptorsEnabled);
 
-        HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled);
+        HandlerGenerator.Execute(context, handlersWithInfo, interceptorsEnabled, openTelemetryEnabled);
 
     DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, handlerLifetime);
     }

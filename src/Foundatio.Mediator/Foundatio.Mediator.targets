@@ -7,8 +7,9 @@
   </Target>
   
   <Target Name="Foundatio_Mediator_OpenTelemetry">
-    <PropertyGroup Condition="'$(EnableMediatorOpenTelemetry)' == 'false'">
-      <DefineConstants>$(DefineConstants);DISABLE_MEDIATOR_OPENTELEMETRY</DefineConstants>
+    <!-- Set default value for EnableMediatorOpenTelemetry if not set -->
+    <PropertyGroup Condition="'$(EnableMediatorOpenTelemetry)' == ''">
+      <EnableMediatorOpenTelemetry>true</EnableMediatorOpenTelemetry>
     </PropertyGroup>
   </Target>
 </Project>

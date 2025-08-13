@@ -57,6 +57,7 @@ internal static class HandlerGenerator
             using System.Threading;
             using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.Logging;
 
             namespace Foundatio.Mediator;
             """);
@@ -124,6 +125,7 @@ internal static class HandlerGenerator
 
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
+        source.AppendLine("var logger = serviceProvider.GetService<Microsoft.Extensions.Logging.ILogger<Foundatio.Mediator.IMediator>>();");
         source.AppendLine();
 
         // build middleware instances
@@ -205,7 +207,9 @@ internal static class HandlerGenerator
         parameters = BuildParameters(source, handler.Parameters);
 
         source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
+        source.AppendLine($"logger?.LogDebug(\"Executing handler {{HandlerType}} for message {{MessageType}}\", \"{handler.FullName}\", \"{handler.MessageType.FullName}\");");
         source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
+        source.AppendLine($"logger?.LogDebug(\"Completed handler {{HandlerType}} for message {{MessageType}}\", \"{handler.FullName}\", \"{handler.MessageType.FullName}\");");
         source.AppendLineIf(handler.HasReturnValue);
 
         // call after middleware

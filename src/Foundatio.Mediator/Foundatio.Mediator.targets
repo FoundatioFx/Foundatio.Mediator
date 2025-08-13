@@ -1,8 +1,14 @@
-<Project InitialTargets="Foundatio_Mediator_Interceptors">
+<Project InitialTargets="Foundatio_Mediator_Interceptors;Foundatio_Mediator_OpenTelemetry">
   <Target Name="Foundatio_Mediator_Interceptors">
     <PropertyGroup Condition="'$(DisableMediatorInterceptors)' != 'true'">
       <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
       <InterceptorsPreviewNamespaces>$(InterceptorsPreviewNamespaces);Foundatio.Mediator</InterceptorsPreviewNamespaces>
+    </PropertyGroup>
+  </Target>
+  
+  <Target Name="Foundatio_Mediator_OpenTelemetry">
+    <PropertyGroup Condition="'$(EnableMediatorOpenTelemetry)' == 'false'">
+      <DefineConstants>$(DefineConstants);DISABLE_MEDIATOR_OPENTELEMETRY</DefineConstants>
     </PropertyGroup>
   </Target>
 </Project>

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator;
 
@@ -8,12 +9,14 @@ public class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly MediatorConfiguration _configuration;
+    private readonly ILogger<Mediator> _logger;
 
     [DebuggerStepThrough]
     public Mediator(IServiceProvider serviceProvider, MediatorConfiguration? configuration = null)
     {
         _serviceProvider = serviceProvider;
         _configuration = configuration ?? new MediatorConfiguration();
+        _logger = serviceProvider.GetService<ILogger<Mediator>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<Mediator>.Instance;
     }
 
     public IServiceProvider ServiceProvider => _serviceProvider;
@@ -21,18 +24,21 @@ public class Mediator : IMediator, IServiceProvider
 
     public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Invoking handler for message type {MessageType}", message.GetType().Name);
         var handlerFunc = GetInvokeAsyncDelegate(message.GetType());
         return handlerFunc(this, message, cancellationToken);
     }
 
     public void Invoke(object message, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Invoking handler for message type {MessageType}", message.GetType().Name);
         var handlerFunc = GetInvokeDelegate(message.GetType());
         handlerFunc(this, message, cancellationToken);
     }
 
     public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Invoking handler for message type {MessageType} with expected response type {ResponseType}", message.GetType().Name, typeof(TResponse).Name);
         var handlerFunc = GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
         var result = await handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
@@ -40,6 +46,7 @@ public class Mediator : IMediator, IServiceProvider
 
     public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Invoking handler for message type {MessageType} with expected response type {ResponseType}", message.GetType().Name, typeof(TResponse).Name);
         var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
         var result = handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
@@ -47,7 +54,8 @@ public class Mediator : IMediator, IServiceProvider
 
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
-        var handlersList = GetAllApplicableHandlers(message).ToList();
+        var handlersList = GetAllApplicableHandlers(message);
+        _logger.LogDebug("Publishing message type {MessageType} to {HandlerCount} handlers", message.GetType().Name, handlersList.Length);
         return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
     }
 

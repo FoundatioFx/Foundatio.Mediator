@@ -9,7 +9,7 @@ public static class ServiceConfiguration
     public static IServiceCollection ConfigureServices(this IServiceCollection services)
     {
         // Add logging
-        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
 
         // Add Foundatio Mediator
         services.AddMediator();

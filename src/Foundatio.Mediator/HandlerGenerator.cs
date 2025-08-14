@@ -125,7 +125,8 @@ internal static class HandlerGenerator
 
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
-        source.AppendLine("var logger = serviceProvider.GetService<ILogger>();");
+        source.AppendLine("var loggerFactory = serviceProvider.GetService<ILoggerFactory>();");
+        source.AppendLine($"var logger = loggerFactory?.CreateLogger(\"{handler.FullName}\");");
         source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
         source.AppendLine();
 

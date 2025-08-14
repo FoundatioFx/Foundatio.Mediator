@@ -11,12 +11,14 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <DisableMediatorInterceptors>false</DisableMediatorInterceptors>
     <MediatorHandlerLifetime>None</MediatorHandlerLifetime>
+    <EnableMediatorOpenTelemetry>true</EnableMediatorOpenTelemetry>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
   </PropertyGroup>
 
   <ItemGroup>
     <CompilerVisibleProperty Include="DisableMediatorInterceptors" />
     <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
+    <CompilerVisibleProperty Include="EnableMediatorOpenTelemetry" />
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />

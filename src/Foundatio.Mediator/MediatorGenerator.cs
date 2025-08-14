@@ -102,6 +102,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
 
+        ActivitySourceGenerator.Execute(context, configuration.OpenTelemetryEnabled);
+
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 
         DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, configuration.HandlerLifetime);

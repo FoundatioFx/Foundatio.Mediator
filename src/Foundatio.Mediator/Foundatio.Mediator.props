@@ -12,7 +12,7 @@
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(MediatorDebug)' == 'true'">
+  <ItemGroup Condition="'$(MediatorDebug)' == 'true' and '$(CompilerGeneratedFilesOutputPath)' != ''">
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />

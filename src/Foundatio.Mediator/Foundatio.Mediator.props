@@ -1,7 +1,20 @@
 <Project>
+  <PropertyGroup Condition="'$(MediatorDebug)' == 'true'">
+    <!-- Emit compiler generated files for debugging purposes -->
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
+
   <ItemGroup>
+    <!-- CompilerVisibleProperties for Mediator settings -->
     <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
     <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MediatorDebug)' == 'true'">
+    <!-- Exclude the output of source generators from the compilation -->
+    <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
+    <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
   </ItemGroup>
 </Project>

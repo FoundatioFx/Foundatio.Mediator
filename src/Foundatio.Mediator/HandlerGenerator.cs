@@ -233,6 +233,10 @@ internal static class HandlerGenerator
         source.AppendLineIf(afterMiddleware.Any());
 
         source.AppendLineIf($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
+        if (configuration.OpenTelemetryEnabled && !shouldUseTryCatch)
+        {
+            source.AppendLine("        activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
+        }
         if (handler.HasReturnValue)
         {
             source.AppendLine("return handlerResult;");
@@ -247,6 +251,16 @@ internal static class HandlerGenerator
                 catch (Exception ex)
                 {
                     exception = ex;
+                """);
+            
+            if (configuration.OpenTelemetryEnabled)
+            {
+                source.AppendLine("                    activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);");
+                source.AppendLine("                    activity?.SetTag(\"exception.type\", ex.GetType().FullName);");
+                source.AppendLine("                    activity?.SetTag(\"exception.message\", ex.Message);");
+            }
+            
+            source.AppendLine("""
                     throw;
                 }
                 finally
@@ -266,6 +280,10 @@ internal static class HandlerGenerator
             }
 
             source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+            if (configuration.OpenTelemetryEnabled)
+            {
+                source.AppendLine("            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
+            }
             source.DecrementIndent();
 
             source.AppendLine("}");

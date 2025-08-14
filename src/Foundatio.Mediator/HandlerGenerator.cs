@@ -6,7 +6,7 @@ namespace Foundatio.Mediator;
 
 internal static class HandlerGenerator
 {
-    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, bool interceptorsEnabled)
+    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, GeneratorConfiguration configuration)
     {
         if (handlers.Count == 0)
             return;
@@ -19,7 +19,7 @@ internal static class HandlerGenerator
             {
                 string wrapperClassName = GetHandlerClassName(handler);
 
-                string source = GenerateHandler(handler, wrapperClassName, interceptorsEnabled);
+                string source = GenerateHandler(handler, wrapperClassName, configuration);
                 string fileName = $"{wrapperClassName}.g.cs";
                 context.AddSource(fileName, source);
             }
@@ -40,7 +40,7 @@ internal static class HandlerGenerator
         }
     }
 
-    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, bool interceptorsEnabled)
+    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration)
     {
         var source = new IndentedStringBuilder();
 
@@ -70,11 +70,11 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        GenerateHandleMethod(source, handler, wrapperClassName);
+        GenerateHandleMethod(source, handler, wrapperClassName, configuration);
 
         GenerateUntypedHandleMethod(source, handler);
 
-        GenerateInterceptorMethods(source, handler, interceptorsEnabled);
+        GenerateInterceptorMethods(source, handler, configuration.InterceptorsEnabled);
 
         if (!handler.IsStatic)
         {
@@ -92,7 +92,7 @@ internal static class HandlerGenerator
         return source.ToString();
     }
 
-    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, string wrapperClassName)
+    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration)
     {
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
@@ -127,6 +127,15 @@ internal static class HandlerGenerator
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
         source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+        
+        if (configuration.OpenTelemetryEnabled)
+        {
+            source.AppendLine();
+            source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"Handle {handler.MessageType.Identifier}\");");
+            source.AppendLine($"activity?.SetTag(\"mediator.message.type\", \"{handler.MessageType.FullName}\");");
+            source.AppendLine($"activity?.SetTag(\"mediator.handler.type\", \"{handler.FullName}\");");
+        }
+        
         source.AppendLine();
 
         // build middleware instances

@@ -41,7 +41,7 @@ Let's keep pushing for clarity, usability, and excellence—both in code and use
 - Middleware lifetime: `Mediator.GetOrCreateMiddleware<T>` caches if not in DI; register to control lifetime.
 
 ## Interceptors toggle
-- Default ON. Disable via `<DisableMediatorInterceptors>true</DisableMediatorInterceptors>` (see `src/Foundatio.Mediator/Foundatio.Mediator.props` and `.targets`).
+- Default ON. Disable via `<MediatorDisableInterceptors>true</MediatorDisableInterceptors>` (see `src/Foundatio.Mediator/Foundatio.Mediator.props` and `.targets`).
 
 ## Reference map
 - Runtime: `src/Foundatio.Mediator.Abstractions/` (IMediator, Result, HandlerRegistration, MediatorConfiguration)

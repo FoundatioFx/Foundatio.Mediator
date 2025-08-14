@@ -70,7 +70,7 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        GenerateHandleMethod(source, handler, wrapperClassName, configuration);
+        GenerateHandleMethod(source, handler, configuration);
 
         GenerateUntypedHandleMethod(source, handler);
 
@@ -92,7 +92,7 @@ internal static class HandlerGenerator
         return source.ToString();
     }
 
-    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration)
+    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
     {
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
@@ -127,14 +127,15 @@ internal static class HandlerGenerator
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
         source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
-        
+
         if (configuration.OpenTelemetryEnabled)
         {
             source.AppendLine();
-            source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"Handle {handler.MessageType.Identifier}\");");
-            source.AppendLine($"activity?.SetTag(\"mediator.message.type\", \"{handler.MessageType.FullName}\");");
+            source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{handler.MessageType.Identifier}\");");
+            source.AppendLine($"activity?.SetTag(\"messaging.system\", \"Foundatio.Mediator\");");
+            source.AppendLine($"activity?.SetTag(\"messaging.message.type\", \"{handler.MessageType.FullName}\");");
         }
-        
+
         source.AppendLine();
 
         // build middleware instances
@@ -234,7 +235,7 @@ internal static class HandlerGenerator
         source.AppendLineIf($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
         if (configuration.OpenTelemetryEnabled && !shouldUseTryCatch)
         {
-            source.AppendLine("        activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
+            source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
         }
         if (handler.HasReturnValue)
         {
@@ -251,14 +252,14 @@ internal static class HandlerGenerator
                 {
                     exception = ex;
                 """);
-            
+
             if (configuration.OpenTelemetryEnabled)
             {
-                source.AppendLine("                    activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);");
-                source.AppendLine("                    activity?.SetTag(\"exception.type\", ex.GetType().FullName);");
-                source.AppendLine("                    activity?.SetTag(\"exception.message\", ex.Message);");
+                source.AppendLine("    activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);");
+                source.AppendLine("    activity?.SetTag(\"exception.type\", ex.GetType().FullName);");
+                source.AppendLine("    activity?.SetTag(\"exception.message\", ex.Message);");
             }
-            
+
             source.AppendLine("""
                     throw;
                 }
@@ -278,11 +279,11 @@ internal static class HandlerGenerator
                 source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
             }
 
-            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
             if (configuration.OpenTelemetryEnabled)
             {
-                source.AppendLine("            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
+                source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
             }
+            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
             source.DecrementIndent();
 
             source.AppendLine("}");

@@ -19,9 +19,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Select((x, _) =>
             {
                 var (options, isCSharpSufficient) = x;
-                
+
                 // Read MediatorDisableInterceptors property
-                var interceptorsDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisabledPropertyName}", out string? disableSwitch)
+                var interceptorsDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableInterceptorsPropertyName}", out string? disableSwitch)
                     && disableSwitch.Equals("true", StringComparison.Ordinal);
                 var interceptorsEnabled = !interceptorsDisabled && isCSharpSufficient;
 
@@ -31,7 +31,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     handlerLifetime = lifetime.Trim();
 
                 // Read OpenTelemetry disabled property. Default: false (OpenTelemetry enabled by default)
-                var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.OpenTelemetryPropertyName}", out string? openTelemetrySwitch)
+                var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableOpenTelemetryPropertyName}", out string? openTelemetrySwitch)
                     && openTelemetrySwitch.Equals("true", StringComparison.Ordinal);
                 var openTelemetryEnabled = !openTelemetryDisabled;
 

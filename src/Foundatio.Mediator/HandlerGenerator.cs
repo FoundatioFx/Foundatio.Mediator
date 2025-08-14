@@ -57,6 +57,7 @@ internal static class HandlerGenerator
             using System.Threading;
             using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.Logging;
 
             namespace Foundatio.Mediator;
             """);
@@ -69,7 +70,7 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        GenerateHandleMethod(source, handler);
+        GenerateHandleMethod(source, handler, wrapperClassName);
 
         GenerateUntypedHandleMethod(source, handler);
 
@@ -91,7 +92,7 @@ internal static class HandlerGenerator
         return source.ToString();
     }
 
-    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, string wrapperClassName)
     {
         string stronglyTypedMethodName = GetHandlerMethodName(handler);
 
@@ -124,6 +125,8 @@ internal static class HandlerGenerator
 
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
+        source.AppendLine("var logger = serviceProvider.GetService<ILogger>();");
+        source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
         source.AppendLine();
 
         // build middleware instances
@@ -192,6 +195,7 @@ internal static class HandlerGenerator
                 }
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
                 source.AppendLine("{");
+                source.AppendLine($"    logger?.LogDebug(\"Short-circuited processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
                 source.AppendLine($"    return{result};");
                 source.AppendLine("}");
             }
@@ -219,7 +223,15 @@ internal static class HandlerGenerator
         }
         source.AppendLineIf(afterMiddleware.Any());
 
-        source.AppendLineIf("return handlerResult;", handler.HasReturnValue);
+        if (handler.HasReturnValue)
+        {
+            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+            source.AppendLine("return handlerResult;");
+        }
+        else
+        {
+            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+        }
 
         if (shouldUseTryCatch)
         {
@@ -247,6 +259,8 @@ internal static class HandlerGenerator
 
                 source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
             }
+
+            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
 
             source.DecrementIndent();
 

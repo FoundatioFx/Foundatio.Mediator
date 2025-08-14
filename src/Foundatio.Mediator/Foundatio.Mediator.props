@@ -1,6 +1,6 @@
 <Project>
   <ItemGroup>
-    <CompilerVisibleProperty Include="DisableMediatorInterceptors" />
+    <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
     <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
   </ItemGroup>

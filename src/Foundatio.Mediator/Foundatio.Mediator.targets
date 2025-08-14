@@ -1,6 +1,6 @@
 <Project InitialTargets="Foundatio_Mediator_Interceptors">
   <Target Name="Foundatio_Mediator_Interceptors">
-    <PropertyGroup Condition="'$(DisableMediatorInterceptors)' != 'true'">
+    <PropertyGroup Condition="'$(MediatorDisableInterceptors)' != 'true'">
       <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
       <InterceptorsPreviewNamespaces>$(InterceptorsPreviewNamespaces);Foundatio.Mediator</InterceptorsPreviewNamespaces>
     </PropertyGroup>

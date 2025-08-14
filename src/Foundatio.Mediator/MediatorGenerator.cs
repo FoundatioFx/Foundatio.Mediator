@@ -20,7 +20,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             {
                 var (options, isCSharpSufficient) = x;
                 
-                // Read DisableMediatorInterceptors property
+                // Read MediatorDisableInterceptors property
                 var interceptorsDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisabledPropertyName}", out string? disableSwitch)
                     && disableSwitch.Equals("true", StringComparison.Ordinal);
                 var interceptorsEnabled = !interceptorsDisabled && isCSharpSufficient;

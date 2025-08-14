@@ -5,38 +5,41 @@ using Xunit.Abstractions;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class LoggingIntegrationTests : TestLoggerBase
+public class LoggingIntegrationTests
 {
-    public LoggingIntegrationTests(ITestOutputHelper output) : base(output, new TestLoggerFixture())
+    private readonly ITestOutputHelper _output;
+
+    public LoggingIntegrationTests(ITestOutputHelper output)
     {
+        _output = output;
     }
 
     [Fact]
     public async Task Handler_Should_Log_Debug_Messages()
     {
         // Arrange
-        var services = new ServiceCollection();
-        services.AddLogging(builder => 
-        {
-            builder.ClearProviders();
-            builder.AddProvider(new TestLoggerProvider(new TestLoggerOptions()));
-            builder.SetMinimumLevel(LogLevel.Debug);
-        });
-        services.AddMediator();
+        var services = new ServiceCollection()
+            .AddLogging(b => 
+            {
+                b.SetMinimumLevel(LogLevel.Debug);
+                b.AddTestLogger(_output);
+            })
+            .AddMediator();
         
         var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
+        var testLogger = serviceProvider.GetRequiredService<TestLogger>();
 
         // Act
         await mediator.InvokeAsync(new TestMessage("Hello"));
 
         // Assert
-        // Use the fixture to capture logs - check different property names
-        // Since we don't know the exact property name, let's output success
-        Log.LogInformation("Handler processing completed successfully");
+        Assert.True(testLogger.LogEntries.Count > 0, "Expected log entries but found none");
         
-        // Verify that the test executed without exceptions
-        Assert.True(true);
+        var messageExists = testLogger.LogEntries.Any(entry => 
+            entry.LogLevel == LogLevel.Debug && 
+            entry.Message.Contains("Processing message"));
+        Assert.True(messageExists, "Expected to find 'Processing message' debug log");
     }
 
     public record TestMessage(string Value);

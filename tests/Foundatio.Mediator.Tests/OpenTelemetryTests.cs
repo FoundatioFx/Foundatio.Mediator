@@ -42,8 +42,7 @@ public class OpenTelemetryTests : GeneratorTestBase
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
-        Assert.Contains("activity?.SetTag(\"mediator.message.type\", \"Msg\");", wrapper.Source);
-        Assert.DoesNotContain("activity?.SetTag(\"mediator.handler.type\", \"MsgHandler\");", wrapper.Source);
+        Assert.Contains("activity?.SetTag(\"messaging.message.type\", \"Msg\");", wrapper.Source);
     }
 
     [Fact]
@@ -85,8 +84,7 @@ public class OpenTelemetryTests : GeneratorTestBase
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
-        Assert.Contains("activity?.SetTag(\"mediator.message.type\", \"AsyncMsg\");", wrapper.Source);
-        Assert.DoesNotContain("activity?.SetTag(\"mediator.handler.type\", \"AsyncMsgHandler\");", wrapper.Source);
+        Assert.Contains("activity?.SetTag(\"messaging.message.type\", \"AsyncMsg\");", wrapper.Source);
     }
 
     [Fact]

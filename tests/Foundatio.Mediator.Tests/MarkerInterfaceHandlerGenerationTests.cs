@@ -17,7 +17,6 @@ public class MarkerInterfaceHandlerGenerationTests : GeneratorTestBase
             }
             """;
 
-        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
-        await VerifyGenerated(source, opts, new MediatorGenerator());
+        await VerifyGenerated(source, new MediatorGenerator());
     }
 }

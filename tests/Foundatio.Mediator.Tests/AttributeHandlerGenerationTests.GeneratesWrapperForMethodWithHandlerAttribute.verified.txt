@@ -64,6 +64,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator;
 
@@ -74,11 +75,14 @@ internal static class SomeClass_Ping_Handler
     public static async System.Threading.Tasks.Task<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
+        var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("SomeClass");
+        logger?.LogDebug("Processing message {MessageType}", "Ping");
 
         string? handlerResult = null;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         handlerResult = await handlerInstance.SomeMethodAsync(message, cancellationToken);
 
+        logger?.LogDebug("Completed processing message {MessageType}", "Ping");
         return handlerResult;
     }
 

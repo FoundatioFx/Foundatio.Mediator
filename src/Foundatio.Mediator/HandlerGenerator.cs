@@ -125,8 +125,7 @@ internal static class HandlerGenerator
 
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
-        source.AppendLine("var loggerFactory = serviceProvider.GetService<ILoggerFactory>();");
-        source.AppendLine($"var logger = loggerFactory?.CreateLogger(\"{handler.FullName}\");");
+        source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
         source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
         source.AppendLine();
 
@@ -224,14 +223,10 @@ internal static class HandlerGenerator
         }
         source.AppendLineIf(afterMiddleware.Any());
 
+        source.AppendLineIf($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
         if (handler.HasReturnValue)
         {
-            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
             source.AppendLine("return handlerResult;");
-        }
-        else
-        {
-            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
         }
 
         if (shouldUseTryCatch)
@@ -262,7 +257,6 @@ internal static class HandlerGenerator
             }
 
             source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
-
             source.DecrementIndent();
 
             source.AppendLine("}");

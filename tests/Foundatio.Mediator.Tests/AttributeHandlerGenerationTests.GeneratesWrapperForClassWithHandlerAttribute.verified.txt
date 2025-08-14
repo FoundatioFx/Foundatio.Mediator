@@ -75,8 +75,7 @@ internal static class PingProcessor_Ping_Handler
     public static async System.Threading.Tasks.Task<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
-        var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
-        var logger = loggerFactory?.CreateLogger("PingProcessor");
+        var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingProcessor");
         logger?.LogDebug("Processing message {MessageType}", "Ping");
 
         string? handlerResult = null;

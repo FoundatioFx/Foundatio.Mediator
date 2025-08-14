@@ -17,6 +17,7 @@ public class BasicHandlerGenerationTests : GeneratorTestBase
             }
             """;
 
-        await VerifyGenerated(source, new MediatorGenerator());
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
+        await VerifyGenerated(source, opts, new MediatorGenerator());
     }
 }

@@ -133,7 +133,6 @@ internal static class HandlerGenerator
             source.AppendLine();
             source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"Handle {handler.MessageType.Identifier}\");");
             source.AppendLine($"activity?.SetTag(\"mediator.message.type\", \"{handler.MessageType.FullName}\");");
-            source.AppendLine($"activity?.SetTag(\"mediator.handler.type\", \"{handler.FullName}\");");
         }
         
         source.AppendLine();

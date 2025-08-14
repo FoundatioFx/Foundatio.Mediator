@@ -15,7 +15,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
             """;
 
-        var opts = CreateOptions(("build_property.EnableMediatorOpenTelemetry", "false"));
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
@@ -37,17 +37,17 @@ public class OpenTelemetryTests : GeneratorTestBase
             public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
             """;
 
-        var opts = CreateOptions(("build_property.EnableMediatorOpenTelemetry", "true"));
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
         Assert.Contains("activity?.SetTag(\"mediator.message.type\", \"Msg\");", wrapper.Source);
-        Assert.Contains("activity?.SetTag(\"mediator.handler.type\", \"MsgHandler\");", wrapper.Source);
+        Assert.DoesNotContain("activity?.SetTag(\"mediator.handler.type\", \"MsgHandler\");", wrapper.Source);
     }
 
     [Fact]
-    public void OpenTelemetry_DefaultValue_Disabled()
+    public void OpenTelemetry_DefaultValue_Enabled()
     {
         var src = """
             using System.Threading;
@@ -59,13 +59,13 @@ public class OpenTelemetryTests : GeneratorTestBase
             public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
             """;
 
-        // Not setting EnableMediatorOpenTelemetry property - should default to false
+        // Not setting MediatorDisableOpenTelemetry property - should default to enabled (false)
         var opts = CreateOptions();
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-        Assert.DoesNotContain("MediatorActivitySource", wrapper.Source);
-        Assert.DoesNotContain("StartActivity", wrapper.Source);
+        Assert.Contains("MediatorActivitySource", wrapper.Source);
+        Assert.Contains("StartActivity", wrapper.Source);
     }
 
     [Fact]
@@ -80,13 +80,13 @@ public class OpenTelemetryTests : GeneratorTestBase
             public class AsyncMsgHandler { public async Task<string> HandleAsync(AsyncMsg m, CancellationToken ct) { return "result"; } }
             """;
 
-        var opts = CreateOptions(("build_property.EnableMediatorOpenTelemetry", "true"));
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
         Assert.Contains("activity?.SetTag(\"mediator.message.type\", \"AsyncMsg\");", wrapper.Source);
-        Assert.Contains("activity?.SetTag(\"mediator.handler.type\", \"AsyncMsgHandler\");", wrapper.Source);
+        Assert.DoesNotContain("activity?.SetTag(\"mediator.handler.type\", \"AsyncMsgHandler\");", wrapper.Source);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             public class MsgHandler { public void Handle(Msg m) { } }
             """;
 
-        var opts = CreateOptions(("build_property.EnableMediatorOpenTelemetry", "true"));
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
@@ -121,7 +121,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             public class TestMiddleware { public void Finally(Msg m) { } }
             """;
 
-        var opts = CreateOptions(("build_property.EnableMediatorOpenTelemetry", "true"));
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));

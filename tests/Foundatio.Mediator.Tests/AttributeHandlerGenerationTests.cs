@@ -18,7 +18,8 @@ public class AttributeHandlerGenerationTests : GeneratorTestBase
             }
             """;
 
-        await VerifyGenerated(source, new MediatorGenerator());
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
+        await VerifyGenerated(source, opts, new MediatorGenerator());
     }
 
     [Fact]
@@ -37,6 +38,7 @@ public class AttributeHandlerGenerationTests : GeneratorTestBase
             }
             """;
 
-        await VerifyGenerated(source, new MediatorGenerator());
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
+        await VerifyGenerated(source, opts, new MediatorGenerator());
     }
 }

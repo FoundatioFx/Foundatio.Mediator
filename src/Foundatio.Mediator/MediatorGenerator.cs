@@ -30,9 +30,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 if (options.GlobalOptions.TryGetValue($"build_property.{Constants.HandlerLifetimePropertyName}", out string? lifetime) && !string.IsNullOrWhiteSpace(lifetime))
                     handlerLifetime = lifetime.Trim();
 
-                // Read OpenTelemetry enabled property. Default: false
-                var openTelemetryEnabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.OpenTelemetryPropertyName}", out string? openTelemetrySwitch)
+                // Read OpenTelemetry disabled property. Default: false (OpenTelemetry enabled by default)
+                var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.OpenTelemetryPropertyName}", out string? openTelemetrySwitch)
                     && openTelemetrySwitch.Equals("true", StringComparison.Ordinal);
+                var openTelemetryEnabled = !openTelemetryDisabled;
 
                 return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled);
             })
@@ -101,8 +102,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             return;
 
         InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
-
-        ActivitySourceGenerator.Execute(context, configuration.OpenTelemetryEnabled);
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 

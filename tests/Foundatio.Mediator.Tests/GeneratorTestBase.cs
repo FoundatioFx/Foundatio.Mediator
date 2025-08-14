@@ -10,11 +10,17 @@ public abstract class GeneratorTestBase
 {
     protected async Task VerifyGenerated(string source, params IIncrementalGenerator[] generators)
     {
+        await VerifyGenerated(source, null, generators);
+    }
+
+    protected async Task VerifyGenerated(string source, AnalyzerConfigOptionsProvider? optionsProvider, params IIncrementalGenerator[] generators)
+    {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var compilation = CreateCompilation(source, parseOptions);
 
         var sourceGenerators = generators.Select(g => g.AsSourceGenerator());
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(sourceGenerators, parseOptions: parseOptions);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(sourceGenerators, additionalTexts: null,
+            parseOptions: parseOptions, optionsProvider: optionsProvider);
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
 
         var genResult = driver.GetRunResult();

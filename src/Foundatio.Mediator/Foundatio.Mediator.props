@@ -1,8 +1,14 @@
 <Project>
+  <PropertyGroup>
+    <MediatorDebug Condition="'$(MediatorDebug)'==''">false</MediatorDebug>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(MediatorDebug)' == 'true'">
     <!-- Emit compiler generated files for debugging purposes -->
-    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
-    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath Condition="'$(CompilerGeneratedFilesOutputPath)'==''">
+      $(BaseIntermediateOutputPath)Generated
+    </CompilerGeneratedFilesOutputPath>
+    <EmitCompilerGeneratedFiles Condition="'$(EmitCompilerGeneratedFiles)'==''">true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <ItemGroup>

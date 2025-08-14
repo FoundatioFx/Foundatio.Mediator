@@ -10,12 +10,17 @@
     <!-- Emit compiler generated files for debugging purposes -->
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-    <DisableMediatorInterceptors>false</DisableMediatorInterceptors>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
+    <!-- Foundatio generator options -->
+    <MediatorHandlerLifetime>None</MediatorHandlerLifetime>
+    <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
+    <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
   </PropertyGroup>
 
   <ItemGroup>
-    <CompilerVisibleProperty Include="DisableMediatorInterceptors" />
+    <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
+    <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
+    <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />

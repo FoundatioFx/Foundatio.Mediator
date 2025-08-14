@@ -78,11 +78,16 @@ internal static class PingHandler_Ping_Handler
         var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingHandler");
         logger?.LogDebug("Processing message {MessageType}", "Ping");
 
+        using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
+        activity?.SetTag("messaging.system", "Foundatio.Mediator");
+        activity?.SetTag("messaging.message.type", "Ping");
+
         string? handlerResult = null;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         handlerResult = await handlerInstance.HandleAsync(message, cancellationToken);
 
         logger?.LogDebug("Completed processing message {MessageType}", "Ping");
+        activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
         return handlerResult;
     }
 

@@ -15,7 +15,7 @@ public class InterceptorsToggleTests : GeneratorTestBase
             public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
             """;
 
-        var opts = CreateOptions(("build_property.DisableMediatorInterceptors", "true"));
+        var opts = CreateOptions(("build_property.MediatorDisableInterceptors", "true"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         Assert.DoesNotContain(trees, t => t.HintName == "InterceptsLocationAttribute.g.cs");
@@ -36,7 +36,7 @@ public class InterceptorsToggleTests : GeneratorTestBase
             public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
             """;
 
-        var opts = CreateOptions(("build_property.DisableMediatorInterceptors", "false"));
+        var opts = CreateOptions(("build_property.MediatorDisableInterceptors", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
         Assert.Contains(trees, t => t.HintName == "InterceptsLocationAttribute.g.cs");

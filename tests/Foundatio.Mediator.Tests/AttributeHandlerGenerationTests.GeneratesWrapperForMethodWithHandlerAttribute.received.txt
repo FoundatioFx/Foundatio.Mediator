@@ -100,16 +100,16 @@ internal static class SomeClass_Ping_Handler
         return result;
     }
 
-    private static SomeClass? _handler;
+    private static global::SomeClass? _handler;
     private static readonly object _lock = new object();
 
     [DebuggerStepThrough]
-    private static SomeClass GetOrCreateHandler(IServiceProvider serviceProvider)
+    private static global::SomeClass GetOrCreateHandler(IServiceProvider serviceProvider)
     {
         if (_handler != null)
             return _handler;
 
-        var handlerFromDI = serviceProvider.GetService<SomeClass>();
+        var handlerFromDI = serviceProvider.GetService<global::SomeClass>();
         if (handlerFromDI != null)
             return handlerFromDI;
 
@@ -118,7 +118,7 @@ internal static class SomeClass_Ping_Handler
             if (_handler != null)
                 return _handler;
 
-            _handler = ActivatorUtilities.CreateInstance<SomeClass>(serviceProvider);
+            _handler = ActivatorUtilities.CreateInstance<global::SomeClass>(serviceProvider);
             return _handler;
         }
     }

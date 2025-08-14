@@ -76,7 +76,7 @@ internal static class PingHandler_Ping_Handler
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var loggerFactory = serviceProvider.GetService<ILoggerFactory>();
-        var logger = loggerFactory?.CreateLogger("PingHandler");
+        var logger = loggerFactory?.CreateLogger("global::PingHandler");
         logger?.LogDebug("Processing message {MessageType}", "Ping");
 
         PingHandler.Handle(message);

@@ -118,7 +118,7 @@ internal static class HandlerAnalyzer
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
-                FullName = classSymbol.ToDisplayString(),
+                FullName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),

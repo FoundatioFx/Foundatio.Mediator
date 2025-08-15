@@ -73,6 +73,11 @@ internal static class HandlerAnalyzer
             || classSymbol.IsGenericType)
             return [];
 
+        // Exclude generated handler classes in Foundatio.Mediator namespace with names ending in "_Handler"
+        if (classSymbol.ContainingNamespace?.ToDisplayString() == "Foundatio.Mediator" &&
+            classSymbol.Name.EndsWith("_Handler"))
+            return [];
+
         // Determine if the class should be treated as a handler class
         bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
         bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IFoundatioHandler");

@@ -280,6 +280,31 @@ Foundatio.Mediator delivers exceptional performance, getting remarkably close to
 
 *Benchmarks run on .NET 9.0 with BenchmarkDotNet. Results show Foundatio.Mediator achieves its design goal of getting as close as possible to direct method call performance.*
 
+### 🔄 DI Scope Behavior
+
+Each root message handler invocation creates a new DI scope that is shared across:
+
+- ✅ The root handler execution
+- ✅ All cascading messages (tuple returns)
+- ✅ Any nested `mediator.InvokeAsync()` or `mediator.PublishAsync()` calls within handlers
+
+This ensures that scoped services (like `AppDbContext`) maintain consistent state throughout an entire message processing pipeline, while each separate root invocation gets its own isolated scope.
+
+```csharp
+public class OrderHandler(AppDbContext db)
+{
+    public async Task<(Order order, OrderCreated evt)> HandleAsync(CreateOrder cmd)
+    {
+        var order = new Order(cmd.ProductId, cmd.Quantity);
+        db.Orders.Add(order);
+        await db.SaveChangesAsync();
+
+        // OrderCreated event handlers will share the same AppDbContext instance
+        return (order, new OrderCreated(order.Id));
+    }
+}
+```
+
 ## 🎯 Handler Conventions
 
 ### Class Names
@@ -306,7 +331,7 @@ Valid handler method names:
 
 **Dependency Injection Support:**
 
-- Constructor injection: Handler classes support full constructor DI
+- Constructor injection: Handler classes support full constructor DI. ⚠️ **Important**: Handler classes are singleton by default, meaning constructor dependencies are resolved once and shared across all handler invocations. To get fresh dependencies per invocation, either move dependencies to handler method parameters or configure handler lifetime using `MediatorHandlerLifetime` or manual DI registration.
 - Method injection: Handler methods can declare any dependencies as parameters
 - Known parameters: `CancellationToken` is automatically provided by the mediator
 - Service resolution: All other parameters are resolved from the DI container

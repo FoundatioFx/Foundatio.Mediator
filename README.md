@@ -287,6 +287,7 @@ Each root message handler invocation creates a new DI scope that is shared acros
 - ✅ The root handler execution
 - ✅ All cascading messages (tuple returns)
 - ✅ Any nested `mediator.InvokeAsync()` or `mediator.PublishAsync()` calls within handlers
+- ⚠️ **Important**: Handler classes and middleware are singleton by default, meaning constructor dependencies are resolved once and shared across all handler invocations. To get fresh dependencies per invocation, either move dependencies to handler method parameters or configure handler lifetime using `MediatorHandlerLifetime` or manual DI registration.
 
 This ensures that scoped services (like `AppDbContext`) maintain consistent state throughout an entire message processing pipeline, while each separate root invocation gets its own isolated scope.
 

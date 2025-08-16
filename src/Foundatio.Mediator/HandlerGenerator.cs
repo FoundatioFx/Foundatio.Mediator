@@ -118,12 +118,11 @@ internal static class HandlerGenerator
                 returnType = $"System.Threading.Tasks.ValueTask<{returnType}>";
         }
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
+        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(System.IServiceProvider serviceProvider, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
               .AppendLine("{");
 
         source.IncrementIndent();
 
-        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
         source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
@@ -304,13 +303,14 @@ internal static class HandlerGenerator
 
         using (source.Indent())
         {
+            source.AppendLine("using var handlerScope = HandlerScope.GetOrCreate(mediator, cancellationToken);");
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             string stronglyTypedMethodName = GetHandlerMethodName(handler);
             string asyncModifier = handler.IsAsync ? "await " : "";
             string result = handler.ReturnType.IsVoid ? "" : "var result = ";
 
-            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(mediator, typedMessage, cancellationToken);");
+            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(handlerScope.Services, typedMessage, cancellationToken);");
 
             if (handler.ReturnType.IsTuple)
             {
@@ -402,12 +402,13 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
+        source.AppendLine("using var handlerScope = HandlerScope.GetOrCreate(mediator, cancellationToken);");
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
         asyncModifier = handler.IsAsync ? "await " : "";
         if (handler.ReturnType.IsTuple)
         {
-            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
+            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
             source.AppendLine();
 
             var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
@@ -425,7 +426,7 @@ internal static class HandlerGenerator
         else
         {
             string returnKeyword = responseType.IsVoid ? "" : "return ";
-            source.AppendLine($"{returnKeyword}{asyncModifier}{handlerMethod}(mediator, typedMessage, cancellationToken);");
+            source.AppendLine($"{returnKeyword}{asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
         }
 
         if (methodIsAsync && !handler.IsAsync)

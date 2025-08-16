@@ -72,9 +72,8 @@ namespace Foundatio.Mediator;
 [ExcludeFromCodeCoverage]
 internal static class PingHandler_Ping_Handler
 {
-    public static async System.Threading.Tasks.Task<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
+    public static async System.Threading.Tasks.Task<string> HandleAsync(System.IServiceProvider serviceProvider, Ping message, System.Threading.CancellationToken cancellationToken)
     {
-        var serviceProvider = (System.IServiceProvider)mediator;
         var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingHandler");
         logger?.LogDebug("Processing message {MessageType}", "Ping");
 
@@ -93,8 +92,9 @@ internal static class PingHandler_Ping_Handler
 
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
+        using var handlerScope = HandlerScope.GetOrCreate(mediator, cancellationToken);
         var typedMessage = (Ping)message;
-        var result = await HandleAsync(mediator, typedMessage, cancellationToken);
+        var result = await HandleAsync(handlerScope.Services, typedMessage, cancellationToken);
 
         if (responseType == null)
         {

@@ -195,10 +195,21 @@ Now that you have the basics working, explore more advanced features:
 - [Middleware](./middleware) - Adding cross-cutting concerns
 - [Examples](../examples/simple-handlers) - See practical examples
 
+## LLM-Friendly Documentation
+
+For AI assistants and Large Language Models, we provide optimized documentation formats:
+
+- [📜 LLMs Index](/llms.txt) - Quick reference with links to all sections
+- [📖 Complete Documentation](/llms-full.txt) - All docs in one LLM-friendly file
+
+These files follow the [llmstxt.org](https://llmstxt.org/) standard and contain the same information as this documentation in a format optimized for AI consumption.
+
 ## Common Issues
 
 ### Handler Not Found
+
 If you get a "handler not found" error:
+
 1. Ensure your class name ends with `Handler` or `Consumer`
 2. Ensure your method name follows the naming conventions
 3. Ensure the first parameter matches your message type exactly

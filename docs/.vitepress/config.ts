@@ -2,14 +2,14 @@ import { defineConfig } from 'vitepress'
 import llmstxt from 'vitepress-plugin-llms'
 
 export default defineConfig({
-  title: 'Foundatio.Mediator',
+  title: 'Foundatio Mediator',
   description: 'Blazingly fast, convention-based C# mediator powered by source generators and interceptors',
   base: '/',
   ignoreDeadLinks: true,
   vite: {
     plugins: [
       llmstxt({
-        title: 'Foundatio.Mediator Documentation',
+        title: 'Foundatio Mediator Documentation',
         ignoreFiles: ['node_modules/**', '.vitepress/**']
       })
     ]
@@ -95,7 +95,7 @@ export default defineConfig({
     ],
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2024 Foundatio'
+      copyright: 'Copyright © 2025 Foundatio'
     },
     editLink: {
       pattern: 'https://github.com/FoundatioFx/Foundatio.Mediator/edit/main/docs/:path'

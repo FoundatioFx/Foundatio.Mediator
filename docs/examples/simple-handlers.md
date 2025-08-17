@@ -10,15 +10,16 @@ Here's how to create simple messages and handlers:
 
 Messages are simple record types that carry data:
 
-@[code{5-7}](../../samples/ConsoleSample/Messages/Messages.cs)
+<<< ../../samples/ConsoleSample/Messages/Messages.cs#Simple{c#}
 
 ### Static Handlers
 
 The simplest handlers are static methods:
 
-@[code{9-20}](../../samples/ConsoleSample/Handlers/Handlers.cs)
+@[code{9-20}](../samples/ConsoleSample/Handlers/Handlers.cs)
 
 These handlers follow the naming conventions:
+
 - Class name ends with `Handler`
 - Method name is `Handle` or `HandleAsync`
 - First parameter is the message type
@@ -122,6 +123,5 @@ public class UserHandler
 
 ## Next Steps
 
-- [CRUD Operations](/examples/crud-operations) - More complex handler examples
-- [Handler Conventions](/guide/handler-conventions) - Complete convention rules
-- [Dependency Injection](/guide/dependency-injection) - Advanced DI scenarios
+- [CRUD Operations](./crud-operations) - More complex handler examples
+- [Handler Conventions](../guide/handler-conventions) - Complete convention rules

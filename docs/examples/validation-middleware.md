@@ -6,7 +6,7 @@ This example demonstrates how to implement validation middleware that automatica
 
 Here's the complete validation middleware from the sample project:
 
-@[code{7-45}](../../samples/ConsoleSample/Middleware/ValidationMiddleware.cs)
+@[code{7-45}](../samples/ConsoleSample/Middleware/ValidationMiddleware.cs)
 
 ## How It Works
 
@@ -65,7 +65,7 @@ When validation fails, the middleware returns a `HandlerResult.ShortCircuit()` w
 
 Here are the validated messages from the sample:
 
-@[code{10-24}](../../samples/ConsoleSample/Messages/Messages.cs)
+@[code{10-24}](../samples/ConsoleSample/Messages/Messages.cs)
 
 ### Validation Attributes Used
 
@@ -354,6 +354,5 @@ public void Should_Allow_Valid_Message()
 
 ## Next Steps
 
-- [Logging Middleware](/examples/logging-middleware) - Add comprehensive logging
-- [Result Types](/guide/result-types) - Understand validation error handling
-- [Middleware Guide](/guide/middleware) - Learn more middleware patterns
+- [Result Types](../guide/result-types) - Understand validation error handling
+- [Middleware Guide](../guide/middleware) - Learn more middleware patterns

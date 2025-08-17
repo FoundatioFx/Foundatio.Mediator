@@ -181,7 +181,6 @@ Unlike other mediator libraries that use reflection or delegates at runtime, Fou
 
 Ready to get started? Here's what to explore next:
 
-- [Getting Started](/guide/getting-started) - Set up your first handler
-- [Handler Conventions](/guide/handler-conventions) - Learn the discovery rules
-- [Performance Guide](/guide/performance) - Understand the internals
-- [Examples](/examples/simple-handlers) - See practical implementations
+- [Getting Started](./getting-started) - Set up your first handler
+- [Handler Conventions](./handler-conventions) - Learn the discovery rules
+- [Examples](../examples/simple-handlers) - See practical implementations

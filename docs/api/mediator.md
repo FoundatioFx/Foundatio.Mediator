@@ -327,6 +327,6 @@ if (handlerCount > 0)
 
 ## See Also
 
-- [Result Types](/api/result-types) - Return type patterns
+- [Result Types](../guide/result-types) - Return type patterns
 - [Handler Conventions](/guide/handler-conventions) - Handler discovery rules
 - [Middleware](/guide/middleware) - Cross-cutting concerns

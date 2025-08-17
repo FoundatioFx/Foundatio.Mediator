@@ -12,7 +12,7 @@ npm install
 npm run dev
 ```
 
-The documentation will be available at http://localhost:5173/
+The documentation will be available at `http://localhost:5173/`
 
 ## Building
 

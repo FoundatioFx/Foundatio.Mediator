@@ -6,25 +6,25 @@ This example demonstrates a complete CRUD (Create, Read, Update, Delete) impleme
 
 First, let's look at the CRUD messages with validation attributes:
 
-@[code{10-24}](../../samples/ConsoleSample/Messages/Messages.cs)
+@[code{10-24}](../samples/ConsoleSample/Messages/Messages.cs)
 
 ## Order Model
 
 The domain model is a simple record:
 
-@[code{32}](../../samples/ConsoleSample/Messages/Messages.cs)
+@[code{32}](../samples/ConsoleSample/Messages/Messages.cs)
 
 ## Event Messages
 
 Events are published when operations complete:
 
-@[code{26-28}](../../samples/ConsoleSample/Messages/Messages.cs)
+@[code{26-28}](../samples/ConsoleSample/Messages/Messages.cs)
 
 ## CRUD Handler Implementation
 
 Here's the complete CRUD handler with Result types and event publishing:
 
-@[code{22-88}](../../samples/ConsoleSample/Handlers/Handlers.cs)
+@[code{22-88}](../samples/ConsoleSample/Handlers/Handlers.cs)
 
 ## Key Features Demonstrated
 
@@ -154,7 +154,7 @@ if (result.IsSuccess)
 
 You can create separate handlers to react to the published events:
 
-@[code{7-35}](../../samples/ConsoleSample/Handlers/EventHandlers.cs)
+@[code{90-123}](../../../samples/ConsoleSample/Handlers/EventHandlers.cs)
 
 ## Validation Integration
 
@@ -188,6 +188,5 @@ When used with validation middleware, invalid messages are automatically rejecte
 
 ## Next Steps
 
-- [Event Publishing](/examples/event-publishing) - Learn more about the publish pattern
-- [Result Types](/guide/result-types) - Deep dive into Result&lt;T&gt; usage
-- [Validation Middleware](/examples/validation-middleware) - Add validation to your handlers
+- [Result Types](../guide/result-types) - Deep dive into Result&lt;T&gt; usage
+- [Validation Middleware](./validation-middleware) - Add validation to your handlers

@@ -467,7 +467,5 @@ public class OrderHandler
 
 ## Next Steps
 
-- [Dependency Injection](/guide/dependency-injection) - Advanced DI scenarios
-- [Result Types](/guide/result-types) - Robust error handling patterns
-- [Middleware](/guide/middleware) - Cross-cutting concerns
-- [Performance Guide](/guide/performance) - Understanding the generated code
+- [Result Types](./result-types) - Robust error handling patterns
+- [Middleware](./middleware) - Cross-cutting concerns

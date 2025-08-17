@@ -101,7 +101,7 @@ Middleware can short-circuit handler execution by returning a `HandlerResult` fr
 
 Let's look at the validation middleware from the sample:
 
-@[code{7-20}](../../samples/ConsoleSample/Middleware/ValidationMiddleware.cs)
+@[code{7-20}](../../../samples/ConsoleSample/Middleware/ValidationMiddleware.cs)
 
 ### Short-Circuit Usage
 
@@ -236,7 +236,7 @@ public class OrderCreationMiddleware
 
 Here's the logging middleware from the sample project:
 
-@[code{8-23}](../../samples/ConsoleSample/Middleware/LoggingMiddleware.cs)
+@[code{8-23}](../../../samples/ConsoleSample/Middleware/LoggingMiddleware.cs)
 
 ### Caching Middleware
 
@@ -410,6 +410,5 @@ public void Before(object message) { }
 
 ## Next Steps
 
-- [Validation Middleware Example](/examples/validation-middleware) - Complete validation implementation
-- [Logging Middleware Example](/examples/logging-middleware) - Comprehensive logging setup
-- [Handler Conventions](/guide/handler-conventions) - Learn handler discovery rules
+- [Validation Middleware Example](../examples/validation-middleware) - Complete validation implementation
+- [Handler Conventions](./handler-conventions) - Learn handler discovery rules

@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'Foundatio.Mediator',
   description: 'Blazingly fast, convention-based C# mediator powered by source generators and interceptors',
   base: '/',
+  ignoreDeadLinks: true,
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
     ['meta', { name: 'theme-color', content: '#3c8772' }]

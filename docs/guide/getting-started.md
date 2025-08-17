@@ -182,11 +182,10 @@ public class UserHandler
 
 Now that you have the basics working, explore more advanced features:
 
-- [Handler Conventions](/guide/handler-conventions) - Learn all the discovery rules
-- [Dependency Injection](/guide/dependency-injection) - Advanced DI scenarios
-- [Result Types](/guide/result-types) - Using Result&lt;T&gt; for robust error handling
-- [Middleware](/guide/middleware) - Adding cross-cutting concerns
-- [Examples](/examples/simple-handlers) - See practical examples
+- [Handler Conventions](./handler-conventions) - Learn all the discovery rules
+- [Result Types](./result-types) - Using Result&lt;T&gt; for robust error handling
+- [Middleware](./middleware) - Adding cross-cutting concerns
+- [Examples](../examples/simple-handlers) - See practical examples
 
 ## Common Issues
 
@@ -197,6 +196,6 @@ If you get a "handler not found" error:
 3. Ensure the first parameter matches your message type exactly
 
 ### Performance Considerations
+
 - Handlers are singleton by default (constructor dependencies resolved once)
 - Use method parameters for per-request dependencies
-- See [Performance Guide](/guide/performance) for optimization tips

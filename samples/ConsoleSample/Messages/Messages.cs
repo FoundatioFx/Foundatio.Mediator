@@ -2,9 +2,10 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ConsoleSample.Messages;
 
-// Simple messages
+#region Simple
 public record Ping(string Text);
 public record GetGreeting(string Name);
+#endregion
 
 // Order CRUD messages
 public record CreateOrder(

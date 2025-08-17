@@ -92,10 +92,18 @@ public class MyService
         _mediator = mediator;
     }
 
-    public async Task DoSomething()
+    public void DoSomething()
     {
-        var result = await _mediator.InvokeAsync<string>(new Ping("Hello World"));
-        Console.WriteLine(result); // Output: "Pong: Hello World"
+        // Sync call - works when all handlers and middleware are sync
+        var result = _mediator.Invoke<string>(new Ping("Hello"));
+        Console.WriteLine(result); // Output: "Pong: Hello"
+    }
+
+    public async Task DoSomethingAsync()
+    {
+        // Async call - works with both sync and async handlers
+        var result = await _mediator.InvokeAsync<string>(new Ping("Hello"));
+        Console.WriteLine(result); // Output: "Pong: Hello"
     }
 }
 ```

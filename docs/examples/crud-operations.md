@@ -91,7 +91,7 @@ var createCommand = new CreateOrder(
     Description: "Premium subscription"
 );
 
-var result = await mediator.InvokeAsync<Result<Order>>(createCommand);
+var result = await mediator.Invoke<Result<Order>>(createCommand);
 
 if (result.IsSuccess)
 {
@@ -108,7 +108,7 @@ else
 
 ```csharp
 var query = new GetOrder("ORD-20241201-1234");
-var result = await mediator.InvokeAsync<Result<Order>>(query);
+var result = await mediator.Invoke<Result<Order>>(query);
 
 switch (result.Status)
 {
@@ -133,7 +133,7 @@ var updateCommand = new UpdateOrder(
     Description: "Premium subscription - upgraded"
 );
 
-var result = await mediator.InvokeAsync<Result<Order>>(updateCommand);
+var result = await mediator.Invoke<Result<Order>>(updateCommand);
 // OrderUpdated event is automatically published on success
 ```
 
@@ -141,7 +141,7 @@ var result = await mediator.InvokeAsync<Result<Order>>(updateCommand);
 
 ```csharp
 var deleteCommand = new DeleteOrder("ORD-20241201-1234");
-var result = await mediator.InvokeAsync<Result>(deleteCommand);
+var result = await mediator.Invoke<Result>(deleteCommand);
 
 if (result.IsSuccess)
 {

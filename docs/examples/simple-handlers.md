@@ -32,7 +32,7 @@ For commands that don't return a value:
 
 ```csharp
 // Send a ping message (no response expected)
-await mediator.InvokeAsync(new Ping("Hello World"));
+await mediator.Invoke(new Ping("Hello"));
 ```
 
 ### Request-Response Queries
@@ -41,7 +41,7 @@ For queries that return data:
 
 ```csharp
 // Get a greeting (returns a string)
-var greeting = await mediator.InvokeAsync<string>(new GetGreeting("World"));
+var greeting = await mediator.Invoke<string>(new GetGreeting("World"));
 Console.WriteLine(greeting); // Output: "Hello, World!"
 ```
 

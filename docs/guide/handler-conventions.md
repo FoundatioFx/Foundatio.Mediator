@@ -1,0 +1,473 @@
+# Handler Conventions
+
+Foundatio.Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
+
+## Class Naming Conventions
+
+Handler classes must end with one of these suffixes:
+
+- `Handler`
+- `Consumer`
+
+```csharp
+// ✅ Valid handler class names
+public class UserHandler { }
+public class OrderHandler { }
+public class EmailConsumer { }
+public class NotificationConsumer { }
+
+// ❌ Invalid - won't be discovered
+public class UserService { }
+public class OrderProcessor { }
+```
+
+## Method Naming Conventions
+
+Handler methods must use one of these names:
+
+- `Handle` / `HandleAsync`
+- `Handles` / `HandlesAsync`
+- `Consume` / `ConsumeAsync`
+- `Consumes` / `ConsumesAsync`
+
+```csharp
+public class UserHandler
+{
+    // ✅ All of these work
+    public User Handle(GetUser query) { }
+    public Task<User> HandleAsync(GetUser query) { }
+    public User Handles(GetUser query) { }
+    public Task<User> HandlesAsync(GetUser query) { }
+
+    // ❌ These won't be discovered
+    public User Process(GetUser query) { }
+    public User Get(GetUser query) { }
+}
+```
+
+## Method Signature Requirements
+
+### First Parameter: The Message
+
+The first parameter must be the message object:
+
+```csharp
+public class OrderHandler
+{
+    // ✅ Message as first parameter
+    public Order Handle(CreateOrder command) { }
+
+    // ❌ Message not first
+    public Order Handle(ILogger logger, CreateOrder command) { }
+}
+```
+
+### Additional Parameters: Dependency Injection
+
+All parameters after the first are resolved via dependency injection:
+
+```csharp
+public class OrderHandler
+{
+    public async Task<Order> HandleAsync(
+        CreateOrder command,           // ✅ Message (required first)
+        IOrderRepository repository,   // ✅ Injected from DI
+        ILogger<OrderHandler> logger,  // ✅ Injected from DI
+        CancellationToken ct          // ✅ Automatically provided
+    )
+    {
+        logger.LogInformation("Creating order for {CustomerId}", command.CustomerId);
+        return await repository.CreateAsync(command, ct);
+    }
+}
+```
+
+### Supported Parameter Types
+
+- **Any registered service** from the DI container
+- **CancellationToken** - automatically provided by the mediator
+- **Scoped services** - new instance per mediator invocation
+- **Singleton services** - shared instance
+
+## Return Types
+
+Handlers can return any type:
+
+```csharp
+public class ExampleHandler
+{
+    // ✅ Void (fire-and-forget)
+    public void Handle(LogMessage command) { }
+
+    // ✅ Task (async fire-and-forget)
+    public Task HandleAsync(SendEmail command) { }
+
+    // ✅ Value types
+    public int Handle(CalculateSum query) { }
+
+    // ✅ Reference types
+    public User Handle(GetUser query) { }
+
+    // ✅ Generic types
+    public Task<List<Order>> HandleAsync(GetOrders query) { }
+
+    // ✅ Result types
+    public Result<User> Handle(GetUser query) { }
+
+    // ✅ Tuples (for cascading messages)
+    public (User user, UserCreated evt) Handle(CreateUser cmd) { }
+}
+```
+
+## Handler Types
+
+### Static Handlers
+
+Simple, stateless handlers can be static:
+
+```csharp
+public static class CalculationHandler
+{
+    public static int Handle(AddNumbers query)
+    {
+        return query.A + query.B;
+    }
+
+    public static decimal Handle(CalculateTax query)
+    {
+        return query.Amount * 0.08m;
+    }
+}
+```
+
+**Benefits:**
+- No DI registration required
+- Zero allocation for handler instance
+- Clear that no state is maintained
+
+### Instance Handlers
+
+For handlers requiring dependencies:
+
+```csharp
+public class UserHandler
+{
+    private readonly IUserRepository _repository;
+    private readonly ILogger<UserHandler> _logger;
+
+    // Constructor injection
+    public UserHandler(IUserRepository repository, ILogger<UserHandler> logger)
+    {
+        _repository = repository;
+        _logger = logger;
+    }
+
+    public async Task<User> HandleAsync(GetUser query)
+    {
+        _logger.LogInformation("Getting user {UserId}", query.Id);
+        return await _repository.GetByIdAsync(query.Id);
+    }
+}
+```
+
+**Note:** Handlers are singleton by default. Constructor dependencies are resolved once and shared across all invocations.
+
+## Multiple Handlers in One Class
+
+A single class can handle multiple message types:
+
+```csharp
+public class OrderHandler
+{
+    public Result<Order> Handle(CreateOrder command) { }
+    public Result<Order> Handle(GetOrder query) { }
+    public Result<Order> Handle(UpdateOrder command) { }
+    public Result Handle(DeleteOrder command) { }
+}
+```
+
+## Generic Handlers
+
+Handlers can be generic for reusable patterns:
+
+```csharp
+public class CrudHandler<T> where T : class
+{
+    private readonly IRepository<T> _repository;
+
+    public CrudHandler(IRepository<T> repository)
+    {
+        _repository = repository;
+    }
+
+    public async Task<T> HandleAsync(GetEntity<T> query)
+    {
+        return await _repository.GetByIdAsync(query.Id);
+    }
+
+    public async Task<T> HandleAsync(CreateEntity<T> command)
+    {
+        return await _repository.CreateAsync(command.Entity);
+    }
+}
+
+// Messages
+public record GetEntity<T>(int Id);
+public record CreateEntity<T>(T Entity);
+```
+
+## Handler Lifetime Management
+
+### Default Behavior (Singleton)
+
+```csharp
+public class UserHandler
+{
+    private readonly ILogger _logger; // ⚠️ Resolved once, shared across all calls
+
+    public UserHandler(ILogger<UserHandler> logger)
+    {
+        _logger = logger; // Singleton dependency - OK
+    }
+
+    public User Handle(GetUser query, IDbContext context) // ✅ Per-request dependency
+    {
+        // context is resolved fresh for each call
+        return context.Users.Find(query.Id);
+    }
+}
+```
+
+### Explicit DI Registration
+
+Control handler lifetime by registering in DI:
+
+```csharp
+// Scoped handlers (new instance per request)
+services.AddScoped<UserHandler>();
+services.AddScoped<OrderHandler>();
+
+// Transient handlers (new instance per use)
+services.AddTransient<ExpensiveHandler>();
+```
+
+### Automatic DI Registration
+
+Use MSBuild property to auto-register handlers:
+
+```xml
+<PropertyGroup>
+    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+</PropertyGroup>
+```
+
+Options: `None` (default), `Singleton`, `Scoped`, `Transient`
+
+## Handler Discovery Rules
+
+### Assembly Scanning
+
+The source generator scans the current assembly for:
+
+1. **Public classes** ending with `Handler` or `Consumer`
+2. **Public methods** with valid handler names
+3. **First parameter** that defines the message type
+
+### Inheritance Support
+
+```csharp
+public abstract class BaseHandler<T>
+{
+    protected abstract T Process(T input);
+
+    // ✅ This will be discovered
+    public T Handle(ProcessMessage<T> message)
+    {
+        return Process(message.Data);
+    }
+}
+
+public class StringHandler : BaseHandler<string>
+{
+    protected override string Process(string input) => input.ToUpper();
+}
+```
+
+### Interface Implementation
+
+Handlers can implement interfaces while maintaining conventions:
+
+```csharp
+public interface IFoundatioHandler { } // Marker interface
+
+public class UserHandler : IFoundatioHandler
+{
+    public User Handle(GetUser query) { } // ✅ Still discovered by convention
+}
+```
+
+## Compile-Time Validation
+
+The source generator provides compile-time errors for:
+
+### Missing Handlers
+
+```csharp
+// ❌ Compile-time error if no handler exists
+await mediator.InvokeAsync(new UnhandledMessage());
+// Error: No handler found for message type 'UnhandledMessage'
+```
+
+### Multiple Handlers (for Invoke)
+
+```csharp
+public class Handler1
+{
+    public string Handle(DuplicateMessage msg) => "Handler1";
+}
+
+public class Handler2
+{
+    public string Handle(DuplicateMessage msg) => "Handler2";
+}
+
+// ❌ Compile-time error
+await mediator.InvokeAsync<string>(new DuplicateMessage());
+// Error: Multiple handlers found for message type 'DuplicateMessage'
+```
+
+### Return Type Mismatches
+
+```csharp
+public class UserHandler
+{
+    public string Handle(GetUser query) => "Not a user"; // Returns string
+}
+
+// ❌ Compile-time error
+var user = await mediator.InvokeAsync<User>(new GetUser(1));
+// Error: Handler returns 'string' but expected 'User'
+```
+
+### Async/Sync Mismatches
+
+```csharp
+public class AsyncHandler
+{
+    public async Task<string> HandleAsync(GetMessage query)
+    {
+        await Task.Delay(100);
+        return "Result";
+    }
+}
+
+// ❌ Compile-time error - handler is async but calling sync method
+var result = mediator.Invoke<string>(new GetMessage());
+// Error: Async handler found but sync method called
+```
+
+## Ignoring Handlers
+
+Use `[FoundatioIgnore]` to exclude classes or methods:
+
+```csharp
+[FoundatioIgnore] // Entire class ignored
+public class DisabledHandler
+{
+    public string Handle(SomeMessage msg) => "Ignored";
+}
+
+public class PartialHandler
+{
+    public string Handle(Message1 msg) => "Handled";
+
+    [FoundatioIgnore] // Only this method ignored
+    public string Handle(Message2 msg) => "Ignored";
+}
+```
+
+## Best Practices
+
+### 1. Use Descriptive Handler Names
+
+```csharp
+// ✅ Clear purpose
+public class UserRegistrationHandler { }
+public class OrderPaymentHandler { }
+public class EmailNotificationConsumer { }
+
+// ❌ Too generic
+public class UserHandler { } // Does what with users?
+public class Handler { } // Handles what?
+```
+
+### 2. Group Related Operations
+
+```csharp
+// ✅ Cohesive handler
+public class OrderHandler
+{
+    public Result<Order> Handle(CreateOrder cmd) { }
+    public Result<Order> Handle(GetOrder query) { }
+    public Result<Order> Handle(UpdateOrder cmd) { }
+    public Result Handle(DeleteOrder cmd) { }
+}
+
+// ❌ Unrelated operations
+public class MixedHandler
+{
+    public User Handle(GetUser query) { }
+    public Order Handle(CreateOrder cmd) { }
+    public Email Handle(SendEmail cmd) { }
+}
+```
+
+### 3. Use Method Injection for Per-Request Dependencies
+
+```csharp
+public class OrderHandler
+{
+    private readonly ILogger _logger; // ✅ Singleton - safe for constructor
+
+    public OrderHandler(ILogger<OrderHandler> logger) => _logger = logger;
+
+    public async Task<Order> HandleAsync(
+        CreateOrder command,
+        IDbContext context,    // ✅ Scoped - use method injection
+        ICurrentUser user,     // ✅ Per-request - use method injection
+        CancellationToken ct
+    )
+    {
+        // Fresh context and user for each request
+    }
+}
+```
+
+### 4. Keep Handlers Simple and Focused
+
+```csharp
+// ✅ Single responsibility
+public class CreateOrderHandler
+{
+    public async Task<Result<Order>> HandleAsync(CreateOrder command)
+    {
+        // Only handles order creation
+    }
+}
+
+// ❌ Too many responsibilities
+public class OrderHandler
+{
+    public Result Handle(CreateOrder cmd) { /* ... */ }
+    public Result Handle(UpdateInventory cmd) { /* ... */ }
+    public Result Handle(SendEmail cmd) { /* ... */ }
+    public Result Handle(ProcessPayment cmd) { /* ... */ }
+}
+```
+
+## Next Steps
+
+- [Dependency Injection](/guide/dependency-injection) - Advanced DI scenarios
+- [Result Types](/guide/result-types) - Robust error handling patterns
+- [Middleware](/guide/middleware) - Cross-cutting concerns
+- [Performance Guide](/guide/performance) - Understanding the generated code

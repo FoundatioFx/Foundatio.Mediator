@@ -1,0 +1,15 @@
+{
+  "name": "foundatio-mediator-docs",
+  "version": "1.0.0",
+  "description": "Documentation for Foundatio.Mediator",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "2.0.0-alpha.11",
+    "@types/node": "^20.0.0"
+  }
+}

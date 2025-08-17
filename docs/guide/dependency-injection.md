@@ -19,9 +19,9 @@ var app = builder.Build();
 
 ## Handler Lifetime Management
 
-### Important: Handlers are Singleton by Default
+### Important: Handler Instances Are Cached When Not Registered
 
-**⚠️ Critical:** Handlers are treated as **singletons** by default. Constructor dependencies are resolved once and shared across all invocations.
+If you don't explicitly register a handler in DI, the mediator will create an instance via `ActivatorUtilities.CreateInstance` and cache that instance (effectively singleton behavior). Constructor dependencies resolved in that first construction are reused for all invocations. Register handlers explicitly to control lifetime or rely on method parameter injection for per-invocation dependencies.
 
 ```csharp
 // WARNING: This handler is singleton - dependencies resolved once!
@@ -44,10 +44,10 @@ public class OrderHandler
 
 ### Automatic Handler Creation
 
-When a handler is needed:
+Resolution order:
 
-1. **If registered in DI**: The container creates and manages the instance
-2. **If not registered**: `ActivatorUtilities.CreateInstance` creates the handler as singleton
+1. **Registered in DI**: DI creates according to configured lifetime.
+2. **Not registered**: Created once and cached (no DI lifetime scoping).
 
 ### Explicit Handler Registration for Lifetime Control
 
@@ -64,7 +64,7 @@ builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
 
 ## Constructor Injection (Use with Caution)
 
-**⚠️ Warning:** Constructor injection creates singleton handlers unless explicitly registered with different lifetime.
+**⚠️ Note:** Constructor injection without DI registration leads to a cached singleton-like instance.
 
 ```csharp
 // PROBLEMATIC: Singleton handler with scoped dependency

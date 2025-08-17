@@ -43,7 +43,7 @@ public class ProductController : ControllerBase
     {
         var query = new GetProductsStreamQuery(categoryId);
 
-        await foreach (var product in _mediator.CreateStream(query, cancellationToken))
+        await foreach (var product in _mediator.Invoke<IAsyncEnumerable<Product>>(query, cancellationToken))
         {
             yield return product;
         }
@@ -58,7 +58,7 @@ public async Task ProcessProductsAsync()
 {
     var query = new GetProductsStreamQuery("electronics");
 
-    await foreach (var product in _mediator.CreateStream(query)
+    await foreach (var product in _mediator.Invoke<IAsyncEnumerable<Product>>(query)
         .Where(p => p.Price > 100)
         .Take(50))
     {
@@ -446,7 +446,7 @@ public class DataController : ControllerBase
     {
         var query = new GetDataStreamQuery(filter);
 
-        await foreach (var item in _mediator.CreateStream(query, cancellationToken))
+    await foreach (var item in _mediator.Invoke<IAsyncEnumerable<DataItem>>(query, cancellationToken))
         {
             yield return item;
         }
@@ -462,7 +462,7 @@ public class DataController : ControllerBase
         Response.Headers.Add("Content-Type", "text/csv");
         Response.Headers.Add("Content-Disposition", "attachment; filename=data.csv");
 
-        await foreach (var item in _mediator.CreateStream(query, cancellationToken))
+    await foreach (var item in _mediator.Invoke<IAsyncEnumerable<DataItem>>(query, cancellationToken))
         {
             var csv = $"{item.Id},{item.Name},{item.Value}\n";
             await Response.WriteAsync(csv, cancellationToken);
@@ -489,7 +489,7 @@ public class LiveDataHub : Hub
     {
         var query = new GetLiveDataStreamQuery(filter);
 
-        await foreach (var data in _mediator.CreateStream(query, Context.ConnectionAborted))
+    await foreach (var data in _mediator.Invoke<IAsyncEnumerable<LiveData>>(query, Context.ConnectionAborted))
         {
             await Clients.Caller.SendAsync("DataUpdate", data, Context.ConnectionAborted);
         }

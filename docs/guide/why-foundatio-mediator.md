@@ -24,13 +24,15 @@ This results in:
 
 ### Benchmark Results
 
-| Scenario | Foundatio.Mediator | MediatR | MassTransit | vs Direct Call |
-|----------|-------------------|---------|-------------|----------------|
-| **Commands** | 17.93 ns | 54.81 ns | 1,585.85 ns | **2.15x slower** |
-| **Queries** | 46.36 ns | 81.40 ns | 6,354.47 ns | **1.44x slower** |
-| **Events** | 121.57 ns | 59.29 ns | 1,697.53 ns | **15.0x slower** |
+Benchmark highlights (see root README for full tables):
 
-*Foundatio.Mediator gets remarkably close to direct method call performance while maintaining all mediator pattern benefits.*
+| Scenario | Foundatio | MediatR | MassTransit |
+|----------|-----------|---------|------------|
+| Commands | 17.93 ns (2.15x direct) | 54.81 ns | 1,585.85 ns |
+| Queries  | 46.36 ns (1.44x direct) | 81.40 ns | 6,354.47 ns |
+| Events (publish) | 121.57 ns | 59.29 ns | 1,697.53 ns |
+
+Event publishing involves multiple handler pipeline steps; Foundatio optimizes single-handler command/query paths for near-direct performance.
 
 ## Developer Experience
 
@@ -203,7 +205,7 @@ public async Task Should_Create_Order_Successfully()
 
 Short, simple call stacks make debugging straightforward:
 
-```
+```text
 Your Code
   ↓
 Generated Interceptor (minimal)

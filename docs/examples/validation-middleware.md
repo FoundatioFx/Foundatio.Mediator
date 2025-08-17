@@ -85,7 +85,7 @@ var validOrder = new CreateOrder(
     Description: "Premium subscription service"
 );
 
-var result = await mediator.Invoke<Result<Order>>(validOrder);
+var result = await mediator.InvokeAsync<Result<Order>>(validOrder);
 // Validation passes, handler executes normally
 ```
 
@@ -98,7 +98,7 @@ var invalidOrder = new CreateOrder(
     Description: "Test"
 );
 
-var result = await mediator.Invoke<Result<Order>>(invalidOrder);
+var result = await mediator.InvokeAsync<Result<Order>>(invalidOrder);
 
 // result.Status == ResultStatus.Invalid
 // result.ValidationErrors contains:
@@ -115,7 +115,7 @@ var invalidOrder = new CreateOrder(
     Description: "Test"
 );
 
-var result = await mediator.Invoke<Result<Order>>(invalidOrder);
+var result = await mediator.InvokeAsync<Result<Order>>(invalidOrder);
 
 // result.Status == ResultStatus.Invalid
 // result.ValidationErrors contains:
@@ -130,7 +130,7 @@ The validation middleware integrates seamlessly with Result types:
 public async Task<IActionResult> CreateOrder(CreateOrderRequest request)
 {
     var command = new CreateOrder(request.CustomerId, request.Amount, request.Description);
-    var result = await _mediator.Invoke<Result<Order>>(command);
+    var result = await _mediator.InvokeAsync<Result<Order>>(command);
 
     return result.Status switch
     {

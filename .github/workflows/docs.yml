@@ -28,11 +28,15 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
-        cache: npm
-        cache-dependency-path: docs/package-lock.json
+
+    - name: Clean npm cache and dependencies
+      run: |
+        rm -rf node_modules package-lock.json
+        npm cache clean --force
+      working-directory: docs
 
     - name: Install dependencies
-      run: npm ci
+      run: npm install
       working-directory: docs
 
     - name: Extract version from tag

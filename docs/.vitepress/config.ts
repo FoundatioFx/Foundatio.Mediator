@@ -1,10 +1,19 @@
 import { defineConfig } from 'vitepress'
+import llmstxt from 'vitepress-plugin-llms'
 
 export default defineConfig({
   title: 'Foundatio.Mediator',
   description: 'Blazingly fast, convention-based C# mediator powered by source generators and interceptors',
   base: '/',
   ignoreDeadLinks: true,
+  vite: {
+    plugins: [
+      llmstxt({
+        title: 'Foundatio.Mediator Documentation',
+        ignoreFiles: ['node_modules/**', '.vitepress/**']
+      })
+    ]
+  },
   head: [
     ['link', { rel: 'icon', href: 'https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png', type: 'image/png' }],
     ['meta', { name: 'theme-color', content: '#3c8772' }]

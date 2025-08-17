@@ -6,7 +6,7 @@ export default defineConfig({
   base: '/',
   ignoreDeadLinks: true,
   head: [
-    ['link', { rel: 'icon', href: 'https://raw.githubusercontent.com/FoundatioFx/Foundatio/master/media/foundatio.svg', type: 'image/svg+xml' }],
+    ['link', { rel: 'icon', href: 'https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png', type: 'image/png' }],
     ['meta', { name: 'theme-color', content: '#3c8772' }]
   ],
   themeConfig: {

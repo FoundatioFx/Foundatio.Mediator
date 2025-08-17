@@ -6,8 +6,7 @@ hero:
   text: Blazingly Fast C# Mediator
   tagline: Convention-based mediator powered by source generators and interceptors
   image:
-    light: https://raw.githubusercontent.com/FoundatioFx/Foundatio/master/media/foundatio.svg
-    dark: https://raw.githubusercontent.com/FoundatioFx/Foundatio/master/media/foundatio-dark-bg.svg
+    src: https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png
     alt: Foundatio.Mediator
   actions:
     - theme: brand

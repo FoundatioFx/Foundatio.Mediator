@@ -1,0 +1,71 @@
+<svg width="400" height="300" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:0.05" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="300" fill="url(#bgGradient)" rx="8"/>
+
+  <!-- Central Mediator -->
+  <circle cx="200" cy="150" r="40" fill="#667eea" filter="url(#shadow)"/>
+  <text x="200" y="140" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="12" font-weight="bold">MEDIATOR</text>
+  <text x="200" y="155" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10">CORE</text>
+
+  <!-- Handler Nodes -->
+  <circle cx="100" cy="80" r="25" fill="#42a5f5" filter="url(#shadow)"/>
+  <text x="100" y="85" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Handler</text>
+
+  <circle cx="300" cy="80" r="25" fill="#42a5f5" filter="url(#shadow)"/>
+  <text x="300" y="85" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Handler</text>
+
+  <circle cx="100" cy="220" r="25" fill="#42a5f5" filter="url(#shadow)"/>
+  <text x="100" y="225" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Handler</text>
+
+  <circle cx="300" cy="220" r="25" fill="#42a5f5" filter="url(#shadow)"/>
+  <text x="300" y="225" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Handler</text>
+
+  <!-- Request Sources -->
+  <rect x="20" y="140" width="50" height="20" fill="#26a69a" rx="4" filter="url(#shadow)"/>
+  <text x="45" y="153" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Request</text>
+
+  <rect x="330" y="140" width="50" height="20" fill="#26a69a" rx="4" filter="url(#shadow)"/>
+  <text x="355" y="153" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">Query</text>
+
+  <!-- Connection Lines -->
+  <!-- From Request to Mediator -->
+  <line x1="70" y1="150" x2="160" y2="150" stroke="#667eea" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- From Mediator to Handlers -->
+  <line x1="175" y1="125" x2="115" y2="95" stroke="#42a5f5" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="225" y1="125" x2="285" y2="95" stroke="#42a5f5" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="175" y1="175" x2="115" y2="205" stroke="#42a5f5" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="225" y1="175" x2="285" y2="205" stroke="#42a5f5" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- From Query to Mediator -->
+  <line x1="330" y1="150" x2="240" y2="150" stroke="#667eea" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#667eea" />
+    </marker>
+  </defs>
+
+  <!-- Performance indicator -->
+  <g transform="translate(320, 40)">
+    <rect x="0" y="0" width="60" height="25" fill="#4caf50" rx="12" filter="url(#shadow)"/>
+    <text x="30" y="17" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">⚡ FAST</text>
+  </g>
+
+  <!-- Convention indicator -->
+  <g transform="translate(20, 40)">
+    <rect x="0" y="0" width="80" height="25" fill="#ff9800" rx="12" filter="url(#shadow)"/>
+    <text x="40" y="17" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="10" font-weight="bold">🎯 CONVENTION</text>
+  </g>
+</svg>

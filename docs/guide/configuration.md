@@ -1,8 +1,69 @@
 # Configuration Options
 
-Foundatio Mediator provides various configuration options to customize behavior, performance characteristics, and integration with your application.
+Foundatio Mediator provides two types of configuration: **compile-time configuration** via MSBuild properties that control source generator behavior, and **runtime configuration** via the `AddMediator()` method that controls mediator behavior.
 
-## Basic Configuration
+## Compile-Time Configuration (MSBuild Properties)
+
+These properties control the source generator at compile time and affect code generation:
+
+### Available MSBuild Properties
+
+```xml
+<PropertyGroup>
+    <!-- Automatically register all handlers with specified lifetime -->
+    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+
+    <!-- Control interceptor generation (default: false) -->
+    <MediatorDisableInterceptors>true</MediatorDisableInterceptors>
+
+    <!-- Disable OpenTelemetry integration (default: false) -->
+    <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
+</PropertyGroup>
+```
+
+### Property Details
+
+**`MediatorHandlerLifetime`**
+
+- **Values:** `Scoped`, `Transient`, `Singleton`, `None`
+- **Default:** `None` (handlers not auto-registered)
+- **Effect:** Automatically registers all discovered handlers with the specified DI lifetime
+- **Note:** When set to `None`, handlers are not automatically registered in DI
+
+**`MediatorDisableInterceptors`**
+
+- **Values:** `true`, `false`
+- **Default:** `false`
+- **Effect:** When `true`, disables C# interceptor generation and forces DI-based dispatch for all calls
+- **Use Case:** Debugging, cross-assembly calls, or when interceptors are not supported
+
+**`MediatorDisableOpenTelemetry`**
+
+- **Values:** `true`, `false`
+- **Default:** `false`
+- **Effect:** When `true`, disables OpenTelemetry integration code generation
+- **Use Case:** Reduce generated code size when telemetry is not needed
+
+### Example .csproj Configuration
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+
+    <!-- Compile-time configuration -->
+    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
+    <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
+  </PropertyGroup>
+
+  <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
+
+</Project>
+```
+
+## Runtime Configuration (AddMediator Method)
 
 ### Default Setup
 
@@ -124,17 +185,3 @@ public class DetailedLoggingMiddleware
     }
 }
 ```
-
-## Monitoring and Telemetry
-
-Add custom middleware for tracing/metrics as needed.
-
-## Advanced Configuration Scenarios
-
-Multi-tenancy, feature flags, circuit breakers etc. can be implemented via custom middleware or by wrapping `IMediator`.
-
-## Health Checks
-
-Implement a simple ping handler and invoke it in a custom health check if desired.
-
-Configuration surface is intentionally small; use DI and middleware for advanced scenarios.

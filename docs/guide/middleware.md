@@ -31,21 +31,26 @@ public class LoggingMiddleware
 ## Middleware Conventions
 
 ### Class Names
+
 Middleware classes must end with `Middleware`
 
 ### Method Names
+
 Valid middleware method names:
+
 - `Before` / `BeforeAsync`
 - `After` / `AfterAsync`
 - `Finally` / `FinallyAsync`
 
 ### Method Parameters
+
 - **First parameter**: The message (can be `object`, interface, or concrete type)
 - **Remaining parameters**: Injected via DI (including `CancellationToken`)
 
 ## Lifecycle Methods
 
 ### Before
+
 Runs before the handler. Can return values that are passed to `After` and `Finally`:
 
 ```csharp
@@ -65,6 +70,7 @@ public class TimingMiddleware
 ```
 
 ### After
+
 Runs after successful handler completion. Only called if the handler succeeds:
 
 ```csharp
@@ -78,6 +84,7 @@ public class AuditMiddleware
 ```
 
 ### Finally
+
 Always runs, regardless of success or failure. Receives exception if handler failed:
 
 ```csharp
@@ -101,7 +108,18 @@ Middleware can short-circuit handler execution by returning a `HandlerResult` fr
 
 Let's look at the validation middleware from the sample:
 
-@[code{7-20}](../../../samples/ConsoleSample/Middleware/ValidationMiddleware.cs)
+```csharp
+public class ValidationMiddleware
+{
+    public HandlerResult Before(object message)
+    {
+        if (!IsValid(message))
+            return Result.Invalid("Validation failed"); // Short-circuit
+
+        return HandlerResult.Continue();
+    }
+}
+```
 
 ### Short-Circuit Usage
 
@@ -195,11 +213,13 @@ public class LoggingMiddleware
 ```
 
 **Default ordering** (without explicit order):
+
 1. Message-specific middleware
 2. Interface-based middleware
 3. Object-based middleware
 
 **Execution flow**:
+
 - `Before`: Lower order values run first
 - `After`/`Finally`: Higher order values run first (reverse order for proper nesting)
 
@@ -236,7 +256,22 @@ public class OrderCreationMiddleware
 
 Here's the logging middleware from the sample project:
 
-@[code{8-23}](../../../samples/ConsoleSample/Middleware/LoggingMiddleware.cs)
+```csharp
+public class LoggingMiddleware
+{
+    private readonly ILogger<LoggingMiddleware> _logger;
+
+    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
+    {
+        _logger = logger;
+    }
+
+    public static void Before(object message, ILogger<LoggingMiddleware> logger)
+    {
+        logger.LogInformation("Handling {MessageType}", message.GetType().Name);
+    }
+}
+```
 
 ### Caching Middleware
 
@@ -263,33 +298,6 @@ public class CachingMiddleware
     {
         var cacheKey = $"{query.GetType().Name}:{GetQueryKey(query)}";
         _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
-    }
-}
-```
-
-### Retry Middleware
-
-```csharp
-public class RetryMiddleware
-{
-    public async Task<HandlerResult> BeforeAsync(object message)
-    {
-        const int maxRetries = 3;
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                return HandlerResult.Continue();
-            }
-            catch (TransientException) when (attempt < maxRetries)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)));
-                continue;
-            }
-        }
-
-        return HandlerResult.Continue();
     }
 }
 ```
@@ -358,6 +366,7 @@ public class PartialMiddleware
 ## Best Practices
 
 ### 1. Keep Middleware Focused
+
 Each middleware should handle one concern:
 
 ```csharp

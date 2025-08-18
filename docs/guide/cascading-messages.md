@@ -4,7 +4,11 @@ Cascading messages is a powerful feature in Foundatio Mediator that allows handl
 
 ## How Cascading Works
 
-When a handler returns a tuple, the first element is treated as the response, and any additional non-null elements are automatically published as messages:
+When a handler returns a tuple, the mediator performs type matching to determine which value to return to the caller and which values to publish as cascading messages:
+
+1. **Type Matching**: The mediator finds the tuple element that matches the requested return type from `Invoke<T>`
+2. **Return to Caller**: That matched element is returned to the caller
+3. **Cascading Publishing**: All remaining non-null tuple elements are automatically published as messages
 
 ```csharp
 public class OrderHandler
@@ -13,14 +17,50 @@ public class OrderHandler
     {
         var order = new Order { Id = Guid.NewGuid(), Email = command.Email };
 
-        // Return: Response + Events to publish
+        // Return tuple with multiple values
         return (
-            Result<Order>.Created(order, $"/orders/{order.Id}"),  // Response
+            Result<Order>.Created(order, $"/orders/{order.Id}"),  // Matches Invoke<Result<Order>>
             new OrderCreated(order.Id, order.Email),              // Auto-published
             new EmailNotification(order.Email, "Order Created")   // Auto-published
         );
     }
 }
+
+// Usage - Result<Order> is returned, events are published
+var result = await mediator.InvokeAsync<Result<Order>>(new CreateOrderCommand("test@example.com"));
+// result contains the Result<Order> from the tuple
+// OrderCreated and EmailNotification are automatically published
+```
+
+### Type Matching Examples
+
+**Exact Type Match:**
+
+```csharp
+// Handler returns (string, OrderCreated)
+public static (string, OrderCreated) Handle(GetOrderStatusQuery query)
+{
+    return ("Processing", new OrderCreated(query.OrderId, "user@example.com"));
+}
+
+// Call with string return type
+var status = await mediator.InvokeAsync<string>(new GetOrderStatusQuery("123"));
+// status = "Processing", OrderCreated is published
+```
+
+**Interface/Base Class Matching:**
+
+```csharp
+// Handler returns (Result<Order>, OrderCreated)
+public static (Result<Order>, OrderCreated) Handle(CreateOrderCommand command)
+{
+    var order = new Order();
+    return (Result<Order>.Created(order), new OrderCreated(order.Id, order.Email));
+}
+
+// Can call with base Result type
+var result = await mediator.InvokeAsync<Result>(new CreateOrderCommand("test@example.com"));
+// Result<Order> matches Result, OrderCreated is published
 ```
 
 ## Tuple Return Patterns

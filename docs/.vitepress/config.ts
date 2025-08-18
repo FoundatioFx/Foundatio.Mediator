@@ -27,8 +27,6 @@ export default withMermaid(defineConfig({
     siteTitle: 'Mediator',
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
-      { text: 'Examples', link: '/examples/simple-handlers' },
-      { text: 'API Reference', link: '/api/mediator' },
       { text: 'GitHub', link: 'https://github.com/FoundatioFx/Foundatio.Mediator' }
     ],
     sidebar: {
@@ -57,35 +55,6 @@ export default withMermaid(defineConfig({
             { text: 'Streaming Handlers', link: '/guide/streaming-handlers' },
             { text: 'Performance & Interceptors', link: '/guide/performance' },
             { text: 'Configuration Options', link: '/guide/configuration' }
-          ]
-        }
-      ],
-      '/examples/': [
-        {
-          text: 'Basic Examples',
-          items: [
-            { text: 'Simple Handlers', link: '/examples/simple-handlers' },
-            { text: 'CRUD Operations', link: '/examples/crud-operations' },
-            { text: 'Event Publishing', link: '/examples/event-publishing' }
-          ]
-        },
-        {
-          text: 'Advanced Examples',
-          items: [
-            { text: 'Validation Middleware', link: '/examples/validation-middleware' },
-            { text: 'Logging Middleware', link: '/examples/logging-middleware' },
-            { text: 'Streaming Data', link: '/examples/streaming-data' }
-          ]
-        }
-      ],
-      '/api/': [
-        {
-          text: 'API Reference',
-          items: [
-            { text: 'IMediator Interface', link: '/api/mediator' },
-            { text: 'Result Types', link: '/api/result-types' },
-            { text: 'Attributes', link: '/api/attributes' },
-            { text: 'Configuration', link: '/api/configuration' }
           ]
         }
       ]

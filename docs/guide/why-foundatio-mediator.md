@@ -1,12 +1,12 @@
-# Why Choose Foundatio.Mediator?
+# Why Choose Foundatio Mediator?
 
-Foundatio.Mediator stands out from other mediator implementations by combining exceptional performance with developer-friendly conventions. Here's why it might be the right choice for your project.
+Foundatio Mediator stands out from other mediator implementations by combining exceptional performance with developer-friendly conventions. Here's why it might be the right choice for your project.
 
 ## Performance That Matters
 
 ### Near-Direct Call Performance
 
-Unlike other mediator libraries that rely on runtime reflection or complex dispatch mechanisms, Foundatio.Mediator uses **C# interceptors** to transform your mediator calls into essentially direct method calls:
+Unlike other mediator libraries that rely on runtime reflection or complex dispatch mechanisms, Foundatio Mediator uses **C# interceptors** to transform your mediator calls into essentially direct method calls:
 
 ```csharp
 // You write this:
@@ -17,6 +17,7 @@ await UserHandler_Generated.HandleAsync(new GetUser(123), serviceProvider, cance
 ```
 
 This results in:
+
 - **2-15x faster** than other mediator libraries
 - **Zero allocations** for fire-and-forget commands
 - **No reflection overhead** at runtime
@@ -41,7 +42,7 @@ Event publishing involves multiple handler pipeline steps; Foundatio optimizes s
 No interfaces, base classes, or complex registration required:
 
 ```csharp
-// ✅ Foundatio.Mediator - Just naming conventions
+// ✅ Foundatio Mediator - Just naming conventions
 public class UserHandler
 {
     public User Handle(GetUser query) => _repository.Find(query.Id);
@@ -135,7 +136,7 @@ public record OrderCreated(string OrderId, string CustomerId, DateTime CreatedAt
 
 ### Automatic Event Publishing
 
-Tuple returns enable automatic event cascading:
+Tuple returns enable automatic event cascading which keeps your handlers simple and easy to test:
 
 ```csharp
 public async Task<(Order order, OrderCreated evt)> HandleAsync(CreateOrder cmd)
@@ -215,7 +216,7 @@ Your Handler Method
 
 Compare this to complex reflection-based call stacks in other libraries.
 
-## When to Choose Foundatio.Mediator
+## When to Choose Foundatio Mediator
 
 ### ✅ Ideal For
 
@@ -237,7 +238,7 @@ Compare this to complex reflection-based call stacks in other libraries.
 
 ### From MediatR
 
-Foundatio.Mediator provides a migration-friendly approach:
+Foundatio Mediator provides a migration-friendly approach:
 
 ```csharp
 // MediatR style (still works with some adaptation)
@@ -246,7 +247,7 @@ public class UserHandler : IRequestHandler<GetUser, User>
     public Task<User> Handle(GetUser request, CancellationToken ct) { }
 }
 
-// Foundatio.Mediator style (recommended)
+// Foundatio Mediator style (recommended)
 public class UserHandler
 {
     public Task<User> HandleAsync(GetUser request, CancellationToken ct) { }
@@ -264,7 +265,7 @@ public class UserHandler
 
 ### Performance-Critical APIs
 
-> "We migrated our high-throughput order processing API from MediatR to Foundatio.Mediator and saw a 40% reduction in P99 latency while simplifying our error handling patterns."
+> "We migrated our high-throughput order processing API from MediatR to Foundatio Mediator and saw a 40% reduction in P99 latency while simplifying our error handling patterns."
 
 ### Microservices Architecture
 
@@ -276,9 +277,9 @@ public class UserHandler
 
 ## Getting Started
 
-Ready to experience the benefits of Foundatio.Mediator?
+Ready to experience the benefits of Foundatio Mediator?
 
 1. [Installation & Setup](./getting-started) - Get running in minutes
 2. [Simple Examples](../examples/simple-handlers) - See the patterns in action
 
-The combination of exceptional performance, developer-friendly conventions, and robust error handling makes Foundatio.Mediator an excellent choice for modern .NET applications.
+The combination of exceptional performance, developer-friendly conventions, and robust error handling makes Foundatio Mediator an excellent choice for modern .NET applications.

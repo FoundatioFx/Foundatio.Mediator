@@ -1,6 +1,6 @@
 # IMediator Interface
 
-The `IMediator` interface is the primary entry point for sending messages in Foundatio.Mediator. It provides methods for both synchronous and asynchronous operations, as well as publishing to multiple handlers.
+The `IMediator` interface is the primary entry point for sending messages in Foundatio Mediator. It provides methods for both synchronous and asynchronous operations, as well as publishing to multiple handlers.
 
 ## Interface Definition
 

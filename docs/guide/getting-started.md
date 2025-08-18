@@ -1,6 +1,6 @@
 # Getting Started
 
-Foundatio.Mediator is a high-performance, convention-based mediator for .NET applications. This guide will walk you through the basic setup and your first handler.
+Foundatio Mediator is a high-performance, convention-based mediator for .NET applications. This guide will walk you through the basic setup and your first handler.
 
 ## Installation
 
@@ -58,7 +58,7 @@ public void ConfigureServices(IServiceCollection services)
 
 ### 2. Create Your First Message
 
-Define a simple message record:
+Define a simple message:
 
 ```csharp
 public record Ping(string Text);
@@ -110,21 +110,26 @@ public class MyService
 
 ## Handler Conventions
 
-Foundatio.Mediator uses simple naming conventions to discover handlers automatically:
+Foundatio Mediator uses simple naming conventions to discover handlers automatically:
 
 ### Class Names
+
 Handler classes must end with:
+
 - `Handler`
 - `Consumer`
 
 ### Method Names
+
 Valid handler method names:
+
 - `Handle` / `HandleAsync`
 - `Handles` / `HandlesAsync`
 - `Consume` / `ConsumeAsync`
 - `Consumes` / `ConsumesAsync`
 
 ### Method Signatures
+
 - **First parameter**: The message object (required)
 - **Remaining parameters**: Injected via dependency injection
 - **Return type**: Any type including `void`, `Task`, `Task<T>`
@@ -132,6 +137,7 @@ Valid handler method names:
 ## Examples
 
 ### Synchronous Handler
+
 ```csharp
 public record GetGreeting(string Name);
 
@@ -148,6 +154,7 @@ var greeting = mediator.Invoke<string>(new GetGreeting("World"));
 ```
 
 ### Asynchronous Handler
+
 ```csharp
 public record SendEmail(string To, string Subject, string Body);
 
@@ -166,6 +173,7 @@ await mediator.InvokeAsync(new SendEmail("user@example.com", "Hello", "World"));
 ```
 
 ### Handler with Dependency Injection
+
 ```csharp
 public class UserHandler
 {
@@ -213,8 +221,3 @@ If you get a "handler not found" error:
 1. Ensure your class name ends with `Handler` or `Consumer`
 2. Ensure your method name follows the naming conventions
 3. Ensure the first parameter matches your message type exactly
-
-### Performance Considerations
-
-- Handlers are singleton by default (constructor dependencies resolved once)
-- Use method parameters for per-request dependencies

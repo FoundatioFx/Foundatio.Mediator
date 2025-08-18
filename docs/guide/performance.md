@@ -1,6 +1,6 @@
 # Performance & Interceptors
 
-Foundatio.Mediator achieves blazing fast performance through C# interceptors and source generators, eliminating runtime reflection and providing near-direct call performance.
+Foundatio Mediator achieves blazing fast performance through C# interceptors and source generators, eliminating runtime reflection and providing near-direct call performance.
 
 ## How Interceptors Work
 
@@ -12,7 +12,7 @@ C# interceptors are a compile-time feature that allows the mediator to replace m
 Your Code → IMediator.Send() → Reflection → Handler Discovery → Handler Instantiation → Method Invoke
 ```
 
-### Foundatio.Mediator with Interceptors
+### Foundatio Mediator with Interceptors
 
 ```text
 Your Code → [Intercepted] → Direct Static Method Call → Handler Method
@@ -62,7 +62,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 
 Here are typical performance characteristics compared to other mediator libraries:
 
-| Operation | Foundatio.Mediator (Interceptors) | MediatR | Traditional Reflection |
+| Operation | Foundatio Mediator (Interceptors) | MediatR | Traditional Reflection |
 |-----------|-----------------------------------|---------|----------------------|
 | Simple Handler | **~5ns** | ~200ns | ~1,500ns |
 | With DI | **~15ns** | ~800ns | ~2,000ns |
@@ -499,4 +499,4 @@ public static Task<Order[]> Handle(GetAllOrdersQuery query)
 }
 ```
 
-Foundatio.Mediator's interceptor-based approach provides exceptional performance while maintaining clean, maintainable code. By understanding how interceptors work and following performance best practices, you can build highly efficient applications that scale to handle millions of requests.
+Foundatio Mediator's interceptor-based approach provides exceptional performance while maintaining clean, maintainable code. By understanding how interceptors work and following performance best practices, you can build highly efficient applications that scale to handle millions of requests.

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitepress'
 import llmstxt from 'vitepress-plugin-llms'
+import { withMermaid } from "vitepress-plugin-mermaid";
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'Foundatio Mediator',
   description: 'Blazingly fast, convention-based C# mediator powered by source generators and interceptors',
   base: '/',
@@ -116,4 +117,4 @@ export default defineConfig({
       }
     ]
   }
-})
+}))

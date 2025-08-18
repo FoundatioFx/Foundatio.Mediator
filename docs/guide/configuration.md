@@ -1,6 +1,6 @@
 # Configuration Options
 
-Foundatio.Mediator provides various configuration options to customize behavior, performance characteristics, and integration with your application.
+Foundatio Mediator provides various configuration options to customize behavior, performance characteristics, and integration with your application.
 
 ## Basic Configuration
 

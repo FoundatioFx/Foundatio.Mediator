@@ -1,6 +1,6 @@
 # Middleware
 
-Middleware in Foundatio.Mediator provides a powerful pipeline for implementing cross-cutting concerns like validation, logging, authorization, and error handling. Middleware can run before, after, and finally around handler execution.
+Middleware in Foundatio Mediator provides a powerful pipeline for implementing cross-cutting concerns like validation, logging, authorization, and error handling. Middleware can run before, after, and finally around handler execution.
 
 ## Basic Middleware
 

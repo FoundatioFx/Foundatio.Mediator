@@ -1,6 +1,6 @@
 # Streaming Handlers
 
-Foundatio.Mediator supports streaming handlers that can return `IAsyncEnumerable<T>` for scenarios where you need to process and return data incrementally, such as large datasets, real-time feeds, or progressive data processing.
+Foundatio Mediator supports streaming handlers that can return `IAsyncEnumerable<T>` for scenarios where you need to process and return data incrementally, such as large datasets, real-time feeds, or progressive data processing.
 
 ## Basic Streaming Handler
 

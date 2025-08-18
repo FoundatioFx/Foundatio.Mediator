@@ -1,6 +1,6 @@
 # Cascading Messages
 
-Cascading messages is a powerful feature in Foundatio.Mediator that allows handlers to automatically publish additional messages when they complete. This enables clean event-driven architectures and decoupled business logic.
+Cascading messages is a powerful feature in Foundatio Mediator that allows handlers to automatically publish additional messages when they complete. This enables clean event-driven architectures and decoupled business logic.
 
 ## How Cascading Works
 

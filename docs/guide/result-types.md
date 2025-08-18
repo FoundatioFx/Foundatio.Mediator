@@ -1,6 +1,6 @@
 # Result Types
 
-Foundatio.Mediator includes built-in `Result` and `Result<T>` types for robust error handling without relying on exceptions. These discriminated union types capture success, validation errors, conflicts, not found states, and more.
+Foundatio Mediator includes built-in `Result` and `Result<T>` types for robust error handling without relying on exceptions. These discriminated union types capture success, validation errors, conflicts, not found states, and more.
 
 ## Why Result Types?
 
@@ -49,16 +49,18 @@ Result types include several built-in status types:
 ```csharp
 public enum ResultStatus
 {
-    Ok = 200,
-    Created = 201,
-    NoContent = 204,
-    Invalid = 400,
-    Unauthorized = 401,
-    Forbidden = 403,
-    NotFound = 404,
-    Conflict = 409,
-    BadRequest = 400,
-    Error = 500
+    Ok,
+    Created,
+    NoContent,
+    BadRequest,
+    Error,
+    Invalid,
+    NotFound,
+    Unauthorized,
+    Forbidden,
+    Conflict,
+    CriticalError,
+    Unavailable
 }
 ```
 
@@ -168,23 +170,6 @@ public Result<User> Handle(CreateUser command)
 
     var user = new User(command.Name, command.Age);
     return user;
-}
-```
-
-### ValidationError Structure
-
-```csharp
-public record ValidationError(
-    string PropertyName,
-    string ErrorMessage,
-    ValidationSeverity Severity = ValidationSeverity.Error
-);
-
-public enum ValidationSeverity
-{
-    Error,
-    Warning,
-    Info
 }
 ```
 

@@ -80,6 +80,20 @@ public class Result<T> : IResult
     }
 
     /// <summary>
+    /// Creates a Result&lt;T&gt; from a Result.
+    /// </summary>
+    /// <param name="result">The result to convert.</param>
+    /// <returns>A Result&lt;T&gt; instance.</returns>
+    public static Result<T> FromResult(IResult result)
+    {
+        var convertedResult = new Result<T>(result.Status);
+        convertedResult.Message = result.Message;
+        convertedResult.Location = result.Location;
+        convertedResult.ValidationErrors = result.ValidationErrors;
+        return convertedResult;
+    }
+
+    /// <summary>
     /// Gets the result value.
     /// </summary>
     public T Value { get; private set; } = default!;
@@ -146,7 +160,7 @@ public class Result<T> : IResult
     /// Creates a result indicating successful creation of a resource with a location.
     /// </summary>
     /// <param name="value">The created resource.</param>
-    /// <param name="location">The location of the created resource.</param>
+    /// <param name="location">The location of the created resource. Could be a full path or just an identifier.</param>
     /// <returns>A result with Created status and location.</returns>
     public static Result<T> Created(T value, string location)
     {

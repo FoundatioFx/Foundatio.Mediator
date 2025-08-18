@@ -1,6 +1,6 @@
 # Handler Conventions
 
-Foundatio.Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
+Foundatio Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
 
 ## Class Naming Conventions
 
@@ -141,7 +141,8 @@ public static class CalculationHandler
 ```
 
 **Benefits:**
-- No DI registration required
+
+- No DI registration required (but can be registered when it is desired to control handler class lifetime)
 - Zero allocation for handler instance
 - Clear that no state is maintained
 
@@ -186,36 +187,6 @@ public class OrderHandler
 }
 ```
 
-## Generic Handlers
-
-Handlers can be generic for reusable patterns:
-
-```csharp
-public class CrudHandler<T> where T : class
-{
-    private readonly IRepository<T> _repository;
-
-    public CrudHandler(IRepository<T> repository)
-    {
-        _repository = repository;
-    }
-
-    public async Task<T> HandleAsync(GetEntity<T> query)
-    {
-        return await _repository.GetByIdAsync(query.Id);
-    }
-
-    public async Task<T> HandleAsync(CreateEntity<T> command)
-    {
-        return await _repository.CreateAsync(command.Entity);
-    }
-}
-
-// Messages
-public record GetEntity<T>(int Id);
-public record CreateEntity<T>(T Entity);
-```
-
 ## Handler Lifetime Management
 
 ### Default Behavior (Singleton)
@@ -230,7 +201,7 @@ public class UserHandler
         _logger = logger; // Singleton dependency - OK
     }
 
-    public User Handle(GetUser query, IDbContext context) // ✅ Per-request dependency
+    public User Handle(GetUser query, DbContext context) // ✅ Per-request dependency
     {
         // context is resolved fresh for each call
         return context.Users.Find(query.Id);
@@ -273,36 +244,24 @@ The source generator scans the current assembly for:
 2. **Public methods** with valid handler names
 3. **First parameter** that defines the message type
 
-### Inheritance Support
+### Manual Handler Discovery
+
+Handler classes can implement the `IFoundatioHandler` interface for manual discovery:
 
 ```csharp
-public abstract class BaseHandler<T>
+public class UserProcessor : IFoundatioHandler
 {
-    protected abstract T Process(T input);
-
-    // ✅ This will be discovered
-    public T Handle(ProcessMessage<T> message)
-    {
-        return Process(message.Data);
-    }
-}
-
-public class StringHandler : BaseHandler<string>
-{
-    protected override string Process(string input) => input.ToUpper();
+    public User Handle(GetUser query) { } // ✅ Discovered
 }
 ```
 
-### Interface Implementation
-
-Handlers can implement interfaces while maintaining conventions:
+Handler classes and methods can be marked with the `[FoundatioHandler]` attribute for manual discovery:
 
 ```csharp
-public interface IFoundatioHandler { } // Marker interface
-
-public class UserHandler : IFoundatioHandler
+public class UserProcessor
 {
-    public User Handle(GetUser query) { } // ✅ Still discovered by convention
+    [FoundatioHandler]
+    public User Process(GetUser query) { } // ✅ Discovered
 }
 ```
 
@@ -395,9 +354,9 @@ public class PartialHandler
 public class UserRegistrationHandler { }
 public class OrderPaymentHandler { }
 public class EmailNotificationConsumer { }
+public class UserHandler { }
 
 // ❌ Too generic
-public class UserHandler { } // Does what with users?
 public class Handler { } // Handles what?
 ```
 
@@ -433,7 +392,7 @@ public class OrderHandler
 
     public async Task<Order> HandleAsync(
         CreateOrder command,
-        IDbContext context,    // ✅ Scoped - use method injection
+        DbContext context,    // ✅ Scoped - use method injection
         ICurrentUser user,     // ✅ Per-request - use method injection
         CancellationToken ct
     )

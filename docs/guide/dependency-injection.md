@@ -1,6 +1,6 @@
 # Dependency Injection
 
-Foundatio.Mediator seamlessly integrates with Microsoft.Extensions.DependencyInjection to provide powerful dependency injection capabilities for both handlers and middleware.
+Foundatio Mediator seamlessly integrates with Microsoft.Extensions.DependencyInjection to provide powerful dependency injection capabilities for both handlers and middleware.
 
 ## Registration
 
@@ -60,6 +60,69 @@ builder.Services.AddMediator();
 builder.Services.AddScoped<OrderHandler>();    // Matches DbContext scope
 builder.Services.AddTransient<EmailHandler>(); // New instance each time
 builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
+```
+
+### Automatic Handler Registration with MSBuild
+
+You can automatically register all handlers in your project with a specific lifetime using the `MediatorHandlerLifetime` MSBuild property:
+
+```xml
+<PropertyGroup>
+    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+</PropertyGroup>
+```
+
+**Supported Values:**
+
+- `Scoped` - Handlers registered as scoped services
+- `Transient` - Handlers registered as transient services
+- `Singleton` - Handlers registered as singleton services
+
+**What this does:**
+
+- Automatically registers all discovered handlers with the specified lifetime
+- Eliminates the need for manual handler registration
+- Ensures consistent lifetime management across your application
+- Prevents singleton caching issues when using scoped dependencies
+
+**Example usage:**
+
+```xml
+<!-- In your .csproj file -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+  </PropertyGroup>
+
+  <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
+
+</Project>
+```
+
+With this configuration, all your handlers will be automatically registered as scoped services:
+
+```csharp
+// No manual registration needed - this handler is automatically scoped
+public class OrderHandler
+{
+    private readonly IOrderRepository _repository;
+
+    public OrderHandler(IOrderRepository repository)
+    {
+        _repository = repository; // Safe: both are scoped
+    }
+
+    public async Task<Result<Order>> Handle(CreateOrderCommand command)
+    {
+        return await _repository.CreateAsync(command.ToOrder());
+    }
+}
+
+// Just register the mediator - handlers are auto-registered
+builder.Services.AddMediator();
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 ```
 
 ## Constructor Injection (Use with Caution)
@@ -149,6 +212,91 @@ These services are commonly injected into handler methods:
 - Repository interfaces
 - Business service interfaces
 - Configuration objects
+
+## Automatic DI Scope Management
+
+Foundatio.Mediator automatically manages dependency injection scopes to ensure proper lifetime handling of scoped services like DbContext.
+
+### Root Handler Invocation Creates a Scope
+
+When you invoke a handler from a root mediator call (outside of another handler), a new DI scope is automatically created:
+
+```csharp
+// This creates a new DI scope
+var result = await mediator.InvokeAsync<Order>(new CreateOrderCommand("test@example.com"));
+
+// The scope is disposed when the operation completes
+```
+
+### Nested Operations Share the Same Scope
+
+All nested handler invocations within the same logical operation share the same DI scope:
+
+- **Cascading messages** - Events published via tuple returns use the same scope
+- **Manual handler calls** - Calling other handlers from within a handler
+- **Manual publishing** - Publishing events from within a handler
+- **Middleware operations** - All middleware in the pipeline
+
+```csharp
+public class OrderHandler
+{
+    public async Task<(Result<Order>, OrderCreated, EmailNotification)> Handle(
+        CreateOrderCommand command,
+        IOrderRepository repository,   // Scoped - same instance throughout operation
+        IMediator mediator,           // Can call other handlers in same scope
+        CancellationToken cancellationToken)
+    {
+        // This repository instance will be shared with all nested operations
+        var order = await repository.CreateAsync(command.ToOrder(), cancellationToken);
+
+        // These nested operations will use the SAME DI scope:
+        // 1. Manual handler call
+        await mediator.InvokeAsync(new UpdateInventoryCommand(order.ProductId), cancellationToken);
+
+        // 2. Manual event publishing
+        await mediator.PublishAsync(new OrderValidated(order.Id), cancellationToken);
+
+        // 3. Cascading events (via tuple return) - also use same scope
+        return (
+            Result<Order>.Created(order),
+            new OrderCreated(order.Id, order.Email),      // Uses same scope
+            new EmailNotification(order.Email, "Order")   // Uses same scope
+        );
+    }
+}
+
+public class InventoryHandler
+{
+    public async Task Handle(
+        UpdateInventoryCommand command,
+        IOrderRepository repository)  // SAME INSTANCE as in OrderHandler!
+    {
+        // This shares the DbContext/repository instance with the parent handler
+        var order = await repository.GetByIdAsync(command.OrderId);
+        // ... update inventory
+    }
+}
+```
+
+### Benefits of Shared Scope
+
+**🔄 Consistent Data Access:**
+
+- All handlers in the same operation see the same data
+- DbContext change tracking works across nested handlers
+- Transactions can span multiple handlers
+
+**⚡ Performance:**
+
+- Expensive scoped services created once per operation
+- Connection pooling is more efficient
+- Reduced service resolution overhead
+
+**🛡️ Data Integrity:**
+
+- Natural unit of work boundaries
+- Easier to maintain consistency across operations
+- Proper cleanup when operation completes
 
 ## Middleware Lifetime
 

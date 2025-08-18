@@ -1,6 +1,6 @@
 # CRUD Operations
 
-This example demonstrates a complete CRUD (Create, Read, Update, Delete) implementation using Foundatio.Mediator with Result types and event publishing.
+This example demonstrates a complete CRUD (Create, Read, Update, Delete) implementation using Foundatio Mediator with Result types and event publishing.
 
 ## CRUD Messages
 

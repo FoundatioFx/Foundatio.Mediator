@@ -1,6 +1,6 @@
-# Foundatio.Mediator Documentation
+# Foundatio Mediator Documentation
 
-This folder contains the VitePress v2.0 documentation for Foundatio.Mediator.
+This folder contains the VitePress v2.0 documentation for Foundatio Mediator.
 
 ## Development
 

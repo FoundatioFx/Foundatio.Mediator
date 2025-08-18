@@ -7,7 +7,7 @@ hero:
   tagline: Convention-based mediator powered by source generators and interceptors
   image:
     src: https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png
-    alt: Foundatio.Mediator
+    alt: Foundatio Mediator
   actions:
     - theme: brand
       text: Get Started

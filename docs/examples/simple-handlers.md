@@ -1,6 +1,6 @@
 # Simple Handlers
 
-This page demonstrates the basic handler patterns using real examples from the Foundatio.Mediator sample project.
+This page demonstrates the basic handler patterns using real examples from the Foundatio Mediator sample project.
 
 ## Basic Message and Handler
 

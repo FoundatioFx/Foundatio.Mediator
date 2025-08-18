@@ -1,10 +1,9 @@
 name: Docs
 
-on: [push]
-#on:
-#  push:
-#    tags:
-#      - 'v*'
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   deploy-docs:
@@ -39,20 +38,11 @@ jobs:
       run: npm install --force
       working-directory: docs
 
-    - name: Extract version from tag
-      id: version
-      run: |
-        TAG=${GITHUB_REF#refs/tags/}
-        VERSION=${TAG#v}
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "tag=$TAG" >> $GITHUB_OUTPUT
-
     - name: Build documentation
       run: npm run build
       working-directory: docs
       env:
         NODE_ENV: production
-        VITE_VERSION: ${{ steps.version.outputs.version }}
 
     - name: Setup Pages
       uses: actions/configure-pages@v4

@@ -26,7 +26,7 @@ export default withMermaid(defineConfig({
     },
     siteTitle: 'Mediator',
     nav: [
-      { text: 'Guide', link: '/guide/getting-started' },
+      { text: 'Guide', link: '/guide/what-is-foundatio-mediator' },
       { text: 'GitHub', link: 'https://github.com/FoundatioFx/Foundatio.Mediator' }
     ],
     sidebar: {

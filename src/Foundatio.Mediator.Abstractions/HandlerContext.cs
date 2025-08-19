@@ -1,9 +1,7 @@
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator;
 
-[DebuggerStepThrough]
 public sealed class HandlerScopeValue(IServiceScope scope, IDisposable disposable, CancellationToken token) : IDisposable
 {
     public IServiceScope Scope { get; } = scope ?? throw new ArgumentNullException(nameof(scope));
@@ -16,7 +14,6 @@ public sealed class HandlerScopeValue(IServiceScope scope, IDisposable disposabl
     }
 }
 
-[DebuggerStepThrough]
 public static class HandlerScope
 {
     private static readonly AsyncLocal<Stack<HandlerScopeValue>?> _stack = new();

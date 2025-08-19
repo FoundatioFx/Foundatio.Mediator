@@ -76,6 +76,8 @@ internal static class HandlerGenerator
 
         GenerateInterceptorMethods(source, handler, configuration.InterceptorsEnabled);
 
+        GenerateGetOrCreateScope(source, handler);
+
         if (!handler.IsStatic)
         {
             GenerateGetOrCreateHandler(source, handler);
@@ -303,7 +305,7 @@ internal static class HandlerGenerator
 
         using (source.Indent())
         {
-            source.AppendLine("using var handlerScope = HandlerScope.GetOrCreate(mediator, cancellationToken);");
+            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             string stronglyTypedMethodName = GetHandlerMethodName(handler);
@@ -402,7 +404,7 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        source.AppendLine("using var handlerScope = HandlerScope.GetOrCreate(mediator, cancellationToken);");
+        source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
         asyncModifier = handler.IsAsync ? "await " : "";
@@ -515,6 +517,18 @@ internal static class HandlerGenerator
                     }
 
                     return foundResult;
+                }
+                """);
+    }
+
+    private static void GenerateGetOrCreateScope(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        source.AppendLine()
+              .AppendLines($$"""
+                [DebuggerStepThrough]
+                private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
+                {
+                    return HandlerScope.GetOrCreate(mediator, cancellationToken);
                 }
                 """);
     }

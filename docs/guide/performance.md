@@ -61,7 +61,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 > 📊 **Benchmark Environment**: .NET 9.0 with BenchmarkDotNet
 > 🎯 **Goal**: Get as close as possible to direct method call performance
 
-### 🚀 Command Performance
+### Commands
 
 **Fire-and-forget operations with zero allocations**
 
@@ -72,7 +72,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 54.81 ns | ±1.12 ns | 192 B | 6.58x slower |
 | 🔴 MassTransit | 1,585.85 ns | ±19.82 ns | 4,232 B | 190.4x slower |
 
-### 📋 Query Performance (Request/Response)
+### Queries
 
 **Message-based queries with response objects**
 
@@ -83,7 +83,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 81.40 ns | ±1.32 ns | 384 B | 2.53x slower |
 | 🔴 MassTransit | 6,354.47 ns | ±125.37 ns | 12,784 B | 197.8x slower |
 
-### 📡 Event Publishing Performance
+### Event Notifications
 
 **Publish/subscribe pattern with multiple handlers**
 
@@ -94,7 +94,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 59.29 ns | ±1.13 ns | 288 B | 7.30x slower |
 | 🔴 MassTransit | 1,697.53 ns | ±13.97 ns | 4,448 B | 209.0x slower |
 
-### 🔧 Dependency Injection Overhead
+### Dependency Injection Overhead
 
 **Handler methods requiring injected dependencies**
 
@@ -105,7 +105,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 79.97 ns | ±0.54 ns | 456 B | 2.04x slower |
 | 🔴 MassTransit | 5,397.69 ns | ±61.05 ns | 12,857 B | 137.6x slower |
 
-## 🎯 Key Performance Insights
+## Key Performance Insights
 
 ### 🏆 **Performance Advantages**
 

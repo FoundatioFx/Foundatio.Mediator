@@ -58,54 +58,84 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 
 ## Performance Benefits
 
-### Benchmark Comparison
+## Performance Benchmarks
 
-### Commands
+> 📊 **Benchmark Environment**: .NET 9.0 with BenchmarkDotNet
+> 🎯 **Goal**: Get as close as possible to direct method call performance
 
-| Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
-|-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **Direct_Command**            | **8.33 ns**  | 0.17 ns   | 0.24 ns   | **-**  | **0 B**   | baseline  |
-| **Foundatio_Command**         | **17.93 ns** | 0.36 ns   | 0.34 ns   | **-**  | **0 B**   | **2.15x** |
-| MediatR_Command               | 54.81 ns     | 1.12 ns   | 1.77 ns   | 0.0038 | 192 B     | 6.58x     |
-| MassTransit_Command           | 1,585.85 ns  | 19.82 ns  | 17.57 ns  | 0.0839 | 4232 B    | 190.4x    |
+---
 
-### Queries (Request/Response)
+### 🚀 Command Performance
 
-| Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
-|-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **Direct_Query**              | **32.12 ns** | 0.50 ns   | 0.47 ns   | 0.0038 | **192 B** | baseline  |
-| **Foundatio_Query**           | **46.36 ns** | 0.94 ns   | 0.84 ns   | 0.0052 | **264 B** | **1.44x** |
-| MediatR_Query                 | 81.40 ns     | 1.32 ns   | 1.23 ns   | 0.0076 | 384 B     | 2.53x     |
-| MassTransit_Query             | 6,354.47 ns  | 125.37 ns | 195.19 ns | 0.2518 | 12784 B   | 197.8x    |
+**Fire-and-forget operations with zero allocations**
 
-### Events (Publish/Subscribe)
+| Implementation | Execution Time | Error | Memory Allocated | Performance vs Direct |
+|:---------------|---------------:|------:|-----------------:|----------------------:|
+| 🏆 **Direct Method Call** | **8.33 ns** | ±0.17 ns | **0 B** | **Baseline** |
+| ⚡ **Foundatio Mediator** | **17.93 ns** | ±0.36 ns | **0 B** | **2.15x slower** |
+| 🔶 MediatR | 54.81 ns | ±1.12 ns | 192 B | 6.58x slower |
+| 🔴 MassTransit | 1,585.85 ns | ±19.82 ns | 4,232 B | 190.4x slower |
 
-| Method                        | Mean         | Error     | StdDev    | Gen0   | Allocated | vs Direct |
-|-------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **Direct_Event**              | **8.12 ns**  | 0.18 ns   | 0.36 ns   | **-**  | **0 B**   | baseline  |
-| **Foundatio_Publish**         | **121.57 ns**| 0.80 ns   | 0.71 ns   | 0.0134 | **672 B** | **15.0x** |
-| MediatR_Publish               | 59.29 ns     | 1.13 ns   | 1.59 ns   | 0.0057 | 288 B     | 7.30x     |
-| MassTransit_Publish           | 1,697.53 ns  | 13.97 ns  | 13.06 ns  | 0.0877 | 4448 B    | 209.0x    |
+---
 
-### Dependency Injection Overhead
+### 📋 Query Performance (Request/Response)
 
-| Method                                | Mean         | Error     | StdDev    | Gen0   | Allocated | vs No DI  |
-|---------------------------------------|-------------|-----------|-----------|--------|-----------|-----------|
-| **Direct_QueryWithDependencies**     | **39.24 ns** | 0.81 ns   | 1.28 ns   | 0.0052 | **264 B** | baseline  |
-| **Foundatio_QueryWithDependencies**  | **53.30 ns** | 1.05 ns   | 1.37 ns   | 0.0067 | **336 B** | **1.36x** |
-| MediatR_QueryWithDependencies        | 79.97 ns     | 0.54 ns   | 0.51 ns   | 0.0091 | 456 B     | 2.04x     |
-| MassTransit_QueryWithDependencies    | 5,397.69 ns  | 61.05 ns  | 50.98 ns  | 0.2518 | 12857 B   | 137.6x    |
+**Message-based queries with response objects**
 
-### Key Performance Insights
+| Implementation | Execution Time | Error | Memory Allocated | Performance vs Direct |
+|:---------------|---------------:|------:|-----------------:|----------------------:|
+| 🏆 **Direct Method Call** | **32.12 ns** | ±0.50 ns | **192 B** | **Baseline** |
+| ⚡ **Foundatio Mediator** | **46.36 ns** | ±0.94 ns | **264 B** | **1.44x slower** |
+| 🔶 MediatR | 81.40 ns | ±1.32 ns | 384 B | 2.53x slower |
+| 🔴 MassTransit | 6,354.47 ns | ±125.37 ns | 12,784 B | 197.8x slower |
+
+---
+
+### 📡 Event Publishing Performance
+
+**Publish/subscribe pattern with multiple handlers**
+
+| Implementation | Execution Time | Error | Memory Allocated | Performance vs Direct |
+|:---------------|---------------:|------:|-----------------:|----------------------:|
+| 🏆 **Direct Method Call** | **8.12 ns** | ±0.18 ns | **0 B** | **Baseline** |
+| ⚡ **Foundatio Mediator** | **121.57 ns** | ±0.80 ns | **672 B** | **15.0x slower** |
+| 🔶 MediatR | 59.29 ns | ±1.13 ns | 288 B | 7.30x slower |
+| 🔴 MassTransit | 1,697.53 ns | ±13.97 ns | 4,448 B | 209.0x slower |
+
+---
+
+### 🔧 Dependency Injection Overhead
+
+**Handler methods requiring injected dependencies**
+
+| Implementation | Execution Time | Error | Memory Allocated | Performance vs Direct |
+|:---------------|---------------:|------:|-----------------:|----------------------:|
+| 🏆 **Direct Method Call** | **39.24 ns** | ±0.81 ns | **264 B** | **Baseline** |
+| ⚡ **Foundatio Mediator** | **53.30 ns** | ±1.05 ns | **336 B** | **1.36x slower** |
+| 🔶 MediatR | 79.97 ns | ±0.54 ns | 456 B | 2.04x slower |
+| 🔴 MassTransit | 5,397.69 ns | ±61.05 ns | 12,857 B | 137.6x slower |
+
+---
+
+## 🎯 Key Performance Insights
+
+### 🏆 **Performance Advantages**
 
 - **🚀 Near-Optimal Performance**: Only slight overhead vs direct method calls
-- **⚡ Foundatio vs MediatR**: **3.06x faster** for commands, **1.76x faster** for queries
-- **🎯 Foundatio vs MassTransit**: **88x faster** for commands, **137x faster** for queries
+- **⚡ vs MediatR**: **3.06x faster** for commands, **1.76x faster** for queries
+- **🔥 vs MassTransit**: **88x faster** for commands, **137x faster** for queries
 - **💾 Zero Allocation Commands**: Fire-and-forget operations have no GC pressure
-- **🔥 Minimal DI Overhead**: Only 36% performance cost for dependency injection
+- **🎯 Minimal DI Overhead**: Only 36% performance cost for dependency injection
 - **📡 Efficient Publishing**: Event publishing scales well with multiple handlers
 
-*Benchmarks run on .NET 9.0 with BenchmarkDotNet. Results show Foundatio.Mediator achieves its design goal of getting as close as possible to direct method call performance.*
+### 📈 **Why Foundatio Mediator is Faster**
+
+1. **C# Interceptors**: Compile-time method replacement eliminates runtime reflection
+2. **Source Generation**: No dynamic handler discovery or registration overhead
+3. **Direct Static Calls**: Generated code calls handlers directly with minimal indirection
+4. **Smart DI Integration**: Dependencies resolved only when needed, not preemptively
+
+---
 
 ## Enabling/Disabling Interceptors
 

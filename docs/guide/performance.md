@@ -56,14 +56,10 @@ file static class GeneratedInterceptors
 var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 ```
 
-## Performance Benefits
-
-## Performance Benchmarks
+## Performance
 
 > 📊 **Benchmark Environment**: .NET 9.0 with BenchmarkDotNet
 > 🎯 **Goal**: Get as close as possible to direct method call performance
-
----
 
 ### 🚀 Command Performance
 
@@ -76,8 +72,6 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 54.81 ns | ±1.12 ns | 192 B | 6.58x slower |
 | 🔴 MassTransit | 1,585.85 ns | ±19.82 ns | 4,232 B | 190.4x slower |
 
----
-
 ### 📋 Query Performance (Request/Response)
 
 **Message-based queries with response objects**
@@ -88,8 +82,6 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | ⚡ **Foundatio Mediator** | **46.36 ns** | ±0.94 ns | **264 B** | **1.44x slower** |
 | 🔶 MediatR | 81.40 ns | ±1.32 ns | 384 B | 2.53x slower |
 | 🔴 MassTransit | 6,354.47 ns | ±125.37 ns | 12,784 B | 197.8x slower |
-
----
 
 ### 📡 Event Publishing Performance
 
@@ -102,8 +94,6 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | 🔶 MediatR | 59.29 ns | ±1.13 ns | 288 B | 7.30x slower |
 | 🔴 MassTransit | 1,697.53 ns | ±13.97 ns | 4,448 B | 209.0x slower |
 
----
-
 ### 🔧 Dependency Injection Overhead
 
 **Handler methods requiring injected dependencies**
@@ -114,8 +104,6 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 | ⚡ **Foundatio Mediator** | **53.30 ns** | ±1.05 ns | **336 B** | **1.36x slower** |
 | 🔶 MediatR | 79.97 ns | ±0.54 ns | 456 B | 2.04x slower |
 | 🔴 MassTransit | 5,397.69 ns | ±61.05 ns | 12,857 B | 137.6x slower |
-
----
 
 ## 🎯 Key Performance Insights
 
@@ -134,8 +122,6 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 2. **Source Generation**: No dynamic handler discovery or registration overhead
 3. **Direct Static Calls**: Generated code calls handlers directly with minimal indirection
 4. **Smart DI Integration**: Dependencies resolved only when needed, not preemptively
-
----
 
 ## Enabling/Disabling Interceptors
 

@@ -156,12 +156,9 @@ using System.Threading.Tasks;
 namespace Foundatio.Mediator;
 
 [global::System.CodeDom.Compiler.GeneratedCode("Foundatio.Mediator", "<version>")]
-[DebuggerStepThrough]
-[DebuggerNonUserCode]
 [ExcludeFromCodeCoverage]
 public static class Tests_MediatorHandlers
 {
-    [DebuggerStepThrough]
     public static void AddHandlers(this IServiceCollection services)
     {
         // Register HandlerRegistration instances keyed by message type name

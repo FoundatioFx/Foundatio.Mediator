@@ -221,3 +221,4 @@ If you get a "handler not found" error:
 1. Ensure your class name ends with `Handler` or `Consumer`
 2. Ensure your method name follows the naming conventions
 3. Ensure the first parameter matches your message type exactly
+4. If using cross-assembly handlers, ensure `AddMediator()` is called and configured to add all appropriate assemblies.

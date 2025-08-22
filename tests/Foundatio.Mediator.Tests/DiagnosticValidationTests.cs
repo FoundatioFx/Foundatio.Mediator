@@ -89,7 +89,7 @@ public class DiagnosticValidationTests : GeneratorTestBase
 	}
 
 	[Fact]
-	public void FMED006_GenericMessageArgument_NoDiagnostic()
+	public void GenericMessageArgument_NoDiagnostic()
 	{
 		var src = """
 			using System.Threading.Tasks;

@@ -269,14 +269,6 @@ public class UserProcessor
 
 The source generator provides compile-time errors for:
 
-### Missing Handlers
-
-```csharp
-// ❌ Compile-time error if no handler exists
-await mediator.InvokeAsync(new UnhandledMessage());
-// Error: No handler found for message type 'UnhandledMessage'
-```
-
 ### Multiple Handlers (for Invoke)
 
 ```csharp

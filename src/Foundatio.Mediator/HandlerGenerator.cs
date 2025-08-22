@@ -680,6 +680,11 @@ internal static class HandlerGenerator
             return;
         }
 
+        // No handler found - skip validation since we can't validate without a handler
+        // Cross-assembly handlers will be resolved at runtime
+        if (handlersForMessage.Count == 0)
+            return;
+
         var handler = handlersForMessage[0];
         bool isAsyncCall = callSite.MethodName == "InvokeAsync";
 

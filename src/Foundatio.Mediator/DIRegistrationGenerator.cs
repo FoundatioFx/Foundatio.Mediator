@@ -27,12 +27,9 @@ internal static class DIRegistrationGenerator
         source.AppendLine("namespace Foundatio.Mediator;");
         source.AppendLine();
         source.AddGeneratedCodeAttribute();
-        source.AppendLine("[DebuggerStepThrough]");
-        source.AppendLine("[DebuggerNonUserCode]");
         source.AppendLine("[ExcludeFromCodeCoverage]");
         source.AppendLine($"public static class {className}");
         source.AppendLine("{");
-        source.AppendLine("    [DebuggerStepThrough]");
         source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
         source.AppendLine("    {");
         source.AppendLine("        // Register HandlerRegistration instances keyed by message type name");

@@ -660,24 +660,9 @@ internal static class HandlerGenerator
             return; // Only validate Invoke calls, not Publish
 
         // If the message is a generic type parameter (e.g., T), we cannot know the handler at compile time,
-        // so do not emit FMED006/FMDE007 for missing/multiple handlers.
+        // so do not emit FMDE007 for missing/multiple handlers.
         if (callSite.MessageType.IsTypeParameter)
             return;
-
-        // FMED006: No handler found for invoke call
-        if (handlersForMessage.Count == 0)
-        {
-            var diagnostic = new DiagnosticInfo
-            {
-                Identifier = "FMED006",
-                Title = "No handler found for message",
-                Message = $"No handler found for message type '{callSite.MessageType.FullName}'. Invoke calls require exactly one handler.",
-                Severity = DiagnosticSeverity.Error,
-                Location = callSite.Location
-            };
-            context.ReportDiagnostic(diagnostic.ToDiagnostic());
-            return;
-        }
 
         // FMED007: Multiple handlers found for invoke call
         if (handlersForMessage.Count > 1)

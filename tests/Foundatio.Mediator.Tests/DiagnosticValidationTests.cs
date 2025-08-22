@@ -5,29 +5,6 @@ public class DiagnosticValidationTests : GeneratorTestBase
 	private static readonly MediatorGenerator Gen = new();
 
 	[Fact]
-    public void FMED006_NoHandlerForInvoke()
-	{
-		var src = """
-			using System.Threading;
-			using System.Threading.Tasks;
-			using Foundatio.Mediator;
-
-			public record Msg;
-			public record Other;
-			public class OtherHandler { public Task HandleAsync(Other m, CancellationToken ct) => Task.CompletedTask; }
-
-			public static class Calls {
-				public static async Task Call(IMediator m) {
-					await m.InvokeAsync(new Msg());
-				}
-			}
-			""";
-
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED006");
-	}
-
-	[Fact]
 	public void FMED007_MultipleHandlersForInvoke()
 	{
 		var src = """
@@ -126,7 +103,6 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			""";
 
 		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+		Assert.DoesNotContain(genDiags, d => d.Id == "FMED007");
 	}
 }
-

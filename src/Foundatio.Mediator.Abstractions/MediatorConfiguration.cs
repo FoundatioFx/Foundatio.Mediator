@@ -13,7 +13,7 @@ public class MediatorConfiguration
     /// <summary>
     /// Gets or sets the lifetime of the mediator.
     /// </summary>
-    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Scoped;
+    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Singleton;
 
     /// <summary>
     /// Gets or sets the notification publisher.

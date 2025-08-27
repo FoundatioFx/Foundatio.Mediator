@@ -104,12 +104,12 @@ await mediator.PublishAsync(new UserCreated(user.Id, user.Email));
 
 Key topics:
 
-- [Getting Started](https://mediator.foundatio.dev/guide/getting-started/) - Step-by-step setup
-- [Handler Conventions](https://mediator.foundatio.dev/guide/handler-conventions/) - Discovery rules and patterns
-- [Middleware](https://mediator.foundatio.dev/guide/middleware/) - Pipeline hooks and state management
-- [Result Types](https://mediator.foundatio.dev/guide/result-types/) - Rich status handling
-- [Performance](https://mediator.foundatio.dev/guide/performance/) - Benchmarks vs other libraries
-- [Configuration](https://mediator.foundatio.dev/guide/configuration/) - MSBuild and runtime options
+- [Getting Started](https://mediator.foundatio.dev/guide/getting-started.html) - Step-by-step setup
+- [Handler Conventions](https://mediator.foundatio.dev/guide/handler-conventions.html) - Discovery rules and patterns
+- [Middleware](https://mediator.foundatio.dev/guide/middleware.html) - Pipeline hooks and state management
+- [Result Types](https://mediator.foundatio.dev/guide/result-types.html) - Rich status handling
+- [Performance](https://mediator.foundatio.dev/guide/performance.html) - Benchmarks vs other libraries
+- [Configuration](https://mediator.foundatio.dev/guide/configuration.html) - MSBuild and runtime options
 
 ## 🤝 Contributing
 

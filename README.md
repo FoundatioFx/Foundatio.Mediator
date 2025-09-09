@@ -122,7 +122,6 @@ Contributions are welcome! Please feel free to submit a Pull Request. See our [d
 Other mediator and messaging libraries for .NET:
 
 - **[MediatR](https://github.com/jbogard/MediatR)** - Simple, unambitious mediator implementation in .NET with request/response and notification patterns
-- **[@martinothamar/Mediator](https://github.com/martinothamar/Mediator)** - High-performance .NET mediator library built on source generators with zero allocations
 - **[MassTransit](https://github.com/MassTransit/MassTransit)** - Distributed application framework for .NET with in-process mediator capabilities alongside service bus features
 
 ## 📄 License

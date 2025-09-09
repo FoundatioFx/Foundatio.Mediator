@@ -111,17 +111,19 @@ Key topics:
 - [Performance](https://mediator.foundatio.dev/guide/performance.html) - Benchmarks vs other libraries
 - [Configuration](https://mediator.foundatio.dev/guide/configuration.html) - MSBuild and runtime options
 
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. See our [documentation](https://mediator.foundatio.dev) for development guidelines.
+
 ## 🔗 Related Projects
+
+[**@martinothamar/Mediator**](https://github.com/martinothamar/Mediator) was the primary source of inspiration for this library, but we wanted to use source interceptors and be conventional rather than requiring interfaces or base classes.
 
 Other mediator and messaging libraries for .NET:
 
 - **[MediatR](https://github.com/jbogard/MediatR)** - Simple, unambitious mediator implementation in .NET with request/response and notification patterns
 - **[@martinothamar/Mediator](https://github.com/martinothamar/Mediator)** - High-performance .NET mediator library built on source generators with zero allocations
 - **[MassTransit](https://github.com/MassTransit/MassTransit)** - Distributed application framework for .NET with in-process mediator capabilities alongside service bus features
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. See our [documentation](https://mediator.foundatio.dev) for development guidelines.
 
 ## 📄 License
 

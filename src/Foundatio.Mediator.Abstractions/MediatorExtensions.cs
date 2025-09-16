@@ -65,7 +65,7 @@ public static class MediatorExtensions
     /// <returns></returns>
     public static IServiceCollection AddHandler(this IServiceCollection services, HandlerRegistration registration)
     {
-        services.AddKeyedSingleton<HandlerRegistration>(registration.MessageTypeName);
+        services.AddKeyedSingleton(registration.MessageTypeName, registration);
         services.AddSingleton(registration);
         return services;
     }

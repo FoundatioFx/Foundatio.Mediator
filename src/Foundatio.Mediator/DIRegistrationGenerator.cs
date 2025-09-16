@@ -58,8 +58,7 @@ internal static class DIRegistrationGenerator
                     source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
             }
 
-            // Use reflection FullName so nested types resolve with '+' and match runtime Type.FullName keys
-            source.AppendLine($"services.AddHandler(new HandlerRegistration(");
+            source.AppendLine($"AddMediatorHandler(services, new HandlerRegistration(");
             source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
             source.AppendLine($"        \"{handlerClassName}\",");
 
@@ -79,8 +78,20 @@ internal static class DIRegistrationGenerator
             source.AppendLine();
         }
 
-        source.DecrementIndent().DecrementIndent();
-        source.AppendLine("    }");
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        source.AppendLine()
+            .AppendLines($$"""
+                           [DebuggerStepThrough]
+                           private static void AddMediatorHandler(IServiceCollection services, HandlerRegistration registration)
+                           {
+                               services.AddKeyedSingleton(registration.MessageTypeName, registration);
+                               services.AddSingleton(registration);
+                           }
+                           """);
+
+        source.DecrementIndent();
         source.AppendLine("}");
 
         context.AddSource($"{className}.g.cs", source.ToString());

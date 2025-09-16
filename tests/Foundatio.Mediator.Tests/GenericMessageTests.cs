@@ -70,7 +70,9 @@ public class GenericMessageTests : GeneratorTestBase
              public record Order(string Id);
              public record EntityAction<T>(T Entity) : IQuery;
 
-             public class OrderActionHandler {
+             public class SomeBaseClass<T> { }
+
+             public class OrderActionHandler : SomeBaseClass<Order> {
                  public Task<Result> HandleAsync(EntityAction<Order> action, CancellationToken ct) => Task.FromResult(Result.Success());
              }
              """;

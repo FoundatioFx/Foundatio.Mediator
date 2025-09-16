@@ -60,10 +60,10 @@ public class Mediator : IMediator, IServiceProvider
             var handlersList = handlers.ToList();
 
             if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
+                throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(mt)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use PublishAsync for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(mt)}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList.First();
             return async (mediator, msg, ct) => await handler.HandleAsync(mediator, msg, ct, null);
@@ -79,14 +79,14 @@ public class Mediator : IMediator, IServiceProvider
             var handlersList = handlers.ToList();
 
             if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {mt.FullName}");
+                throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(mt)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {mt.FullName}. Use Publish for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(mt)}. Use Publish for multiple handlers.");
 
             var handler = handlersList.First();
             if (handler.IsAsync)
-                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {mt.FullName}. Use InvokeAsync instead.");
+                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {MessageTypeKey.Get(mt)}. Use InvokeAsync instead.");
 
             return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, null);
         });
@@ -101,10 +101,10 @@ public class Mediator : IMediator, IServiceProvider
             var handlersList = handlers.ToList();
 
             if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
+                throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(key.MessageType)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use PublishAsync for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(key.MessageType)}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList.First();
             return (mediator, msg, ct) => handler.HandleAsync(mediator, msg, ct, key.ResponseType);
@@ -120,14 +120,14 @@ public class Mediator : IMediator, IServiceProvider
             var handlersList = handlers.ToList();
 
             if (handlersList.Count == 0)
-                throw new InvalidOperationException($"No handler found for message type {key.MessageType.FullName}");
+                throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(key.MessageType)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {key.MessageType.FullName}. Use Publish for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(key.MessageType)}. Use Publish for multiple handlers.");
 
             var handler = handlersList.First();
             if (handler.IsAsync)
-                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {key.MessageType.FullName}. Use InvokeAsync instead.");
+                throw new InvalidOperationException($"Cannot use synchronous Invoke with async-only handler for message type {MessageTypeKey.Get(key.MessageType)}. Use InvokeAsync instead.");
 
             return (mediator, msg, ct) => handler.Handle!(mediator, msg, ct, key.ResponseType);
         });
@@ -163,8 +163,7 @@ public class Mediator : IMediator, IServiceProvider
             }
 
             return allHandlers
-                .GroupBy(h => $"{h.MessageTypeName}:{h.HandleAsync.Method.DeclaringType?.FullName}:{h.HandleAsync.Method.Name}")
-                .Select(g => g.First())
+                .Distinct()
                 .Select<HandlerRegistration, PublishAsyncDelegate>(h => async (mediator, msg, cancellationToken) => await h.HandleAsync(mediator, msg, cancellationToken, null))
                 .ToArray();
         });

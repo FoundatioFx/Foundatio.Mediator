@@ -56,6 +56,31 @@ public void ConfigureServices(IServiceCollection services)
 }
 ```
 
+### Adding Handlers From Other Assemblies
+
+If your handlers live in other class library projects (e.g. a modular feature like `Orders.Module`), register those assemblies so their generated handlers are picked up.
+
+Basic usage:
+
+```csharp
+using Orders.Module.Messages; // any type from the target assembly
+
+builder.Services.AddMediator(c =>
+    c.AddAssembly<OrderCreated>()
+);
+```
+
+Multiple assemblies:
+
+```csharp
+builder.Services.AddMediator(c =>
+    c.AddAssembly<OrderCreated>()
+     .AddAssembly<InventoryItemReserved>()
+);
+```
+
+Tip: If you don't call `AddAssembly(...)`, the mediator will scan currently loaded (non-System) assemblies, which is fine for simple apps. Explicit registration gives you clearer intent and can trim startup work. For deeper details see the dependency injection guide.
+
 ### 2. Create Your First Message
 
 Define a simple message:
@@ -181,18 +206,6 @@ public class UserHandler
     private readonly ILogger<UserHandler> _logger;
 
     public UserHandler(IUserRepository repository, ILogger<UserHandler> logger)
-    {
-        _repository = repository;
-        _logger = logger;
-    }
-
-    public async Task<User> HandleAsync(GetUser query, CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Getting user {UserId}", query.Id);
-        return await _repository.GetByIdAsync(query.Id, cancellationToken);
-    }
-}
-```
 
 ## Next Steps
 

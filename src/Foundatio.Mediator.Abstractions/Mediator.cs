@@ -173,7 +173,10 @@ public class Mediator : IMediator, IServiceProvider
     [DebuggerStepThrough]
     private IEnumerable<HandlerRegistration> GetHandlersForType(Type type)
     {
-        return _serviceProvider.GetKeyedServices<HandlerRegistration>(type.FullName);
+        var handlers = _serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(type));
+        if (handlers != null && handlers.Any()) return handlers;
+
+        return Array.Empty<HandlerRegistration>();
     }
 
     private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();

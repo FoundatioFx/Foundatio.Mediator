@@ -5,6 +5,12 @@
   "version": "0.2.0",
   "configurations": [
     {
+        "name": "Modular Monolith",
+        "type": "dotnet",
+        "request": "launch",
+        "projectPath": "${workspaceFolder}/samples/ModularMonolithSample/src/WebApp/WebApp.csproj",
+    },
+    {
         "name": "ConsoleSample",
         "type": "dotnet",
         "request": "launch",

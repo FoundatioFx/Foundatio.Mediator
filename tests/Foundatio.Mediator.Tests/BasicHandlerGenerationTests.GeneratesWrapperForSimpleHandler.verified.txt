@@ -164,9 +164,9 @@ public static class Tests_MediatorHandlers
         // Register HandlerRegistration instances keyed by message type name
         // Optionally register handler classes into DI based on MediatorHandlerLifetime setting
 
-        services.AddKeyedSingleton<HandlerRegistration>(typeof(Ping).FullName!,
+        services.AddKeyedSingleton<HandlerRegistration>(MessageTypeKey.Get(typeof(Ping)),
             new HandlerRegistration(
-                typeof(Ping).FullName!,
+                MessageTypeKey.Get(typeof(Ping)),
                 PingHandler_Ping_Handler.UntypedHandleAsync,
                 null,
                 true));

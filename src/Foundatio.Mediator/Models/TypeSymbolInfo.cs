@@ -62,6 +62,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsTypeParameter { get; init; }
     /// <summary>
+    /// Indicates if the type is a constructed generic type.
+    /// </summary>
+    public bool IsGeneric { get; init; }
+    /// <summary>
     /// Contains information about the items in a tuple type, if applicable.
     /// </summary>
     public EquatableArray<TupleItemInfo> TupleItems { get; init; }
@@ -84,7 +88,8 @@ internal readonly record struct TypeSymbolInfo
             IsCancellationToken = false,
             IsTuple = false,
             IsTypeParameter = false,
-            TupleItems = EquatableArray<TupleItemInfo>.Empty
+            TupleItems = EquatableArray<TupleItemInfo>.Empty,
+            IsGeneric = false
         };
     }
 
@@ -114,9 +119,32 @@ internal readonly record struct TypeSymbolInfo
         var tupleItems = unwrappedNullableType.GetTupleItems(compilation);
         bool isTypeParameter = typeSymbol.TypeKind == TypeKind.TypeParameter;
 
+        string identifier;
+        if (typeSymbol is INamedTypeSymbol named && named.IsGenericType && !named.IsUnboundGenericType)
+        {
+            static string GetTypeArgIdentifier(ITypeSymbol ts)
+            {
+                if (ts is INamedTypeSymbol nts && nts.IsGenericType && !nts.IsUnboundGenericType)
+                {
+                    var inner = string.Join("_", nts.TypeArguments.Select(GetTypeArgIdentifier));
+                    return ($"{nts.Name.ToIdentifier()}_{inner}");
+                }
+                return ts.Name.ToIdentifier();
+            }
+
+            var typeArgs = string.Join("_", named.TypeArguments.Select(GetTypeArgIdentifier));
+            identifier = ($"{named.Name.ToIdentifier()}_{typeArgs}");
+        }
+        else
+        {
+            identifier = typeSymbol.Name.ToIdentifier();
+        }
+
+        bool isGeneric = typeSymbol is INamedTypeSymbol { IsGenericType: true } nts && !nts.IsUnboundGenericType;
+
         return new TypeSymbolInfo
         {
-            Identifier = typeSymbol.Name.ToIdentifier(),
+            Identifier = identifier,
             FullName = typeSymbol.ToDisplayString(),
             UnwrappedFullName = unwrappedTypeFullName,
             IsNullable = isNullable,
@@ -130,7 +158,8 @@ internal readonly record struct TypeSymbolInfo
             IsCancellationToken = isCancellationToken,
             IsTuple = isTuple,
             IsTypeParameter = isTypeParameter,
-            TupleItems = tupleItems
+            TupleItems = tupleItems,
+            IsGeneric = isGeneric
         };
     }
 }

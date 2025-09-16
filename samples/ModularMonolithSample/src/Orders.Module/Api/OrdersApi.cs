@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Orders.Module.Extensions;
+using Orders.Module.Handlers;
 using Orders.Module.Messages;
 
 namespace Orders.Module.Api;
@@ -54,5 +55,13 @@ public static class OrdersApi
         })
         .WithName("DeleteOrder")
         .WithSummary("Delete an order");
+
+        group.MapPost("/action", async (EntityAction<Order> command, IMediator mediator) =>
+        {
+            var result = await mediator.InvokeAsync<Result<Order>>(command);
+            return result.ToCreatedResult($"/api/orders/{result.Value?.Id}");
+        })
+        .WithName("EntityAction")
+        .WithSummary("Perform an action on an order");
     }
 }

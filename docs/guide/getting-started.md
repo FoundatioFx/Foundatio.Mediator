@@ -206,6 +206,18 @@ public class UserHandler
     private readonly ILogger<UserHandler> _logger;
 
     public UserHandler(IUserRepository repository, ILogger<UserHandler> logger)
+    {
+        _repository = repository;
+        _logger = logger;
+    }
+
+    public async Task<User> HandleAsync(GetUser query, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Getting user {UserId}", query.Id);
+        return await _repository.GetByIdAsync(query.Id, cancellationToken);
+    }
+}
+```
 
 ## Next Steps
 

@@ -111,6 +111,33 @@ Key topics:
 - [Performance](https://mediator.foundatio.dev/guide/performance.html) - Benchmarks vs other libraries
 - [Configuration](https://mediator.foundatio.dev/guide/configuration.html) - MSBuild and runtime options
 
+## 📦 CI Packages (Feedz)
+
+Want the latest CI build before it hits NuGet? Add the Feedz source (read‑only public) and install the pre-release version:
+
+```bash
+dotnet nuget add source https://f.feedz.io/foundatio/foundatio/nuget -n foundatio-feedz
+dotnet add package Foundatio.Mediator --prerelease
+```
+
+Or add to your `NuGet.config`:
+
+```xml
+<configuration>
+    <packageSources>
+        <add key="foundatio-feedz" value="https://f.feedz.io/foundatio/foundatio/nuget" />
+    </packageSources>
+    <!-- Optional: limit this source to Foundatio packages -->
+    <packageSourceMapping>
+        <packageSource key="foundatio-feedz">
+            <package pattern="Foundatio.*" />
+        </packageSource>
+    </packageSourceMapping>
+</configuration>
+```
+
+CI builds are published with pre-release version tags (e.g. `1.0.0-alpha.12345+sha.abcdef`). Use them to try new features early—avoid in production unless you understand the changes.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. See our [documentation](https://mediator.foundatio.dev) for development guidelines.

@@ -111,7 +111,7 @@ internal static class PingHandler_Ping_Handler
     }
 
     private static PingHandler? _handler;
-    private static readonly object _lock = new object();
+    private static readonly global::System.Threading.Lock _lock = new();
 
     [DebuggerStepThrough]
     private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)

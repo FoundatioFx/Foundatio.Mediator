@@ -538,7 +538,7 @@ internal static class HandlerGenerator
         source.AppendLine()
               .AppendLines($$"""
                 private static {{handler.FullName}}? _handler;
-                private static readonly object _lock = new object();
+                private static readonly global::System.Threading.Lock _lock = new();
 
                 [DebuggerStepThrough]
                 private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)

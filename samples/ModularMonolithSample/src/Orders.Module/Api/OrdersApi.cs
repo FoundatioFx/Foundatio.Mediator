@@ -58,6 +58,9 @@ public static class OrdersApi
 
         group.MapPost("/action", async (EntityAction<Order> command, IMediator mediator) =>
         {
+            var foundatioMediator = (Mediator)mediator;
+            foundatioMediator.ShowRegisteredHandlers();
+
             var result = await mediator.InvokeAsync<Result<Order>>(command);
             return result.ToCreatedResult($"/api/orders/{result.Value?.Id}");
         })

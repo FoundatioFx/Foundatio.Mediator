@@ -57,6 +57,19 @@ public static class MediatorExtensions
         return services.AddMediator(configurationBuilder.Build());
     }
 
+    /// <summary>
+    /// Adds a handler registration to the service collection.
+    /// </summary>
+    /// <param name="services"></param>
+    /// <param name="registration"></param>
+    /// <returns></returns>
+    public static IServiceCollection AddHandler(this IServiceCollection services, HandlerRegistration registration)
+    {
+        services.AddKeyedSingleton<HandlerRegistration>(registration.MessageTypeName);
+        services.AddSingleton(registration);
+        return services;
+    }
+
     private static bool IsAssemblyMarkedWithFoundatioHandlerModule(Assembly assembly)
     {
         return assembly.GetCustomAttributes(typeof(FoundatioHandlerModuleAttribute), false).Any();

@@ -59,9 +59,9 @@ internal static class DIRegistrationGenerator
             }
 
             // Use reflection FullName so nested types resolve with '+' and match runtime Type.FullName keys
-            source.AppendLine($"services.AddKeyedSingleton<HandlerRegistration>(MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
-            source.AppendLine($"    new HandlerRegistration(");
+            source.AppendLine($"services.AddHandler(new HandlerRegistration(");
             source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
+            source.AppendLine($"        \"{handlerClassName}\",");
 
             if (handler.IsAsync)
             {

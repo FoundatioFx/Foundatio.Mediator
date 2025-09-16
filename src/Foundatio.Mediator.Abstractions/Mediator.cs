@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator;
 
@@ -49,6 +51,26 @@ public class Mediator : IMediator, IServiceProvider
     {
         var handlersList = GetAllApplicableHandlers(message).ToList();
         return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
+    }
+
+    public void ShowRegisteredHandlers()
+    {
+        var logger = _serviceProvider.GetRequiredService<ILogger<Mediator>>();
+        var registrations = _serviceProvider.GetServices<HandlerRegistration>().ToArray();
+        if (!registrations.Any())
+        {
+            logger.LogInformation("No handlers registered.");
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Registered Handlers:");
+        foreach (var registration in registrations.OrderBy(r => r.MessageTypeName).ThenBy(r => r.HandlerClassName))
+        {
+            sb.AppendLine($"- Message: {registration.MessageTypeName}, Handler: {registration.HandlerClassName}, IsAsync: {registration.IsAsync}");
+        }
+
+        logger.LogInformation(sb.ToString());
     }
 
     [DebuggerStepThrough]

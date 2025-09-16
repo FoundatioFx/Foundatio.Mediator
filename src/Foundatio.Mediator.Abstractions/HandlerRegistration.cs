@@ -9,12 +9,14 @@ public class HandlerRegistration
     /// Creates a new handler registration
     /// </summary>
     /// <param name="messageTypeName">The fully qualified type name of the message</param>
+    /// <param name="handlerClassName">The fully qualified type name of the generated handler wrapper class</param>
     /// <param name="handleAsync">The delegate to handle the message asynchronously</param>
     /// <param name="handle">The delegate to handle the message synchronously (null for async-only handlers)</param>
     /// <param name="isAsync">Whether the handler supports async operations</param>
-    public HandlerRegistration(string messageTypeName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync)
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync)
     {
         MessageTypeName = messageTypeName;
+        HandlerClassName = handlerClassName;
         HandleAsync = handleAsync;
         Handle = handle;
         IsAsync = isAsync;
@@ -24,6 +26,11 @@ public class HandlerRegistration
     /// The fully qualified type name of the message this handler processes
     /// </summary>
     public string MessageTypeName { get; }
+
+    /// <summary>
+    /// The fully qualified type name of the generated handler wrapper class
+    /// </summary>
+    public string HandlerClassName { get; }
 
     /// <summary>
     /// The delegate to handle the message

@@ -5,13 +5,16 @@ namespace Foundatio.Mediator.Tests;
 public record UpdateEntity<T>(T Entity) : ICommand;
 public record UpdateEntityPair<T1, T2>(T1 First, T2 Second) : ICommand;
 
-public class EntityHandler<T>
+public class EntityHandlerBase<T>
 {
-    public Task HandleAsync(UpdateEntity<T> command, CancellationToken cancellationToken)
+    public Task HandlesAsync(UpdateEntity<T> command, CancellationToken cancellationToken)
     {
-        // no-op
         return Task.CompletedTask;
     }
+}
+
+public class EntityHandler<T> : EntityHandlerBase<T>
+{
 }
 
 public class EntityPairHandler<T1, T2>

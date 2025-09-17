@@ -84,8 +84,7 @@ internal static class HandlerAnalyzer
 
         bool treatAsHandlerClass = nameMatches || implementsMarker || hasClassHandlerAttribute;
 
-        var handlerMethods = classSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
+        var handlerMethods = GetMethods(classSymbol)
             .Where(m => IsHandlerMethod(m, context.SemanticModel.Compilation, treatAsHandlerClass))
             .ToList();
 
@@ -172,6 +171,32 @@ internal static class HandlerAnalyzer
             return false;
 
         return true;
+    }
+
+    private static IEnumerable<IMethodSymbol> GetMethods(INamedTypeSymbol targetSymbol, bool includeBaseMethods = true)
+    {
+        var methods = new Dictionary<string, IMethodSymbol>();
+
+        var currentSymbol = targetSymbol;
+
+        while (currentSymbol != null)
+        {
+            var methodSymbols = currentSymbol
+                .GetMembers()
+                .Where(m => m.Kind == SymbolKind.Method)
+                .OfType<IMethodSymbol>()
+                .Where(p => !methods.ContainsKey(p.Name));
+
+            foreach (var methodSymbol in methodSymbols)
+                methods.Add(methodSymbol.Name, methodSymbol);
+
+            if (!includeBaseMethods)
+                break;
+
+            currentSymbol = currentSymbol.BaseType;
+        }
+
+        return methods.Values;
     }
 
     private static readonly string[] ValidHandlerMethodNames = [

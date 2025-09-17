@@ -46,12 +46,12 @@ internal static class DIRegistrationGenerator
             // Register handler in DI for non-static handler classes when lifetime != Singleton
             if (registerHandlers && !handler.IsStatic)
             {
-                var lifetimeMethod = "";
-                if (string.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
+                string lifetimeMethod = "";
+                if (String.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
                     lifetimeMethod = "AddTransient";
-                if (string.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
+                if (String.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
                     lifetimeMethod = "AddScoped";
-                if (string.Equals(handlerLifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+                if (String.Equals(handlerLifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
                     lifetimeMethod = "AddSingleton";
 
                 if (!String.IsNullOrEmpty(lifetimeMethod))
@@ -61,21 +61,27 @@ internal static class DIRegistrationGenerator
             if (handler.IsGenericHandlerClass)
             {
                 // open generic registration
-                if (handler.MessageGenericTypeDefinitionFullName != null && handler.GenericArity > 0)
+                if (handler is not { MessageGenericTypeDefinitionFullName: not null, GenericArity: > 0 })
+                    continue;
+
+                // Build unbound generic typeof expressions
+                string wrapperTypeOf = handler.GenericArity switch
                 {
-                    // Build unbound generic typeof expressions
-                    var wrapperTypeOf = handler.GenericArity switch
-                    {
-                        1 => $"typeof({handlerClassName}<>)",
-                        2 => $"typeof({handlerClassName}<,>)",
-                        3 => $"typeof({handlerClassName}<,,>)",
-                        4 => $"typeof({handlerClassName}<,,,>)",
-                        _ => $"typeof({handlerClassName}<>)" // fallback
-                    };
-                    var msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
-                    source.AppendLine($"// Open generic handler registration for {handler.MessageGenericTypeDefinitionFullName}");
-                    source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
-                }
+                    1 => $"typeof({handlerClassName}<>)",
+                    2 => $"typeof({handlerClassName}<,>)",
+                    3 => $"typeof({handlerClassName}<,,>)",
+                    4 => $"typeof({handlerClassName}<,,,>)",
+                    5 => $"typeof({handlerClassName}<,,,,>)",
+                    6 => $"typeof({handlerClassName}<,,,,,>)",
+                    7 => $"typeof({handlerClassName}<,,,,,,>)",
+                    8 => $"typeof({handlerClassName}<,,,,,,,>)",
+                    9 => $"typeof({handlerClassName}<,,,,,,,,>)",
+                    10 => $"typeof({handlerClassName}<,,,,,,,,,>)",
+                    _ => $"typeof({handlerClassName}<>)" // fallback
+                };
+                string msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
+                source.AppendLine($"// Open generic handler registration for {handler.MessageGenericTypeDefinitionFullName}");
+                source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
             }
             else
             {

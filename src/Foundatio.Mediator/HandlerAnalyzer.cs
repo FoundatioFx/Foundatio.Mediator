@@ -126,9 +126,18 @@ internal static class HandlerAnalyzer
                 messageGenericArity = namedMsg.TypeArguments.Length;
             }
 
-            var genericParamNames = classSymbol.IsGenericType
-                ? classSymbol.TypeParameters.Select(tp => tp.Name).ToArray()
-                : Array.Empty<string>();
+            string[] genericParamNames;
+            string[] genericConstraints;
+            if (classSymbol.IsGenericType)
+            {
+                genericParamNames = classSymbol.TypeParameters.Select(tp => tp.Name).ToArray();
+                genericConstraints = classSymbol.TypeParameters.Select(tp => BuildConstraintClause(tp)).Where(s => s.Length > 0).ToArray();
+            }
+            else
+            {
+                genericParamNames = Array.Empty<string>();
+                genericConstraints = Array.Empty<string>();
+            }
 
             handlers.Add(new HandlerInfo
             {
@@ -143,6 +152,7 @@ internal static class HandlerAnalyzer
                 GenericTypeParameters = new(genericParamNames),
                 MessageGenericTypeDefinitionFullName = messageGenericDefinition,
                 MessageGenericArity = messageGenericArity,
+                GenericConstraints = new(genericConstraints),
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],
@@ -205,4 +215,24 @@ internal static class HandlerAnalyzer
         "Consume", "ConsumeAsync",
         "Consumes", "ConsumesAsync"
     ];
+
+    private static string BuildConstraintClause(ITypeParameterSymbol tp)
+    {
+        var constraints = new List<string>();
+        foreach (var c in tp.ConstraintTypes)
+            constraints.Add(c.ToDisplayString());
+        if (tp.HasReferenceTypeConstraint)
+            constraints.Add("class");
+        if (tp.HasUnmanagedTypeConstraint)
+            constraints.Add("unmanaged");
+        if (tp.HasValueTypeConstraint)
+            constraints.Add("struct");
+        if (tp.HasNotNullConstraint)
+            constraints.Add("notnull");
+        if (tp.HasConstructorConstraint)
+            constraints.Add("new()");
+        if (constraints.Count == 0)
+            return string.Empty;
+        return $"where {tp.Name} : {string.Join(", ", constraints)}";
+    }
 }

@@ -20,6 +20,7 @@ internal readonly record struct HandlerInfo
     public EquatableArray<string> GenericTypeParameters { get; init; }
     public string? MessageGenericTypeDefinitionFullName { get; init; }
     public int MessageGenericArity { get; init; }
+    public EquatableArray<string> GenericConstraints { get; init; }
 }
 
 internal readonly record struct ParameterInfo

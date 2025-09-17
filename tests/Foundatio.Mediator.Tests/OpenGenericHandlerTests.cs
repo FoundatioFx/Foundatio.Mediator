@@ -2,9 +2,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests;
 
-public record Order();
+public interface IEntity;
+public record Order() : IEntity;
 public record UpdateEntity<T>(T Entity) : ICommand;
-public record UpdateEntityPair<T1, T2>(T1 First, T2 Second) : ICommand;
+
+public record UpdateEntityPair<T1, T2>(T1 First, T2 Second)
+    : ICommand where T1 : class, IEntity, new() where T2 : class;
 
 public class EntityHandlerBase<T1, T2> where T1 : class where T2 : class
 {
@@ -19,7 +22,7 @@ public class EntityHandler<T> : EntityHandlerBase<T, T> where T : class
 }
 
 public class EntityPairHandler<T1, T2>
-    where T1 : class
+    where T1 : class, IEntity, new()
     where T2 : class
 {
     public Task HandleAsync(UpdateEntityPair<T1, T2> command, CancellationToken cancellationToken)

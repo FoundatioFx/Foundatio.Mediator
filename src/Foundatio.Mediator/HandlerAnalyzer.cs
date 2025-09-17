@@ -218,21 +218,32 @@ internal static class HandlerAnalyzer
 
     private static string BuildConstraintClause(ITypeParameterSymbol tp)
     {
-        var constraints = new List<string>();
-        foreach (var c in tp.ConstraintTypes)
-            constraints.Add(c.ToDisplayString());
+        // Order: class/struct/unmanaged first, then specific constraint types, then notnull, then new()
+        var ordered = new List<string>();
+
         if (tp.HasReferenceTypeConstraint)
-            constraints.Add("class");
-        if (tp.HasUnmanagedTypeConstraint)
-            constraints.Add("unmanaged");
-        if (tp.HasValueTypeConstraint)
-            constraints.Add("struct");
+            ordered.Add("class");
+        else if (tp.HasValueTypeConstraint)
+            ordered.Add("struct");
+        else if (tp.HasUnmanagedTypeConstraint)
+            ordered.Add("unmanaged");
+
+        foreach (var c in tp.ConstraintTypes)
+        {
+            var display = c.ToDisplayString();
+            // Avoid duplicating if already implicitly covered (rare, but defensive)
+            if (!ordered.Contains(display))
+                ordered.Add(display);
+        }
+
         if (tp.HasNotNullConstraint)
-            constraints.Add("notnull");
+            ordered.Add("notnull");
         if (tp.HasConstructorConstraint)
-            constraints.Add("new()");
-        if (constraints.Count == 0)
+            ordered.Add("new()");
+
+        if (ordered.Count == 0)
             return string.Empty;
-        return $"where {tp.Name} : {string.Join(", ", constraints)}";
+
+        return $"where {tp.Name} : {string.Join(", ", ordered)}";
     }
 }

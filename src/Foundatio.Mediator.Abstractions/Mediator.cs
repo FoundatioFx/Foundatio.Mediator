@@ -195,29 +195,26 @@ public class Mediator : IMediator, IServiceProvider
     private IEnumerable<HandlerRegistration> GetHandlersForType(Type type)
     {
         var list = _serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(type)).ToList();
-        if (list.Count > 0)
+        if (!type.IsGenericType)
             return list;
 
-        // attempt open generic resolution
-        if (type.IsGenericType)
+        var genericDefinition = type.GetGenericTypeDefinition();
+        var registration = _openGenericClosedCache.GetOrAdd(type, t =>
         {
-            var genericDefinition = type.GetGenericTypeDefinition();
-            var registration = _openGenericClosedCache.GetOrAdd(type, t =>
+            var descriptors = _serviceProvider.GetServices<OpenGenericHandlerDescriptor>();
+            foreach (var descriptor in descriptors)
             {
-                var descriptors = _serviceProvider.GetServices<OpenGenericHandlerDescriptor>();
-                foreach (var descriptor in descriptors)
+                if (descriptor.MessageTypeGenericDefinition == genericDefinition)
                 {
-                    if (descriptor.MessageTypeGenericDefinition == genericDefinition)
-                    {
-                        return ConstructClosedRegistration(t, descriptor);
-                    }
+                    return ConstructClosedRegistration(t, descriptor);
                 }
-                return null;
-            });
+            }
 
-            if (registration != null)
-                return new[] { registration };
-        }
+            return null;
+        });
+
+        if (registration != null)
+            list.Add(registration);
 
         return list;
     }

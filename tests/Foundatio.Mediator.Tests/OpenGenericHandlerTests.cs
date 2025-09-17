@@ -1,9 +1,6 @@
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
-namespace Foundatio.Mediator.Tests.OpenGeneric;
+namespace Foundatio.Mediator.Tests;
 
 public record UpdateEntity<T>(T Entity) : ICommand;
 public record UpdateEntityPair<T1, T2>(T1 First, T2 Second) : ICommand;

@@ -15,6 +15,11 @@ internal readonly record struct HandlerInfo
     public EquatableArray<ParameterInfo> Parameters { get; init; }
     public EquatableArray<CallSiteInfo> CallSites { get; init; }
     public EquatableArray<MiddlewareInfo> Middleware { get; init; }
+    public bool IsGenericHandlerClass { get; init; }
+    public int GenericArity { get; init; }
+    public EquatableArray<string> GenericTypeParameters { get; init; }
+    public string? MessageGenericTypeDefinitionFullName { get; init; }
+    public int MessageGenericArity { get; init; }
 }
 
 internal readonly record struct ParameterInfo

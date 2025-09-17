@@ -65,7 +65,15 @@ internal static class HandlerGenerator
         source.AppendLine();
         source.AddGeneratedCodeAttribute();
         source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine($"internal static class {wrapperClassName}");
+        if (handler.IsGenericHandlerClass && handler.GenericArity > 0 && handler.GenericTypeParameters.Length == handler.GenericArity)
+        {
+            var genericParams = string.Join(", ", handler.GenericTypeParameters);
+            source.AppendLine($"internal static class {wrapperClassName}<{genericParams}>");
+        }
+        else
+        {
+            source.AppendLine($"internal static class {wrapperClassName}");
+        }
         source.AppendLine("{");
 
         source.IncrementIndent();

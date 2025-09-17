@@ -58,38 +58,49 @@ internal static class DIRegistrationGenerator
                     source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
             }
 
-            source.AppendLine($"AddMediatorHandler(services, new HandlerRegistration(");
-            source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
-            source.AppendLine($"        \"{handlerClassName}\",");
-
-            if (handler.IsAsync)
+            if (handler.IsGenericHandlerClass)
             {
-                source.AppendLine($"        {handlerClassName}.UntypedHandleAsync,");
-                source.AppendLine($"        null,");
+                // open generic registration
+                if (handler.MessageGenericTypeDefinitionFullName != null && handler.GenericArity > 0)
+                {
+                    // Build unbound generic typeof expressions
+                    var wrapperTypeOf = handler.GenericArity switch
+                    {
+                        1 => $"typeof({handlerClassName}<>)",
+                        2 => $"typeof({handlerClassName}<,>)",
+                        3 => $"typeof({handlerClassName}<,,>)",
+                        4 => $"typeof({handlerClassName}<,,,>)",
+                        _ => $"typeof({handlerClassName}<>)" // fallback
+                    };
+                    var msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
+                    source.AppendLine($"// Open generic handler registration for {handler.MessageGenericTypeDefinitionFullName}");
+                    source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
+                }
             }
             else
             {
-                source.AppendLine($"        (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
-                source.AppendLine($"        {handlerClassName}.UntypedHandle,");
+                source.AppendLine($"services.AddHandler(new HandlerRegistration(");
+                source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
+                source.AppendLine($"        \"{handlerClassName}\",");
+
+                if (handler.IsAsync)
+                {
+                    source.AppendLine($"        {handlerClassName}.UntypedHandleAsync,");
+                    source.AppendLine($"        null,");
+                }
+                else
+                {
+                    source.AppendLine($"        (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                    source.AppendLine($"        {handlerClassName}.UntypedHandle,");
+                }
+
+                source.AppendLine($"        {handler.IsAsync.ToString().ToLower()}));");
+                source.AppendLine();
             }
-
-            source.AppendLine($"        {handler.IsAsync.ToString().ToLower()}));");
-
-            source.AppendLine();
         }
 
         source.DecrementIndent();
         source.AppendLine("}");
-
-        source.AppendLine()
-            .AppendLines($$"""
-                           [DebuggerStepThrough]
-                           private static void AddMediatorHandler(IServiceCollection services, HandlerRegistration registration)
-                           {
-                               services.AddKeyedSingleton(registration.MessageTypeName, registration);
-                               services.AddSingleton(registration);
-                           }
-                           """);
 
         source.DecrementIndent();
         source.AppendLine("}");

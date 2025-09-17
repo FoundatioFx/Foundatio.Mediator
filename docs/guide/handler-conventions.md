@@ -173,6 +173,52 @@ public class UserHandler
 
 **Note:** Handlers are singleton by default. Constructor dependencies are resolved once and shared across all invocations.
 
+### Open Generic Handlers
+
+Handlers can be declared as open generic classes and will be automatically closed for the concrete message type at runtime. This lets you build reusable handler logic that applies to many message types.
+
+```csharp
+// Generic command definitions
+public record UpdateEntity<T>(T Entity);
+public record UpdateRelation<TLeft, TRight>(TLeft Left, TRight Right);
+
+// Open generic handler (single generic parameter)
+public class EntityHandler<T>
+{
+    public Task HandleAsync(UpdateEntity<T> command, CancellationToken ct)
+    {
+        // process update for entity of type T
+        return Task.CompletedTask;
+    }
+}
+
+// Open generic handler (two generic parameters)
+public class RelationHandler<TLeft, TRight>
+{
+    public Task HandleAsync(UpdateRelation<TLeft, TRight> command, CancellationToken ct)
+    {
+        return Task.CompletedTask;
+    }
+}
+
+// Usage
+await mediator.InvokeAsync(new UpdateEntity<Order>(order));
+await mediator.InvokeAsync(new UpdateRelation<User, Role>(user, role));
+```
+
+Guidelines:
+
+- The handler class, not the method, must be generic (generic handler methods are not currently supported).
+- The message type must use the handler's generic parameters (e.g., `UpdateEntity<T>` in `EntityHandler<T>`).
+- Open generic handlers participate in normal invocation rules: exactly one match required for `Invoke / InvokeAsync`; multiple open generics for the same message generic definition will cause an error when invoking (publish supports multiple).
+
+Performance Notes:
+
+- First invocation of a new closed generic combination incurs a small reflection cost; subsequent calls are cached.
+- Static middleware resolution still applies and middleware can itself be generic.
+
+If you need a custom behavior per entity type later, you can still add a concrete handler; the more specific (closed) handler will coexist.
+
 ## Multiple Handlers in One Class
 
 A single class can handle multiple message types:

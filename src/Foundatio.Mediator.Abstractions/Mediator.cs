@@ -194,7 +194,32 @@ public class Mediator : IMediator, IServiceProvider
     [DebuggerStepThrough]
     private IEnumerable<HandlerRegistration> GetHandlersForType(Type type)
     {
-        return _serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(type)).ToArray();
+        var list = _serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(type)).ToList();
+        if (list.Count > 0)
+            return list;
+
+        // attempt open generic resolution
+        if (type.IsGenericType)
+        {
+            var genericDefinition = type.GetGenericTypeDefinition();
+            var registration = _openGenericClosedCache.GetOrAdd(type, t =>
+            {
+                var descriptors = _serviceProvider.GetServices<OpenGenericHandlerDescriptor>();
+                foreach (var descriptor in descriptors)
+                {
+                    if (descriptor.MessageTypeGenericDefinition == genericDefinition)
+                    {
+                        return ConstructClosedRegistration(t, descriptor);
+                    }
+                }
+                return null;
+            });
+
+            if (registration != null)
+                return new[] { registration };
+        }
+
+        return list;
     }
 
     private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();
@@ -229,5 +254,43 @@ public class Mediator : IMediator, IServiceProvider
     private static readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
 
     private static readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
+    private static readonly ConcurrentDictionary<Type, HandlerRegistration?> _openGenericClosedCache = new();
+
+    private HandlerRegistration? ConstructClosedRegistration(Type closedMessageType, OpenGenericHandlerDescriptor descriptor)
+    {
+        try
+        {
+            var typeArgs = closedMessageType.GetGenericArguments();
+            var wrapperClosed = descriptor.WrapperGenericTypeDefinition.MakeGenericType(typeArgs);
+            var asyncMethod = wrapperClosed.GetMethod("UntypedHandleAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (asyncMethod == null)
+                return null;
+
+            HandleAsyncDelegate asyncDelegate = (IMediator mediator, object message, CancellationToken ct, Type? returnType) =>
+            {
+                var taskObj = asyncMethod.Invoke(null, new object?[] { mediator, message, ct, returnType });
+                return taskObj is ValueTask<object?> vt ? vt : (ValueTask<object?>)taskObj!;
+            };
+
+            HandleDelegate? syncDelegate = null;
+            if (!descriptor.IsAsync)
+            {
+                var syncMethod = wrapperClosed.GetMethod("UntypedHandle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (syncMethod != null)
+                {
+                    syncDelegate = (IMediator mediator, object message, CancellationToken ct, Type? returnType) =>
+                    {
+                        return syncMethod.Invoke(null, new object?[] { mediator, message, ct, returnType });
+                    };
+                }
+            }
+
+            return new HandlerRegistration(MessageTypeKey.Get(closedMessageType), wrapperClosed.FullName ?? wrapperClosed.Name, asyncDelegate, syncDelegate, descriptor.IsAsync);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
 }

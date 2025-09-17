@@ -63,6 +63,16 @@ public static class MediatorExtensions
     }
 }
 
+public static class MediatorServiceCollectionExtensions
+{
+    public static IServiceCollection AddHandler(this IServiceCollection services, HandlerRegistration registration)
+    {
+        services.AddKeyedSingleton(registration.MessageTypeName, registration);
+        services.AddSingleton(registration);
+        return services;
+    }
+}
+
 public class MediatorConfigurationBuilder
 {
     private readonly MediatorConfiguration _configuration = new MediatorConfiguration();

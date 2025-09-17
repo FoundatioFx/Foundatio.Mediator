@@ -69,8 +69,7 @@ internal static class HandlerAnalyzer
         var semanticModel = context.SemanticModel;
 
         if (semanticModel.GetDeclaredSymbol(classDeclaration) is not { } classSymbol
-            || classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation)
-            || classSymbol.IsGenericType)
+            || classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation))
             return [];
 
         // Exclude generated handler classes in Foundatio.Mediator namespace with names ending in "_Handler"
@@ -101,7 +100,7 @@ internal static class HandlerAnalyzer
                 continue;
 
             if (handlerMethod.IsGenericMethod)
-                continue;
+                continue; // do not support generic handler methods, only generic classes
 
             var messageParameter = handlerMethod.Parameters[0];
             var messageType = messageParameter.Type;
@@ -120,6 +119,18 @@ internal static class HandlerAnalyzer
                 });
             }
 
+            string? messageGenericDefinition = null;
+            int messageGenericArity = 0;
+            if (messageType is INamedTypeSymbol namedMsg && namedMsg.IsGenericType)
+            {
+                messageGenericDefinition = namedMsg.ConstructUnboundGenericType().ToDisplayString();
+                messageGenericArity = namedMsg.TypeArguments.Length;
+            }
+
+            var genericParamNames = classSymbol.IsGenericType
+                ? classSymbol.TypeParameters.Select(tp => tp.Name).ToArray()
+                : Array.Empty<string>();
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -128,6 +139,11 @@ internal static class HandlerAnalyzer
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
                 IsStatic = handlerMethod.IsStatic,
+                IsGenericHandlerClass = classSymbol.IsGenericType,
+                GenericArity = classSymbol.IsGenericType ? classSymbol.TypeParameters.Length : 0,
+                GenericTypeParameters = new(genericParamNames),
+                MessageGenericTypeDefinitionFullName = messageGenericDefinition,
+                MessageGenericArity = messageGenericArity,
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],

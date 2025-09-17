@@ -7,27 +7,26 @@ public record Order() : IEntity;
 public record UpdateEntity<T>(T Entity) : ICommand;
 
 public record UpdateEntityPair<T1, T2>(T1 First, T2 Second)
-    : ICommand where T1 : class, IEntity, new() where T2 : class;
+    : ICommand where T1 : class, IEntity, new();
 
-public class EntityHandlerBase<T1, T2> where T1 : class where T2 : class
+public class EntityHandlerBase<T1> where T1 : class
 {
-    public Task HandlesAsync(UpdateEntity<T1> command, CancellationToken cancellationToken)
+    public Task<T1?> HandlesAsync(UpdateEntity<T1> command, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(default(T1));
     }
 }
 
-public class EntityHandler<T> : EntityHandlerBase<T, T> where T : class
+public class EntityHandler<T1> : EntityHandlerBase<T1> where T1 : class
 {
 }
 
 public class EntityPairHandler<T1, T2>
     where T1 : class, IEntity, new()
-    where T2 : class
 {
-    public Task HandleAsync(UpdateEntityPair<T1, T2> command, CancellationToken cancellationToken)
+    public Task<T2?> HandleAsync(UpdateEntityPair<T1, T2> command, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(default(T2));
     }
 }
 

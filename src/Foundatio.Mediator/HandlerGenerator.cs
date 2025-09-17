@@ -68,12 +68,12 @@ internal static class HandlerGenerator
 
         if (handler.IsGenericHandlerClass && handler.GenericArity > 0 && handler.GenericTypeParameters.Length == handler.GenericArity)
         {
-            var genericParams = string.Join(", ", handler.GenericTypeParameters);
+            string genericParams = String.Join(", ", handler.GenericTypeParameters);
             source.AppendLine($"internal static class {wrapperClassName}<{genericParams}>");
             source.IncrementIndent();
             if (handler.GenericConstraints.Length > 0)
             {
-                foreach (var c in handler.GenericConstraints)
+                foreach (string? c in handler.GenericConstraints)
                     source.AppendLine(c);
             }
             source.DecrementIndent();
@@ -181,8 +181,7 @@ internal static class HandlerGenerator
         source.AppendLineIf(beforeMiddleware.Any(m => m.Method.HasReturnValue));
 
         allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
-        defaultValue = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType ? "null" : "default";
-        source.AppendLineIf($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} handlerResult = {defaultValue};", handler.HasReturnValue);
+        source.AppendLineIf($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} handlerResult = default;", handler.HasReturnValue);
 
         if (shouldUseTryCatch)
         {

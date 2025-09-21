@@ -16,11 +16,6 @@ public interface IResult
     bool IsSuccess { get; }
 
     /// <summary>
-    /// Gets the type of the result value.
-    /// </summary>
-    Type ValueType { get; }
-
-    /// <summary>
     /// Gets the result value as an object.
     /// </summary>
     /// <returns>The result value.</returns>

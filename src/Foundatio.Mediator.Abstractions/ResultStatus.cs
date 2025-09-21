@@ -8,7 +8,7 @@ public enum ResultStatus
     /// <summary>
     /// The operation completed successfully.
     /// </summary>
-    Ok,
+    Success,
 
     /// <summary>
     /// The operation completed successfully and created a new resource.

@@ -54,6 +54,30 @@ public class DIRegistrationTests : GeneratorTestBase
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
     }
 
+    [Fact]
+    public void Handles_MultipleMessages()
+    {
+        var src = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record A;
+            public record B;
+            public class MultiHandler {
+                public Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask;
+                public Task HandleAsync(B m, CancellationToken ct) => Task.CompletedTask;
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
+        Assert.Contains("MessageTypeKey.Get(typeof(A))", di.Source);
+        Assert.Contains("MessageTypeKey.Get(typeof(B))", di.Source);
+        Assert.Contains("MultiHandler_A_Handler", di.Source);
+        Assert.Contains("MultiHandler_B_Handler", di.Source);
+    }
+
     [Theory]
     [InlineData("Transient", "AddTransient<AHandler>()")]
     [InlineData("Scoped", "AddScoped<AHandler>()")]

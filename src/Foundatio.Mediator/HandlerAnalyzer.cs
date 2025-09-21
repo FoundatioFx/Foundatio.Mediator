@@ -194,11 +194,15 @@ internal static class HandlerAnalyzer
             var methodSymbols = currentSymbol
                 .GetMembers()
                 .Where(m => m.Kind == SymbolKind.Method)
-                .OfType<IMethodSymbol>()
-                .Where(p => !methods.ContainsKey(p.Name));
+                .OfType<IMethodSymbol>();
 
             foreach (var methodSymbol in methodSymbols)
-                methods.Add(methodSymbol.Name, methodSymbol);
+            {
+                var signature = BuildMethodSignature(methodSymbol);
+
+                if (!methods.ContainsKey(signature))
+                    methods.Add(signature, methodSymbol);
+            }
 
             if (!includeBaseMethods)
                 break;
@@ -207,6 +211,18 @@ internal static class HandlerAnalyzer
         }
 
         return methods.Values;
+    }
+
+    private static string BuildMethodSignature(IMethodSymbol method)
+    {
+        if (method.Parameters.Length == 0)
+            return method.Name + "()";
+
+        var parts = new string[method.Parameters.Length];
+        for (int i = 0; i < method.Parameters.Length; i++)
+            parts[i] = method.Parameters[i].Type.ToDisplayString();
+
+        return method.Name + "(" + string.Join(",", parts) + ")";
     }
 
     private static readonly string[] ValidHandlerMethodNames = [

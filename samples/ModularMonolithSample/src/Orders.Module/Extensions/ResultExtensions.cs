@@ -9,7 +9,7 @@ public static class ResultExtensions
     {
         return result.Status switch
         {
-            ResultStatus.Ok => Results.NoContent(),
+            ResultStatus.Success => Results.NoContent(),
             ResultStatus.NoContent => Results.NoContent(),
             ResultStatus.NotFound => Results.NotFound(new { message = result.Message }),
             ResultStatus.Invalid => Results.BadRequest(new { message = result.Message, errors = result.ValidationErrors }),
@@ -25,7 +25,7 @@ public static class ResultExtensions
     {
         return result.Status switch
         {
-            ResultStatus.Ok => Results.Ok(result.Value),
+            ResultStatus.Success => Results.Ok(result.Value),
             ResultStatus.Created => Results.Ok(result.Value),
             ResultStatus.NotFound => Results.NotFound(new { message = result.Message }),
             ResultStatus.Invalid => Results.BadRequest(new { message = result.Message, errors = result.ValidationErrors }),
@@ -41,7 +41,7 @@ public static class ResultExtensions
     {
         return result.Status switch
         {
-            ResultStatus.Ok => Results.Created(location, result.Value),
+            ResultStatus.Success => Results.Created(location, result.Value),
             ResultStatus.Created => Results.Created(location, result.Value),
             ResultStatus.NotFound => Results.NotFound(new { message = result.Message }),
             ResultStatus.Invalid => Results.BadRequest(new { message = result.Message, errors = result.ValidationErrors }),

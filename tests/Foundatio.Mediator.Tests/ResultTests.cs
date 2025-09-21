@@ -8,11 +8,10 @@ public class ResultTests
         var result = Result.Success();
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Empty(result.ValidationErrors);
-        Assert.Equal(typeof(void), result.ValueType);
         Assert.Null(result.GetValue());
     }
 
@@ -23,14 +22,14 @@ public class ResultTests
         var result = Result.Success(message);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(message, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Empty(result.ValidationErrors);
     }
 
     [Theory]
-    [InlineData(ResultStatus.Ok, true)]
+    [InlineData(ResultStatus.Success, true)]
     [InlineData(ResultStatus.Created, true)]
     [InlineData(ResultStatus.NoContent, true)]
     [InlineData(ResultStatus.Error, false)]
@@ -46,7 +45,7 @@ public class ResultTests
     {
         var result = status switch
         {
-            ResultStatus.Ok => Result.Success(),
+            ResultStatus.Success => Result.Success(),
             ResultStatus.Created => Result.Created(),
             ResultStatus.NoContent => Result.NoContent(),
             ResultStatus.Error => Result.Error("Error"),
@@ -66,7 +65,7 @@ public class ResultTests
     }
 
     [Theory]
-    [InlineData(ResultStatus.Ok, true)]
+    [InlineData(ResultStatus.Success, true)]
     [InlineData(ResultStatus.Created, true)]
     [InlineData(ResultStatus.NoContent, true)]
     [InlineData(ResultStatus.Error, false)]
@@ -82,7 +81,7 @@ public class ResultTests
     {
         var result = status switch
         {
-            ResultStatus.Ok => Result<string>.Success("value"),
+            ResultStatus.Success => Result<string>.Success("value"),
             ResultStatus.Created => Result<string>.Created("value"),
             ResultStatus.NoContent => Result<string>.NoContent(),
             ResultStatus.Error => Result<string>.Error("Error"),
@@ -174,12 +173,11 @@ public class ResultTests
         var result = Result<string>.Success(value);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Empty(result.ValidationErrors);
-        Assert.Equal(typeof(string), result.ValueType);
         Assert.Equal(value, result.GetValue());
     }
 
@@ -191,7 +189,7 @@ public class ResultTests
         var result = Result<int>.Success(value, message);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(message, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -205,7 +203,7 @@ public class ResultTests
         Result<string> result = value;
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -342,18 +340,6 @@ public class ResultTests
     }
 
     [Fact]
-    public void ResultT_ValueType_ReturnsCorrectType()
-    {
-        var stringResult = Result<string>.Success("test");
-        var intResult = Result<int>.Success(42);
-        var objectResult = Result<object>.Success(new object());
-
-        Assert.Equal(typeof(string), stringResult.ValueType);
-        Assert.Equal(typeof(int), intResult.ValueType);
-        Assert.Equal(typeof(object), objectResult.ValueType);
-    }
-
-    [Fact]
     public void ResultT_GetValue_ReturnsValueAsObject()
     {
         const string value = "test value";
@@ -368,10 +354,10 @@ public class ResultTests
     public void ResultT_Constructor_WithValue_CreatesSuccessResult()
     {
         const int value = 123;
-        var result = new Result<int>(value);
+        var result = new Result<int> { Value = value };
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -385,7 +371,7 @@ public class ResultTests
         var result = Result<object>.Success(complexObject);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Equal(complexObject, result.Value);
         Assert.Equal(complexObject, result.GetValue());
     }
@@ -396,7 +382,7 @@ public class ResultTests
         var result = Result<string?>.Success(null);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Success, result.Status);
         Assert.Null(result.Value);
         Assert.Null(result.GetValue());
     }

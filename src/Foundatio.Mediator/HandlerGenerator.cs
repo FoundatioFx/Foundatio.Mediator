@@ -429,6 +429,10 @@ internal static class HandlerGenerator
             source.AppendLine();
 
             var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
+            if (returnItem == default)
+            {
+                returnItem = handler.ReturnType.TupleItems.First();
+            }
             var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
 
             foreach (var publishItem in publishItems)
@@ -517,6 +521,19 @@ internal static class HandlerGenerator
                         return result;
 
                     object? foundResult = null;
+
+                    if (responseType == typeof(object) && tuple.Length > 0)
+                    {
+                        foundResult = tuple[0];
+                        for (int i = 1; i < tuple.Length; i++)
+                        {
+                            var item = tuple[i];
+                            if (item != null)
+                                await mediator.PublishAsync(item, CancellationToken.None);
+                        }
+
+                        return foundResult;
+                    }
 
                     for (int i = 0; i < tuple.Length; i++)
                     {

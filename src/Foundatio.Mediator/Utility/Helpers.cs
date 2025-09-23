@@ -37,17 +37,17 @@ internal static class Helpers
 
     public static string ToIdentifier(this string name)
     {
-        if (string.IsNullOrEmpty(name))
+        if (String.IsNullOrEmpty(name))
             return String.Empty;
 
-        return new String(name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
+        return new string(name.Select(c => Char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
     }
 
     public static string ToCamelCase(this string name)
     {
-        if (string.IsNullOrEmpty(name))
+        if (String.IsNullOrEmpty(name))
             return String.Empty;
 
-        return char.ToLower(name[0]) + name.Substring(1);
+        return Char.ToLower(name[0]) + name.Substring(1);
     }
 }

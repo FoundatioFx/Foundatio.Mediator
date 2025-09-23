@@ -30,55 +30,32 @@ public class ScopedDependencyTests
     public record CascadingEvent(string Name) : INotification;
 
     // Test handlers
-    public class RootCommandHandler
+    public class RootCommandHandler(IScopedTestService scopedService, IMediator mediator)
     {
-        private readonly IScopedTestService _scopedService;
-        private readonly IMediator _mediator;
-
-        public RootCommandHandler(IScopedTestService scopedService, IMediator mediator)
-        {
-            _scopedService = scopedService;
-            _mediator = mediator;
-        }
-
         public async Task HandleAsync(RootCommand command, CancellationToken ct)
         {
-            _scopedService.RecordActivity($"RootHandler:{command.Name}");
+            scopedService.RecordActivity($"RootHandler:{command.Name}");
 
             // Invoke another handler within the same scope
-            await _mediator.InvokeAsync(new NestedCommand($"Nested-{command.Name}"), ct);
+            await mediator.InvokeAsync(new NestedCommand($"Nested-{command.Name}"), ct);
         }
     }
 
-    public class NestedCommandHandler
+    public class NestedCommandHandler(IScopedTestService scopedService)
     {
-        private readonly IScopedTestService _scopedService;
-
-        public NestedCommandHandler(IScopedTestService scopedService)
-        {
-            _scopedService = scopedService;
-        }
-
         public async Task HandleAsync(NestedCommand command, CancellationToken ct)
         {
             await Task.CompletedTask; // Simulate async work
-            _scopedService.RecordActivity($"NestedHandler:{command.Name}");
+            scopedService.RecordActivity($"NestedHandler:{command.Name}");
         }
     }
 
-    public class CascadingCommandHandler
+    public class CascadingCommandHandler(IScopedTestService scopedService)
     {
-        private readonly IScopedTestService _scopedService;
-
-        public CascadingCommandHandler(IScopedTestService scopedService)
-        {
-            _scopedService = scopedService;
-        }
-
         public async Task<(string Result, CascadingEvent? Event)> HandleAsync(CascadingCommand command, CancellationToken ct)
         {
             await Task.CompletedTask; // Simulate async work
-            _scopedService.RecordActivity($"CascadingHandler:{command.Name}");
+            scopedService.RecordActivity($"CascadingHandler:{command.Name}");
 
             return ($"Result-{command.Name}", new CascadingEvent($"Event-{command.Name}"));
         }
@@ -134,7 +111,7 @@ public class ScopedDependencyTests
         services.AddScoped<ServiceCapturingHandler>();
         services.AddMediator(b => b.AddAssembly<ScopedDependencyTests>());
 
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Act - Make two separate root invocations
@@ -175,52 +152,31 @@ public class ScopedDependencyTests
     public record CascadingWithCaptureCommand(string Name, List<IScopedTestService> CapturedServices) : ICommand;
     public record EventWithCapture(List<IScopedTestService> CapturedServices) : INotification;
 
-    public class ServiceCapturingHandler
+    public class ServiceCapturingHandler(IScopedTestService scopedService)
     {
-        private readonly IScopedTestService _scopedService;
-
-        public ServiceCapturingHandler(IScopedTestService scopedService)
-        {
-            _scopedService = scopedService;
-        }
-
         public async Task HandleAsync(ServiceCaptureCommand command, CancellationToken ct)
         {
             await Task.CompletedTask; // Simulate async work
-            command.CapturedServices.Add(_scopedService);
+            command.CapturedServices.Add(scopedService);
         }
     }
 
-    public class CascadingWithCaptureHandler
+    public class CascadingWithCaptureHandler(IScopedTestService scopedService)
     {
-        private readonly IScopedTestService _scopedService;
-
-        public CascadingWithCaptureHandler(IScopedTestService scopedService)
-        {
-            _scopedService = scopedService;
-        }
-
         public async Task<(string Result, EventWithCapture Event)> HandleAsync(CascadingWithCaptureCommand command, CancellationToken ct)
         {
             await Task.CompletedTask; // Simulate async work
-            command.CapturedServices.Add(_scopedService);
+            command.CapturedServices.Add(scopedService);
             return ($"Result-{command.Name}", new EventWithCapture(command.CapturedServices));
         }
     }
 
-    public class EventWithCaptureHandler
+    public class EventWithCaptureHandler(IScopedTestService scopedService)
     {
-        private readonly IScopedTestService _scopedService;
-
-        public EventWithCaptureHandler(IScopedTestService scopedService)
-        {
-            _scopedService = scopedService;
-        }
-
         public async Task HandleAsync(EventWithCapture @event, CancellationToken ct)
         {
             await Task.CompletedTask; // Simulate async work
-            @event.CapturedServices.Add(_scopedService);
+            @event.CapturedServices.Add(scopedService);
         }
     }
 }

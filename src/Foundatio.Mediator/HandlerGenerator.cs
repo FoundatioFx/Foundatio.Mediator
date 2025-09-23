@@ -569,27 +569,10 @@ internal static class HandlerGenerator
     {
         source.AppendLine()
               .AppendLines($$"""
-                private static {{handler.FullName}}? _handler;
-                private static readonly global::System.Threading.Lock _lock = new();
-
                 [DebuggerStepThrough]
                 private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                 {
-                    if (_handler != null)
-                        return _handler;
-
-                    var handlerFromDI = serviceProvider.GetService<{{handler.FullName}}>();
-                    if (handlerFromDI != null)
-                        return handlerFromDI;
-
-                    lock (_lock)
-                    {
-                        if (_handler != null)
-                            return _handler;
-
-                        _handler = ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
-                        return _handler;
-                    }
+                    return serviceProvider.GetRequiredService<{{handler.FullName}}>();
                 }
                 """);
     }

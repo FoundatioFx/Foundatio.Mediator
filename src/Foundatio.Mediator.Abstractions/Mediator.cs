@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Foundatio.Mediator;
 
@@ -10,12 +11,14 @@ public class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly MediatorConfiguration _configuration;
+    private readonly ILogger<Mediator> _logger;
 
     [DebuggerStepThrough]
     public Mediator(IServiceProvider serviceProvider, MediatorConfiguration? configuration = null)
     {
         _serviceProvider = serviceProvider;
         _configuration = configuration ?? new MediatorConfiguration();
+        _logger = _serviceProvider.GetService<ILogger<Mediator>>() ?? NullLogger<Mediator>.Instance;
     }
 
     public IServiceProvider ServiceProvider => _serviceProvider;
@@ -36,14 +39,14 @@ public class Mediator : IMediator, IServiceProvider
     public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
-        var result = await handlerFunc(this, message, cancellationToken);
+        object? result = await handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
     }
 
     public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
-        var result = handlerFunc(this, message, cancellationToken);
+        object? result = handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
     }
 
@@ -55,11 +58,10 @@ public class Mediator : IMediator, IServiceProvider
 
     public void ShowRegisteredHandlers()
     {
-        var logger = _serviceProvider.GetRequiredService<ILogger<Mediator>>();
         var registrations = _serviceProvider.GetServices<HandlerRegistration>().ToArray();
         if (!registrations.Any())
         {
-            logger.LogInformation("No handlers registered.");
+            _logger.LogInformation("No handlers registered.");
             return;
         }
 
@@ -70,7 +72,7 @@ public class Mediator : IMediator, IServiceProvider
             sb.AppendLine($"- Message: {registration.MessageTypeName}, Handler: {registration.HandlerClassName}, IsAsync: {registration.IsAsync}");
         }
 
-        logger.LogInformation(sb.ToString());
+        _logger.LogInformation(sb.ToString());
     }
 
     [DebuggerStepThrough]
@@ -225,13 +227,13 @@ public class Mediator : IMediator, IServiceProvider
     public static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class
     {
         // Check cache first - if it's there, it means it's not registered in DI
-        if (_middlewareCache.TryGetValue(typeof(T), out var cachedInstance))
+        if (_middlewareCache.TryGetValue(typeof(T), out object? cachedInstance))
             return (T)cachedInstance;
 
         // Try to get from DI - if registered, always use DI (respects service lifetime)
-        var middlewareFromDI = serviceProvider.GetService<T>();
-        if (middlewareFromDI != null)
-            return middlewareFromDI;
+        var middleware = serviceProvider.GetService<T>();
+        if (middleware != null)
+            return middleware;
 
         // Not in DI, create and cache our own instance
         return (T)_middlewareCache.GetOrAdd(typeof(T), type =>
@@ -263,9 +265,9 @@ public class Mediator : IMediator, IServiceProvider
             if (asyncMethod == null)
                 return null;
 
-            HandleAsyncDelegate asyncDelegate = (IMediator mediator, object message, CancellationToken ct, Type? returnType) =>
+            HandleAsyncDelegate asyncDelegate = (mediator, message, ct, returnType) =>
             {
-                var taskObj = asyncMethod.Invoke(null, new object?[] { mediator, message, ct, returnType });
+                object? taskObj = asyncMethod.Invoke(null, [mediator, message, ct, returnType]);
                 return taskObj is ValueTask<object?> vt ? vt : (ValueTask<object?>)taskObj!;
             };
 
@@ -275,10 +277,7 @@ public class Mediator : IMediator, IServiceProvider
                 var syncMethod = wrapperClosed.GetMethod("UntypedHandle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (syncMethod != null)
                 {
-                    syncDelegate = (IMediator mediator, object message, CancellationToken ct, Type? returnType) =>
-                    {
-                        return syncMethod.Invoke(null, new object?[] { mediator, message, ct, returnType });
-                    };
+                    syncDelegate = (mediator, message, ct, returnType) => syncMethod.Invoke(null, [mediator, message, ct, returnType]);
                 }
             }
 

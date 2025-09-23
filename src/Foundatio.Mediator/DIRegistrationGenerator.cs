@@ -16,6 +16,7 @@ internal static class DIRegistrationGenerator
         source.AddGeneratedFileHeader();
 
         source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+        source.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
         source.AppendLine("using System;");
         source.AppendLine("using System.Diagnostics;");
         source.AppendLine("using System.Diagnostics.CodeAnalysis;");
@@ -33,54 +34,59 @@ internal static class DIRegistrationGenerator
         source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
         source.AppendLine("    {");
         source.AppendLine("        // Register HandlerRegistration instances keyed by message type name");
-        source.AppendLine("        // Optionally register handler classes into DI based on MediatorHandlerLifetime setting");
         source.AppendLine();
         source.IncrementIndent().IncrementIndent();
 
-        bool registerHandlers = !string.Equals(handlerLifetime, "None", StringComparison.OrdinalIgnoreCase);
+        string lifetimeMethod;
+        if (String.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
+            lifetimeMethod = "TryAddTransient";
+        else if (String.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
+            lifetimeMethod = "TryAddScoped";
+        else
+            lifetimeMethod = "TryAddSingleton";
 
         foreach (var handler in handlers)
         {
             string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
 
             // Register handler in DI for non-static handler classes when lifetime != Singleton
-            if (registerHandlers && !handler.IsStatic)
+            if (handler is { IsStatic: false, IsGenericHandlerClass: false })
             {
-                string lifetimeMethod = "";
-                if (String.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
-                    lifetimeMethod = "AddTransient";
-                if (String.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
-                    lifetimeMethod = "AddScoped";
-                if (String.Equals(handlerLifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
-                    lifetimeMethod = "AddSingleton";
-
-                if (!String.IsNullOrEmpty(lifetimeMethod))
-                    source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
+                source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
             }
 
             if (handler.IsGenericHandlerClass)
             {
-                // open generic registration
                 if (handler is not { MessageGenericTypeDefinitionFullName: not null, GenericArity: > 0 })
                     continue;
 
-                // Build unbound generic typeof expressions
-                string wrapperTypeOf = handler.GenericArity switch
+                string genericArity = handler.GenericArity switch
                 {
-                    1 => $"typeof({handlerClassName}<>)",
-                    2 => $"typeof({handlerClassName}<,>)",
-                    3 => $"typeof({handlerClassName}<,,>)",
-                    4 => $"typeof({handlerClassName}<,,,>)",
-                    5 => $"typeof({handlerClassName}<,,,,>)",
-                    6 => $"typeof({handlerClassName}<,,,,,>)",
-                    7 => $"typeof({handlerClassName}<,,,,,,>)",
-                    8 => $"typeof({handlerClassName}<,,,,,,,>)",
-                    9 => $"typeof({handlerClassName}<,,,,,,,,>)",
-                    10 => $"typeof({handlerClassName}<,,,,,,,,,>)",
-                    _ => $"typeof({handlerClassName}<>)" // fallback
+                    1 => "<>",
+                    2 => "<,>",
+                    3 => "<,,>",
+                    4 => "<,,,>",
+                    5 => "<,,,,>",
+                    6 => "<,,,,,>",
+                    7 => "<,,,,,,>",
+                    8 => "<,,,,,,,>",
+                    9 => "<,,,,,,,,>",
+                    10 => "<,,,,,,,,,>",
+                    _ => "<>)" // fallback
                 };
+
+                string wrapperTypeOf = $"typeof({handlerClassName}{genericArity})";
                 string msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
-                source.AppendLine($"// Open generic handler registration for {handler.MessageGenericTypeDefinitionFullName}");
+                if (!handler.IsStatic)
+                {
+                    string handlerFullName = handler.FullName;
+                    int index = handlerFullName.IndexOf('<');
+                    if (index > 0)
+                        handlerFullName = handlerFullName.Substring(0, index);
+                    source.AppendLine($"services.{lifetimeMethod}(typeof({handlerFullName}{genericArity}));");
+
+                }
+
                 source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
             }
             else

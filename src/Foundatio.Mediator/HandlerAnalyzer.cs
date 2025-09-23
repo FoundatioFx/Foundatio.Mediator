@@ -131,12 +131,12 @@ internal static class HandlerAnalyzer
             if (classSymbol.IsGenericType)
             {
                 genericParamNames = classSymbol.TypeParameters.Select(tp => tp.Name).ToArray();
-                genericConstraints = classSymbol.TypeParameters.Select(tp => BuildConstraintClause(tp)).Where(s => s.Length > 0).ToArray();
+                genericConstraints = classSymbol.TypeParameters.Select(BuildConstraintClause).Where(s => s.Length > 0).ToArray();
             }
             else
             {
-                genericParamNames = Array.Empty<string>();
-                genericConstraints = Array.Empty<string>();
+                genericParamNames = [];
+                genericConstraints = [];
             }
 
             handlers.Add(new HandlerInfo
@@ -198,7 +198,7 @@ internal static class HandlerAnalyzer
 
             foreach (var methodSymbol in methodSymbols)
             {
-                var signature = BuildMethodSignature(methodSymbol);
+                string signature = BuildMethodSignature(methodSymbol);
 
                 if (!methods.ContainsKey(signature))
                     methods.Add(signature, methodSymbol);
@@ -218,11 +218,11 @@ internal static class HandlerAnalyzer
         if (method.Parameters.Length == 0)
             return method.Name + "()";
 
-        var parts = new string[method.Parameters.Length];
+        string[] parts = new string[method.Parameters.Length];
         for (int i = 0; i < method.Parameters.Length; i++)
             parts[i] = method.Parameters[i].Type.ToDisplayString();
 
-        return method.Name + "(" + string.Join(",", parts) + ")";
+        return method.Name + "(" + String.Join(",", parts) + ")";
     }
 
     private static readonly string[] ValidHandlerMethodNames = [
@@ -234,7 +234,6 @@ internal static class HandlerAnalyzer
 
     private static string BuildConstraintClause(ITypeParameterSymbol tp)
     {
-        // Order: class/struct/unmanaged first, then specific constraint types, then notnull, then new()
         var ordered = new List<string>();
 
         if (tp.HasReferenceTypeConstraint)
@@ -246,8 +245,7 @@ internal static class HandlerAnalyzer
 
         foreach (var c in tp.ConstraintTypes)
         {
-            var display = c.ToDisplayString();
-            // Avoid duplicating if already implicitly covered (rare, but defensive)
+            string display = c.ToDisplayString();
             if (!ordered.Contains(display))
                 ordered.Add(display);
         }
@@ -258,8 +256,8 @@ internal static class HandlerAnalyzer
             ordered.Add("new()");
 
         if (ordered.Count == 0)
-            return string.Empty;
+            return String.Empty;
 
-        return $"where {tp.Name} : {string.Join(", ", ordered)}";
+        return $"where {tp.Name} : {String.Join(", ", ordered)}";
     }
 }

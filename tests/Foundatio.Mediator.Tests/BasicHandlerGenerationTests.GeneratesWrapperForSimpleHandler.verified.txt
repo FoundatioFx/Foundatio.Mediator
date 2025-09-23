@@ -110,27 +110,10 @@ internal static class PingHandler_Ping_Handler
         return HandlerScope.GetOrCreate(mediator, cancellationToken);
     }
 
-    private static PingHandler? _handler;
-    private static readonly global::System.Threading.Lock _lock = new();
-
     [DebuggerStepThrough]
     private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)
     {
-        if (_handler != null)
-            return _handler;
-
-        var handlerFromDI = serviceProvider.GetService<PingHandler>();
-        if (handlerFromDI != null)
-            return handlerFromDI;
-
-        lock (_lock)
-        {
-            if (_handler != null)
-                return _handler;
-
-            _handler = ActivatorUtilities.CreateInstance<PingHandler>(serviceProvider);
-            return _handler;
-        }
+        return serviceProvider.GetRequiredService<PingHandler>();
     }
 }
 
@@ -145,6 +128,7 @@ internal static class PingHandler_Ping_Handler
 #nullable enable
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -162,8 +146,8 @@ public static class Tests_MediatorHandlers
     public static void AddHandlers(this IServiceCollection services)
     {
         // Register HandlerRegistration instances keyed by message type name
-        // Optionally register handler classes into DI based on MediatorHandlerLifetime setting
 
+        services.TryAddSingleton<PingHandler>();
         services.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Ping)),
                 "PingHandler_Ping_Handler",

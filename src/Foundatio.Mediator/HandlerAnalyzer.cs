@@ -28,17 +28,17 @@ internal static class HandlerAnalyzer
                     _ => (bt.Type as IdentifierNameSyntax)?.Identifier.ValueText
                 };
 
-                if (typeName == "IFoundatioHandler")
+                if (typeName == "IHandler")
                     return true;
             }
         }
 
         if (classDecl.AttributeLists.Count > 0 && classDecl.AttributeLists
                 .SelectMany(al => al.Attributes)
-                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "FoundatioHandler" }
+                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "Handler" }
                     or QualifiedNameSyntax
                     {
-                        Right.Identifier.ValueText: "FoundatioHandler"
+                        Right.Identifier.ValueText: "Handler"
                     }))
         {
             return true;
@@ -50,10 +50,10 @@ internal static class HandlerAnalyzer
                 continue;
 
             if (m.AttributeLists.SelectMany(al => al.Attributes)
-                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "FoundatioHandler" }
+                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "Handler" }
                     or QualifiedNameSyntax
                     {
-                        Right.Identifier.ValueText: "FoundatioHandler"
+                        Right.Identifier.ValueText: "Handler"
                     }))
             {
                 return true;
@@ -79,7 +79,7 @@ internal static class HandlerAnalyzer
 
         // Determine if the class should be treated as a handler class
         bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
-        bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IFoundatioHandler");
+        bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IHandler");
         bool hasClassHandlerAttribute = classSymbol.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
 
         bool treatAsHandlerClass = nameMatches || implementsMarker || hasClassHandlerAttribute;

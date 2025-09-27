@@ -36,7 +36,7 @@ Let's keep pushing for clarity, usability, and excellence—both in code and use
 - Order with `[FoundatioOrder(int)]`; lower runs earlier in Before and later in After/Finally.
 
 ## DI and generation
-- Register: `services.AddMediator()` (see `src/Foundatio.Mediator.Abstractions/MediatorExtensions.cs`). Generator emits `[assembly: FoundatioHandlerModule]` and DI `HandlerRegistration` per message.
+- Register: `services.AddMediator()` (see `src/Foundatio.Mediator.Abstractions/MediatorExtensions.cs`). Generator emits `[assembly: FoundatioModule]` and DI `HandlerRegistration` per message.
 - Handlers are not auto-registered; wrappers create instances via `ActivatorUtilities` if not in DI. Register handlers to control lifetime.
 - Middleware lifetime: `Mediator.GetOrCreateMiddleware<T>` caches if not in DI; register to control lifetime.
 

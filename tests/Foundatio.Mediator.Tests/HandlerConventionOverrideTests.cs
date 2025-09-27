@@ -12,7 +12,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
 
             public record Ping(string Message) : IQuery<string>;
 
-            public class PingProcessor : IFoundatioHandler {
+            public class PingProcessor : IHandler {
                 public Task<string> HandleAsync(Ping message, CancellationToken ct) => Task.FromResult(message.Message + " Pong");
             }
             """;
@@ -46,7 +46,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
 
             public record Ping(string Message) : IQuery<string>;
 
-            [FoundatioHandler]
+            [Handler]
             public class PingProcessor {
                 public Task<string> HandleAsync(Ping message, CancellationToken ct) => Task.FromResult(message.Message + " Pong");
             }
@@ -82,7 +82,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
             public record Ping(string Message) : IQuery<string>;
 
             public class SomeClass {
-                [FoundatioHandler]
+                [Handler]
                 public Task<string> SomeMethodAsync(Ping message, CancellationToken ct) => Task.FromResult(message.Message + " Pong");
             }
             """;

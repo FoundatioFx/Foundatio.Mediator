@@ -24,7 +24,7 @@ public static class MediatorExtensions
 
         foreach (var assembly in configuration.Assemblies!)
         {
-            if (!IsAssemblyMarkedWithFoundatioHandlerModule(assembly))
+            if (!IsAssemblyMarkedWithFoundatioModule(assembly))
                 continue;
 
             var moduleType = assembly.GetTypes().FirstOrDefault(t =>
@@ -57,9 +57,9 @@ public static class MediatorExtensions
         return services.AddMediator(configurationBuilder.Build());
     }
 
-    private static bool IsAssemblyMarkedWithFoundatioHandlerModule(Assembly assembly)
+    private static bool IsAssemblyMarkedWithFoundatioModule(Assembly assembly)
     {
-        return assembly.GetCustomAttributes(typeof(FoundatioHandlerModuleAttribute), false).Any();
+        return assembly.GetCustomAttributes(typeof(FoundatioModuleAttribute), false).Any();
     }
 }
 

@@ -23,7 +23,7 @@ internal static class DIRegistrationGenerator
         source.AppendLine("using System.Threading;");
         source.AppendLine("using System.Threading.Tasks;");
         source.AppendLine();
-        source.AppendLine("[assembly: Foundatio.Mediator.FoundatioHandlerModule]");
+        source.AppendLine("[assembly: Foundatio.Mediator.FoundatioModule]");
         source.AppendLine();
         source.AppendLine("namespace Foundatio.Mediator;");
         source.AppendLine();

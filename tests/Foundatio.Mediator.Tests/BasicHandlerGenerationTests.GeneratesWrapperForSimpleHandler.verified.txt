@@ -135,7 +135,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
-[assembly: Foundatio.Mediator.FoundatioHandlerModule]
+[assembly: Foundatio.Mediator.FoundatioModule]
 
 namespace Foundatio.Mediator;
 

@@ -292,21 +292,21 @@ The source generator scans the current assembly for:
 
 ### Manual Handler Discovery
 
-Handler classes can implement the `IFoundatioHandler` interface for manual discovery:
+Handler classes can implement the `IHandler` interface for manual discovery:
 
 ```csharp
-public class UserProcessor : IFoundatioHandler
+public class UserProcessor : IHandler
 {
     public User Handle(GetUser query) { } // ✅ Discovered
 }
 ```
 
-Handler classes and methods can be marked with the `[FoundatioHandler]` attribute for manual discovery:
+Handler classes and methods can be marked with the `[Handler]` attribute for manual discovery:
 
 ```csharp
 public class UserProcessor
 {
-    [FoundatioHandler]
+    [Handler]
     public User Process(GetUser query) { } // ✅ Discovered
 }
 ```

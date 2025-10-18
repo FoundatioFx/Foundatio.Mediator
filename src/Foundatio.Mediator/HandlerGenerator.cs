@@ -258,7 +258,7 @@ internal static class HandlerGenerator
 
             if (handler.ReturnType.IsResult)
             {
-                variables[WellKnownTypes.Result] = "handlerResult";
+                variables[WellKnownTypes.Result] = "handlerResult!";
             }
 
             if (handler.ReturnType.IsTuple)
@@ -269,7 +269,7 @@ internal static class HandlerGenerator
 
                     if (tupleItem.TypeFullName.StartsWith(WellKnownTypes.ResultOfT.Replace("`1", "<")))
                     {
-                        variables[WellKnownTypes.Result] = $"handlerResult.{tupleItem.Name}";
+                        variables[WellKnownTypes.Result] = $"handlerResult.{tupleItem.Name}!";
                     }
                 }
             }
@@ -539,7 +539,9 @@ internal static class HandlerGenerator
             }
             else if (param.Type.IsResult && param.Type.FullName == WellKnownTypes.Result && variables != null && variables.TryGetValue(WellKnownTypes.Result, out string? resultVariableName))
             {
-                parameterValues.Add($"{resultVariableName}!");
+                // Special case: parameter is base Result type, but a Result<T> is available
+                // The null-forgiving operator is already added when storing in variables
+                parameterValues.Add(resultVariableName);
             }
             else
             {

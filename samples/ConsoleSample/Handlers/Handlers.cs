@@ -1,5 +1,7 @@
+using System.Data;
 using System.Runtime.CompilerServices;
 using ConsoleSample.Messages;
+using ConsoleSample.Middleware;
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
 
@@ -30,10 +32,11 @@ public class OrderHandler
         _logger = logger;
     }
 
-    public async Task<(Result<Order> Order, OrderCreated? Event)> HandleAsync(CreateOrder command)
+    public async Task<(Result<Order> Order, OrderCreated? Event)> HandleAsync(CreateOrder command, IDbTransaction transaction)
     {
-        _logger.LogInformation("Creating order for customer {CustomerId} with amount {Amount}",
-            command.CustomerId, command.Amount);
+        var tx = (FakeTransaction)transaction;
+        _logger.LogInformation("Creating order for customer {CustomerId} with amount {Amount} in transaction {TransactionId}",
+            command.CustomerId, command.Amount, tx.Id);
 
         var orderId = $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}";
         var order = new Order(orderId, command.CustomerId, command.Amount, command.Description, DateTime.UtcNow);

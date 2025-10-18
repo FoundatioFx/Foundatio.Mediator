@@ -41,6 +41,24 @@ public sealed class Result<T> : IResult
     }
 
     /// <summary>
+    /// Implicit conversion from Result&lt;T&gt; to Result.
+    /// </summary>
+    /// <param name="result">The result to convert.</param>
+    public static implicit operator Result(Result<T> result)
+    {
+        if (result == null)
+            return null!;
+
+        return new Result
+        {
+            Status = result.Status,
+            Message = result.Message,
+            Location = result.Location,
+            ValidationErrors = result.ValidationErrors
+        };
+    }
+
+    /// <summary>
     /// Creates a Result&lt;T&gt; from a Result.
     /// </summary>
     /// <param name="result">The result to convert.</param>

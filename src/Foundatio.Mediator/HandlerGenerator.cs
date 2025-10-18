@@ -209,19 +209,34 @@ internal static class HandlerGenerator
 
             if (m.Method.ReturnType.IsHandlerResult)
             {
-                result = handler.HasReturnValue ? $" ({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result.Value!" : "";
+                string shortCircuitValue = "";
                 if (handler.ReturnType.IsResult)
                 {
-                    result = $" {m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                    shortCircuitValue = $"{m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
                 }
                 else if (handler.ReturnType.IsTuple)
                 {
-                    result = $" (({m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!), {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => i.IsNullable ? "null" : "default"))})";
+                    shortCircuitValue = $"(({m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!), {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => i.IsNullable ? "null" : "default"))})";
                 }
+                else
+                {
+                    shortCircuitValue = $"({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                }
+
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
                 source.AppendLine("{");
                 source.AppendLine($"    logger?.LogDebug(\"Short-circuited processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
-                source.AppendLine($"    return{result};");
+
+                if (handler.HasReturnValue)
+                {
+                    source.AppendLine($"    handlerResult = {shortCircuitValue};");
+                    source.AppendLine("    return handlerResult;");
+                }
+                else
+                {
+                    source.AppendLine("    return;");
+                }
+
                 source.AppendLine("}");
             }
         }
@@ -231,11 +246,34 @@ internal static class HandlerGenerator
         asyncModifier = handler.ReturnType.IsTask ? "await " : "";
         result = handler.ReturnType.IsVoid ? "" : "handlerResult = ";
         accessor = handler.IsStatic ? handler.FullName : $"handlerInstance";
-        parameters = BuildParameters(source, handler.Parameters);
+        parameters = BuildParameters(source, handler.Parameters, variables);
 
         source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
         source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
         source.AppendLineIf(handler.HasReturnValue);
+
+        if (handler.HasReturnValue)
+        {
+            variables[handler.ReturnType.FullName] = "handlerResult";
+
+            if (handler.ReturnType.IsResult)
+            {
+                variables[WellKnownTypes.Result] = "handlerResult";
+            }
+
+            if (handler.ReturnType.IsTuple)
+            {
+                foreach (var tupleItem in handler.ReturnType.TupleItems)
+                {
+                    variables[tupleItem.TypeFullName] = $"handlerResult.{tupleItem.Name}";
+
+                    if (tupleItem.TypeFullName.StartsWith(WellKnownTypes.ResultOfT.Replace("`1", "<")))
+                    {
+                        variables[WellKnownTypes.Result] = $"handlerResult.{tupleItem.Name}";
+                    }
+                }
+            }
+        }
 
         // call after middleware
         foreach (var m in afterMiddleware)
@@ -498,6 +536,10 @@ internal static class HandlerGenerator
             else if (variables != null && param.Type.UnwrappedFullName.EndsWith("?") && variables.TryGetValue(param.Type.UnwrappedFullName.TrimEnd('?'), out string? nullableVariableName))
             {
                 parameterValues.Add(nullableVariableName);
+            }
+            else if (param.Type.IsResult && param.Type.FullName == WellKnownTypes.Result && variables != null && variables.TryGetValue(WellKnownTypes.Result, out string? resultVariableName))
+            {
+                parameterValues.Add(resultVariableName);
             }
             else
             {

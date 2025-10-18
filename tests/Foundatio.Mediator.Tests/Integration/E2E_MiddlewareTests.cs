@@ -35,4 +35,63 @@ public class E2E_MiddlewareTests
         await mediator.InvokeAsync(new E2eCmd("x"));
         Assert.Equal(new[] { "before:x", "handle:x", "after:x", "finally:x" }, mw.Steps);
     }
+
+    public interface IValidatable { }
+    public record ValidatableCommand(string Value) : IValidatable;
+
+    public class InterfaceMiddleware
+    {
+        public List<string> Steps { get; } = new();
+        public Task BeforeAsync(IValidatable m) { Steps.Add("interface-before"); return Task.CompletedTask; }
+    }
+
+    public class ValidatableCommandHandler
+    {
+        public Task HandleAsync(ValidatableCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_AppliesTo_MessageInterface()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<InterfaceMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ValidatableCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<InterfaceMiddleware>();
+
+        await mediator.InvokeAsync(new ValidatableCommand("test"));
+        Assert.Contains("interface-before", mw.Steps);
+    }
+
+    public abstract record BaseCommand(string Id);
+    public record DerivedCommand(string Id, string Name) : BaseCommand(Id);
+
+    public class BaseClassMiddleware
+    {
+        public List<string> Steps { get; } = new();
+        public Task BeforeAsync(BaseCommand m) { Steps.Add("base-before:" + m.Id); return Task.CompletedTask; }
+    }
+
+    public class DerivedCommandHandler
+    {
+        public Task HandleAsync(DerivedCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_AppliesTo_MessageBaseClass()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<BaseClassMiddleware>();
+        services.AddMediator(b => b.AddAssembly<DerivedCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<BaseClassMiddleware>();
+
+        await mediator.InvokeAsync(new DerivedCommand("123", "Test"));
+        Assert.Contains("base-before:123", mw.Steps);
+    }
+
 }

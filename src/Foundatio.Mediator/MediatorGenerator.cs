@@ -91,7 +91,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         foreach (var handler in handlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            var applicableMiddleware = GetApplicableMiddlewares(middleware, handler);
+            var applicableMiddleware = GetApplicableMiddlewares(middleware, handler, compilation);
             handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
         }
 
@@ -108,7 +108,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, configuration.HandlerLifetime);
     }
 
-    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler)
+    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)
     {
         var applicable = new List<MiddlewareInfo>();
 
@@ -134,9 +134,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         if (middleware.MessageType.FullName == handler.MessageType.FullName)
             return true;
 
-        // TODO get all interfaces of handler.MessageType
-        //if (middleware.MessageType.IsInterface && middleware.InterfaceTypes.Contains(handler.MessageTypeName))
-        //    return true;
+        // Check if middleware message type is an interface implemented by the handler message type
+        if (middleware.MessageType.IsInterface && handler.MessageInterfaces.Contains(middleware.MessageType.FullName))
+            return true;
+
+        // Check if middleware message type is a base class of the handler message type
+        if (handler.MessageBaseClasses.Contains(middleware.MessageType.FullName))
+            return true;
 
         return false;
     }

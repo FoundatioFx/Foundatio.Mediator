@@ -1,4 +1,6 @@
+using ConsoleSample.Messages;
 using Foundatio.Mediator;
+using Microsoft.Extensions.Logging;
 using MiniValidation;
 
 namespace ConsoleSample.Middleware;
@@ -6,8 +8,10 @@ namespace ConsoleSample.Middleware;
 [FoundatioOrder(1)]
 public static class ValidationMiddleware
 {
-    public static HandlerResult Before(object message)
+    public static HandlerResult Before(IValidatable message, ILogger<IMediator> logger)
     {
+        logger.LogInformation("Validating message of type {MessageType}", message.GetType().Name);
+
         if (!MiniValidator.TryValidate(message, out var errors))
         {
             var validationErrors = errors.Select(kvp =>

@@ -19,7 +19,7 @@ public record CreateOrder(
 
     [Required(ErrorMessage = "Description is required")]
     [StringLength(200, MinimumLength = 5, ErrorMessage = "Description must be between 5 and 200 characters")]
-    string Description);
+    string Description) : IValidatable;
 public record GetOrder(string OrderId);
 public record UpdateOrder(string OrderId, decimal? Amount, string? Description);
 public record DeleteOrder(string OrderId);
@@ -34,3 +34,5 @@ public record Order(string Id, string CustomerId, decimal Amount, string Descrip
 
 // Counter stream request
 public record CounterStreamRequest { }
+
+public interface IValidatable { }

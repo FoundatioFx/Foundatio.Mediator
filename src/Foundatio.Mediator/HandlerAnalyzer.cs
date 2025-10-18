@@ -139,12 +139,32 @@ internal static class HandlerAnalyzer
                 genericConstraints = [];
             }
 
+            var messageInterfaces = new List<string>();
+            var messageBaseClasses = new List<string>();
+
+            if (messageType is INamedTypeSymbol namedMessageType)
+            {
+                foreach (var iface in namedMessageType.AllInterfaces)
+                {
+                    messageInterfaces.Add(iface.ToDisplayString());
+                }
+
+                var currentBase = namedMessageType.BaseType;
+                while (currentBase != null && currentBase.SpecialType != SpecialType.System_Object)
+                {
+                    messageBaseClasses.Add(currentBase.ToDisplayString());
+                    currentBase = currentBase.BaseType;
+                }
+            }
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
+                MessageInterfaces = new(messageInterfaces.ToArray()),
+                MessageBaseClasses = new(messageBaseClasses.ToArray()),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
                 IsStatic = handlerMethod.IsStatic,
                 IsGenericHandlerClass = classSymbol.IsGenericType,

@@ -106,8 +106,8 @@ public class MiddlewareGenerationTests : GeneratorTestBase
 		var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
 
 		var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-		Assert.Contains("MW1Middleware.After(message, handlerResult)", wrapper.Source);
-		Assert.Contains("MW1Middleware.Finally(message, handlerResult)", wrapper.Source);
+		Assert.Contains("MW1Middleware.After(message, handlerResult!)", wrapper.Source);
+		Assert.Contains("MW1Middleware.Finally(message, handlerResult!)", wrapper.Source);
 	}
 
 	[Fact]
@@ -133,8 +133,8 @@ public class MiddlewareGenerationTests : GeneratorTestBase
 		var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
 
 		var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-		Assert.Contains("MW1Middleware.After(message, handlerResult.Response)", wrapper.Source);
-		Assert.Contains("MW1Middleware.Finally(message, handlerResult.Response)", wrapper.Source);
+		Assert.Contains("MW1Middleware.After(message, handlerResult.Response!)", wrapper.Source);
+		Assert.Contains("MW1Middleware.Finally(message, handlerResult.Response!)", wrapper.Source);
 	}
 }
 

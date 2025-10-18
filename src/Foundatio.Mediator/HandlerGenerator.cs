@@ -539,7 +539,7 @@ internal static class HandlerGenerator
             }
             else if (param.Type.IsResult && param.Type.FullName == WellKnownTypes.Result && variables != null && variables.TryGetValue(WellKnownTypes.Result, out string? resultVariableName))
             {
-                parameterValues.Add(resultVariableName);
+                parameterValues.Add($"{resultVariableName}!");
             }
             else
             {

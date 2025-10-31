@@ -54,6 +54,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsCancellationToken { get; init; }
     /// <summary>
+    /// Indicates if the type is a HandlerExecutionInfo, which contains metadata about the executing handler.
+    /// </summary>
+    public bool IsHandlerExecutionInfo { get; init; }
+    /// <summary>
     /// Indicates if the type is a tuple type.
     /// </summary>
     public bool IsTuple { get; init; }
@@ -86,6 +90,7 @@ internal readonly record struct TypeSymbolInfo
             IsInterface = false,
             IsHandlerResult = false,
             IsCancellationToken = false,
+            IsHandlerExecutionInfo = false,
             IsTuple = false,
             IsTypeParameter = false,
             TupleItems = EquatableArray<TupleItemInfo>.Empty,
@@ -115,6 +120,7 @@ internal readonly record struct TypeSymbolInfo
         bool isResult = unwrappedNullableType.IsResult(compilation);
         bool isHandlerResult = unwrappedNullableType.IsHandlerResult(compilation);
         bool isCancellationToken = unwrappedNullableType.IsCancellationToken(compilation);
+        bool isHandlerExecutionInfo = unwrappedNullableType.IsHandlerExecutionInfo(compilation);
         bool isTuple = unwrappedNullableType is INamedTypeSymbol { IsTupleType: true };
         var tupleItems = unwrappedNullableType.GetTupleItems(compilation);
         bool isTypeParameter = typeSymbol.TypeKind == TypeKind.TypeParameter;
@@ -156,6 +162,7 @@ internal readonly record struct TypeSymbolInfo
             IsInterface = isInterface,
             IsHandlerResult = isHandlerResult,
             IsCancellationToken = isCancellationToken,
+            IsHandlerExecutionInfo = isHandlerExecutionInfo,
             IsTuple = isTuple,
             IsTypeParameter = isTypeParameter,
             TupleItems = tupleItems,

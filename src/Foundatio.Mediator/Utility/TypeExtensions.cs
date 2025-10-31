@@ -158,6 +158,12 @@ internal static class TypeExtensions
                 TypeFullName = e.Type.ToDisplayString()
             }).ToArray());
     }
+
+    internal static bool IsHandlerExecutionInfo(this ITypeSymbol typeSymbol, Compilation compilation)
+    {
+        var handlerExecutionInfoSymbol = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+        return SymbolEqualityComparer.Default.Equals(typeSymbol, handlerExecutionInfoSymbol);
+    }
 }
 
 internal static class WellKnownTypes {
@@ -171,4 +177,5 @@ internal static class WellKnownTypes {
     public const string IgnoreAttribute = "Foundatio.Mediator.FoundatioIgnoreAttribute";
     public const string HandlerAttribute = "Foundatio.Mediator.HandlerAttribute";
     public const string CancellationToken = "System.Threading.CancellationToken";
+    public const string HandlerExecutionInfo = "Foundatio.Mediator.HandlerExecutionInfo";
 }

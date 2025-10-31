@@ -155,6 +155,11 @@ internal static class HandlerGenerator
 
         source.AppendLine();
 
+        // Create HandlerExecutionInfo for middleware
+        source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\")!);");
+        variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+        source.AppendLine();
+
         // build middleware instances
         foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))
         {
@@ -524,6 +529,10 @@ internal static class HandlerGenerator
             else if (param.Type.IsCancellationToken)
             {
                 parameterValues.Add("cancellationToken");
+            }
+            else if (param.Type.IsHandlerExecutionInfo)
+            {
+                parameterValues.Add("handlerExecutionInfo");
             }
             else if (variables != null && variables.TryGetValue(param.Type.FullName, out string? variableName))
             {

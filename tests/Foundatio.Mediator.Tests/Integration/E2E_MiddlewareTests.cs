@@ -94,4 +94,40 @@ public class E2E_MiddlewareTests
         Assert.Contains("base-before:123", mw.Steps);
     }
 
+    public record HandlerInfoTestCommand(string Value) : ICommand;
+
+    public class HandlerInfoMiddleware
+    {
+        public List<string> CapturedInfo { get; } = new();
+        
+        public Task BeforeAsync(HandlerInfoTestCommand cmd, HandlerExecutionInfo handlerInfo)
+        {
+            CapturedInfo.Add($"HandlerType:{handlerInfo.HandlerType.Name}");
+            CapturedInfo.Add($"MethodName:{handlerInfo.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+    }
+
+    public class HandlerInfoTestCommandHandler
+    {
+        public Task HandleAsync(HandlerInfoTestCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_CanAccess_HandlerExecutionInfo()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<HandlerInfoMiddleware>();
+        services.AddMediator(b => b.AddAssembly<HandlerInfoTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<HandlerInfoMiddleware>();
+
+        await mediator.InvokeAsync(new HandlerInfoTestCommand("test"));
+        
+        Assert.Contains("HandlerType:HandlerInfoTestCommandHandler", mw.CapturedInfo);
+        Assert.Contains("MethodName:HandleAsync", mw.CapturedInfo);
+    }
+
 }

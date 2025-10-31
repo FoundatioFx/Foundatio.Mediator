@@ -81,7 +81,7 @@ internal static class PingHandler_Ping_Handler
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
 
-        var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof(PingHandler), typeof(PingHandler).GetMethod("HandleAsync")!);
+        var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof(PingHandler), typeof(PingHandler).GetMethod("HandleAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] { typeof(Ping), typeof(System.Threading.CancellationToken) }, null)!);
 
         string? handlerResult = default;
         var handlerInstance = GetOrCreateHandler(serviceProvider);

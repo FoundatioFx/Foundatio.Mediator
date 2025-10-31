@@ -156,7 +156,16 @@ internal static class HandlerGenerator
         source.AppendLine();
 
         // Create HandlerExecutionInfo for middleware
-        source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\")!);");
+        // Build parameter types array for GetMethod to handle overloaded methods
+        var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
+        if (string.IsNullOrEmpty(paramTypes))
+        {
+            source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null)!);");
+        }
+        else
+        {
+            source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] {{ {paramTypes} }}, null)!);");
+        }
         variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
         source.AppendLine();
 

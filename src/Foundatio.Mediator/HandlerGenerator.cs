@@ -155,19 +155,28 @@ internal static class HandlerGenerator
 
         source.AppendLine();
 
-        // Create HandlerExecutionInfo for middleware
-        // Build parameter types array for GetMethod to handle overloaded methods
-        var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
-        if (string.IsNullOrEmpty(paramTypes))
+        // Check if any middleware needs HandlerExecutionInfo
+        var needsHandlerInfo = handler.Middleware.Any(m =>
+            (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+
+        // Create HandlerExecutionInfo for middleware only if needed
+        if (needsHandlerInfo)
         {
-            source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null)!);");
+            // Build parameter types array for GetMethod to handle overloaded methods
+            var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
+            if (string.IsNullOrEmpty(paramTypes))
+            {
+                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null)!);");
+            }
+            else
+            {
+                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] {{ {paramTypes} }}, null)!);");
+            }
+            variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+            source.AppendLine();
         }
-        else
-        {
-            source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] {{ {paramTypes} }}, null)!);");
-        }
-        variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
-        source.AppendLine();
 
         // build middleware instances
         foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))

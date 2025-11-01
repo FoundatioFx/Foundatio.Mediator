@@ -155,6 +155,29 @@ internal static class HandlerGenerator
 
         source.AppendLine();
 
+        // Check if any middleware needs HandlerExecutionInfo
+        var needsHandlerInfo = handler.Middleware.Any(m =>
+            (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+
+        // Create HandlerExecutionInfo for middleware only if needed
+        if (needsHandlerInfo)
+        {
+            // Build parameter types array for GetMethod to handle overloaded methods
+            var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
+            if (string.IsNullOrEmpty(paramTypes))
+            {
+                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null)!);");
+            }
+            else
+            {
+                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] {{ {paramTypes} }}, null)!);");
+            }
+            variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+            source.AppendLine();
+        }
+
         // build middleware instances
         foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))
         {
@@ -524,6 +547,10 @@ internal static class HandlerGenerator
             else if (param.Type.IsCancellationToken)
             {
                 parameterValues.Add("cancellationToken");
+            }
+            else if (param.Type.IsHandlerExecutionInfo)
+            {
+                parameterValues.Add("handlerExecutionInfo");
             }
             else if (variables != null && variables.TryGetValue(param.Type.FullName, out string? variableName))
             {

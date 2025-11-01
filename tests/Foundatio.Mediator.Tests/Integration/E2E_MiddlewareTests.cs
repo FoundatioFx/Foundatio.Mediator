@@ -94,4 +94,124 @@ public class E2E_MiddlewareTests
         Assert.Contains("base-before:123", mw.Steps);
     }
 
+    public record HandlerInfoTestCommand(string Value) : ICommand;
+
+    public class HandlerInfoMiddleware
+    {
+        public List<string> CapturedInfo { get; } = new();
+        
+        public Task BeforeAsync(HandlerInfoTestCommand cmd, HandlerExecutionInfo handlerInfo)
+        {
+            CapturedInfo.Add($"HandlerType:{handlerInfo.HandlerType.Name}");
+            CapturedInfo.Add($"MethodName:{handlerInfo.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+    }
+
+    public class HandlerInfoTestCommandHandler
+    {
+        public Task HandleAsync(HandlerInfoTestCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_CanAccess_HandlerExecutionInfo()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<HandlerInfoMiddleware>();
+        services.AddMediator(b => b.AddAssembly<HandlerInfoTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<HandlerInfoMiddleware>();
+
+        await mediator.InvokeAsync(new HandlerInfoTestCommand("test"));
+        
+        Assert.Contains("HandlerType:HandlerInfoTestCommandHandler", mw.CapturedInfo);
+        Assert.Contains("MethodName:HandleAsync", mw.CapturedInfo);
+    }
+
+    public record HandlerInfoAllPhasesCommand(string Value) : ICommand;
+
+    public class HandlerInfoAllPhasesMiddleware
+    {
+        public List<string> CapturedInfo { get; } = new();
+        
+        public Task BeforeAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
+        {
+            CapturedInfo.Add($"Before-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+        
+        public Task AfterAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
+        {
+            CapturedInfo.Add($"After-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+        
+        public Task FinallyAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
+        {
+            CapturedInfo.Add($"Finally-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+    }
+
+    public class HandlerInfoAllPhasesCommandHandler
+    {
+        public Task HandleAsync(HandlerInfoAllPhasesCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_CanAccess_HandlerExecutionInfo_InAllPhases()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<HandlerInfoAllPhasesMiddleware>();
+        services.AddMediator(b => b.AddAssembly<HandlerInfoAllPhasesCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<HandlerInfoAllPhasesMiddleware>();
+
+        await mediator.InvokeAsync(new HandlerInfoAllPhasesCommand("test"));
+        
+        Assert.Equal(3, mw.CapturedInfo.Count);
+        Assert.Equal("Before-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[0]);
+        Assert.Equal("After-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[1]);
+        Assert.Equal("Finally-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[2]);
+    }
+
+    public record StaticHandlerInfoCommand(string Value) : ICommand;
+
+    public static class StaticHandlerInfoMiddleware
+    {
+        public static List<string> CapturedInfo { get; } = new();
+        
+        public static Task BeforeAsync(StaticHandlerInfoCommand cmd, HandlerExecutionInfo info)
+        {
+            CapturedInfo.Add($"Static-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
+            return Task.CompletedTask;
+        }
+    }
+
+    public class StaticHandlerInfoCommandHandler
+    {
+        public Task HandleAsync(StaticHandlerInfoCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task Middleware_CanAccess_HandlerExecutionInfo_StaticMiddleware()
+    {
+        StaticHandlerInfoMiddleware.CapturedInfo.Clear();
+        
+        var services = new ServiceCollection();
+        services.AddMediator(b => b.AddAssembly<StaticHandlerInfoCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        await mediator.InvokeAsync(new StaticHandlerInfoCommand("test"));
+        
+        Assert.Single(StaticHandlerInfoMiddleware.CapturedInfo);
+        Assert.Equal("Static-StaticHandlerInfoCommandHandler-HandleAsync", StaticHandlerInfoMiddleware.CapturedInfo[0]);
+    }
+
 }

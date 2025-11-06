@@ -176,6 +176,8 @@ internal static class WellKnownTypes {
     public const string HandlerResult = "Foundatio.Mediator.HandlerResult";
     public const string IgnoreAttribute = "Foundatio.Mediator.FoundatioIgnoreAttribute";
     public const string HandlerAttribute = "Foundatio.Mediator.HandlerAttribute";
+    public const string MiddlewareAttribute = "Foundatio.Mediator.MiddlewareAttribute";
+    public const string FoundatioModuleAttribute = "Foundatio.Mediator.FoundatioModuleAttribute";
     public const string CancellationToken = "System.Threading.CancellationToken";
     public const string HandlerExecutionInfo = "Foundatio.Mediator.HandlerExecutionInfo";
 }

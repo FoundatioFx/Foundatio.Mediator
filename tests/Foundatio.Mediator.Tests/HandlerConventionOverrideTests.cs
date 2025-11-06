@@ -17,11 +17,11 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
             }
             """;
 
-        var (diagnostics, generatorDiagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
+        var (compilation, diagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        Assert.Empty(generatorDiagnostics);
+        
 
         // Assert that a handler wrapper was generated for PingProcessor
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("PingProcessor"));
@@ -52,11 +52,11 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
             }
             """;
 
-        var (diagnostics, generatorDiagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
+        var (compilation, diagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        Assert.Empty(generatorDiagnostics);
+        
 
         // Assert that a handler wrapper was generated for PingProcessor
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("PingProcessor"));
@@ -87,11 +87,11 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
             }
             """;
 
-        var (diagnostics, generatorDiagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
+        var (compilation, diagnostics, generatedTrees) = RunGenerator(source, [new MediatorGenerator()]);
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        Assert.Empty(generatorDiagnostics);
+        
 
         // Assert that a handler wrapper was generated for SomeClass
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("SomeClass"));
@@ -107,3 +107,4 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
     }
 
 }
+

@@ -1,5 +1,3 @@
-using Microsoft.CodeAnalysis;
-
 namespace Foundatio.Mediator.Tests;
 
 public class GeneratedHandlerExclusionTests : GeneratorTestBase

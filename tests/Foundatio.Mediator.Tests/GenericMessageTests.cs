@@ -23,10 +23,9 @@ public class GenericMessageTests : GeneratorTestBase
             }
             """;
 
-        var (diagnostics, generatorDiagnostics, generatedTrees) = RunGenerator(source, new[] { new MediatorGenerator() });
+        var (compilation, diagnostics, generatedTrees) = RunGenerator(source, new[] { new MediatorGenerator() });
 
         Assert.Empty(diagnostics);
-        Assert.Empty(generatorDiagnostics);
 
         // Expect two handler wrapper files with unique message identifiers including generic argument
         var intWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("IntHandler") && t.HintName.Contains("MyMessage"));
@@ -77,9 +76,8 @@ public class GenericMessageTests : GeneratorTestBase
              }
              """;
 
-        var (diagnostics, generatorDiagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
+        var (compilation, diagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
         Assert.Empty(diagnostics);
-        Assert.Empty(generatorDiagnostics);
 
         var di = trees.First(t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
         // Should use helper call and not raw backtick notation

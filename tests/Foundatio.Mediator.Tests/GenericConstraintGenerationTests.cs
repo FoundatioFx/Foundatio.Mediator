@@ -14,10 +14,9 @@ public class DualHandler<T1,T2>
     public Task HandleAsync(DualCommand<T1,T2> cmd, CancellationToken ct) => Task.CompletedTask;
 }";
 
-        var (diagnostics, genDiagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
+        var (compilation, diagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
-        Assert.Empty(genDiagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
 
         // Find the generated handler wrapper for DualHandler / DualCommand
         var generated = trees.FirstOrDefault(t => t.HintName.Contains("DualHandler_DualCommand_T1_T2_Handler"));
@@ -37,3 +36,4 @@ public class DualHandler<T1,T2>
         Assert.True(t2Constraint > t1Constraint);
     }
 }
+

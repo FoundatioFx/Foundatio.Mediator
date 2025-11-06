@@ -1,9 +1,9 @@
+using Common.Module;
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Orders.Module.Extensions;
-using Orders.Module.Handlers;
+using Common.Module.Extensions;
 using Orders.Module.Messages;
 
 namespace Orders.Module.Api;

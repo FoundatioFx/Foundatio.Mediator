@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace ConsoleSample.Middleware;
 
-[FoundatioOrder(2)]
+[Middleware(2)]
 public class LoggingMiddleware
 {
     private readonly ILogger<LoggingMiddleware> _logger;

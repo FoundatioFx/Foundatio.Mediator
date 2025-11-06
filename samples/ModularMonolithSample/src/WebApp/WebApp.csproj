@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Orders.Module\Orders.Module.csproj" />
+    <ProjectReference Include="..\Products.Module\Products.Module.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,8 +4,12 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
+  </Folder>
+  <Folder Name="/samples/ModularMonolith/">
     <Project Path="samples/ModularMonolithSample/src/Orders.Module/Orders.Module.csproj" />
     <Project Path="samples/ModularMonolithSample/src/WebApp/WebApp.csproj" />
+    <Project Path="samples\ModularMonolithSample\src\Common.Module\Common.Module.csproj" Type="Classic C#" />
+    <Project Path="samples\ModularMonolithSample\src\Products.Module\Products.Module.csproj" Type="Classic C#" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".github/copilot-instructions.md" />

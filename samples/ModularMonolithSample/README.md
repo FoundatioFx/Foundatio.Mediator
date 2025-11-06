@@ -1,11 +1,19 @@
 # Modular Monolith Sample
 
-This sample demonstrates how to structure a modular monolith application using Foundatio.Mediator, with a focus on handling middleware across modules.
+This sample demonstrates how to structure a modular monolith application using Foundatio.Mediator with **cross-assembly middleware discovery**. Shared middleware defined in `Common.Module` is automatically discovered and applied to handlers in other modules.
 
 ## Project Structure
 
 ```text
 src/
+├── Common.Module/          # Shared middleware (cross-assembly)
+│   └── Middleware/        # LoggingMiddleware, PerformanceMiddleware
+├── Products.Module/        # Product catalog module
+│   ├── Handlers/          # Product-related message handlers
+│   ├── Messages/          # Product commands, queries, events
+│   ├── Middleware/        # Product-specific validation middleware
+│   ├── Services/          # Product repository
+│   └── Api/              # Product API endpoints
 ├── Orders.Module/          # Order processing module
 │   ├── Handlers/          # Order-related message handlers
 │   ├── Messages/          # Order commands, queries, events
@@ -15,80 +23,167 @@ src/
     └── Program.cs        # Application startup
 ```
 
-## Middleware in Modular Applications
+## Cross-Assembly Middleware
 
-### The Challenge
+### How It Works
 
-Middleware must be defined in the **same project** as your handlers because the source generator only has access to the current project's source code at compile-time.
+1. **Common.Module** has the Foundatio.Mediator source generator referenced
+2. Middleware classes in Common.Module follow the naming convention (ending with `Middleware`) or are marked with `[Middleware]` attribute
+3. **Products.Module** references Common.Module and also has the Foundatio.Mediator source generator referenced
+4. At compile time, the source generator:
+   - Scans Common.Module metadata for middleware types
+   - Discovers `LoggingMiddleware` and `PerformanceMiddleware`
+   - Generates handler code that calls both cross-assembly and local middleware
 
-### Solution Options
+### Middleware Execution Order
 
-#### Option 1: Module-Specific Middleware (Current)
+For a `CreateProduct` command in Products.Module:
 
-Each module defines its own middleware:
+```text
+1. LoggingMiddleware.Before      (Order = 1,  from Common.Module)
+2. ValidationMiddleware.Before   (Order = 5,  from Products.Module)
+3. PerformanceMiddleware.Before  (Order = 10, from Common.Module)
+4. ProductHandler.Handle         (executes)
+5. PerformanceMiddleware.Finally (measures execution time)
+6. LoggingMiddleware.After       (logs completion)
+7. LoggingMiddleware.Finally     (logs errors if any)
+```
+
+### Example: Common.Module Middleware
 
 ```csharp
-// Orders.Module/Middleware/ValidationMiddleware.cs
-namespace Orders.Module.Middleware;
+// Common.Module/Common.Module.csproj
+<ItemGroup>
+  <!-- Include Foundatio.Mediator source generator -->
+  <PackageReference Include="Foundatio.Mediator" />
+</ItemGroup>
 
-public static class ValidationMiddleware
+// Common.Module/Middleware/LoggingMiddleware.cs
+[Middleware(Order = 1)]  // Runs first - Order can be set via attribute
+public static class LoggingMiddleware
 {
-    public static HandlerResult Before(object message)
+    public static void Before(object message, HandlerExecutionInfo info, ILogger logger)
     {
-        // Validation logic specific to Orders module
+        logger.LogInformation("Handling {MessageType}", message.GetType().Name);
     }
 }
 ```
 
-**Pros:**
+### Example: Products.Module (Consumes Cross-Assembly Middleware)
 
-- Simple and straightforward
-- Each module is self-contained
-- No file linking required
+```csharp
+// Products.Module/Products.Module.csproj
+<ItemGroup>
+  <!-- Reference Common.Module to get shared middleware -->
+  <ProjectReference Include="..\Common.Module\Common.Module.csproj" />
+  <!-- Include Foundatio.Mediator source generator -->
+  <PackageReference Include="Foundatio.Mediator" />
+</ItemGroup>
 
-**Cons:**
+// Products.Module/Middleware/ValidationMiddleware.cs
+// This middleware follows naming convention (ends with Middleware)
+// so no attribute is required, but you can use [Middleware(Order = 5)] to set order
+public static class ValidationMiddleware
+{
+    public static HandlerResult Before(CreateProduct command)
+    {
+        if (string.IsNullOrWhiteSpace(command.Name))
+            return HandlerResult.ShortCircuit(Result.ValidationError(...));
 
-- Duplicate middleware code if needed across modules
-- Inconsistencies between modules possible
+        return HandlerResult.Continue();
+    }
+}
+```
 
-#### Option 2: Shared Middleware via Linked Files
+## Benefits
 
-For middleware that should be shared across multiple modules, use linked files:
+### ✅ No File Linking Required
 
-1. **Create a shared middleware directory:**
+- Simply reference the middleware assembly (that has the source generator referenced)
+- No `.csproj` file linking or `<Compile Include="...">` needed
+- Clean project structure
+- Middleware can be in any referenced project with Foundatio.Mediator package
 
-   ```text
-   src/
-   ├── Shared.Middleware/
-   │   ├── LoggingMiddleware.cs
-   │   ├── ValidationMiddleware.cs
-   │   └── AuthorizationMiddleware.cs
-   ├── Orders.Module/
-   └── Products.Module/
-   ```
+### ✅ Compile-Time Performance
 
-2. **Link files in each module's `.csproj`:**
+- Zero runtime reflection or discovery overhead
+- Middleware calls are baked into generated handler code
+- Same performance as hand-written code
 
-   ```xml
-   <ItemGroup>
-     <!-- Link shared middleware -->
-     <Compile Include="..\Shared.Middleware\LoggingMiddleware.cs" Link="Middleware\LoggingMiddleware.cs" />
-     <Compile Include="..\Shared.Middleware\ValidationMiddleware.cs" Link="Middleware\ValidationMiddleware.cs" />
-   </ItemGroup>
-   ```
+### ✅ Type Safety
 
-3. **Declare middleware as `internal`:**
+- Full compile-time type checking
+- IntelliSense support for middleware dependencies
+- Errors caught during build, not at runtime
 
-   ```csharp
-   // Shared.Middleware/LoggingMiddleware.cs
-   namespace Shared.Middleware;
+### ✅ Clear Separation of Concerns
 
-   // Use internal to avoid type conflicts
-   internal class LoggingMiddleware
-   {
-       public void Before(object message) { /* ... */ }
-   }
-   ```
+```text
+Common.Module     → Cross-cutting middleware (logging, performance, auth)
+Products.Module   → Product-specific validation and business logic
+Orders.Module     → Order-specific validation and business logic
+```
+
+## Running the Sample
+
+```bash
+cd samples/ModularMonolithSample
+dotnet build
+dotnet run --project src/WebApp
+```
+
+Visit `https://localhost:5001/swagger` to explore the API.
+
+### Try It Out
+
+```bash
+# Create a product (will trigger all middleware)
+curl -X POST https://localhost:5001/api/products \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Widget","description":"A great widget","price":29.99}'
+
+# Get a product
+curl https://localhost:5001/api/products/{id}
+
+# Update a product
+curl -X PUT https://localhost:5001/api/products/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Super Widget","description":"An even better widget","price":39.99}'
+```
+
+Watch the logs to see middleware execution:
+
+```text
+info: Common.Module.Middleware.LoggingMiddleware[0]
+      Handling CreateProduct in ProductHandler
+info: Products.Module.Middleware.ValidationMiddleware[0]
+      Validating CreateProduct
+info: Common.Module.Middleware.PerformanceMiddleware[0]
+      ProductHandler handled CreateProduct in 15ms
+info: Common.Module.Middleware.LoggingMiddleware[0]
+      Completed CreateProduct in ProductHandler
+```
+
+## Middleware Discovery
+
+Middleware is discovered automatically by the Foundatio.Mediator source generator in any referenced project that includes the generator. The generator finds middleware using:
+
+1. **Naming Convention**: Classes ending with `Middleware` (e.g., `LoggingMiddleware`, `ValidationMiddleware`)
+2. **Attribute**: Classes or methods marked with `[Middleware]` attribute
+
+### Setting Middleware Order
+
+You can control the execution order of middleware using the `[Middleware(Order = n)]` attribute:
+
+```csharp
+[Middleware(Order = 1)]  // Runs first in Before, last in After/Finally
+public class LoggingMiddleware { }
+
+[Middleware(Order = 10)] // Runs later in Before, earlier in After/Finally
+public class PerformanceMiddleware { }
+```
+
+Lower order values run first during the `Before` phase, and last during the `After`/`Finally` phases (reverse order for proper nesting).
 
 **Pros:**
 

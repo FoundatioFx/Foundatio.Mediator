@@ -1,14 +1,9 @@
 using Foundatio.Mediator;
 using MiniValidation;
 
-namespace Orders.Module.Middleware;
+namespace Common.Module.Middleware;
 
-// NOTE: Middleware must be defined in the same project as handlers.
-// To share middleware across projects, use linked files in .csproj:
-// <Compile Include="..\Shared\ValidationMiddleware.cs" Link="Middleware\ValidationMiddleware.cs" />
-// Declare middleware as 'internal' to avoid type conflicts across assemblies.
-
-[FoundatioOrder(1)]
+[Middleware(5)]
 public static class ValidationMiddleware
 {
     public static HandlerResult Before(object message)

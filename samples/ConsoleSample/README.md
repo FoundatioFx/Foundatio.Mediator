@@ -33,7 +33,7 @@ A simplified console application demonstrating all key features of Foundatio.Med
 
 - **ValidationMiddleware** (static) - Using MiniValidation for automatic validation
 - **LoggingMiddleware** (instance) - Performance tracking and execution logging
-- Ordered execution with `[FoundatioOrder]` attributes
+- Ordered execution with `[Middleware(Order = 10)]` attributes
 
 ## 🏗️ Project Structure
 
@@ -107,7 +107,7 @@ public class OrderAuditHandler
 #### Static Validation Middleware
 
 ```csharp
-[FoundatioOrder(1)]
+[Middleware(1)]
 public static class ValidationMiddleware
 {
     public static HandlerResult Before(object message)
@@ -129,7 +129,7 @@ public static class ValidationMiddleware
 #### Instance Logging Middleware
 
 ```csharp
-[FoundatioOrder(2)]
+[Middleware(2)]
 public class LoggingMiddleware
 {
     public Stopwatch Before(object message)

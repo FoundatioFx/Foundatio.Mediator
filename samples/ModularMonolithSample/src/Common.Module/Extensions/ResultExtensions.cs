@@ -1,7 +1,7 @@
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Http;
 
-namespace Orders.Module.Extensions;
+namespace Common.Module.Extensions;
 
 public static class ResultExtensions
 {

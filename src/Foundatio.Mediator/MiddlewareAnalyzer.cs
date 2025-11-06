@@ -131,24 +131,34 @@ internal static class MiddlewareAnalyzer
             ?? afterMethod?.Parameters[0].Type
             ?? finallyMethod?.Parameters[0].Type;
 
-        var isStatic = classSymbol.IsStatic
-                    || (beforeMethod != null && beforeMethod.IsStatic)
-                    || (afterMethod != null && afterMethod.IsStatic)
-                    || (finallyMethod != null && finallyMethod.IsStatic);
+        bool isStatic = classSymbol.IsStatic
+                        || beforeMethod is { IsStatic: true }
+                        || afterMethod is { IsStatic: true }
+                        || finallyMethod is { IsStatic: true };
 
         if (messageType == null)
             return null;
 
-        var orderAttribute = classSymbol.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.Name == "FoundatioOrderAttribute");
-
         int? order = null;
-        if (orderAttribute is { ConstructorArguments.Length: > 0 })
+
+        // First check [Middleware(order)] attribute
+        var middlewareAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.MiddlewareAttribute);
+
+        if (middlewareAttr != null)
         {
-            var orderArg = orderAttribute.ConstructorArguments[0];
-            if (orderArg.Value is int orderValue)
+            // Check constructor argument
+            if (middlewareAttr.ConstructorArguments.Length > 0)
             {
-                order = orderValue;
+                var arg = middlewareAttr.ConstructorArguments[0];
+                if (arg.Value is int orderValue)
+                    order = orderValue;
             }
+
+            // Check named argument (property)
+            var orderArg = middlewareAttr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
+            if (orderArg.Value.Value is int namedOrderValue)
+                order = namedOrderValue;
         }
 
         return new MiddlewareInfo

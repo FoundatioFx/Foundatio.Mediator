@@ -30,8 +30,4 @@
     <ProjectReference Include="..\Common.Module\Common.Module.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Generated\Foundatio.Mediator\" />
-  </ItemGroup>
-
 </Project>

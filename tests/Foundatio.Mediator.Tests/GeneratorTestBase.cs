@@ -45,19 +45,20 @@ public abstract class GeneratorTestBase
             });
     }
 
-    protected (ImmutableArray<Diagnostic> Diagnostics,
-        ImmutableArray<Diagnostic> GeneratorDiagnostics,
+    protected (Compilation Compilation,
+        ImmutableArray<Diagnostic> Diagnostics,
         IReadOnlyList<(string HintName, string Source)> GeneratedTrees)
         RunGenerator(string source, IIncrementalGenerator[] generators,
-            AnalyzerConfigOptionsProvider? optionsProvider = null)
+            AnalyzerConfigOptionsProvider? optionsProvider = null,
+            MetadataReference[]? additionalReferences = null)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
-        var compilation = CreateCompilation(source, parseOptions);
+        var compilation = CreateCompilation(source, parseOptions, additionalReferences);
 
         var sourceGenerators = generators.Select(g => g.AsSourceGenerator()).ToImmutableArray();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(sourceGenerators, additionalTexts: null,
             parseOptions: parseOptions, optionsProvider: optionsProvider);
-        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var _, out var diagnostics);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
 
         var genResult = driver.GetRunResult();
         var trees = genResult.Results
@@ -65,23 +66,30 @@ public abstract class GeneratorTestBase
             .Select(s => (s.HintName, s.SourceText.ToString()))
             .ToList();
 
-        return (diagnostics, genResult.Diagnostics, trees);
+        return (outputCompilation, diagnostics, trees);
     }
 
-    private static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions)
+    private static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions, MetadataReference[]? additionalReferences = null)
     {
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.ServiceCollection)
+                .Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location)
+        };
+
+        if (additionalReferences != null)
+        {
+            references.AddRange(additionalReferences);
+        }
+
         return CSharpCompilation.Create(
             assemblyName: "Tests",
             syntaxTrees: [CSharpSyntaxTree.ParseText(source, parseOptions)],
-            references:
-            [
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.ServiceCollection)
-                    .Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location)
-            ],
+            references: references,
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 

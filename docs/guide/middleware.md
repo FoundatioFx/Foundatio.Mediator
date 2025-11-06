@@ -196,16 +196,16 @@ public class ComplexMiddleware
 
 ## Middleware Ordering
 
-Use the `[FoundatioOrder]` attribute to control execution order:
+Use the `[Middleware]` attribute to control execution order:
 
 ```csharp
-[FoundatioOrder(10)]
+[Middleware(10)]
 public class ValidationMiddleware
 {
     // Runs early in Before, late in After/Finally
 }
 
-[FoundatioOrder(50)]
+[Middleware(50)]
 public class LoggingMiddleware
 {
     // Runs later in Before, earlier in After/Finally
@@ -343,6 +343,88 @@ services.AddScoped<DatabaseTransactionMiddleware>();
 services.AddTransient<DisposableMiddleware>();
 ```
 
+## Middleware Discovery
+
+Middleware is automatically discovered by the Foundatio.Mediator source generator. To share middleware across projects:
+
+1. **Create a middleware project** with Foundatio.Mediator package referenced
+2. **Reference that project** from your handler projects
+3. **Ensure the handler project** also references Foundatio.Mediator
+
+The source generator will discover middleware in referenced assemblies that have the Foundatio.Mediator source generator.
+
+### Discovery Rules
+
+Middleware classes are found using:
+
+1. **Naming Convention**: Classes ending with `Middleware` (e.g., `LoggingMiddleware`, `ValidationMiddleware`)
+2. **Attribute**: Classes marked with `[Middleware]` attribute
+
+### Example: Cross-Assembly Middleware
+
+```text
+Solution/
+├── Common.Middleware/              # Shared middleware project
+│   ├── Common.Middleware.csproj    # References Foundatio.Mediator
+│   └── LoggingMiddleware.cs        # Discovered by convention
+└── Orders.Handlers/                # Handler project
+    ├── Orders.Handlers.csproj      # References Common.Middleware AND Foundatio.Mediator
+    └── OrderHandler.cs             # Uses LoggingMiddleware automatically
+```
+
+**Common.Middleware.csproj:**
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Foundatio.Mediator" />
+</ItemGroup>
+```
+
+**Orders.Handlers.csproj:**
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\Common.Middleware\Common.Middleware.csproj" />
+  <PackageReference Include="Foundatio.Mediator" />
+</ItemGroup>
+```
+
+**Common.Middleware/LoggingMiddleware.cs:**
+
+```csharp
+namespace Common.Middleware;
+
+// Discovered by naming convention (ends with Middleware)
+public class LoggingMiddleware
+{
+    public void Before(object message, ILogger logger)
+    {
+        logger.LogInformation("Handling {MessageType}", message.GetType().Name);
+    }
+}
+```
+
+The middleware will automatically be applied to all handlers in `Orders.Handlers` project.
+
+> **💡 Complete Example**: See the [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/ModularMonolithSample) for a working demonstration of cross-assembly middleware in a multi-module application with shared middleware in `Common.Module` being used by `Products.Module` and `Orders.Module`.
+
+### Setting Middleware Order
+
+Control execution order using the `[Middleware(Order = n)]` attribute:
+
+```csharp
+[Middleware(Order = 1)]  // Runs first in Before, last in After/Finally
+public class LoggingMiddleware { }
+
+[Middleware(Order = 10)] // Runs later in Before, earlier in After/Finally
+public class PerformanceMiddleware { }
+```
+
+**Execution flow:**
+
+- `Before`: Lower order values run first
+- `After`/`Finally`: Higher order values run first (reverse order for proper nesting)
+
 ## Ignoring Middleware
 
 Use `[FoundatioIgnore]` to exclude middleware classes or methods:
@@ -362,128 +444,6 @@ public class PartialMiddleware
     public void After(object message) { }
 }
 ```
-
-## Cross-Assembly Middleware Limitation
-
-### Understanding the Limitation
-
-Middleware must be defined in the **same project** as your message handlers. This is because middleware is discovered and woven into handler wrappers at compile-time by the source generator, which only has access to the current project's source code.
-
-**This will NOT work:**
-
-```text
-Solution/
-├── Common.Middleware/          # Project A
-│   └── LoggingMiddleware.cs   # ❌ Won't be discovered
-└── Orders.Handlers/            # Project B (references A)
-    └── OrderHandler.cs         # Handler generated without logging
-```
-
-The source generator in `Orders.Handlers` cannot see the `LoggingMiddleware` source code from the referenced `Common.Middleware` project.
-
-### Recommended Solution: Linked Files
-
-The recommended approach is to use **linked files** to share middleware source code across multiple projects:
-
-**Project Structure:**
-
-```text
-Solution/
-├── Common.Middleware/
-│   └── Middleware/
-│       ├── LoggingMiddleware.cs
-│       ├── ValidationMiddleware.cs
-│       └── AuthorizationMiddleware.cs
-├── Orders.Handlers/
-│   ├── OrderHandler.cs
-│   └── Middleware/              # Linked files from Common.Middleware
-│       ├── LoggingMiddleware.cs   (link)
-│       ├── ValidationMiddleware.cs (link)
-│       └── AuthorizationMiddleware.cs (link)
-└── Products.Handlers/
-    ├── ProductHandler.cs
-    └── Middleware/              # Same linked files
-        └── ...
-```
-
-**Create linked files in your `.csproj`:**
-
-```xml
-<ItemGroup>
-  <!-- Link middleware files from Common.Middleware project -->
-  <Compile Include="..\Common.Middleware\Middleware\LoggingMiddleware.cs" Link="Middleware\LoggingMiddleware.cs" />
-  <Compile Include="..\Common.Middleware\Middleware\ValidationMiddleware.cs" Link="Middleware\ValidationMiddleware.cs" />
-  <Compile Include="..\Common.Middleware\Middleware\AuthorizationMiddleware.cs" Link="Middleware\AuthorizationMiddleware.cs" />
-</ItemGroup>
-```
-
-**Use `internal` to avoid conflicts:**
-
-Since the same middleware source file is compiled into multiple assemblies, declare middleware classes as `internal` to prevent type conflicts:
-
-```csharp
-// LoggingMiddleware.cs (in Common.Middleware)
-namespace Common.Middleware;
-
-// ✅ Use internal to avoid conflicts across assemblies
-internal class LoggingMiddleware
-{
-    private readonly ILogger<LoggingMiddleware> _logger;
-
-    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
-    {
-        _logger = logger;
-    }
-
-    public void Before(object message)
-    {
-        _logger.LogInformation("Handling {MessageType}", message.GetType().Name);
-    }
-
-    public void Finally(object message, Exception? ex)
-    {
-        if (ex != null)
-            _logger.LogError(ex, "Failed handling {MessageType}", message.GetType().Name);
-        else
-            _logger.LogInformation("Completed {MessageType}", message.GetType().Name);
-    }
-}
-```
-
-### Alternative: Define Per-Project
-
-If middleware is project-specific, define it directly in each handler project:
-
-```csharp
-// Orders.Handlers/Middleware/OrderValidationMiddleware.cs
-namespace Orders.Handlers.Middleware;
-
-internal class OrderValidationMiddleware
-{
-    public HandlerResult Before(IOrderCommand command)
-    {
-        if (!IsValid(command))
-            return HandlerResult.ShortCircuit(Result.Invalid("Invalid order command"));
-
-        return HandlerResult.Continue();
-    }
-}
-```
-
-### Why This Limitation Exists
-
-The source generator analyzes your code at compile-time to create handler wrappers with middleware baked in for maximum performance. This compile-time approach:
-
-- ✅ Eliminates runtime reflection
-- ✅ Provides strongly-typed middleware parameters
-- ✅ Enables interceptors for near-direct call performance
-- ❌ Requires middleware source in the same compilation
-
-Future versions may support cross-assembly middleware discovery via metadata, but for now, linked files provide a clean workaround.
-
-### Example: ModularMonolith Sample
-
-See the `samples/ModularMonolithSample/` directory for a complete example of middleware in a modular architecture.
 
 ## Best Practices
 
@@ -541,5 +501,5 @@ public void Before(object message) { }
 
 ## Next Steps
 
-- [Validation Middleware Example](../examples/validation-middleware) - Complete validation implementation
+- [Modular Monolith Sample](../../samples/ModularMonolithSample/) - Complete working example of cross-assembly middleware
 - [Handler Conventions](./handler-conventions) - Learn handler discovery rules

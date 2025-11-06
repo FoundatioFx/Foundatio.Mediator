@@ -1,5 +1,3 @@
-using Foundatio.Mediator.Utility;
-
 namespace Foundatio.Mediator.Models;
 
 internal readonly record struct CallSiteInfo

@@ -1,3 +1,4 @@
+using Common.Module;
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
 using Orders.Module.Messages;
@@ -72,22 +73,9 @@ public class OrderHandler
 
     public async Task<Result> HandleAsync(EntityAction<Order> command, ILogger<OrderHandler> logger)
     {
-        logger.LogInformation("Handling entity action {Action} for order {OrderId}: {TypeName}", command.Action, command.Entity.Id, MessageTypeKey.Get(typeof(Orders.Module.Handlers.EntityAction<Orders.Module.Messages.Order>)));
+        logger.LogInformation("Handling entity action {Action} for order {OrderId}: {TypeName}", command.Action, command.Entity.Id, MessageTypeKey.Get(typeof(EntityAction<Order>)));
         await Task.CompletedTask; // Simulate async work
 
         return Result.Success();
     }
-}
-
-public class EntityAction<T>
-{
-    public T Entity { get; init; } = default!;
-    public EntityActionType Action { get; init; } = default!;
-}
-
-public enum EntityActionType
-{
-    Create,
-    Update,
-    Delete
 }

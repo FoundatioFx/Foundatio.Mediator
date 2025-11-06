@@ -82,6 +82,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
     private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, GeneratorConfiguration configuration, Compilation compilation, SourceProductionContext context)
     {
+        // Scan referenced assemblies for cross-assembly middleware
+        var metadataMiddleware = MetadataMiddlewareScanner.ScanReferencedAssemblies(compilation);
+
+        // Combine syntax-based middleware (from current assembly) with metadata-based middleware (from referenced assemblies)
+        var allMiddleware = middleware.ToList();
+        allMiddleware.AddRange(metadataMiddleware);
+
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
             .GroupBy(cs => cs.MessageType)
@@ -91,12 +98,18 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         foreach (var handler in handlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            var applicableMiddleware = GetApplicableMiddlewares(middleware, handler, compilation);
+            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
             handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
         }
 
         // Always generate diagnostics related to call sites, even if there are no handlers
         HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites);
+
+        // Generate assembly attribute if there are handlers or middleware (enables cross-assembly discovery)
+        if (handlersWithInfo.Count > 0 || middleware.Length > 0)
+        {
+            AssemblyAttributeGenerator.Execute(context, compilation);
+        }
 
         if (handlersWithInfo.Count == 0)
             return;
@@ -121,7 +134,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         }
 
         return new EquatableArray<MiddlewareInfo>(applicable
-            .OrderBy(m => m.Order)
+            .OrderBy(m => m.Order ?? int.MaxValue) // Middleware without order goes last
             .ThenBy(m => m.MessageType.IsObject ? 2 : (m.MessageType.IsInterface ? 1 : 0)) // Priority: specific=0, interface=1, object=2
             .ToArray());
     }

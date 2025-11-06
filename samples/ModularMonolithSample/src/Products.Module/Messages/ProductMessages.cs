@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Common.Module.Middleware;
 
 namespace Products.Module.Messages;
 
@@ -14,18 +15,18 @@ public record CreateProduct(
 
     [Required(ErrorMessage = "Price is required")]
     [Range(0.01, 1000000, ErrorMessage = "Price must be between $0.01 and $1,000,000")]
-    decimal Price);
+    decimal Price) : IValidatable;
 
 public record UpdateProduct(
     [Required] string ProductId,
     string? Name,
     string? Description,
-    decimal? Price);
+    decimal? Price) : IValidatable;
 
-public record DeleteProduct([Required] string ProductId);
+public record DeleteProduct([Required] string ProductId) : IValidatable;
 
 // Queries
-public record GetProduct([Required] string ProductId);
+public record GetProduct([Required] string ProductId) : IValidatable;
 public record GetProducts();
 
 // Events

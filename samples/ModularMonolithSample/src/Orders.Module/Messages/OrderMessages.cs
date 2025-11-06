@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Common.Module.Middleware;
 
 namespace Orders.Module.Messages;
 
@@ -14,17 +15,17 @@ public record CreateOrder(
 
     [Required(ErrorMessage = "Description is required")]
     [StringLength(200, MinimumLength = 5, ErrorMessage = "Description must be between 5 and 200 characters")]
-    string Description);
+    string Description) : IValidatable;
 
 public record UpdateOrder(
     [Required] string OrderId,
     decimal? Amount,
-    string? Description);
+    string? Description) : IValidatable;
 
-public record DeleteOrder([Required] string OrderId);
+public record DeleteOrder([Required] string OrderId) : IValidatable;
 
 // Queries
-public record GetOrder([Required] string OrderId);
+public record GetOrder([Required] string OrderId) : IValidatable;
 public record GetOrders();
 
 // Events

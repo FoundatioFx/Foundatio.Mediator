@@ -363,6 +363,128 @@ public class PartialMiddleware
 }
 ```
 
+## Cross-Assembly Middleware Limitation
+
+### Understanding the Limitation
+
+Middleware must be defined in the **same project** as your message handlers. This is because middleware is discovered and woven into handler wrappers at compile-time by the source generator, which only has access to the current project's source code.
+
+**This will NOT work:**
+
+```text
+Solution/
+├── Common.Middleware/          # Project A
+│   └── LoggingMiddleware.cs   # ❌ Won't be discovered
+└── Orders.Handlers/            # Project B (references A)
+    └── OrderHandler.cs         # Handler generated without logging
+```
+
+The source generator in `Orders.Handlers` cannot see the `LoggingMiddleware` source code from the referenced `Common.Middleware` project.
+
+### Recommended Solution: Linked Files
+
+The recommended approach is to use **linked files** to share middleware source code across multiple projects:
+
+**Project Structure:**
+
+```text
+Solution/
+├── Common.Middleware/
+│   └── Middleware/
+│       ├── LoggingMiddleware.cs
+│       ├── ValidationMiddleware.cs
+│       └── AuthorizationMiddleware.cs
+├── Orders.Handlers/
+│   ├── OrderHandler.cs
+│   └── Middleware/              # Linked files from Common.Middleware
+│       ├── LoggingMiddleware.cs   (link)
+│       ├── ValidationMiddleware.cs (link)
+│       └── AuthorizationMiddleware.cs (link)
+└── Products.Handlers/
+    ├── ProductHandler.cs
+    └── Middleware/              # Same linked files
+        └── ...
+```
+
+**Create linked files in your `.csproj`:**
+
+```xml
+<ItemGroup>
+  <!-- Link middleware files from Common.Middleware project -->
+  <Compile Include="..\Common.Middleware\Middleware\LoggingMiddleware.cs" Link="Middleware\LoggingMiddleware.cs" />
+  <Compile Include="..\Common.Middleware\Middleware\ValidationMiddleware.cs" Link="Middleware\ValidationMiddleware.cs" />
+  <Compile Include="..\Common.Middleware\Middleware\AuthorizationMiddleware.cs" Link="Middleware\AuthorizationMiddleware.cs" />
+</ItemGroup>
+```
+
+**Use `internal` to avoid conflicts:**
+
+Since the same middleware source file is compiled into multiple assemblies, declare middleware classes as `internal` to prevent type conflicts:
+
+```csharp
+// LoggingMiddleware.cs (in Common.Middleware)
+namespace Common.Middleware;
+
+// ✅ Use internal to avoid conflicts across assemblies
+internal class LoggingMiddleware
+{
+    private readonly ILogger<LoggingMiddleware> _logger;
+
+    public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
+    {
+        _logger = logger;
+    }
+
+    public void Before(object message)
+    {
+        _logger.LogInformation("Handling {MessageType}", message.GetType().Name);
+    }
+
+    public void Finally(object message, Exception? ex)
+    {
+        if (ex != null)
+            _logger.LogError(ex, "Failed handling {MessageType}", message.GetType().Name);
+        else
+            _logger.LogInformation("Completed {MessageType}", message.GetType().Name);
+    }
+}
+```
+
+### Alternative: Define Per-Project
+
+If middleware is project-specific, define it directly in each handler project:
+
+```csharp
+// Orders.Handlers/Middleware/OrderValidationMiddleware.cs
+namespace Orders.Handlers.Middleware;
+
+internal class OrderValidationMiddleware
+{
+    public HandlerResult Before(IOrderCommand command)
+    {
+        if (!IsValid(command))
+            return HandlerResult.ShortCircuit(Result.Invalid("Invalid order command"));
+
+        return HandlerResult.Continue();
+    }
+}
+```
+
+### Why This Limitation Exists
+
+The source generator analyzes your code at compile-time to create handler wrappers with middleware baked in for maximum performance. This compile-time approach:
+
+- ✅ Eliminates runtime reflection
+- ✅ Provides strongly-typed middleware parameters
+- ✅ Enables interceptors for near-direct call performance
+- ❌ Requires middleware source in the same compilation
+
+Future versions may support cross-assembly middleware discovery via metadata, but for now, linked files provide a clean workaround.
+
+### Example: ModularMonolith Sample
+
+See the `samples/ModularMonolithSample/` directory for a complete example of middleware in a modular architecture.
+
 ## Best Practices
 
 ### 1. Keep Middleware Focused

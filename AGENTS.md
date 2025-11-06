@@ -111,6 +111,8 @@ public class LoggingMiddleware
 }
 ```
 
+**Cross-Assembly Limitation**: Middleware must be defined in the same project as handlers. The source generator only has access to the current project's source code. Use linked files (`<Compile Include="..." Link="..." />` in `.csproj`) to share middleware across projects, and declare middleware classes as `internal` to avoid type conflicts.
+
 ### Execution Semantics
 
 - **Invoke/InvokeAsync**: Requires EXACTLY one handler. Throws if zero or multiple handlers found.

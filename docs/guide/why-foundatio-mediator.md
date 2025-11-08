@@ -153,7 +153,7 @@ public async Task<(Order order, OrderCreated evt)> HandleAsync(CreateOrder cmd)
 Powerful middleware pipeline for common concerns:
 
 ```csharp
-[FoundatioOrder(10)]
+[Middleware(Order = 10)]
 public class ValidationMiddleware
 {
     public HandlerResult Before(object message)
@@ -165,7 +165,7 @@ public class ValidationMiddleware
     }
 }
 
-[FoundatioOrder(20)]
+[Middleware(Order = 20)]
 public class LoggingMiddleware
 {
     public Stopwatch Before(object message) => Stopwatch.StartNew();

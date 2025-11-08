@@ -5,7 +5,7 @@ using MiniValidation;
 
 namespace ConsoleSample.Middleware;
 
-[Middleware(1)]
+[Middleware(Order = 1)]
 public static class ValidationMiddleware
 {
     public static HandlerResult Before(IValidatable message, ILogger<IMediator> logger)

@@ -94,7 +94,7 @@ Middleware classes must end with `Middleware`. Available methods:
 Example:
 
 ```csharp
-[FoundatioOrder(1)] // Lower numbers run first in Before, last in After/Finally
+[Middleware(Order = 1)] // Lower numbers run first in Before, last in After/Finally
 public class LoggingMiddleware
 {
     // Return value is type-matched into After/Finally parameters

@@ -280,6 +280,6 @@ public class UserHandler
 Ready to experience the benefits of Foundatio Mediator?
 
 1. [Installation & Setup](./getting-started) - Get running in minutes
-2. [Simple Examples](../examples/simple-handlers) - See the patterns in action
+2. [Simple Examples](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples) - See the patterns in action
 
 The combination of exceptional performance, developer-friendly conventions, and robust error handling makes Foundatio Mediator an excellent choice for modern .NET applications.

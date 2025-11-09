@@ -105,4 +105,68 @@ public class DiagnosticValidationTests : GeneratorTestBase
 		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
 		Assert.DoesNotContain(genDiags, d => d.Id == "FMED007");
 	}
+
+	[Fact]
+	public void FMED006_PrivateMiddlewareNotAllowed()
+	{
+		var src = """
+			using System.Threading;
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m, CancellationToken ct) { } }
+
+			public class Container
+			{
+				private class PrivateMiddleware
+				{
+					public static void Before(Msg m) { }
+				}
+			}
+			""";
+
+		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
+		Assert.Contains(genDiags, d => d.Id == "FMED006" && d.GetMessage().Contains("PrivateMiddleware"));
+	}
+
+	[Fact]
+	public void MiddlewareWithIgnoreAttribute_NoDiagnostic()
+	{
+		var src = """
+			using System.Threading;
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m, CancellationToken ct) { } }
+
+			[FoundatioIgnore]
+			public class IgnoredMiddleware
+			{
+				public static void Before(Msg m) { }
+			}
+			""";
+
+		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
+		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+	}
+
+	[Fact]
+	public void InternalMiddleware_NoError()
+	{
+		var src = """
+			using System.Threading;
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m, CancellationToken ct) { } }
+
+			internal static class InternalMiddleware
+			{
+				public static void Before(Msg m) { }
+			}
+			""";
+
+		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
+		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+	}
 }

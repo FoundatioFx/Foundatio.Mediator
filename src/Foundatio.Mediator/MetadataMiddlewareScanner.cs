@@ -79,6 +79,11 @@ internal static class MetadataMiddlewareScanner
             if (symbol.HasIgnoreAttribute(_compilation))
                 return;
 
+            // Skip internal or private middleware from cross-assembly usage
+            // Only public middleware can be used across assemblies
+            if (symbol.DeclaredAccessibility != Accessibility.Public)
+                return;
+
             // Try to extract middleware info from metadata
             var middlewareInfo = ExtractMiddlewareInfo(symbol);
             if (middlewareInfo != null)
@@ -156,6 +161,8 @@ internal static class MetadataMiddlewareScanner
                 BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
                 AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
                 FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
+                DeclaredAccessibility = classSymbol.DeclaredAccessibility,
+                AssemblyName = classSymbol.ContainingAssembly.Name,
                 Diagnostics = new EquatableArray<DiagnosticInfo>([]) // No diagnostics for metadata-based
             };
         }

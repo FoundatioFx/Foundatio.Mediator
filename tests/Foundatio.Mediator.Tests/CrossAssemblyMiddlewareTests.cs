@@ -142,6 +142,106 @@ public class CrossAssemblyMiddlewareTests : GeneratorTestBase
         Assert.Contains("ImplicitMiddleware.TimingMiddleware.Finally", wrapper.Source);
     }
 
+    [Fact]
+    public void InternalMiddlewareNotDiscoveredFromReferencedAssembly()
+    {
+        // Internal middleware in referenced assembly should NOT be discovered
+        var middlewareSource = """
+            using Foundatio.Mediator;
+
+            [assembly: FoundatioModule]
+
+            namespace SharedMiddleware;
+
+            [Middleware]
+            internal static class InternalMiddleware
+            {
+                public static void Before(object message) { }
+            }
+
+            [Middleware]
+            public static class PublicMiddleware
+            {
+                public static void After(object message) { }
+            }
+            """;
+
+        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+
+        var handlerSource = """
+            using System.Threading;
+            using Foundatio.Mediator;
+
+            public record TestMessage;
+
+            public class TestHandler
+            {
+                public void Handle(TestMessage msg, CancellationToken ct) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(handlerSource, [new MediatorGenerator()], additionalReferences: [middlewareCompilation]);
+
+        var wrapper = trees.FirstOrDefault(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Internal middleware should NOT be included
+        Assert.DoesNotContain("InternalMiddleware", wrapper.Source);
+
+        // Public middleware should be included
+        Assert.Contains("SharedMiddleware.PublicMiddleware.After", wrapper.Source);
+    }
+
+    [Fact]
+    public void PrivateMiddlewareNotDiscoveredFromReferencedAssembly()
+    {
+        // Private middleware in referenced assembly should NOT be discovered
+        var middlewareSource = """
+            using Foundatio.Mediator;
+
+            [assembly: FoundatioModule]
+
+            namespace SharedMiddleware;
+
+            public class Container
+            {
+                private class PrivateMiddleware
+                {
+                    public static void Before(object message) { }
+                }
+            }
+
+            [Middleware]
+            public static class PublicMiddleware
+            {
+                public static void After(object message) { }
+            }
+            """;
+
+        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+
+        var handlerSource = """
+            using System.Threading;
+            using Foundatio.Mediator;
+
+            public record TestMessage;
+
+            public class TestHandler
+            {
+                public void Handle(TestMessage msg, CancellationToken ct) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(handlerSource, [new MediatorGenerator()], additionalReferences: [middlewareCompilation]);
+
+        var wrapper = trees.FirstOrDefault(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Private middleware should NOT be included
+        Assert.DoesNotContain("PrivateMiddleware", wrapper.Source);
+
+        // Public middleware should be included
+        Assert.Contains("SharedMiddleware.PublicMiddleware.After", wrapper.Source);
+    }
+
     private static MetadataReference CreateMiddlewareAssembly(string source)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);

@@ -139,6 +139,19 @@ internal static class MiddlewareAnalyzer
         if (messageType == null)
             return null;
 
+        // Validate accessibility - private middleware should be ignored or have [FoundatioIgnore]
+        if (classSymbol.DeclaredAccessibility == Accessibility.Private && !classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation))
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED006",
+                Title = "Private Middleware Not Allowed",
+                Message = $"Middleware '{classSymbol.Name}' is private and cannot be used. Either make it internal or public, or mark it with [FoundatioIgnore] if it should not be discovered as middleware.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
         int? order = null;
 
         // First check [Middleware(order)] attribute
@@ -171,6 +184,8 @@ internal static class MiddlewareAnalyzer
             FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
             IsStatic = isStatic,
             Order = order,
+            DeclaredAccessibility = classSymbol.DeclaredAccessibility,
+            AssemblyName = classSymbol.ContainingAssembly.Name,
             Diagnostics = new(diagnostics.ToArray()),
         };
     }

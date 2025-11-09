@@ -180,7 +180,7 @@ public class CrossAssemblyMiddlewareTests : GeneratorTestBase
             }
             """;
 
-        var (compilation, _, trees) = RunGenerator(handlerSource, [new MediatorGenerator()], additionalReferences: [middlewareCompilation]);
+        var (_, _, trees) = RunGenerator(handlerSource, [new MediatorGenerator()], additionalReferences: [middlewareCompilation]);
 
         var wrapper = trees.FirstOrDefault(t => t.HintName.EndsWith("_Handler.g.cs"));
 

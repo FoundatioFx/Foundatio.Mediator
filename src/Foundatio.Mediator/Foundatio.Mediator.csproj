@@ -14,10 +14,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
   </ItemGroup>
+
+  <!-- Build the abstractions project first to ensure DLLs are available for packaging -->
+  <Target Name="BuildAbstractionsFirst" BeforeTargets="Build">
+    <MSBuild Projects="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="TargetFramework" />
+  </Target>
 
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />

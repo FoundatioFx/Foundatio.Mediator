@@ -61,7 +61,7 @@
       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <!-- Regular reference needed so tests can access generator types -->
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
-      SetTargetFramework="TargetFramework=net8.0" />
+      SetTargetFramework="TargetFramework=netstandard2.0" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 
   <ItemGroup>

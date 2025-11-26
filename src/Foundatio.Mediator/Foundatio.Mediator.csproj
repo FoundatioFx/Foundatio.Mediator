@@ -2,7 +2,7 @@
   <Import Project="..\..\build\common.props" />
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <DevelopmentDependency>false</DevelopmentDependency>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>Foundatio.Mediator</RootNamespace>
@@ -12,14 +12,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Build the abstractions project first to ensure DLLs are available for packaging -->
+  <Target Name="BuildAbstractionsFirst" BeforeTargets="Build">
+    <MSBuild Projects="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="TargetFramework" />
+  </Target>
+
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-    <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\net8.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/net8.0" Visible="false" />
     <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\net9.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/net9.0" Visible="false" />
     <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\net10.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/net10.0" Visible="false" />
     <Content Include="Foundatio.Mediator.props" Pack="true" PackagePath="build" Visible="true" />

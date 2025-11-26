@@ -2,6 +2,7 @@
   <Import Project="..\..\build\common.props" />
 
   <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
     <DevelopmentDependency>false</DevelopmentDependency>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>Foundatio.Mediator</RootNamespace>

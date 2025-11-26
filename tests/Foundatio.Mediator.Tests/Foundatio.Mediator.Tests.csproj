@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>true</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -55,7 +55,8 @@
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <!-- Regular reference needed so tests can access generator types -->
-    <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
+      SetTargetFramework="TargetFramework=net8.0" />
   </ItemGroup>
 
   <ItemGroup>

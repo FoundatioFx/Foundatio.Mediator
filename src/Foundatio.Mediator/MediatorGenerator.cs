@@ -129,7 +129,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
             var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites ?? []), Middleware = applicableMiddleware });
         }
 
         // Collect call sites that need cross-assembly interceptors

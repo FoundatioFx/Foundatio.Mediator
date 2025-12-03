@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
@@ -208,12 +209,15 @@ internal static class HandlerAnalyzer
             bool hasConstructorParameters = !handlerMethod.IsStatic &&
                 classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
 
+            string? messageSummary = GetSummaryComment(messageType);
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
+                MessageSummary = messageSummary,
                 MessageInterfaces = new(messageInterfaces.ToArray()),
                 MessageBaseClasses = new(messageBaseClasses.ToArray()),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
@@ -235,6 +239,36 @@ internal static class HandlerAnalyzer
         }
 
         return handlers;
+    }
+
+    private static string? GetSummaryComment(ISymbol symbol)
+    {
+        var documentation = symbol.GetDocumentationCommentXml(expandIncludes: true);
+        if (String.IsNullOrWhiteSpace(documentation))
+            return null;
+
+        try
+        {
+            var document = XDocument.Parse(documentation);
+            var summary = document.Root?.Elements("summary").FirstOrDefault();
+            if (summary == null)
+                return null;
+
+            var text = summary.Value;
+            if (String.IsNullOrWhiteSpace(text))
+                return null;
+
+            var normalized = String.Join(" ", text
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0));
+
+            return normalized.Length == 0 ? null : normalized;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation, bool treatAsHandlerClass)

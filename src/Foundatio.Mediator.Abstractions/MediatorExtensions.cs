@@ -17,7 +17,7 @@ public static class MediatorExtensions
 
         if (configuration.Assemblies == null)
         {
-            configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !a.FullName.StartsWith("System.")).ToList();
+            configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => a is { IsDynamic: false, FullName: not null } && !a.FullName.StartsWith("System.")).ToList();
         }
 
         services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));

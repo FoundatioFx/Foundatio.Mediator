@@ -11,6 +11,8 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Suppress NuGet warnings about TFM mismatches - expected for source generator packages that bundle abstractions -->
+    <NoWarn>$(NoWarn);NU5128;NU5130</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

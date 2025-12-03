@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
@@ -188,6 +188,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 
+        EndpointGenerator.Execute(context, handlersWithInfo, compilation);
+        
         sw.Stop();
         GeneratorDiagnostics.LogExecute(
             compilation.AssemblyName ?? "Unknown",

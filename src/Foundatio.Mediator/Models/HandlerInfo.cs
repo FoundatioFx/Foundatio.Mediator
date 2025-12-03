@@ -9,6 +9,7 @@ internal readonly record struct HandlerInfo
     public string MethodName { get; init; }
     public TypeSymbolInfo MessageType { get; init; }
     public string? MessageSummary { get; init; }
+    public string? Category { get; init; }
     public EquatableArray<string> MessageInterfaces { get; init; }
     public EquatableArray<string> MessageBaseClasses { get; init; }
     public bool HasReturnValue => !ReturnType.IsVoid;

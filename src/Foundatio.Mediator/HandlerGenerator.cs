@@ -1,5 +1,6 @@
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
+using System.Linq;
 
 namespace Foundatio.Mediator;
 
@@ -91,6 +92,8 @@ internal static class HandlerGenerator
         source.AppendLine();
 
         GenerateHandleMethod(source, handler, configuration);
+
+        GenerateHandleDefaultMethod(source, handler);
 
         GenerateUntypedHandleMethod(source, handler);
 
@@ -374,6 +377,79 @@ internal static class HandlerGenerator
             source.DecrementIndent();
 
             source.AppendLine("}");
+        }
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+    }
+
+    private static void GenerateHandleDefaultMethod(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        bool returnsValue = handler.ReturnType.IsTuple || handler.HasReturnValue;
+        bool needsAsync = handler.IsAsync || handler.ReturnType.IsTuple;
+        string methodName = GetHandlerDefaultMethodName(handler);
+        string handlerMethod = GetHandlerMethodName(handler);
+        string defaultReturnType = GetHandlerDefaultReturnType(handler);
+
+        string methodReturnType;
+        if (needsAsync)
+        {
+            methodReturnType = returnsValue
+                ? $"System.Threading.Tasks.ValueTask<{defaultReturnType}>"
+                : "System.Threading.Tasks.ValueTask";
+        }
+        else
+        {
+            methodReturnType = returnsValue ? defaultReturnType : "void";
+        }
+
+        source.AppendLine($"public static {(needsAsync ? "async " : string.Empty)}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, System.IServiceProvider serviceProvider, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)");
+        source.AppendLine("{");
+
+        source.IncrementIndent();
+
+        string awaitPrefix = handler.IsAsync ? "await " : string.Empty;
+        string awaitSuffix = handler.IsAsync ? ".ConfigureAwait(false)" : string.Empty;
+        if (handler.ReturnType.IsVoid && !handler.ReturnType.IsTuple)
+        {
+            source.AppendLine($"{awaitPrefix}{handlerMethod}(serviceProvider, message, cancellationToken){awaitSuffix};");
+            source.AppendLine("return;");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            return;
+        }
+
+        source.Append("var result = ");
+        source.AppendLine($"{awaitPrefix}{handlerMethod}(serviceProvider, message, cancellationToken){awaitSuffix};");
+
+        if (handler.ReturnType.IsTuple)
+        {
+            var returnItem = handler.ReturnType.TupleItems.First();
+            var publishItems = handler.ReturnType.TupleItems.Skip(1).ToList();
+
+            foreach (var publishItem in publishItems)
+            {
+                string access = $"result.{publishItem.Name}";
+                if (publishItem.IsNullable)
+                {
+                    source.AppendLine($"if ({access} != null)");
+                    source.AppendLine("{");
+                    source.AppendLine($"    await mediator.PublishAsync({access}, cancellationToken).ConfigureAwait(false);");
+                    source.AppendLine("}");
+                }
+                else
+                {
+                    source.AppendLine($"await mediator.PublishAsync({access}, cancellationToken).ConfigureAwait(false);");
+                }
+            }
+
+            source.AppendLine($"return result.{returnItem.Name};");
+        }
+        else if (returnsValue)
+        {
+            source.AppendLine("return result;");
         }
 
         source.DecrementIndent();
@@ -928,6 +1004,43 @@ internal static class HandlerGenerator
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
         return handler.IsAsync ? "HandleAsync" : "Handle";
+    }
+
+    public static string GetHandlerDefaultMethodName(HandlerInfo handler)
+    {
+        return handler.IsAsync || handler.ReturnType.IsTuple ? "DefaultHandleAsync" : "DefaultHandle";
+    }
+
+    private static string GetHandlerDefaultReturnType(HandlerInfo handler)
+    {
+        if (handler.ReturnType.IsTuple)
+        {
+            var tupleItem = handler.ReturnType.TupleItems.First();
+            return AppendNullableAnnotation(tupleItem.TypeFullName, tupleItem.IsNullable);
+        }
+
+        return AppendNullableAnnotation(handler.ReturnType.UnwrappedFullName, handler.ReturnType.IsNullable);
+    }
+
+    private static string AppendNullableAnnotation(string typeName, bool isNullable)
+    {
+        if (!isNullable || string.IsNullOrEmpty(typeName) || typeName.EndsWith("?", StringComparison.Ordinal))
+            return typeName;
+
+        if (typeName.Equals("void", StringComparison.Ordinal))
+            return typeName;
+
+        return typeName + "?";
+    }
+
+    public static bool HandlerDefaultReturnsValue(HandlerInfo handler)
+    {
+        return handler.ReturnType.IsTuple || handler.HasReturnValue;
+    }
+
+    public static bool HandlerDefaultIsAsync(HandlerInfo handler)
+    {
+        return handler.IsAsync || handler.ReturnType.IsTuple;
     }
 
     private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)

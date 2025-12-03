@@ -119,6 +119,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 
         DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, configuration.HandlerLifetime);
+
+        EndpointGenerator.Execute(context, handlersWithInfo, compilation);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)

@@ -21,9 +21,11 @@ public class TransactionMiddleware
         logger.LogInformation("Transaction committed: {TransactionId}", tx.Id);
     }
 
-    public void Finally(CreateOrder cmd, Result? result, IDbTransaction transaction, ILogger<TransactionMiddleware> logger)
+    public void Finally(CreateOrder cmd, Result? result, IDbTransaction? transaction, ILogger<TransactionMiddleware> logger)
     {
-        var tx = (FakeTransaction)transaction;
+        if (transaction is not FakeTransaction tx)
+            return;
+
         if (result?.IsSuccess == true)
             return;
 

@@ -1,8 +1,5 @@
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Foundatio.Mediator;
 

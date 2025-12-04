@@ -1,7 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using System.Collections.Immutable;
-using Foundatio.Mediator.Models;
+﻿using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
@@ -22,7 +19,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
                 // Read MediatorDisableInterceptors property
                 var interceptorsDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableInterceptorsPropertyName}", out string? disableSwitch)
-                    && disableSwitch.Equals("true", StringComparison.Ordinal);
+                    && disableSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
                 var interceptorsEnabled = !interceptorsDisabled && isCSharpSufficient;
 
                 // Read handler lifetime property (None | Singleton | Scoped | Transient). Default: None
@@ -32,7 +29,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
                 // Read OpenTelemetry disabled property. Default: false (OpenTelemetry enabled by default)
                 var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableOpenTelemetryPropertyName}", out string? openTelemetrySwitch)
-                    && openTelemetrySwitch.Equals("true", StringComparison.Ordinal);
+                    && openTelemetrySwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
                 var openTelemetryEnabled = !openTelemetryDisabled;
 
                 return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled);

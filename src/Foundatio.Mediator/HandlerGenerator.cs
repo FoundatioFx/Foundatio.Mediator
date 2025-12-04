@@ -1,5 +1,4 @@
 using Foundatio.Mediator.Models;
-using Microsoft.CodeAnalysis;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
@@ -143,7 +142,7 @@ internal static class HandlerGenerator
 
         variables["System.IServiceProvider"] = "serviceProvider";
         source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
-        source.AppendLine($"logger?.LogDebug(\"Processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+        source.AppendLine($"if (logger != null) logger.LogProcessingMessage(\"{handler.MessageType.Identifier}\");");
 
         if (configuration.OpenTelemetryEnabled)
         {
@@ -248,7 +247,7 @@ internal static class HandlerGenerator
 
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
                 source.AppendLine("{");
-                source.AppendLine($"    logger?.LogDebug(\"Short-circuited processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+                source.AppendLine($"    if (logger != null) logger.LogShortCircuitedMessage(\"{handler.MessageType.Identifier}\");");
 
                 if (handler.HasReturnValue)
                 {
@@ -309,7 +308,7 @@ internal static class HandlerGenerator
         }
         source.AppendLineIf(afterMiddleware.Any());
 
-        source.AppendLineIf($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
+        source.AppendLineIf($"if (logger != null) logger.LogCompletedMessage(\"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
         if (configuration.OpenTelemetryEnabled && !shouldUseTryCatch)
         {
             source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
@@ -360,7 +359,7 @@ internal static class HandlerGenerator
             {
                 source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
             }
-            source.AppendLine($"logger?.LogDebug(\"Completed processing message {{MessageType}}\", \"{handler.MessageType.Identifier}\");");
+            source.AppendLine($"if (logger != null) logger.LogCompletedMessage(\"{handler.MessageType.Identifier}\");");
             source.DecrementIndent();
 
             source.AppendLine("}");

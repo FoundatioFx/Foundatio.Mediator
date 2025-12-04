@@ -8,7 +8,7 @@ using MassTransit;
 namespace Foundatio.Mediator.Benchmarks;
 
 [MemoryDiagnoser]
-[SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
+[SimpleJob]
 public class CoreBenchmarks
 {
     private IServiceProvider _foundatioServices = null!;

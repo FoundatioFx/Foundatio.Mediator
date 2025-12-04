@@ -2,6 +2,9 @@
   <Import Project="..\..\build\common.props" />
 
   <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
     <DevelopmentDependency>false</DevelopmentDependency>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>Foundatio.Mediator</RootNamespace>
@@ -18,7 +21,7 @@
 
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-    <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\net8.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/net8.0" Visible="false" />
+    <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\netstandard2.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
     <Content Include="Foundatio.Mediator.props" Pack="true" PackagePath="build" Visible="true" />
     <Content Include="Foundatio.Mediator.targets" Pack="true" PackagePath="build" Visible="true" />
   </ItemGroup>

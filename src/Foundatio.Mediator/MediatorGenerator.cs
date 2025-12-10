@@ -96,7 +96,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
             var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites ?? []), Middleware = applicableMiddleware });
         }
 
         // Always generate diagnostics related to call sites, even if there are no handlers
@@ -116,6 +116,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 
         DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, configuration.HandlerLifetime);
+
+        EndpointGenerator.Execute(context, handlersWithInfo, compilation);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)

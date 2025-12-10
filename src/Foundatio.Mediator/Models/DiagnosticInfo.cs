@@ -1,5 +1,4 @@
 using Foundatio.Mediator.Models;
-using Microsoft.CodeAnalysis;
 
 internal readonly record struct DiagnosticInfo
 {

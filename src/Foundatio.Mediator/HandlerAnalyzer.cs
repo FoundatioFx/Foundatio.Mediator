@@ -2,9 +2,6 @@ using System.Text;
 using System.Xml.Linq;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Foundatio.Mediator;
 
@@ -77,6 +74,10 @@ internal static class HandlerAnalyzer
         // Exclude generated handler classes in Foundatio.Mediator namespace with names ending in "_Handler"
         if (classSymbol.ContainingNamespace?.ToDisplayString() == "Foundatio.Mediator" &&
             classSymbol.Name.EndsWith("_Handler"))
+            return [];
+
+        // Exclude nested classes inside generic types
+        if (IsNestedInGenericType(classSymbol))
             return [];
 
         // Determine if the class should be treated as a handler class
@@ -484,5 +485,17 @@ internal static class HandlerAnalyzer
             return String.Empty;
 
         return $"where {tp.Name} : {String.Join(", ", ordered)}";
+    }
+
+    private static bool IsNestedInGenericType(INamedTypeSymbol typeSymbol)
+    {
+        var containingType = typeSymbol.ContainingType;
+        while (containingType != null)
+        {
+            if (containingType.IsGenericType)
+                return true;
+            containingType = containingType.ContainingType;
+        }
+        return false;
     }
 }

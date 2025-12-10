@@ -1,5 +1,4 @@
 using Foundatio.Mediator.Utility;
-using Microsoft.CodeAnalysis;
 
 namespace Foundatio.Mediator.Models;
 

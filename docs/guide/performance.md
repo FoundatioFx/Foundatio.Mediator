@@ -58,7 +58,7 @@ var result = await mediator.Invoke(new CreateOrderCommand("user@example.com"));
 
 ## Performance
 
-> 📊 **Benchmark Environment**: .NET 9.0 with BenchmarkDotNet
+> 📊 **Benchmark Environment**: .NET 10.0 with BenchmarkDotNet
 > 🎯 **Goal**: Get as close as possible to direct method call performance
 
 ### Commands

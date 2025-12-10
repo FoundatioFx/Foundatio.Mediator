@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Text;
 
 namespace Foundatio.Mediator.Utility;
 

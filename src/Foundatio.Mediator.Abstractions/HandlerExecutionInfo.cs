@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Foundatio.Mediator;
 
 /// <summary>

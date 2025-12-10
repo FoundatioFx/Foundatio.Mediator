@@ -1,7 +1,5 @@
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Foundatio.Mediator;
 
@@ -22,6 +20,11 @@ internal static class MiddlewareAnalyzer
             return null;
 
         if (classSymbol.HasIgnoreAttribute(context.SemanticModel.Compilation))
+            return null;
+
+        // Skip middleware nested inside generic containing types - they would produce invalid code
+        // with unbound type parameters (e.g., OuterClass<T>.MyMiddleware)
+        if (IsNestedInGenericType(classSymbol))
             return null;
 
         var beforeMethods = classSymbol.GetMembers()
@@ -235,6 +238,22 @@ internal static class MiddlewareAnalyzer
         return MiddlewareFinallyMethodNames.Contains(method.Name) &&
                method.DeclaredAccessibility == Accessibility.Public &&
                !method.HasIgnoreAttribute(compilation);
+    }
+
+    /// <summary>
+    /// Checks if a type is nested inside a generic containing type.
+    /// Middleware classes nested in generic types would produce invalid code with unbound type parameters.
+    /// </summary>
+    private static bool IsNestedInGenericType(INamedTypeSymbol typeSymbol)
+    {
+        var containingType = typeSymbol.ContainingType;
+        while (containingType != null)
+        {
+            if (containingType.IsGenericType)
+                return true;
+            containingType = containingType.ContainingType;
+        }
+        return false;
     }
 
     private static readonly string[] MiddlewareBeforeMethodNames = [ "Before", "BeforeAsync" ];

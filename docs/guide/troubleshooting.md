@@ -1,0 +1,212 @@
+# Troubleshooting
+
+This guide covers common issues and debugging techniques when working with Foundatio Mediator.
+
+## Viewing Generated Source Code
+
+Since Foundatio Mediator uses source generators, it can be helpful to see the actual code being generated. This is useful for:
+
+- Understanding how handlers are dispatched
+- Debugging unexpected behavior
+- Verifying interceptor generation
+- Learning how the mediator works internally
+
+### Enabling Generated File Output
+
+Add the following to your `.csproj` file to emit generated files to disk:
+
+```xml
+<PropertyGroup>
+    <!-- Output generated files to a folder in your project -->
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+</PropertyGroup>
+
+<ItemGroup>
+    <!-- Exclude generated files from compilation (they're already compiled by the generator) -->
+    <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
+    <!-- Include them as content so they show up in Solution Explorer -->
+    <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
+</ItemGroup>
+```
+
+After building your project, you'll find the generated files in the `Generated` folder:
+
+```
+Generated/
+  Foundatio.Mediator/
+    Foundatio.Mediator.MediatorGenerator/
+      YourHandler_YourMessage_Handler.g.cs
+      YourProject_MediatorHandlers.g.cs
+      InterceptsLocationAttribute.g.cs
+      ...
+```
+
+### Understanding Generated Files
+
+| File Pattern | Description |
+|-------------|-------------|
+| `*_Handler.g.cs` | Handler wrapper with strongly-typed dispatch and middleware pipeline |
+| `*_MediatorHandlers.g.cs` | DI registration code for all handlers |
+| `InterceptsLocationAttribute.g.cs` | Interceptor attribute for compile-time call redirection |
+| `*_FoundatioModuleAttribute.g.cs` | Module marker for cross-assembly handler discovery |
+
+### Example Generated Handler
+
+Here's what a generated handler wrapper looks like:
+
+```csharp
+internal static class OrderHandler_CreateOrder_Handler
+{
+    public static async Task<Result<Order>> HandleAsync(
+        IServiceProvider serviceProvider,
+        CreateOrder message,
+        CancellationToken cancellationToken)
+    {
+        var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("OrderHandler");
+
+        // OpenTelemetry activity
+        using var activity = MediatorActivitySource.Instance.StartActivity("CreateOrder");
+
+        // Middleware pipeline
+        var validationMiddleware = GetMiddleware<ValidationMiddleware>(serviceProvider);
+        validationMiddleware.Before(message);
+
+        // Handler invocation
+        var handlerInstance = GetOrCreateHandler(serviceProvider);
+        var result = await handlerInstance.HandleAsync(message, cancellationToken);
+
+        return result;
+    }
+}
+```
+
+## Common Issues
+
+### Handler Not Found
+
+**Symptom:** `InvalidOperationException: No handler found for message type X`
+
+**Causes:**
+1. Handler class doesn't follow naming conventions (must end in `Handler` or `Consumer`)
+2. Handler method doesn't follow naming conventions (`Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`)
+3. Handler is in a different assembly and not registered
+4. Missing call to `AddHandlers()` in DI configuration
+
+**Solutions:**
+```csharp
+// Ensure handlers are registered
+services.AddMediator();
+YourProject_MediatorHandlers.AddHandlers(services);
+
+// Or use the [Handler] attribute for non-conventional names
+[Handler]
+public class MyCustomProcessor
+{
+    public void Process(MyMessage msg) { }
+}
+```
+
+### Multiple Handlers Found
+
+**Symptom:** `InvalidOperationException: Multiple handlers found for message type X`
+
+**Cause:** More than one handler exists for the same message type when using `Invoke`/`InvokeAsync`.
+
+**Solution:** Use `PublishAsync` for messages that should be handled by multiple handlers, or remove duplicate handlers.
+
+### Sync Handler with Async Call Site
+
+**Symptom:** Compilation works but you want to understand the async wrapping.
+
+When you call `InvokeAsync` on a synchronous handler, the generated code wraps the result:
+
+```csharp
+// Your sync handler
+public string Handle(GetGreeting msg) => $"Hello, {msg.Name}!";
+
+// Generated interceptor for InvokeAsync<string>
+public static ValueTask<string> InterceptInvokeAsync(...)
+{
+    // Wraps sync result in ValueTask
+    return new ValueTask<string>(Handle(...));
+}
+```
+
+### Sync Invoke on Tuple-Returning Handler
+
+**Symptom:** Compilation error `FMED010`
+
+**Cause:** Handlers that return tuples (for cascading messages) cannot use synchronous `Invoke` because cascading messages must be published asynchronously.
+
+**Solution:** Use `InvokeAsync` instead:
+```csharp
+// Error: Can't use sync Invoke with tuple return
+var order = mediator.Invoke<Order>(new CreateOrder(...));
+
+// Correct: Use InvokeAsync
+var order = await mediator.InvokeAsync<Order>(new CreateOrder(...));
+```
+
+### Interceptors Not Working
+
+**Symptom:** Calls go through DI lookup instead of direct dispatch.
+
+**Causes:**
+1. Interceptors disabled via `MediatorDisableInterceptors`
+2. Cross-assembly calls (interceptors only work within the same assembly)
+3. C# language version below 11
+
+**Solutions:**
+```xml
+<PropertyGroup>
+    <!-- Ensure interceptors are enabled -->
+    <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
+
+    <!-- Ensure C# 11+ for interceptors -->
+    <LangVersion>preview</LangVersion>
+
+    <!-- Required for interceptors -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
+</PropertyGroup>
+```
+
+### Middleware Not Executing
+
+**Symptom:** Middleware `Before`/`After`/`Finally` methods not being called.
+
+**Causes:**
+1. Middleware class doesn't end in `Middleware`
+2. Middleware is in a different assembly than handlers
+3. Method signatures don't match expected patterns
+
+**Solution:** Ensure middleware follows conventions:
+```csharp
+// Class must end in "Middleware"
+public class LoggingMiddleware
+{
+    // First parameter must be the message type (or object for all messages)
+    public void Before(object message) { }
+    public void After(object message) { }
+    public void Finally(object message, Exception? ex) { }
+}
+```
+
+## Diagnostic Codes
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `FMED008` | Error | Synchronous invoke on asynchronous handler |
+| `FMED009` | Error | Synchronous invoke on handler with async middleware |
+| `FMED010` | Error | Synchronous invoke on handler with tuple return |
+
+## Getting Help
+
+If you encounter issues not covered here:
+
+1. Check the [generated source code](#viewing-generated-source-code) to understand what's happening
+2. Review the [GitHub repository](https://github.com/FoundatioFx/Foundatio.Mediator) for existing issues
+3. Open a new issue with:
+   - Your handler and message code
+   - The generated wrapper code (from `Generated` folder)
+   - The full error message or unexpected behavior

@@ -506,13 +506,28 @@ internal static class HandlerGenerator
         }
         else
         {
-            string returnKeyword = responseType.IsVoid ? "" : "return ";
-            source.AppendLine($"{returnKeyword}{asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
-        }
+            bool needsValueTaskWrap = methodIsAsync && !handler.IsAsync;
 
-        if (methodIsAsync && !handler.IsAsync)
-        {
-            source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+            if (responseType.IsVoid)
+            {
+                source.AppendLine($"{asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
+
+                if (needsValueTaskWrap)
+                {
+                    source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                }
+            }
+            else
+            {
+                if (needsValueTaskWrap)
+                {
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(handlerScope.Services, typedMessage, cancellationToken));");
+                }
+                else
+                {
+                    source.AppendLine($"return {asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
+                }
+            }
         }
 
         source.DecrementIndent();

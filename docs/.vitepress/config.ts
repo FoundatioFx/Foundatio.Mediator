@@ -54,7 +54,8 @@ export default withMermaid(defineConfig({
             { text: 'Cascading Messages', link: '/guide/cascading-messages' },
             { text: 'Streaming Handlers', link: '/guide/streaming-handlers' },
             { text: 'Performance & Interceptors', link: '/guide/performance' },
-            { text: 'Configuration Options', link: '/guide/configuration' }
+            { text: 'Configuration Options', link: '/guide/configuration' },
+            { text: 'Troubleshooting', link: '/guide/troubleshooting' }
           ]
         }
       ]

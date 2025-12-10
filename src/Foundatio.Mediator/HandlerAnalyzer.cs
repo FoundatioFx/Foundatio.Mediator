@@ -74,6 +74,10 @@ internal static class HandlerAnalyzer
             classSymbol.Name.EndsWith("_Handler"))
             return [];
 
+        // Exclude nested classes inside generic types
+        if (IsNestedInGenericType(classSymbol))
+            return [];
+
         // Determine if the class should be treated as a handler class
         bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
         bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IHandler");
@@ -276,5 +280,17 @@ internal static class HandlerAnalyzer
             return String.Empty;
 
         return $"where {tp.Name} : {String.Join(", ", ordered)}";
+    }
+
+    private static bool IsNestedInGenericType(INamedTypeSymbol typeSymbol)
+    {
+        var containingType = typeSymbol.ContainingType;
+        while (containingType != null)
+        {
+            if (containingType.IsGenericType)
+                return true;
+            containingType = containingType.ContainingType;
+        }
+        return false;
     }
 }

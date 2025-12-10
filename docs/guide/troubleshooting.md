@@ -51,6 +51,33 @@ Generated/
 | `InterceptsLocationAttribute.g.cs` | Interceptor attribute for compile-time call redirection |
 | `*_FoundatioModuleAttribute.g.cs` | Module marker for cross-assembly handler discovery |
 
+### Viewing All Registered Handlers
+
+The easiest way to see which handlers are registered at runtime is to use the `ShowRegisteredHandlers()` method:
+
+```csharp
+var mediator = serviceProvider.GetRequiredService<IMediator>();
+((Mediator)mediator).ShowRegisteredHandlers();
+```
+
+This logs all registered handlers to your configured logger:
+
+```
+Registered Handlers:
+- Message: MyApp.Messages.CreateOrder, Handler: OrderHandler_CreateOrder_Handler, IsAsync: True
+- Message: MyApp.Messages.GetUser, Handler: UserHandler_GetUser_Handler, IsAsync: True
+- Message: MyApp.Messages.UserCreated, Handler: NotificationHandler_UserCreated_Handler, IsAsync: False
+```
+
+**If a handler is missing from this list:**
+- Verify the class name ends with `Handler` or `Consumer`
+- Check that the method name is `Handle`, `HandleAsync`, `Consume`, or `ConsumeAsync`
+- Ensure the handler isn't marked with `[FoundatioIgnore]`
+- Handlers nested in generic classes are not supported (e.g., `OuterClass<T>.MyHandler`)
+- Verify `AddHandlers()` was called during DI configuration
+
+For deeper inspection, you can also [view the generated source files](#enabling-generated-file-output) to see the actual registration code in `*_MediatorHandlers.g.cs`.
+
 ### Example Generated Handler
 
 Here's what a generated handler wrapper looks like:
@@ -92,6 +119,10 @@ internal static class OrderHandler_CreateOrder_Handler
 2. Handler method doesn't follow naming conventions (`Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`)
 3. Handler is in a different assembly and not registered
 4. Missing call to `AddHandlers()` in DI configuration
+5. Handler is nested inside a generic class (not supported)
+
+**Debugging:**
+Use [`ShowRegisteredHandlers()`](#viewing-all-registered-handlers) to see which handlers are currently registered at runtime.
 
 **Solutions:**
 ```csharp

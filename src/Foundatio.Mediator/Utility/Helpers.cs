@@ -59,7 +59,13 @@ internal static class Helpers
         if (String.IsNullOrEmpty(name))
             return String.Empty;
 
-        return new string(name.Select(c => Char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
+        var identifier = new string(name.Select(c => Char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
+        
+        // C# identifiers cannot start with a digit, so prefix with underscore if needed
+        if (Char.IsDigit(identifier[0]))
+            return "_" + identifier;
+
+        return identifier;
     }
 
     public static string ToCamelCase(this string name)

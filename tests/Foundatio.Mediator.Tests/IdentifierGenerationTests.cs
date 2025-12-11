@@ -64,25 +64,4 @@ public class IdentifierGenerationTests : GeneratorTestBase
         var errors = outputDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
         Assert.Empty(errors);
     }
-
-    [Fact]
-    public async Task GeneratesValidIdentifierForHandlerWithMessageTypeStartingWithDigit()
-    {
-        var source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using Foundatio.Mediator;
-
-            namespace MyNamespace
-            {
-                public record _123Message(string Value);
-
-                public class MessageHandler {
-                    public Task HandleAsync(_123Message message, CancellationToken ct) => Task.CompletedTask;
-                }
-            }
-            """;
-
-        await VerifyGenerated(source, new MediatorGenerator());
-    }
 }

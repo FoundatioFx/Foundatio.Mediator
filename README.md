@@ -74,6 +74,7 @@ public class LoggingMiddleware(ILogger<LoggingMiddleware> logger)
 {
     public Stopwatch Before(object message) => Stopwatch.StartNew();
 
+    // Objects or tuples returned from the Before method are available as parameters
     public void Finally(object message, Stopwatch sw, Exception? ex)
     {
         logger.LogInformation("Handled {MessageType} in {Ms}ms",

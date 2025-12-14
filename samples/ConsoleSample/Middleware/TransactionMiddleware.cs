@@ -23,10 +23,9 @@ public class TransactionMiddleware
 
     public void Finally(CreateOrder cmd, Result? result, IDbTransaction? transaction, ILogger<TransactionMiddleware> logger)
     {
-        if (transaction == null)
+        if (transaction is not FakeTransaction tx)
             return;
 
-        var tx = (FakeTransaction)transaction;
         if (result?.IsSuccess == true)
             return;
 

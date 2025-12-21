@@ -20,7 +20,7 @@
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
   </ItemGroup>
 
-  <Target Name="CleanCompilerGeneratedFiles" BeforeTargets="CoreGenerateSourceOutput">
+  <Target Name="CleanCompilerGeneratedFiles" BeforeTargets="CoreGenerateSourceOutput;Clean">
     <RemoveDir Directories="$(CompilerGeneratedFilesOutputPath)" />
   </Target>
 

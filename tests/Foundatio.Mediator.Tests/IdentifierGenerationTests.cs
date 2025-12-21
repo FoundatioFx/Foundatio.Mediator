@@ -22,7 +22,7 @@ public class IdentifierGenerationTests : GeneratorTestBase
 
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
-        
+
         var references = new List<MetadataReference>
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
@@ -31,7 +31,7 @@ public class IdentifierGenerationTests : GeneratorTestBase
             MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location)
         };
-        
+
         var customCompilation = CSharpCompilation.Create(
             assemblyName: "123ABC",
             syntaxTrees: [syntaxTree],
@@ -40,9 +40,9 @@ public class IdentifierGenerationTests : GeneratorTestBase
 
         var generator = new MediatorGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            [generator.AsSourceGenerator()], 
+            [generator.AsSourceGenerator()],
             additionalTexts: null,
-            parseOptions: parseOptions, 
+            parseOptions: parseOptions,
             optionsProvider: null);
         driver = driver.RunGeneratorsAndUpdateCompilation(customCompilation, out var outputCompilation, out var outputDiagnostics);
 
@@ -51,15 +51,15 @@ public class IdentifierGenerationTests : GeneratorTestBase
             .SelectMany(r => r.GeneratedSources)
             .ToList();
 
-        // Find the DI registration file which should have the prefixed assembly name
-        var diRegistrationFile = generatedSources.FirstOrDefault(s => s.HintName.Contains("MediatorHandlers"));
-        Assert.NotNull(diRegistrationFile.HintName);
-        
-        var sourceText = diRegistrationFile.SourceText.ToString();
-        
+        // Find the FoundatioModule file which should have the prefixed assembly name in the class
+        var foundatioModuleFile = generatedSources.FirstOrDefault(s => s.HintName == "_FoundatioModule.cs");
+        Assert.NotNull(foundatioModuleFile.HintName);
+
+        var sourceText = foundatioModuleFile.SourceText.ToString();
+
         // The class name should be _123ABC_MediatorHandlers (prefixed with underscore)
         Assert.Contains("public static class _123ABC_MediatorHandlers", sourceText);
-        
+
         // Verify it's valid C# by checking compilation errors
         var errors = outputDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
         Assert.Empty(errors);

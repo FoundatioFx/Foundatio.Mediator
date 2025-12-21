@@ -102,10 +102,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Always generate diagnostics related to call sites, even if there are no handlers
         HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites);
 
-        // Generate assembly attribute if there are handlers or middleware (enables cross-assembly discovery)
+        // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
         {
-            AssemblyAttributeGenerator.Execute(context, compilation);
+            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, configuration.HandlerLifetime);
         }
 
         if (handlersWithInfo.Count == 0)
@@ -114,8 +114,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
-
-        DIRegistrationGenerator.Execute(context, handlersWithInfo, compilation, configuration.HandlerLifetime);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)

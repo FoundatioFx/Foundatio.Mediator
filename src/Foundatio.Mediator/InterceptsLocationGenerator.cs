@@ -45,6 +45,6 @@ internal static class InterceptsLocationGenerator
         source.AppendLine("    public string Data { get; }");
         source.AppendLine("}");
 
-        context.AddSource("InterceptsLocationAttribute.g.cs", source.ToString());
+        context.AddSource("_InterceptsLocationAttribute.g.cs", source.ToString());
     }
 }

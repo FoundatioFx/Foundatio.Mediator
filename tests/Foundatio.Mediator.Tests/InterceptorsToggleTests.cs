@@ -39,7 +39,7 @@ public class InterceptorsToggleTests : GeneratorTestBase
         var opts = CreateOptions(("build_property.MediatorDisableInterceptors", "false"));
         var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
 
-        Assert.Contains(trees, t => t.HintName == "InterceptsLocationAttribute.g.cs");
+        Assert.Contains(trees, t => t.HintName == "_InterceptsLocationAttribute.g.cs");
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("InterceptsLocation(", wrapper.Source);
     }

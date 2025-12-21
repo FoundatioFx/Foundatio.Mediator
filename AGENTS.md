@@ -11,23 +11,12 @@ Foundatio.Mediator is a high-performance mediator library for .NET that achieves
 
 **Key innovation**: Zero runtime reflection. All handler dispatch is resolved at compile time via source generators that scan for handlers and emit strongly-typed wrappers with optional C# 11+ interceptor attributes for direct call redirection.
 
-## Setup Commands
+## Commands you can use
 
-```bash
-# Build the solution (triggers source generators)
-dotnet build
-
-# Run all tests
-dotnet test
-
-# Run benchmarks
-cd benchmarks/Foundatio.Mediator.Benchmarks
-dotnet run -c Release
-
-# Run sample application
-cd samples/ConsoleSample
-dotnet run
-```
+Build project (triggers source generators): `dotnet build`
+Run tests (validate work): `dotnet test`
+Run benchmarks: `cd benchmarks/Foundatio.Mediator.Benchmarks; dotnet run -c Release`
+Run samples: `cd samples/ConsoleSample; dotnet run`
 
 ## Code Conventions
 
@@ -36,7 +25,42 @@ dotnet run
 - Follow `.editorconfig` settings strictly
 - See [.github/instructions/general.instructions.md](.github/instructions/general.instructions.md) for complete guidelines
 - Keep comments minimal - only for complex logic or non-obvious intent
-- Use modern C# features; avoid deprecated patterns
+
+### Source Generator Code Style
+
+When writing code generation methods in `src/Foundatio.Mediator/`:
+
+- **Prefer raw string literals** (`$$"""`) over manual `AppendLine()` chains for generating methods or code blocks
+- Raw string literals make the generated code structure immediately visible and easier to review
+- Use `{{variable}}` syntax within raw strings for interpolation
+- Only use manual `AppendLine()` when conditional logic requires branching between lines
+
+**Good** (raw string literal):
+
+```csharp
+source.AppendLine()
+      .AppendLines($$"""
+        [DebuggerStepThrough]
+        private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+        {
+            if (System.Threading.Volatile.Read(ref _isInDI) == 1)
+            {
+                return serviceProvider.GetRequiredService<{{handler.FullName}}>();
+            }
+        }
+        """);
+```
+
+**Avoid** (manual AppendLine chains):
+
+```csharp
+source.AppendLine("[DebuggerStepThrough]");
+source.AppendLine($"private static {handler.FullName} GetOrCreateHandler(IServiceProvider serviceProvider)");
+source.AppendLine("{");
+source.AppendLine($"    return serviceProvider.GetRequiredService<{handler.FullName}>();");
+source.AppendLine("}");
+```
+
 
 ### Handler Discovery Rules
 

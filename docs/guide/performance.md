@@ -10,73 +10,97 @@ Foundatio.Mediator aims to get as close to direct method call performance as pos
 
 Fire-and-forget dispatch with no return value.
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| Direct_Command                       |      13.76 ns |       0 B |
-| MediatorNet_Command                  |      16.78 ns |       0 B |
-| MediatR_Command                      |     115.07 ns |     128 B |
-| Foundatio_Command                    |     166.59 ns |     200 B |
-| Wolverine_Command                    |     514.79 ns |     704 B |
-| MassTransit_Command                  |   3,200.25 ns |   4,184 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>Direct_Command</code></td><td style="text-align:right;white-space:nowrap">5.536 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Command</code></td><td style="text-align:right;white-space:nowrap">9.169 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Command</code></td><td style="text-align:right;white-space:nowrap">40.458 ns</td><td style="text-align:right;white-space:nowrap">128 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Command</code></td><td style="text-align:right;white-space:nowrap">60.987 ns</td><td style="text-align:right;white-space:nowrap">200 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Command</code></td><td style="text-align:right;white-space:nowrap">171.784 ns</td><td style="text-align:right;white-space:nowrap">704 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Command</code></td><td style="text-align:right;white-space:nowrap">1,213.024 ns</td><td style="text-align:right;white-space:nowrap">4,184 B</td></tr>
+</tbody>
+</table>
 
 ### Queries
 
 Request/response dispatch returning an Order object.
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| Direct_Query                         |      60.42 ns |     192 B |
-| Direct_QueryWithDependencies         |      80.06 ns |     264 B |
-| MediatorNet_Query                    |      61.15 ns |     120 B |
-| MediatR_Query                        |     146.99 ns |     320 B |
-| Foundatio_Query                      |     219.72 ns |     464 B |
-| Wolverine_Query                      |     721.84 ns |   1,000 B |
-| MassTransit_Query                    |  12,965.13 ns |  12,488 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>Direct_Query</code></td><td style="text-align:right;white-space:nowrap">28.961 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
+<tr><td style="width:100%"><code>Direct_QueryWithDependencies</code></td><td style="text-align:right;white-space:nowrap">33.656 ns</td><td style="text-align:right;white-space:nowrap">264 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Query</code></td><td style="text-align:right;white-space:nowrap">33.510 ns</td><td style="text-align:right;white-space:nowrap">120 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Query</code></td><td style="text-align:right;white-space:nowrap">60.191 ns</td><td style="text-align:right;white-space:nowrap">320 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Query</code></td><td style="text-align:right;white-space:nowrap">93.022 ns</td><td style="text-align:right;white-space:nowrap">464 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Query</code></td><td style="text-align:right;white-space:nowrap">257.041 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Query</code></td><td style="text-align:right;white-space:nowrap">5,368.266 ns</td><td style="text-align:right;white-space:nowrap">12,488 B</td></tr>
+</tbody>
+</table>
 
 ### Events (Publish)
 
 Notification dispatched to 2 handlers.
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| Direct_Event                         |      13.71 ns |       0 B |
-| MediatorNet_Publish                  |      19.56 ns |       0 B |
-| MediatR_Publish                      |     266.13 ns |     792 B |
-| Foundatio_Publish                    |     322.47 ns |     336 B |
-| Wolverine_Publish                    |   2,138.78 ns |   1,688 B |
-| MassTransit_Publish                  |   5,249.18 ns |   6,008 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>Direct_Event</code></td><td style="text-align:right;white-space:nowrap">5.689 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Publish</code></td><td style="text-align:right;white-space:nowrap">10.769 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Publish</code></td><td style="text-align:right;white-space:nowrap">101.197 ns</td><td style="text-align:right;white-space:nowrap">792 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Publish</code></td><td style="text-align:right;white-space:nowrap">110.246 ns</td><td style="text-align:right;white-space:nowrap">336 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Publish</code></td><td style="text-align:right;white-space:nowrap">1,829.026 ns</td><td style="text-align:right;white-space:nowrap">2,840 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Publish</code></td><td style="text-align:right;white-space:nowrap">2,047.094 ns</td><td style="text-align:right;white-space:nowrap">6,008 B</td></tr>
+</tbody>
+</table>
 
 ### Full Query (Dependencies + Middleware)
 
 Query where handler has an injected service (IOrderService) and timing middleware (Before/Finally or IPipelineBehavior).
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| MediatorNet_FullQuery                |      90.24 ns |     192 B |
-| MediatR_FullQuery                    |     356.76 ns |     744 B |
-| Foundatio_FullQuery                  |     484.14 ns |     776 B |
-| Wolverine_FullQuery                  |     714.50 ns |   1,000 B |
-| MassTransit_FullQuery                |  13,004.54 ns |  12,560 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>MediatorNet_FullQuery</code></td><td style="text-align:right;white-space:nowrap">41.487 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_FullQuery</code></td><td style="text-align:right;white-space:nowrap">139.304 ns</td><td style="text-align:right;white-space:nowrap">744 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_FullQuery</code></td><td style="text-align:right;white-space:nowrap">192.957 ns</td><td style="text-align:right;white-space:nowrap">776 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_FullQuery</code></td><td style="text-align:right;white-space:nowrap">262.386 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_FullQuery</code></td><td style="text-align:right;white-space:nowrap">5,578.827 ns</td><td style="text-align:right;white-space:nowrap">12,560 B</td></tr>
+</tbody>
+</table>
 
 ### Cascading Messages
 
 CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foundatio uses tuple returns for automatic cascading; other libraries publish manually.
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| MediatorNet_CascadingMessages        |      88.55 ns |     144 B |
-| MediatR_CascadingMessages            |     516.09 ns |   1,168 B |
-| Foundatio_CascadingMessages          |     297.90 ns |     568 B |
-| Wolverine_CascadingMessages          |   3,494.41 ns |   2,912 B |
-| MassTransit_CascadingMessages        |  40,247.18 ns |  18,808 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>MediatorNet_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">45.668 ns</td><td style="text-align:right;white-space:nowrap">144 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">173.084 ns</td><td style="text-align:right;white-space:nowrap">1,168 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">116.241 ns</td><td style="text-align:right;white-space:nowrap">568 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">2,355.686 ns</td><td style="text-align:right;white-space:nowrap">4,064 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">8,922.815 ns</td><td style="text-align:right;white-space:nowrap">18,746 B</td></tr>
+</tbody>
+</table>
 
 ### Short-Circuit Middleware (Foundatio Only)
 
 Middleware returns cached result; handler is never invoked. Useful for caching or authorization.
 
-| Method                             |          Mean | Allocated |
-|:-----------------------------------|:-------------:|----------:|
-| Foundatio_ShortCircuit               |     164.74 ns |     368 B |
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody><tr><td style="width:100%"><code>Foundatio_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">65.948 ns</td><td style="text-align:right;white-space:nowrap">368 B</td></tr>
+</tbody>
+</table>
 
 ## Running Benchmarks Locally
 

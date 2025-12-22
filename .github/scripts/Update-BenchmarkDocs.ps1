@@ -101,19 +101,6 @@ foreach ($key in $groupKeys) {
     }
 }
 
-# Helper function to format a table row with consistent column widths
-function Format-TableRow {
-    param(
-        [string]$Method,
-        [string]$Mean,
-        [string]$Allocated
-    )
-    $methodPad = $Method.PadRight(36)
-    $meanPad = $Mean.PadLeft(13)
-    $allocPad = $Allocated.PadLeft(9)
-    return "| $methodPad | $meanPad | $allocPad |"
-}
-
 # Helper function to format allocated bytes with thousand separators
 function Format-Allocated {
     param([string]$Value)
@@ -124,15 +111,21 @@ function Format-Allocated {
     return $Value
 }
 
-# Helper function to build a table for a group
+# Helper function to build an HTML table for a group
 function Build-Table {
     param($Rows)
-    $table = "| Method                             |          Mean | Allocated |`n"
-    $table += "|:-----------------------------------|:-------------:|----------:|"
+    $table = @"
+<table style="width:100%">
+<thead>
+<tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
+</thead>
+<tbody>
+"@
     foreach ($row in $Rows) {
         $alloc = Format-Allocated $row.Allocated
-        $table += "`n$(Format-TableRow $row.Method $row.Mean $alloc)"
+        $table += "<tr><td style=`"width:100%`"><code>$($row.Method)</code></td><td style=`"text-align:right;white-space:nowrap`">$($row.Mean)</td><td style=`"text-align:right;white-space:nowrap`">$alloc</td></tr>`n"
     }
+    $table += "</tbody>`n</table>"
     return $table
 }
 

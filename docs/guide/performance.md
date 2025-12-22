@@ -14,12 +14,12 @@ Fire-and-forget dispatch with no return value.
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>Direct_Command</code></td><td style="text-align:right;white-space:nowrap">13.70 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>MediatorNet_Command</code></td><td style="text-align:right;white-space:nowrap">22.52 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>MediatR_Command</code></td><td style="text-align:right;white-space:nowrap">110.98 ns</td><td style="text-align:right;white-space:nowrap">128 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Command</code></td><td style="text-align:right;white-space:nowrap">166.74 ns</td><td style="text-align:right;white-space:nowrap">200 B</td></tr>
-<tr><td style="width:100%"><code>Wolverine_Command</code></td><td style="text-align:right;white-space:nowrap">458.87 ns</td><td style="text-align:right;white-space:nowrap">704 B</td></tr>
-<tr><td style="width:100%"><code>MassTransit_Command</code></td><td style="text-align:right;white-space:nowrap">3,293.99 ns</td><td style="text-align:right;white-space:nowrap">4,184 B</td></tr>
+<tbody><tr><td style="width:100%"><code>Direct_Command</code></td><td style="text-align:right;white-space:nowrap">14.26 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Command</code></td><td style="text-align:right;white-space:nowrap">16.93 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Command</code></td><td style="text-align:right;white-space:nowrap">107.29 ns</td><td style="text-align:right;white-space:nowrap">128 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Command</code></td><td style="text-align:right;white-space:nowrap">179.66 ns</td><td style="text-align:right;white-space:nowrap">200 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Command</code></td><td style="text-align:right;white-space:nowrap">446.19 ns</td><td style="text-align:right;white-space:nowrap">704 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Command</code></td><td style="text-align:right;white-space:nowrap">3,141.96 ns</td><td style="text-align:right;white-space:nowrap">4,192 B</td></tr>
 </tbody>
 </table>
 
@@ -31,13 +31,13 @@ Request/response dispatch returning an Order object.
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>Direct_Query</code></td><td style="text-align:right;white-space:nowrap">61.46 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
-<tr><td style="width:100%"><code>Direct_QueryWithDependencies</code></td><td style="text-align:right;white-space:nowrap">82.01 ns</td><td style="text-align:right;white-space:nowrap">264 B</td></tr>
-<tr><td style="width:100%"><code>MediatorNet_Query</code></td><td style="text-align:right;white-space:nowrap">57.21 ns</td><td style="text-align:right;white-space:nowrap">120 B</td></tr>
-<tr><td style="width:100%"><code>MediatR_Query</code></td><td style="text-align:right;white-space:nowrap">145.20 ns</td><td style="text-align:right;white-space:nowrap">320 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Query</code></td><td style="text-align:right;white-space:nowrap">215.85 ns</td><td style="text-align:right;white-space:nowrap">464 B</td></tr>
-<tr><td style="width:100%"><code>Wolverine_Query</code></td><td style="text-align:right;white-space:nowrap">684.15 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
-<tr><td style="width:100%"><code>MassTransit_Query</code></td><td style="text-align:right;white-space:nowrap">12,505.13 ns</td><td style="text-align:right;white-space:nowrap">12,491 B</td></tr>
+<tbody><tr><td style="width:100%"><code>Direct_Query</code></td><td style="text-align:right;white-space:nowrap">60.69 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
+<tr><td style="width:100%"><code>Direct_QueryWithDependencies</code></td><td style="text-align:right;white-space:nowrap">81.13 ns</td><td style="text-align:right;white-space:nowrap">264 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Query</code></td><td style="text-align:right;white-space:nowrap">59.71 ns</td><td style="text-align:right;white-space:nowrap">120 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Query</code></td><td style="text-align:right;white-space:nowrap">149.85 ns</td><td style="text-align:right;white-space:nowrap">320 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Query</code></td><td style="text-align:right;white-space:nowrap">210.93 ns</td><td style="text-align:right;white-space:nowrap">464 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Query</code></td><td style="text-align:right;white-space:nowrap">629.87 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Query</code></td><td style="text-align:right;white-space:nowrap">12,209.45 ns</td><td style="text-align:right;white-space:nowrap">12,497 B</td></tr>
 </tbody>
 </table>
 
@@ -49,12 +49,12 @@ Notification dispatched to 2 handlers.
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>Direct_Event</code></td><td style="text-align:right;white-space:nowrap">13.70 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>MediatorNet_Publish</code></td><td style="text-align:right;white-space:nowrap">19.44 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>MediatR_Publish</code></td><td style="text-align:right;white-space:nowrap">244.83 ns</td><td style="text-align:right;white-space:nowrap">792 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Publish</code></td><td style="text-align:right;white-space:nowrap">300.52 ns</td><td style="text-align:right;white-space:nowrap">336 B</td></tr>
-<tr><td style="width:100%"><code>Wolverine_Publish</code></td><td style="text-align:right;white-space:nowrap">2,055.96 ns</td><td style="text-align:right;white-space:nowrap">1,688 B</td></tr>
-<tr><td style="width:100%"><code>MassTransit_Publish</code></td><td style="text-align:right;white-space:nowrap">5,070.78 ns</td><td style="text-align:right;white-space:nowrap">6,008 B</td></tr>
+<tbody><tr><td style="width:100%"><code>Direct_Event</code></td><td style="text-align:right;white-space:nowrap">13.69 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatorNet_Publish</code></td><td style="text-align:right;white-space:nowrap">22.49 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_Publish</code></td><td style="text-align:right;white-space:nowrap">293.65 ns</td><td style="text-align:right;white-space:nowrap">792 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Publish</code></td><td style="text-align:right;white-space:nowrap">255.28 ns</td><td style="text-align:right;white-space:nowrap">336 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_Publish</code></td><td style="text-align:right;white-space:nowrap">2,075.57 ns</td><td style="text-align:right;white-space:nowrap">1,688 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_Publish</code></td><td style="text-align:right;white-space:nowrap">5,322.32 ns</td><td style="text-align:right;white-space:nowrap">6,016 B</td></tr>
 </tbody>
 </table>
 
@@ -66,11 +66,11 @@ Query where handler has an injected service (IOrderService) and timing middlewar
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>MediatorNet_FullQuery</code></td><td style="text-align:right;white-space:nowrap">84.32 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
-<tr><td style="width:100%"><code>MediatR_FullQuery</code></td><td style="text-align:right;white-space:nowrap">362.27 ns</td><td style="text-align:right;white-space:nowrap">744 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_FullQuery</code></td><td style="text-align:right;white-space:nowrap">486.35 ns</td><td style="text-align:right;white-space:nowrap">776 B</td></tr>
-<tr><td style="width:100%"><code>Wolverine_FullQuery</code></td><td style="text-align:right;white-space:nowrap">698.48 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
-<tr><td style="width:100%"><code>MassTransit_FullQuery</code></td><td style="text-align:right;white-space:nowrap">12,567.89 ns</td><td style="text-align:right;white-space:nowrap">12,561 B</td></tr>
+<tbody><tr><td style="width:100%"><code>MediatorNet_FullQuery</code></td><td style="text-align:right;white-space:nowrap">85.38 ns</td><td style="text-align:right;white-space:nowrap">192 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_FullQuery</code></td><td style="text-align:right;white-space:nowrap">346.49 ns</td><td style="text-align:right;white-space:nowrap">744 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_FullQuery</code></td><td style="text-align:right;white-space:nowrap">499.30 ns</td><td style="text-align:right;white-space:nowrap">776 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_FullQuery</code></td><td style="text-align:right;white-space:nowrap">736.30 ns</td><td style="text-align:right;white-space:nowrap">1,000 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_FullQuery</code></td><td style="text-align:right;white-space:nowrap">12,693.35 ns</td><td style="text-align:right;white-space:nowrap">12,568 B</td></tr>
 </tbody>
 </table>
 
@@ -82,23 +82,27 @@ CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foun
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>MediatorNet_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">85.68 ns</td><td style="text-align:right;white-space:nowrap">144 B</td></tr>
-<tr><td style="width:100%"><code>MediatR_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">474.49 ns</td><td style="text-align:right;white-space:nowrap">1,168 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">338.59 ns</td><td style="text-align:right;white-space:nowrap">568 B</td></tr>
-<tr><td style="width:100%"><code>Wolverine_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">3,653.80 ns</td><td style="text-align:right;white-space:nowrap">2,912 B</td></tr>
-<tr><td style="width:100%"><code>MassTransit_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">36,970.90 ns</td><td style="text-align:right;white-space:nowrap">18,808 B</td></tr>
+<tbody><tr><td style="width:100%"><code>MediatorNet_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">84.79 ns</td><td style="text-align:right;white-space:nowrap">144 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">470.51 ns</td><td style="text-align:right;white-space:nowrap">1,168 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">287.66 ns</td><td style="text-align:right;white-space:nowrap">568 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">3,403.77 ns</td><td style="text-align:right;white-space:nowrap">2,912 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">40,410.72 ns</td><td style="text-align:right;white-space:nowrap">18,824 B</td></tr>
 </tbody>
 </table>
 
-### Short-Circuit Middleware (Foundatio Only)
+### Short-Circuit Middleware
 
-Middleware returns cached result; handler is never invoked. Useful for caching or authorization.
+Middleware returns cached result; handler is never invoked. Each library uses its idiomatic short-circuit approach (IPipelineBehavior, HandlerResult.ShortCircuit, HandlerContinuation.Stop, etc.).
 
 <table style="width:100%">
 <thead>
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
-<tbody><tr><td style="width:100%"><code>Foundatio_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">153.64 ns</td><td style="text-align:right;white-space:nowrap">368 B</td></tr>
+<tbody><tr><td style="width:100%"><code>MediatorNet_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">40.94 ns</td><td style="text-align:right;white-space:nowrap">72 B</td></tr>
+<tr><td style="width:100%"><code>MediatR_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">161.28 ns</td><td style="text-align:right;white-space:nowrap">488 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">163.92 ns</td><td style="text-align:right;white-space:nowrap">368 B</td></tr>
+<tr><td style="width:100%"><code>Wolverine_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">585.35 ns</td><td style="text-align:right;white-space:nowrap">752 B</td></tr>
+<tr><td style="width:100%"><code>MassTransit_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">12,013.64 ns</td><td style="text-align:right;white-space:nowrap">12,449 B</td></tr>
 </tbody>
 </table>
 

@@ -68,7 +68,7 @@ $groups = @{
 }
 
 # Define the order of implementations
-$implOrder = @('Direct', 'Foundatio', 'MediatR', 'MassTransit')
+$implOrder = @('Direct', 'Foundatio', 'MediatR', 'Wolverine', 'MassTransit')
 
 foreach ($row in $csv) {
     $method = $row.Method
@@ -84,7 +84,8 @@ foreach ($row in $csv) {
 }
 
 # Sort each group by implementation order
-foreach ($key in $groups.Keys) {
+$groupKeys = @($groups.Keys)
+foreach ($key in $groupKeys) {
     $groups[$key] = $groups[$key] | Sort-Object {
         $method = $_.Method
         for ($i = 0; $i -lt $implOrder.Count; $i++) {

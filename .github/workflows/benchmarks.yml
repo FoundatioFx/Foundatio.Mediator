@@ -52,7 +52,7 @@ jobs:
 
         git add docs/guide/performance.md
         git commit -m "📊 Update benchmark results [skip ci]"
-        
+
         # Pull with rebase in case changes were pushed while benchmarks ran
         git pull --rebase origin main
         git push

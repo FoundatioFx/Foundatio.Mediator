@@ -3,7 +3,10 @@ using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
 using Foundatio.Mediator.Benchmarks.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MassTransit;
+using Wolverine;
 
 namespace Foundatio.Mediator.Benchmarks;
 
@@ -14,9 +17,11 @@ public class CoreBenchmarks
     private IServiceProvider _foundatioServices = null!;
     private IServiceProvider _mediatrServices = null!;
     private IServiceProvider _masstransitServices = null!;
+    private IHost _wolverineHost = null!;
     private Foundatio.Mediator.IMediator _foundatioMediator = null!;
     private MediatR.IMediator _mediatrMediator = null!;
     private MassTransit.Mediator.IMediator _masstransitMediator = null!;
+    private IMessageBus _wolverineBus = null!;
 
     // Direct handler instances for baseline comparison
     private readonly FoundatioCommandHandler _directCommandHandler = new();
@@ -65,6 +70,18 @@ public class CoreBenchmarks
         });
         _masstransitServices = masstransitServices.BuildServiceProvider();
         _masstransitMediator = _masstransitServices.GetRequiredService<MassTransit.Mediator.IMediator>();
+
+        // Setup Wolverine
+        _wolverineHost = Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging => logging.ClearProviders())
+            .UseWolverine(opts =>
+            {
+                opts.Services.AddSingleton<IOrderService, OrderService>();
+                opts.Discovery.IncludeAssembly(typeof(CoreBenchmarks).Assembly);
+            })
+            .Build();
+        _wolverineHost.Start();
+        _wolverineBus = _wolverineHost.Services.GetRequiredService<IMessageBus>();
     }
 
     [GlobalCleanup]
@@ -77,6 +94,9 @@ public class CoreBenchmarks
             await asyncDisposable.DisposeAsync();
         else
             (_masstransitServices as IDisposable)?.Dispose();
+
+        await _wolverineHost.StopAsync();
+        _wolverineHost.Dispose();
     }
 
     // Baseline: Direct method calls (no mediator overhead)
@@ -123,6 +143,12 @@ public class CoreBenchmarks
         await _masstransitMediator.Send(_pingCommand);
     }
 
+    [Benchmark]
+    public async Task Wolverine_Command()
+    {
+        await _wolverineBus.InvokeAsync(_pingCommand);
+    }
+
     // Scenario 2: InvokeAsync<T> (Query)
     [Benchmark]
     public async Task<Order> Foundatio_Query()
@@ -144,6 +170,12 @@ public class CoreBenchmarks
         return response.Message;
     }
 
+    [Benchmark]
+    public async Task<Order?> Wolverine_Query()
+    {
+        return await _wolverineBus.InvokeAsync<Order>(_getOrder);
+    }
+
     // Scenario 3: PublishAsync with a single handler
     [Benchmark]
     public async Task Foundatio_Publish()
@@ -161,6 +193,12 @@ public class CoreBenchmarks
     public async Task MassTransit_Publish()
     {
         await _masstransitMediator.Publish(_userRegisteredEvent);
+    }
+
+    [Benchmark]
+    public async Task Wolverine_Publish()
+    {
+        await _wolverineBus.PublishAsync(_userRegisteredEvent);
     }
 
     // Scenario 4: InvokeAsync<T> with DI (Query with dependency injection)
@@ -182,5 +220,11 @@ public class CoreBenchmarks
         var client = _masstransitMediator.CreateRequestClient<GetOrderWithDependencies>();
         var response = await client.GetResponse<Order>(_getOrderWithDependencies);
         return response.Message;
+    }
+
+    [Benchmark]
+    public async Task<Order?> Wolverine_QueryWithDependencies()
+    {
+        return await _wolverineBus.InvokeAsync<Order>(_getOrderWithDependencies);
     }
 }

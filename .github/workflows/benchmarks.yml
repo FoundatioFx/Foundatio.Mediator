@@ -1,0 +1,58 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 2:00 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/Update-BenchmarkDocs.ps1'
+      - '.github/workflows/benchmarks.yml'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build -c Release --no-restore
+
+    - name: Run benchmarks and update docs
+      shell: pwsh
+      run: .github/scripts/Update-BenchmarkDocs.ps1
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+
+        # Check if there are changes to commit
+        if git diff --quiet docs/guide/performance.md; then
+          echo "No changes to commit"
+          exit 0
+        fi
+
+        git add docs/guide/performance.md
+        git commit -m "📊 Update benchmark results [skip ci]"
+        
+        # Pull with rebase in case changes were pushed while benchmarks ran
+        git pull --rebase origin main
+        git push

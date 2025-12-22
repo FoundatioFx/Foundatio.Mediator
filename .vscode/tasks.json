@@ -30,6 +30,16 @@
 			"problemMatcher": [
 				"$msCompile"
 			]
+		},
+		{
+			"label": "update benchmark docs",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-File",
+				"${workspaceFolder}/.github/scripts/Update-BenchmarkDocs.ps1"
+			],
+			"problemMatcher": []
 		}
 	]
 }

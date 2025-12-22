@@ -106,9 +106,33 @@ builder.Services.AddMediator(cfg => cfg
 public class MediatorConfiguration {
     public List<Assembly>? Assemblies { get; set; }
     public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Scoped;
-    public INotificationPublisher NotificationPublisher { get; set; } = new TaskWhenAllPublisher();
+    public INotificationPublisher NotificationPublisher { get; set; } = new ForeachAwaitPublisher();
 }
 ```
+
+### Notification Publishers
+
+Foundatio Mediator provides three built-in notification publishers that control how `PublishAsync` dispatches messages to multiple handlers:
+
+| Publisher | Behavior | Use Case |
+|-----------|----------|----------|
+| `ForeachAwaitPublisher` | Invokes handlers **sequentially**, one at a time (default) | Predictable ordering, easier debugging |
+| `TaskWhenAllPublisher` | Invokes all handlers **concurrently** and waits for all to complete | Maximum throughput when handlers are independent |
+| `FireAndForgetPublisher` | Fires all handlers **in parallel without waiting** | Background events where you don't need to wait for completion |
+
+**Example:**
+
+```csharp
+// Use parallel execution with await
+builder.Services.AddMediator(cfg => cfg
+    .UseNotificationPublisher(new TaskWhenAllPublisher()));
+
+// Fire and forget - returns immediately
+builder.Services.AddMediator(cfg => cfg
+    .UseNotificationPublisher(new FireAndForgetPublisher()));
+```
+
+> ⚠️ **Warning:** `FireAndForgetPublisher` swallows exceptions and handlers may outlive the HTTP request. Use with caution and ensure proper error handling within your handlers.
 
 ## Handler Discovery Configuration
 

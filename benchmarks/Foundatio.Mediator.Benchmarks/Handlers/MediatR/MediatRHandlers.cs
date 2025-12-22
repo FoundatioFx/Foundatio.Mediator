@@ -26,13 +26,23 @@ public class MediatRQueryHandler : IRequestHandler<GetOrder, Order>
     }
 }
 
-// Scenario 3: Single event handler (PublishAsync with single handler)
+// Scenario 3: Event handlers (PublishAsync with multiple handlers)
 [FoundatioIgnore]
 public class MediatREventHandler : INotificationHandler<UserRegisteredEvent>
 {
     public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
     {
         // Simulate minimal event handling work
+        await Task.CompletedTask;
+    }
+}
+
+[FoundatioIgnore]
+public class MediatREventHandler2 : INotificationHandler<UserRegisteredEvent>
+{
+    public async Task Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
+    {
+        // Second handler listening for the same event
         await Task.CompletedTask;
     }
 }
@@ -51,5 +61,65 @@ public class MediatRQueryWithDependenciesHandler : IRequestHandler<GetOrderWithD
     public async Task<Order> Handle(GetOrderWithDependencies request, CancellationToken cancellationToken)
     {
         return await _orderService.GetOrderAsync(request.Id, cancellationToken);
+    }
+}
+
+// Scenario 5: Cascading messages - MediatR requires manual publish of events
+[FoundatioIgnore]
+public class MediatRCreateOrderHandler : IRequestHandler<CreateOrder, Order>
+{
+    private readonly global::MediatR.IMediator _mediator;
+
+    public MediatRCreateOrderHandler(global::MediatR.IMediator mediator)
+    {
+        _mediator = mediator;
+    }
+
+    public async Task<Order> Handle(CreateOrder request, CancellationToken cancellationToken)
+    {
+        var order = new Order(1, request.Amount, DateTime.UtcNow);
+        await _mediator.Publish(new OrderCreatedEvent(order.Id, request.CustomerId), cancellationToken);
+        return order;
+    }
+}
+
+// Handlers for the cascaded OrderCreatedEvent
+[FoundatioIgnore]
+public class MediatROrderCreatedHandler1 : INotificationHandler<OrderCreatedEvent>
+{
+    public async Task Handle(OrderCreatedEvent notification, CancellationToken cancellationToken)
+    {
+        // First handler for order created event
+        await Task.CompletedTask;
+    }
+}
+
+[FoundatioIgnore]
+public class MediatROrderCreatedHandler2 : INotificationHandler<OrderCreatedEvent>
+{
+    public async Task Handle(OrderCreatedEvent notification, CancellationToken cancellationToken)
+    {
+        // Second handler for order created event
+        await Task.CompletedTask;
+    }
+}
+
+// MediatR pipeline behavior for timing (equivalent to Foundatio's middleware)
+[FoundatioIgnore]
+public class TimingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            return await next();
+        }
+        finally
+        {
+            stopwatch.Stop();
+            // In real middleware, you'd log here
+        }
     }
 }

@@ -24,12 +24,21 @@ public class MassTransitQueryConsumer : IConsumer<GetOrder>
     }
 }
 
-// Scenario 3: Single event handler (PublishAsync with single handler)
+// Scenario 3: Event handlers (PublishAsync with multiple handlers)
 public class MassTransitEventConsumer : IConsumer<UserRegisteredEvent>
 {
     public async Task Consume(ConsumeContext<UserRegisteredEvent> context)
     {
         // Simulate minimal event handling work
+        await Task.CompletedTask;
+    }
+}
+
+public class MassTransitEventConsumer2 : IConsumer<UserRegisteredEvent>
+{
+    public async Task Consume(ConsumeContext<UserRegisteredEvent> context)
+    {
+        // Second handler listening for the same event
         await Task.CompletedTask;
     }
 }
@@ -48,5 +57,35 @@ public class MassTransitQueryWithDependenciesConsumer : IConsumer<GetOrderWithDe
     {
         var order = await _orderService.GetOrderAsync(context.Message.Id);
         await context.RespondAsync(order);
+    }
+}
+
+// Scenario 5: Cascading messages - MassTransit requires manual publish of events
+public class MassTransitCreateOrderConsumer : IConsumer<CreateOrder>
+{
+    public async Task Consume(ConsumeContext<CreateOrder> context)
+    {
+        var order = new Order(1, context.Message.Amount, DateTime.UtcNow);
+        await context.Publish(new OrderCreatedEvent(order.Id, context.Message.CustomerId));
+        await context.RespondAsync(order);
+    }
+}
+
+// Handlers for the cascaded OrderCreatedEvent
+public class MassTransitOrderCreatedConsumer1 : IConsumer<OrderCreatedEvent>
+{
+    public async Task Consume(ConsumeContext<OrderCreatedEvent> context)
+    {
+        // First handler for order created event
+        await Task.CompletedTask;
+    }
+}
+
+public class MassTransitOrderCreatedConsumer2 : IConsumer<OrderCreatedEvent>
+{
+    public async Task Consume(ConsumeContext<OrderCreatedEvent> context)
+    {
+        // Second handler for order created event
+        await Task.CompletedTask;
     }
 }

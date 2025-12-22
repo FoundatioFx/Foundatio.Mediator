@@ -15,7 +15,8 @@ public class MediatorConfiguration
     public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Singleton;
 
     /// <summary>
-    /// Gets or sets the notification publisher.
+    /// Gets or sets the notification publisher. Default is ForeachAwaitPublisher (sequential).
+    /// Use TaskWhenAllPublisher for parallel execution.
     /// </summary>
-    public INotificationPublisher NotificationPublisher { get; set; } = new TaskWhenAllPublisher();
+    public INotificationPublisher NotificationPublisher { get; set; } = new ForeachAwaitPublisher();
 }

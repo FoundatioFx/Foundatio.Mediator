@@ -1,6 +1,6 @@
 # Performance
 
-Foundatio Mediator achieves near-direct call performance through C# interceptors and source generators, eliminating runtime reflection.
+Foundatio.Mediator aims to get as close to direct method call performance as possible while providing a full-featured mediator with excellent developer ergonomics. Through C# interceptors and source generators, we eliminate runtime reflection entirely.
 
 ## Benchmark Results
 
@@ -8,43 +8,75 @@ Foundatio Mediator achieves near-direct call performance through C# interceptors
 
 ### Commands
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-| Direct_Command | 12.75 ns | 0 B |
-| Foundatio_Command | 145.71 ns | 200 B |
-| MediatR_Command | 99.61 ns | 128 B |
-| Wolverine_Command | 432.97 ns | 720 B |
-| MassTransit_Command | 3,018.31 ns | 4168 B |
+Fire-and-forget dispatch with no return value.
+
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| Direct_Command                       |      5.536 ns |       0 B |
+| MediatorNet_Command                  |      9.169 ns |       0 B |
+| MediatR_Command                      |     40.458 ns |     128 B |
+| Foundatio_Command                    |     60.987 ns |     200 B |
+| Wolverine_Command                    |    171.784 ns |     704 B |
+| MassTransit_Command                  |  1,213.024 ns |   4,184 B |
 
 ### Queries
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-| Direct_Query | 63.76 ns | 192 B |
-| Foundatio_Query | 222.20 ns | 464 B |
-| MediatR_Query | 164.55 ns | 320 B |
-| Wolverine_Query | 805.66 ns | 1288 B |
-| MassTransit_Query | 20,711.65 ns | 12531 B |
+Request/response dispatch returning an Order object.
+
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| Direct_Query                         |     28.961 ns |     192 B |
+| Direct_QueryWithDependencies         |     33.656 ns |     264 B |
+| MediatorNet_Query                    |     33.510 ns |     120 B |
+| MediatR_Query                        |     60.191 ns |     320 B |
+| Foundatio_Query                      |     93.022 ns |     464 B |
+| Wolverine_Query                      |    257.041 ns |   1,000 B |
+| MassTransit_Query                    |  5,368.266 ns |  12,488 B |
 
 ### Events (Publish)
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-| Direct_Event | 12.60 ns | 0 B |
-| Foundatio_Publish | 341.15 ns | 648 B |
-| MediatR_Publish | 132.12 ns | 288 B |
-| Wolverine_Publish | 886.17 ns | 1201 B |
-| MassTransit_Publish | 3,140.57 ns | 4320 B |
+Notification dispatched to 2 handlers.
 
-### Queries with Dependencies
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| Direct_Event                         |      5.689 ns |       0 B |
+| MediatorNet_Publish                  |     10.769 ns |       0 B |
+| MediatR_Publish                      |    101.197 ns |     792 B |
+| Foundatio_Publish                    |    110.246 ns |     336 B |
+| Wolverine_Publish                    |  1,829.026 ns |   2,840 B |
+| MassTransit_Publish                  |  2,047.094 ns |   6,008 B |
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-| Direct_QueryWithDependencies | 85.11 ns | 264 B |
-| Foundatio_QueryWithDependencies | 251.02 ns | 536 B |
-| MediatR_QueryWithDependencies | 183.92 ns | 392 B |
-| Wolverine_QueryWithDependencies | 848.58 ns | 1432 B |
-| MassTransit_QueryWithDependencies | 20,913.58 ns | 12597 B |
+### Full Query (Dependencies + Middleware)
+
+Query where handler has an injected service (IOrderService) and timing middleware (Before/Finally or IPipelineBehavior).
+
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| MediatorNet_FullQuery                |     41.487 ns |     192 B |
+| MediatR_FullQuery                    |    139.304 ns |     744 B |
+| Foundatio_FullQuery                  |    192.957 ns |     776 B |
+| Wolverine_FullQuery                  |    262.386 ns |   1,000 B |
+| MassTransit_FullQuery                |  5,578.827 ns |  12,560 B |
+
+### Cascading Messages
+
+CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foundatio uses tuple returns for automatic cascading; other libraries publish manually.
+
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| MediatorNet_CascadingMessages        |     45.668 ns |     144 B |
+| MediatR_CascadingMessages            |    173.084 ns |   1,168 B |
+| Foundatio_CascadingMessages          |    116.241 ns |     568 B |
+| Wolverine_CascadingMessages          |  2,355.686 ns |   4,064 B |
+| MassTransit_CascadingMessages        |  8,922.815 ns |  18,746 B |
+
+### Short-Circuit Middleware (Foundatio Only)
+
+Middleware returns cached result; handler is never invoked. Useful for caching or authorization.
+
+| Method                             |          Mean | Allocated |
+|:-----------------------------------|:-------------:|----------:|
+| Foundatio_ShortCircuit               |     65.948 ns |     368 B |
 
 ## Running Benchmarks Locally
 

@@ -59,21 +59,27 @@ Write-Host "Parsing benchmark results..." -ForegroundColor Cyan
 $csv = Import-Csv $ResultsFile
 $currentDate = Get-Date -Format 'yyyy-MM-dd'
 
-# Group benchmarks by operation type (Command, Query, Event/Publish, QueryWithDependencies)
+# Group benchmarks by operation type
 $groups = @{
     'Command' = @()
     'Query' = @()
     'Publish' = @()
-    'QueryWithDependencies' = @()
+    'FullQuery' = @()
+    'CascadingMessages' = @()
+    'ShortCircuit' = @()
 }
 
 # Define the order of implementations
-$implOrder = @('Direct', 'Foundatio', 'MediatR', 'Wolverine', 'MassTransit')
+$implOrder = @('Direct', 'MediatorNet', 'MediatR', 'Foundatio', 'Wolverine', 'MassTransit')
 
 foreach ($row in $csv) {
     $method = $row.Method
-    if ($method -match 'QueryWithDependencies') {
-        $groups['QueryWithDependencies'] += $row
+    if ($method -match 'ShortCircuit') {
+        $groups['ShortCircuit'] += $row
+    } elseif ($method -match 'CascadingMessages') {
+        $groups['CascadingMessages'] += $row
+    } elseif ($method -match 'FullQuery') {
+        $groups['FullQuery'] += $row
     } elseif ($method -match 'Command') {
         $groups['Command'] += $row
     } elseif ($method -match 'Query') {
@@ -95,11 +101,46 @@ foreach ($key in $groupKeys) {
     }
 }
 
+# Helper function to format a table row with consistent column widths
+function Format-TableRow {
+    param(
+        [string]$Method,
+        [string]$Mean,
+        [string]$Allocated
+    )
+    $methodPad = $Method.PadRight(36)
+    $meanPad = $Mean.PadLeft(13)
+    $allocPad = $Allocated.PadLeft(9)
+    return "| $methodPad | $meanPad | $allocPad |"
+}
+
+# Helper function to format allocated bytes with thousand separators
+function Format-Allocated {
+    param([string]$Value)
+    if ($Value -match '^(\d+)\s*B$') {
+        $num = [int64]$Matches[1]
+        return "{0:N0} B" -f $num
+    }
+    return $Value
+}
+
+# Helper function to build a table for a group
+function Build-Table {
+    param($Rows)
+    $table = "| Method                             |          Mean | Allocated |`n"
+    $table += "|:-----------------------------------|:-------------:|----------:|"
+    foreach ($row in $Rows) {
+        $alloc = Format-Allocated $row.Allocated
+        $table += "`n$(Format-TableRow $row.Method $row.Mean $alloc)"
+    }
+    return $table
+}
+
 # Build the markdown content
 $markdown = @"
 # Performance
 
-Foundatio Mediator achieves near-direct call performance through C# interceptors and source generators, eliminating runtime reflection.
+Foundatio.Mediator aims to get as close to direct method call performance as possible while providing a full-featured mediator with excellent developer ergonomics. Through C# interceptors and source generators, we eliminate runtime reflection entirely.
 
 ## Benchmark Results
 
@@ -107,55 +148,39 @@ Foundatio Mediator achieves near-direct call performance through C# interceptors
 
 ### Commands
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-"@
+Fire-and-forget dispatch with no return value.
 
-foreach ($row in $groups['Command']) {
-    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
-}
-
-$markdown += @"
-
+$(Build-Table $groups['Command'])
 
 ### Queries
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-"@
+Request/response dispatch returning an Order object.
 
-foreach ($row in $groups['Query']) {
-    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
-}
-
-$markdown += @"
-
+$(Build-Table $groups['Query'])
 
 ### Events (Publish)
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-"@
+Notification dispatched to 2 handlers.
 
-foreach ($row in $groups['Publish']) {
-    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
-}
+$(Build-Table $groups['Publish'])
 
-$markdown += @"
+### Full Query (Dependencies + Middleware)
 
+Query where handler has an injected service (IOrderService) and timing middleware (Before/Finally or IPipelineBehavior).
 
-### Queries with Dependencies
+$(Build-Table $groups['FullQuery'])
 
-| Method | Mean | Allocated |
-|:-------|-----:|----------:|
-"@
+### Cascading Messages
 
-foreach ($row in $groups['QueryWithDependencies']) {
-    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
-}
+CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foundatio uses tuple returns for automatic cascading; other libraries publish manually.
 
-$markdown += @"
+$(Build-Table $groups['CascadingMessages'])
 
+### Short-Circuit Middleware (Foundatio Only)
+
+Middleware returns cached result; handler is never invoked. Useful for caching or authorization.
+
+$(Build-Table $groups['ShortCircuit'])
 
 ## Running Benchmarks Locally
 

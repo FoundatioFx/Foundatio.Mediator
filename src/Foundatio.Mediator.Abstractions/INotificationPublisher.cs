@@ -32,7 +32,7 @@ public class ForeachAwaitPublisher : INotificationPublisher
 }
 
 /// <summary>
-/// Publisher that invokes all handlers concurrently.
+/// Publisher that invokes all handlers concurrently and waits for all to complete.
 /// </summary>
 public class TaskWhenAllPublisher : INotificationPublisher
 {
@@ -40,5 +40,32 @@ public class TaskWhenAllPublisher : INotificationPublisher
     {
         var tasks = handlers.Select(h => h(mediator, message, cancellationToken));
         await Task.WhenAll(tasks.Select(t => t.AsTask()));
+    }
+}
+
+/// <summary>
+/// Publisher that fires all handlers in parallel without waiting for completion.
+/// Use with caution - exceptions will not propagate and handlers may outlive the request.
+/// </summary>
+public class FireAndForgetPublisher : INotificationPublisher
+{
+    public ValueTask PublishAsync(IMediator mediator, IEnumerable<PublishAsyncDelegate> handlers, object message, CancellationToken cancellationToken)
+    {
+        foreach (var handler in handlers)
+        {
+            // Fire and forget - don't await, use Task.Run to ensure truly async execution
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await handler(mediator, message, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Swallow exceptions - fire and forget semantics
+                }
+            }, CancellationToken.None);
+        }
+        return default;
     }
 }

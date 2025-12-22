@@ -89,12 +89,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Scan referenced assemblies for cross-assembly handlers
         var crossAssemblyHandlers = CrossAssemblyHandlerScanner.ScanReferencedAssemblies(compilation);
 
-        // Build lookup of handlers by message type (both local and cross-assembly)
-        var allHandlersByMessageType = handlers
-            .Concat(crossAssemblyHandlers)
-            .GroupBy(h => h.MessageType)
-            .ToDictionary(g => g.Key, g => g.ToArray());
-
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
             .GroupBy(cs => cs.MessageType)
@@ -128,9 +122,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             }
         }
 
-        // Always generate diagnostics related to call sites, even if there are no handlers
-        // But skip validation for call sites that have cross-assembly handlers
-        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerMessageTypes);
+        // Always generate diagnostics related to call sites, including cross-assembly handler validation
+        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlers);
 
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)

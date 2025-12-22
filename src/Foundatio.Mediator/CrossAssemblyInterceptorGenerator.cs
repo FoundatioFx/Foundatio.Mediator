@@ -22,8 +22,11 @@ internal static class CrossAssemblyInterceptorGenerator
             return;
 
         // Build a lookup of cross-assembly handlers by message type
+        // Note: Multiple handlers for the same message type may exist across referenced assemblies.
+        // For InvokeAsync, we take the first one found (similar to how local handlers work).
         var handlersByMessageType = crossAssemblyHandlers
-            .ToDictionary(h => h.MessageType.FullName, h => h);
+            .GroupBy(h => h.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.First());
 
         // Find call sites that have handlers in referenced assemblies (not in this assembly)
         var crossAssemblyCallSites = callSites

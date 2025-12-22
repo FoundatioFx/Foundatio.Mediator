@@ -40,6 +40,36 @@
 				"${workspaceFolder}/.github/scripts/Update-BenchmarkDocs.ps1"
 			],
 			"problemMatcher": []
+		},
+		{
+			"label": "run foundatio benchmarks",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Release",
+				"--",
+				"foundatio"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/benchmarks/Foundatio.Mediator.Benchmarks"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "run comparison benchmarks",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Release"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/benchmarks/Foundatio.Mediator.Benchmarks"
+			},
+			"problemMatcher": []
 		}
 	]
 }

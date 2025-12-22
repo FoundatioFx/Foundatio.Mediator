@@ -11,13 +11,17 @@ Foundatio.Mediator is a high-performance mediator library for .NET that achieves
 
 **Key innovation**: Zero runtime reflection. All handler dispatch is resolved at compile time via source generators that scan for handlers and emit strongly-typed wrappers with optional C# 11+ interceptor attributes for direct call redirection.
 
-## Commands you can use
+## Commands (ALWAYS use these)
 
-Build project (triggers source generators): `dotnet build`
-Run tests (validate work): `dotnet test`
-Run benchmarks: `cd benchmarks/Foundatio.Mediator.Benchmarks; dotnet run -c Release`
-Run samples: `cd samples/ConsoleSample; dotnet run`
-Clean (removes source generated files): `dotnet clean`
+**IMPORTANT**: Always use these exact commands. Do not create ad-hoc scripts or alternative approaches.
+
+- **Build** (triggers source generators): `dotnet build`
+- **Run tests** (validate ALL changes): `dotnet test`
+- **Run benchmarks** (measure performance): `cd benchmarks/Foundatio.Mediator.Benchmarks; dotnet run -c Release -- foundatio`
+- **Run samples**: `cd samples/ConsoleSample; dotnet run`
+- **Clean** (removes generated files): `dotnet clean`
+
+**Workflow**: After making code changes, ALWAYS run `dotnet build` then `dotnet test` to validate your work before considering the task complete.
 
 ## Code Conventions
 

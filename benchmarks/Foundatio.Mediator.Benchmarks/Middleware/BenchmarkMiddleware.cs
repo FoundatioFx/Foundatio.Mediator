@@ -25,13 +25,13 @@ public class TimingMiddleware
 
 /// <summary>
 /// Short-circuit middleware that immediately returns a cached result without calling the handler.
-/// This demonstrates Foundatio's unique short-circuit capability.
+/// This demonstrates middleware returning early (cache hit, validation success with cached result, etc.)
 /// </summary>
 public class ShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
-    public HandlerResult Before(GetOrderShortCircuit message)
+    public HandlerResult Before(GetCachedOrder message)
     {
         // Always short-circuit with cached result - simulates cache hit scenario
         return HandlerResult.ShortCircuit(_cachedOrder);

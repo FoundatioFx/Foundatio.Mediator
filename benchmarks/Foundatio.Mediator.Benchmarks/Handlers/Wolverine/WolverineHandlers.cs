@@ -87,3 +87,28 @@ public class WolverineOrderCreatedHandler2
         return Task.CompletedTask;
     }
 }
+
+// Scenario 6: Short-circuit - Wolverine uses Before middleware with HandlerContinuation.Stop
+[FoundatioIgnore]
+public class WolverineShortCircuitHandler
+{
+    public Task<Order> Handle(GetCachedOrder query)
+    {
+        // This should never be called - middleware short-circuits before reaching handler
+        throw new InvalidOperationException("Short-circuit middleware should have prevented this call");
+    }
+}
+
+// Wolverine short-circuit middleware - uses HandlerContinuation to stop processing
+[FoundatioIgnore]
+public class WolverineShortCircuitMiddleware
+{
+    private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
+
+    // Wolverine Before method with tuple return for short-circuit
+    public static (HandlerContinuation, Order) Before(GetCachedOrder message)
+    {
+        // Short-circuit by returning Stop with the cached value
+        return (HandlerContinuation.Stop, _cachedOrder);
+    }
+}

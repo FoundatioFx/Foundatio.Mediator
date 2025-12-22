@@ -169,9 +169,9 @@ CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foun
 
 $(Build-Table $groups['CascadingMessages'])
 
-### Short-Circuit Middleware (Foundatio Only)
+### Short-Circuit Middleware
 
-Middleware returns cached result; handler is never invoked. Useful for caching or authorization.
+Middleware returns cached result; handler is never invoked. Each library uses its idiomatic short-circuit approach (IPipelineBehavior, HandlerResult.ShortCircuit, HandlerContinuation.Stop, etc.).
 
 $(Build-Table $groups['ShortCircuit'])
 

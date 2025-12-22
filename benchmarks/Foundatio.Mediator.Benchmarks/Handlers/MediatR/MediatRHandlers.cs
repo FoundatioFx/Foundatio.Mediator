@@ -123,3 +123,27 @@ public class TimingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, T
         }
     }
 }
+
+// Scenario 6: Short-circuit handler - MediatR uses IPipelineBehavior to short-circuit
+[FoundatioIgnore]
+public class MediatRShortCircuitHandler : IRequestHandler<GetCachedOrder, Order>
+{
+    public Task<Order> Handle(GetCachedOrder request, CancellationToken cancellationToken)
+    {
+        // This should never be called - pipeline behavior short-circuits before reaching handler
+        throw new InvalidOperationException("Short-circuit behavior should have prevented this call");
+    }
+}
+
+// MediatR short-circuit behavior - returns cached value without calling handler
+[FoundatioIgnore]
+public class ShortCircuitBehavior : IPipelineBehavior<GetCachedOrder, Order>
+{
+    private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
+
+    public Task<Order> Handle(GetCachedOrder request, RequestHandlerDelegate<Order> next, CancellationToken cancellationToken)
+    {
+        // Short-circuit by returning cached value - never calls next()
+        return Task.FromResult(_cachedOrder);
+    }
+}

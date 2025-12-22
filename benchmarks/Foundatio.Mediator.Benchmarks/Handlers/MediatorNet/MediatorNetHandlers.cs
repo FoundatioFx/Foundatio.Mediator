@@ -24,6 +24,9 @@ public record MediatorNetCreateOrder(int CustomerId, decimal Amount) : MediatorL
 [FoundatioIgnore]
 public record MediatorNetOrderCreatedEvent(int OrderId, int CustomerId) : MediatorLib.INotification;
 
+[FoundatioIgnore]
+public record MediatorNetGetCachedOrder(int Id) : MediatorLib.IQuery<Order>;
+
 // Scenario 1: Command handler (InvokeAsync without response)
 [FoundatioIgnore]
 public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<MediatorNetPingCommand>
@@ -120,5 +123,29 @@ public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<
     {
         // Second handler for order created event
         return ValueTask.CompletedTask;
+    }
+}
+
+// Scenario 6: Short-circuit handler - MediatorNet uses IPipelineBehavior to short-circuit
+[FoundatioIgnore]
+public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<MediatorNetGetCachedOrder, Order>
+{
+    public ValueTask<Order> Handle(MediatorNetGetCachedOrder query, CancellationToken cancellationToken)
+    {
+        // This should never be called - pipeline behavior short-circuits before reaching handler
+        throw new InvalidOperationException("Short-circuit behavior should have prevented this call");
+    }
+}
+
+// MediatorNet short-circuit behavior - returns cached value without calling handler
+[FoundatioIgnore]
+public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<MediatorNetGetCachedOrder, Order>
+{
+    private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
+
+    public ValueTask<Order> Handle(MediatorNetGetCachedOrder message, MediatorLib.MessageHandlerDelegate<MediatorNetGetCachedOrder, Order> next, CancellationToken cancellationToken)
+    {
+        // Short-circuit by returning cached value - never calls next()
+        return ValueTask.FromResult(_cachedOrder);
     }
 }

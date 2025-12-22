@@ -36,7 +36,7 @@ public class CoreBenchmarks
     private readonly PingCommand _pingCommand = new("test-123");
     private readonly GetOrder _getOrder = new(42);
     private readonly GetOrderWithDependencies _getOrderWithDependencies = new(42);
-    private readonly GetOrderShortCircuit _getOrderShortCircuit = new(42);
+    private readonly GetCachedOrder _getCachedOrder = new(42);
     private readonly UserRegisteredEvent _userRegisteredEvent = new("User-456", "test@example.com");
     private readonly CreateOrder _createOrder = new(123, 99.99m);
 
@@ -46,6 +46,7 @@ public class CoreBenchmarks
     private readonly MediatorNetGetOrderWithDependencies _mediatorNetGetOrderWithDependencies = new(42);
     private readonly MediatorNetUserRegisteredEvent _mediatorNetUserRegisteredEvent = new("User-456", "test@example.com");
     private readonly MediatorNetCreateOrder _mediatorNetCreateOrder = new(123, 99.99m);
+    private readonly MediatorNetGetCachedOrder _mediatorNetGetCachedOrder = new(42);
 
     [GlobalSetup]
     public void Setup()
@@ -69,6 +70,8 @@ public class CoreBenchmarks
             cfg.RegisterServicesFromAssemblyContaining<CoreBenchmarks>();
             // Register timing behavior for GetOrderWithDependencies to match Foundatio's middleware
             cfg.AddBehavior<MediatR.IPipelineBehavior<GetOrderWithDependencies, Order>, Handlers.MediatR.TimingBehavior<GetOrderWithDependencies, Order>>();
+            // Register short-circuit behavior for GetCachedOrder
+            cfg.AddBehavior<MediatR.IPipelineBehavior<GetCachedOrder, Order>, Handlers.MediatR.ShortCircuitBehavior>();
             // Use parallel notification publisher to match Foundatio/MassTransit behavior
             cfg.NotificationPublisher = new MediatR.NotificationPublishers.TaskWhenAllPublisher();
         });
@@ -88,6 +91,7 @@ public class CoreBenchmarks
             cfg.AddConsumer<Handlers.MassTransit.MassTransitCreateOrderConsumer>();
             cfg.AddConsumer<Handlers.MassTransit.MassTransitOrderCreatedConsumer1>();
             cfg.AddConsumer<Handlers.MassTransit.MassTransitOrderCreatedConsumer2>();
+            cfg.AddConsumer<Handlers.MassTransit.MassTransitShortCircuitConsumer>();
         });
         _masstransitServices = masstransitServices.BuildServiceProvider();
         _masstransitMediator = _masstransitServices.GetRequiredService<MassTransit.Mediator.IMediator>();
@@ -95,6 +99,8 @@ public class CoreBenchmarks
         // Setup Mediator.SourceGenerator (MediatorNet)
         var mediatorNetServices = new ServiceCollection();
         mediatorNetServices.AddSingleton<IOrderService, OrderService>();
+        // Register short-circuit behavior before AddMediator so it's available in the pipeline
+        mediatorNetServices.AddSingleton<MediatorLib.IPipelineBehavior<MediatorNetGetCachedOrder, Order>, MediatorNetShortCircuitBehavior>();
         mediatorNetServices.AddMediator(options =>
         {
             options.ServiceLifetime = ServiceLifetime.Singleton;
@@ -119,7 +125,10 @@ public class CoreBenchmarks
                     .IncludeType<Handlers.Wolverine.WolverineQueryWithDependenciesHandler>()
                     .IncludeType<Handlers.Wolverine.WolverineCreateOrderHandler>()
                     .IncludeType<Handlers.Wolverine.WolverineOrderCreatedHandler1>()
-                    .IncludeType<Handlers.Wolverine.WolverineOrderCreatedHandler2>();
+                    .IncludeType<Handlers.Wolverine.WolverineOrderCreatedHandler2>()
+                    .IncludeType<Handlers.Wolverine.WolverineShortCircuitHandler>();
+                // Register short-circuit middleware for GetCachedOrder
+                opts.Policies.ForMessagesOfType<GetCachedOrder>().AddMiddleware(typeof(Handlers.Wolverine.WolverineShortCircuitMiddleware));
             })
             .Build();
         _wolverineHost.Start();
@@ -329,11 +338,37 @@ public class CoreBenchmarks
         return await _mediatorNetMediator.Send(_mediatorNetCreateOrder);
     }
 
-    // Scenario 6: Short-circuit middleware - Foundatio-only feature
-    // Middleware returns cached result, handler is never invoked
+    // Scenario 6: Short-circuit middleware - returns cached result, handler is never invoked
+    // Tests the cost of short-circuiting via middleware (caching, validation, auth, etc.)
     [Benchmark]
     public async Task<Order> Foundatio_ShortCircuit()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getOrderShortCircuit);
+        return await _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
+    }
+
+    [Benchmark]
+    public async Task<Order> MediatR_ShortCircuit()
+    {
+        return await _mediatrMediator.Send(_getCachedOrder);
+    }
+
+    [Benchmark]
+    public async Task<Order> MassTransit_ShortCircuit()
+    {
+        var client = _masstransitMediator.CreateRequestClient<GetCachedOrder>();
+        var response = await client.GetResponse<Order>(_getCachedOrder);
+        return response.Message;
+    }
+
+    [Benchmark]
+    public async Task<Order?> Wolverine_ShortCircuit()
+    {
+        return await _wolverineBus.InvokeAsync<Order>(_getCachedOrder);
+    }
+
+    [Benchmark]
+    public async Task<Order> MediatorNet_ShortCircuit()
+    {
+        return await _mediatorNetMediator.Send(_mediatorNetGetCachedOrder);
     }
 }

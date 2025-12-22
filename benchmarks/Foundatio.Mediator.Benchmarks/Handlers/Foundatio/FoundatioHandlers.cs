@@ -91,7 +91,7 @@ public class FoundatioOrderCreatedHandler2
 // Scenario 6: Short-circuit handler (never actually called due to ShortCircuitMiddleware)
 public class FoundatioShortCircuitHandler
 {
-    public Task<Order> HandleAsync(GetOrderShortCircuit query, CancellationToken cancellationToken = default)
+    public Task<Order> HandleAsync(GetCachedOrder query, CancellationToken cancellationToken = default)
     {
         // This should never be called - middleware short-circuits before reaching handler
         throw new InvalidOperationException("Short-circuit middleware should have prevented this call");

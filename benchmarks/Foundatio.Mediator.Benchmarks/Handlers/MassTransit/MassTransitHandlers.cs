@@ -89,3 +89,17 @@ public class MassTransitOrderCreatedConsumer2 : IConsumer<OrderCreatedEvent>
         await Task.CompletedTask;
     }
 }
+
+// Scenario 6: Short-circuit handler - MassTransit doesn't have separate middleware for in-memory mediator,
+// so we simulate short-circuit by returning cached value immediately in the consumer.
+// Note: In real MassTransit usage with transport, you'd use a filter to short-circuit.
+public class MassTransitShortCircuitConsumer : IConsumer<GetCachedOrder>
+{
+    private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
+
+    public async Task Consume(ConsumeContext<GetCachedOrder> context)
+    {
+        // Immediately respond with cached value - simulates cache hit
+        await context.RespondAsync(_cachedOrder);
+    }
+}

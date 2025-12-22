@@ -19,5 +19,11 @@ public record UserRegisteredEvent(string UserId, string Email) : MediatR.INotifi
 public record CreateOrder(int CustomerId, decimal Amount) : IRequest<Order>;
 public record OrderCreatedEvent(int OrderId, int CustomerId) : MediatR.INotification;
 
-// Scenario 6: Short-circuit middleware (cache hit simulation) - Foundatio only
-public record GetOrderShortCircuit(int Id);
+// Scenario 6: Short-circuit / Cache-hit - tests middleware that returns early without calling handler
+// Each library implements this with their idiomatic approach:
+// - Foundatio: HandlerResult.ShortCircuit(value) in middleware
+// - MediatR: IPipelineBehavior returns cached value directly
+// - Wolverine: HandlerContinuation.Stop with cached value
+// - MediatorNet: IPipelineBehavior returns cached value directly
+// - MassTransit: Filter returns without calling next.Send()
+public record GetCachedOrder(int Id) : IRequest<Order>;

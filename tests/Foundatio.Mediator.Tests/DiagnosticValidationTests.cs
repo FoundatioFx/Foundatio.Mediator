@@ -1,3 +1,6 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+
 namespace Foundatio.Mediator.Tests;
 
 public class DiagnosticValidationTests : GeneratorTestBase
@@ -168,5 +171,142 @@ public class DiagnosticValidationTests : GeneratorTestBase
 
 		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
 		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+	}
+
+	[Fact]
+	public void FMED007_MultipleHandlersAcrossAssemblies()
+	{
+		// Handler in referenced assembly
+		var handlerSource = """
+			using System.Threading;
+			using Foundatio.Mediator;
+
+			[assembly: FoundatioModule]
+
+			namespace SharedHandlers;
+
+			public record SharedMessage;
+
+			public class SharedHandler
+			{
+				public void Handle(SharedMessage msg, CancellationToken ct) { }
+			}
+			""";
+
+		var handlerAssembly = CreateHandlerAssembly(handlerSource);
+
+		// Local handler for the same message type
+		var consumerSource = """
+			using System.Threading;
+			using Foundatio.Mediator;
+			using SharedHandlers;
+
+			public class LocalHandler
+			{
+				public void Handle(SharedMessage msg, CancellationToken ct) { }
+			}
+
+			public class Consumer
+			{
+				private readonly IMediator _mediator;
+				public Consumer(IMediator mediator) => _mediator = mediator;
+
+				public void Call()
+				{
+					_mediator.Invoke(new SharedMessage());
+				}
+			}
+			""";
+
+		var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
+
+		Assert.Contains(diagnostics, d => d.Id == "FMED007" && d.GetMessage().Contains("referenced assembly"));
+	}
+
+	[Fact]
+	public void FMED008_SyncInvokeOnAsyncCrossAssemblyHandler()
+	{
+		// Async handler in referenced assembly
+		var handlerSource = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			[assembly: FoundatioModule]
+
+			namespace SharedHandlers;
+
+			public record SharedMessage;
+
+			public class SharedHandler
+			{
+				public Task HandleAsync(SharedMessage msg, CancellationToken ct) => Task.CompletedTask;
+			}
+			""";
+
+		var handlerAssembly = CreateHandlerAssembly(handlerSource);
+
+		// Consumer using sync Invoke on async handler
+		var consumerSource = """
+			using Foundatio.Mediator;
+			using SharedHandlers;
+
+			public class Consumer
+			{
+				private readonly IMediator _mediator;
+				public Consumer(IMediator mediator) => _mediator = mediator;
+
+				public void Call()
+				{
+					_mediator.Invoke(new SharedMessage());
+				}
+			}
+			""";
+
+		var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
+
+		Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
+	}
+
+	private static MetadataReference CreateHandlerAssembly(string source)
+	{
+		var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
+		var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
+
+		var references = new List<MetadataReference>
+		{
+			MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+			MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+			MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
+		};
+
+		var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+		var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
+		var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
+
+		if (File.Exists(runtimePath))
+			references.Add(MetadataReference.CreateFromFile(runtimePath));
+		if (File.Exists(netstandardPath))
+			references.Add(MetadataReference.CreateFromFile(netstandardPath));
+
+		var compilation = CSharpCompilation.Create(
+			assemblyName: "HandlerAssembly",
+			syntaxTrees: [syntaxTree],
+			references: references,
+			options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+		using var ms = new System.IO.MemoryStream();
+		var emitResult = compilation.Emit(ms);
+
+		if (!emitResult.Success)
+		{
+			var errors = string.Join("\n", emitResult.Diagnostics
+				.Where(d => d.Severity == DiagnosticSeverity.Error)
+				.Select(d => d.ToString()));
+			throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
+		}
+
+		ms.Seek(0, System.IO.SeekOrigin.Begin);
+		return MetadataReference.CreateFromStream(ms);
 	}
 }

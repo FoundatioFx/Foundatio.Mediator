@@ -17,13 +17,13 @@ Build project (triggers source generators): `dotnet build`
 Run tests (validate work): `dotnet test`
 Run benchmarks: `cd benchmarks/Foundatio.Mediator.Benchmarks; dotnet run -c Release`
 Run samples: `cd samples/ConsoleSample; dotnet run`
+Clean (removes source generated files): `dotnet clean`
 
 ## Code Conventions
 
 ### Coding Standards
 
 - Follow `.editorconfig` settings strictly
-- See [.github/instructions/general.instructions.md](.github/instructions/general.instructions.md) for complete guidelines
 - Keep comments minimal - only for complex logic or non-obvious intent
 
 ### Source Generator Code Style

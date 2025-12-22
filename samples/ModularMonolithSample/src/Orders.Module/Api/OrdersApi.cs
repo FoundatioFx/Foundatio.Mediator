@@ -64,7 +64,7 @@ public static class OrdersApi
             var result = await mediator.InvokeAsync<Result<Order>>(command);
             return result.ToCreatedResult($"/api/orders/{result.Value?.Id}");
         })
-        .WithName("EntityAction")
+        .WithName("OrderEntityAction")
         .WithSummary("Perform an action on an order");
     }
 }

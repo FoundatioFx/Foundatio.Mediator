@@ -65,10 +65,11 @@ internal static class HandlerGenerator
         source.AddGeneratedCodeAttribute();
         source.AppendLine("[ExcludeFromCodeCoverage]");
 
+        // Handler wrappers need to be public to support cross-assembly interceptors
         if (handler.IsGenericHandlerClass && handler.GenericArity > 0 && handler.GenericTypeParameters.Length == handler.GenericArity)
         {
             string genericParams = String.Join(", ", handler.GenericTypeParameters);
-            source.AppendLine($"internal static class {wrapperClassName}<{genericParams}>");
+            source.AppendLine($"public static class {wrapperClassName}<{genericParams}>");
             source.IncrementIndent();
             if (handler.GenericConstraints.Length > 0)
             {
@@ -79,7 +80,7 @@ internal static class HandlerGenerator
         }
         else
         {
-            source.AppendLine($"internal static class {wrapperClassName}");
+            source.AppendLine($"public static class {wrapperClassName}");
         }
         source.AppendLine("{");
 
@@ -667,6 +668,13 @@ internal static class HandlerGenerator
         return $"{handler.Identifier}_{handler.MessageType.Identifier}_Handler";
     }
 
+    public static string GetHandlerFullName(HandlerInfo handler, string? handlerNamespace = null, string? assemblyName = null)
+    {
+        // Handler wrappers are always generated in Foundatio.Mediator namespace
+        // The handlerNamespace and assemblyName parameters are reserved for future use
+        return $"Foundatio.Mediator.{GetHandlerClassName(handler)}";
+    }
+
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
         return handler.IsAsync ? "HandleAsync" : "Handle";
@@ -714,20 +722,32 @@ internal static class HandlerGenerator
 
             // Get handlers for this message type
             handlersByMessageType.TryGetValue(messageTypeName, out var handlersForMessage);
-            handlersForMessage ??= new List<HandlerInfo>();
+            handlersForMessage ??= [];
 
             foreach (var callSite in callSites)
             {
-                ValidateCallSite(context, callSite, handlersForMessage);
+                // No cross-assembly handlers in this context (local validation only)
+                ValidateCallSite(context, callSite, handlersForMessage, handlersForMessage, []);
             }
         }
     }
 
     // Global validation that considers all call sites discovered (including those without matching handlers)
-    public static void ValidateGlobalCallSites(SourceProductionContext context, List<HandlerInfo> handlers, System.Collections.Immutable.ImmutableArray<CallSiteInfo> allDiscoveredCallSites)
+    public static void ValidateGlobalCallSites(
+        SourceProductionContext context,
+        List<HandlerInfo> handlers,
+        System.Collections.Immutable.ImmutableArray<CallSiteInfo> allDiscoveredCallSites,
+        List<HandlerInfo>? crossAssemblyHandlers = null)
     {
-        // Group handlers by message type for validation
-        var handlersByMessageType = handlers
+        crossAssemblyHandlers ??= [];
+
+        // Group local handlers by message type for validation
+        var localHandlersByMessageType = handlers
+            .GroupBy(h => h.MessageType.FullName)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Group cross-assembly handlers by message type
+        var crossAssemblyHandlersByMessageType = crossAssemblyHandlers
             .GroupBy(h => h.MessageType.FullName)
             .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -741,18 +761,29 @@ internal static class HandlerGenerator
             string messageTypeName = kvp.Key;
             var callSites = kvp.Value;
 
-            // Get handlers for this message type
-            handlersByMessageType.TryGetValue(messageTypeName, out var handlersForMessage);
-            handlersForMessage ??= new List<HandlerInfo>();
+            // Get local and cross-assembly handlers for this message type
+            localHandlersByMessageType.TryGetValue(messageTypeName, out var localHandlers);
+            localHandlers ??= [];
+
+            crossAssemblyHandlersByMessageType.TryGetValue(messageTypeName, out var externalHandlers);
+            externalHandlers ??= [];
+
+            // Combine all handlers for validation
+            var allHandlersForMessage = localHandlers.Concat(externalHandlers).ToList();
 
             foreach (var callSite in callSites)
             {
-                ValidateCallSite(context, callSite, handlersForMessage);
+                ValidateCallSite(context, callSite, allHandlersForMessage, localHandlers, externalHandlers);
             }
         }
     }
 
-    private static void ValidateCallSite(SourceProductionContext context, CallSiteInfo callSite, List<HandlerInfo> handlersForMessage)
+    private static void ValidateCallSite(
+        SourceProductionContext context,
+        CallSiteInfo callSite,
+        List<HandlerInfo> allHandlersForMessage,
+        List<HandlerInfo> localHandlers,
+        List<HandlerInfo> crossAssemblyHandlers)
     {
         bool isInvokeCall = callSite.MethodName is "Invoke" or "InvokeAsync";
 
@@ -760,14 +791,16 @@ internal static class HandlerGenerator
             return; // Only validate Invoke calls, not Publish
 
         // If the message is a generic type parameter (e.g., T), we cannot know the handler at compile time,
-        // so do not emit FMDE007 for missing/multiple handlers.
+        // so do not emit FMED007 for missing/multiple handlers.
         if (callSite.MessageType.IsTypeParameter)
             return;
 
-        // FMED007: Multiple handlers found for invoke call
-        if (handlersForMessage.Count > 1)
+        // FMED007: Multiple handlers found for invoke call (includes both local and cross-assembly)
+        if (allHandlersForMessage.Count > 1)
         {
-            var handlerNames = string.Join(", ", handlersForMessage.Select(h => h.FullName));
+            var localNames = localHandlers.Select(h => h.FullName);
+            var externalNames = crossAssemblyHandlers.Select(h => $"{h.FullName} (referenced assembly)");
+            var handlerNames = string.Join(", ", localNames.Concat(externalNames));
             var diagnostic = new DiagnosticInfo
             {
                 Identifier = "FMED007",
@@ -781,16 +814,17 @@ internal static class HandlerGenerator
         }
 
         // No handler found - skip validation since we can't validate without a handler
-        // Cross-assembly handlers will be resolved at runtime
-        if (handlersForMessage.Count == 0)
+        if (allHandlersForMessage.Count == 0)
             return;
 
-        var handler = handlersForMessage[0];
+        var handler = allHandlersForMessage[0];
         bool isAsyncCall = callSite.MethodName == "InvokeAsync";
+        bool isCrossAssemblyHandler = crossAssemblyHandlers.Count > 0;
 
         // Evaluate specific async characteristics for precise diagnostics
         bool returnsTask = handler.ReturnType.IsTask;
         bool returnsTuple = handler.ReturnType.IsTuple;
+        // Note: Cross-assembly handlers don't have middleware info at this point
         bool hasAsyncMiddleware = handler.Middleware.Any(m => m.IsAsync);
 
         // Prefer the most specific diagnostics first when using synchronous Invoke
@@ -799,11 +833,12 @@ internal static class HandlerGenerator
             // FMED010: Sync invoke on handler that returns tuple
             if (returnsTuple)
             {
+                string handlerLocation = isCrossAssemblyHandler ? " in referenced assembly" : "";
                 var diagnostic = new DiagnosticInfo
                 {
                     Identifier = "FMED010",
                     Title = "Synchronous invoke on handler with tuple return type",
-                    Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}' that returns a tuple. Use 'InvokeAsync' instead because cascading messages need to be published asynchronously.",
+                    Message = $"Cannot use synchronous 'Invoke' on handler '{handler.FullName}'{handlerLocation} that returns a tuple. Use 'InvokeAsync' instead because cascading messages need to be published asynchronously.",
                     Severity = DiagnosticSeverity.Error,
                     Location = callSite.Location
                 };
@@ -811,7 +846,7 @@ internal static class HandlerGenerator
                 return;
             }
 
-            // FMED009: Sync invoke on handler with async middleware
+            // FMED009: Sync invoke on handler with async middleware (only applies to local handlers with middleware info)
             if (hasAsyncMiddleware)
             {
                 var asyncMiddleware = string.Join(", ", handler.Middleware.Where(m => m.IsAsync).Select(m => m.FullName));
@@ -830,11 +865,12 @@ internal static class HandlerGenerator
             // FMED008: Sync invoke on async handler (true async return)
             if (returnsTask)
             {
+                string handlerLocation = isCrossAssemblyHandler ? " in referenced assembly" : "";
                 var diagnostic = new DiagnosticInfo
                 {
                     Identifier = "FMED008",
                     Title = "Synchronous invoke on asynchronous handler",
-                    Message = $"Cannot use synchronous 'Invoke' on asynchronous handler '{handler.FullName}'. Use 'InvokeAsync' instead.",
+                    Message = $"Cannot use synchronous 'Invoke' on asynchronous handler '{handler.FullName}'{handlerLocation}. Use 'InvokeAsync' instead.",
                     Severity = DiagnosticSeverity.Error,
                     Location = callSite.Location
                 };

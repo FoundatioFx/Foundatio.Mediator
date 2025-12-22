@@ -6,6 +6,7 @@ using Orders.Module.Messages;
 using Products.Module;
 using Products.Module.Api;
 using Products.Module.Messages;
+using WebApp.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,5 +40,9 @@ app.MapProductEndpoints();
 app.MapGet("/", () => "Modular Monolith Sample with Foundatio.Mediator")
     .WithName("Home")
     .WithSummary("Home endpoint");
+
+// Map WebApp endpoints (these call handlers in other modules via cross-assembly interception)
+app.MapDashboardEndpoints();
+app.MapSearchEndpoints();
 
 app.Run();

@@ -65,10 +65,11 @@ internal static class HandlerGenerator
         source.AddGeneratedCodeAttribute();
         source.AppendLine("[ExcludeFromCodeCoverage]");
 
+        // Handler wrappers need to be public to support cross-assembly interceptors
         if (handler.IsGenericHandlerClass && handler.GenericArity > 0 && handler.GenericTypeParameters.Length == handler.GenericArity)
         {
             string genericParams = String.Join(", ", handler.GenericTypeParameters);
-            source.AppendLine($"internal static class {wrapperClassName}<{genericParams}>");
+            source.AppendLine($"public static class {wrapperClassName}<{genericParams}>");
             source.IncrementIndent();
             if (handler.GenericConstraints.Length > 0)
             {
@@ -79,7 +80,7 @@ internal static class HandlerGenerator
         }
         else
         {
-            source.AppendLine($"internal static class {wrapperClassName}");
+            source.AppendLine($"public static class {wrapperClassName}");
         }
         source.AppendLine("{");
 
@@ -667,6 +668,13 @@ internal static class HandlerGenerator
         return $"{handler.Identifier}_{handler.MessageType.Identifier}_Handler";
     }
 
+    public static string GetHandlerFullName(HandlerInfo handler, string? handlerNamespace = null, string? assemblyName = null)
+    {
+        // Handler wrappers are always generated in Foundatio.Mediator namespace
+        // The handlerNamespace and assemblyName parameters are reserved for future use
+        return $"Foundatio.Mediator.{GetHandlerClassName(handler)}";
+    }
+
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
         return handler.IsAsync ? "HandleAsync" : "Handle";
@@ -724,8 +732,10 @@ internal static class HandlerGenerator
     }
 
     // Global validation that considers all call sites discovered (including those without matching handlers)
-    public static void ValidateGlobalCallSites(SourceProductionContext context, List<HandlerInfo> handlers, System.Collections.Immutable.ImmutableArray<CallSiteInfo> allDiscoveredCallSites)
+    public static void ValidateGlobalCallSites(SourceProductionContext context, List<HandlerInfo> handlers, System.Collections.Immutable.ImmutableArray<CallSiteInfo> allDiscoveredCallSites, HashSet<string>? crossAssemblyHandlerMessageTypes = null)
     {
+        crossAssemblyHandlerMessageTypes ??= new HashSet<string>();
+
         // Group handlers by message type for validation
         var handlersByMessageType = handlers
             .GroupBy(h => h.MessageType.FullName)
@@ -740,6 +750,10 @@ internal static class HandlerGenerator
         {
             string messageTypeName = kvp.Key;
             var callSites = kvp.Value;
+
+            // Skip validation for call sites that have handlers in referenced assemblies
+            if (crossAssemblyHandlerMessageTypes.Contains(messageTypeName))
+                continue;
 
             // Get handlers for this message type
             handlersByMessageType.TryGetValue(messageTypeName, out var handlersForMessage);

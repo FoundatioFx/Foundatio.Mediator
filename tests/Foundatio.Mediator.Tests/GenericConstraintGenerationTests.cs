@@ -28,7 +28,7 @@ public class DualHandler<T1,T2>
         Assert.Contains("where T2 : struct", code);
 
         // Ensure they are attached to the wrapper class (appear after the class declaration line)
-        int classLine = code.IndexOf("internal static class DualHandler_DualCommand_T1_T2_Handler<", StringComparison.Ordinal);
+        int classLine = code.IndexOf("public static class DualHandler_DualCommand_T1_T2_Handler<", StringComparison.Ordinal);
         Assert.True(classLine >= 0);
         int t1Constraint = code.IndexOf("where T1 : class, Foundatio.Mediator.ICommand, new()", classLine, StringComparison.Ordinal);
         int t2Constraint = code.IndexOf("where T2 : struct", classLine, StringComparison.Ordinal);

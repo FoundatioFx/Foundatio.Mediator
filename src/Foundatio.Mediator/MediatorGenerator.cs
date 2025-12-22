@@ -86,10 +86,23 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var allMiddleware = middleware.ToList();
         allMiddleware.AddRange(metadataMiddleware);
 
+        // Scan referenced assemblies for cross-assembly handlers
+        var crossAssemblyHandlers = CrossAssemblyHandlerScanner.ScanReferencedAssemblies(compilation);
+
+        // Build lookup of handlers by message type (both local and cross-assembly)
+        var allHandlersByMessageType = handlers
+            .Concat(crossAssemblyHandlers)
+            .GroupBy(h => h.MessageType)
+            .ToDictionary(g => g.Key, g => g.ToArray());
+
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
             .GroupBy(cs => cs.MessageType)
             .ToDictionary(g => g.Key, g => g.ToArray());
+
+        // Track which call sites are handled by cross-assembly handlers
+        var crossAssemblyCallSites = new List<CallSiteInfo>();
+        var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlers.Select(h => h.MessageType.FullName));
 
         var handlersWithInfo = new List<HandlerInfo>();
         foreach (var handler in handlers)
@@ -99,8 +112,25 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
         }
 
+        // Collect call sites that need cross-assembly interceptors
+        foreach (var callSite in callSites)
+        {
+            if (callSite.IsPublish)
+                continue;
+
+            // Check if this message type has a handler in a referenced assembly but NOT in the current assembly
+            bool hasLocalHandler = handlers.Any(h => h.MessageType.FullName == callSite.MessageType.FullName);
+            bool hasCrossAssemblyHandler = crossAssemblyHandlerMessageTypes.Contains(callSite.MessageType.FullName);
+
+            if (!hasLocalHandler && hasCrossAssemblyHandler)
+            {
+                crossAssemblyCallSites.Add(callSite);
+            }
+        }
+
         // Always generate diagnostics related to call sites, even if there are no handlers
-        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites);
+        // But skip validation for call sites that have cross-assembly handlers
+        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerMessageTypes);
 
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
@@ -108,10 +138,21 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, configuration.HandlerLifetime);
         }
 
+        // Generate the InterceptsLocation attribute if we need interceptors (for local or cross-assembly handlers)
+        bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0;
+        if (needsInterceptors)
+        {
+            InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
+        }
+
+        // Generate cross-assembly interceptors if there are call sites to handlers in referenced assemblies
+        if (crossAssemblyCallSites.Count > 0)
+        {
+            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlers, crossAssemblyCallSites.ToImmutableArray(), configuration.InterceptorsEnabled);
+        }
+
         if (handlersWithInfo.Count == 0)
             return;
-
-        InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
     }

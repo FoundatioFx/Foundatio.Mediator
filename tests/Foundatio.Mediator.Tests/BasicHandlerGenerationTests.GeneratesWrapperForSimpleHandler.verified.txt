@@ -112,7 +112,7 @@ namespace Foundatio.Mediator;
 
 [global::System.CodeDom.Compiler.GeneratedCode("Foundatio.Mediator", "<version>")]
 [ExcludeFromCodeCoverage]
-internal static class PingHandler_Ping_Handler
+public static class PingHandler_Ping_Handler
 {
     public static async System.Threading.Tasks.Task<string> HandleAsync(System.IServiceProvider serviceProvider, Ping message, System.Threading.CancellationToken cancellationToken)
     {

@@ -64,7 +64,7 @@ public static class ProductsApi
             var result = await mediator.InvokeAsync<Result<Product>>(command);
             return result.ToCreatedResult($"/api/products/{result.Value?.Id}");
         })
-        .WithName("EntityAction")
+        .WithName("ProductEntityAction")
         .WithSummary("Perform an action on a product");
     }
 }

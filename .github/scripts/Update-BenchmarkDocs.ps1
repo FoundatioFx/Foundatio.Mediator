@@ -59,6 +59,41 @@ Write-Host "Parsing benchmark results..." -ForegroundColor Cyan
 $csv = Import-Csv $ResultsFile
 $currentDate = Get-Date -Format 'yyyy-MM-dd'
 
+# Group benchmarks by operation type (Command, Query, Event/Publish, QueryWithDependencies)
+$groups = @{
+    'Command' = @()
+    'Query' = @()
+    'Publish' = @()
+    'QueryWithDependencies' = @()
+}
+
+# Define the order of implementations
+$implOrder = @('Direct', 'Foundatio', 'MediatR', 'MassTransit')
+
+foreach ($row in $csv) {
+    $method = $row.Method
+    if ($method -match 'QueryWithDependencies') {
+        $groups['QueryWithDependencies'] += $row
+    } elseif ($method -match 'Command') {
+        $groups['Command'] += $row
+    } elseif ($method -match 'Query') {
+        $groups['Query'] += $row
+    } elseif ($method -match 'Publish|Event') {
+        $groups['Publish'] += $row
+    }
+}
+
+# Sort each group by implementation order
+foreach ($key in $groups.Keys) {
+    $groups[$key] = $groups[$key] | Sort-Object {
+        $method = $_.Method
+        for ($i = 0; $i -lt $implOrder.Count; $i++) {
+            if ($method -match "^$($implOrder[$i])_") { return $i }
+        }
+        return 999
+    }
+}
+
 # Build the markdown content
 $markdown = @"
 # Performance
@@ -68,13 +103,53 @@ Foundatio Mediator achieves near-direct call performance through C# interceptors
 ## Benchmark Results
 
 > 📊 **Last Updated:** $currentDate
-> 🔧 **Generated automatically by [GitHub Actions](https://github.com/FoundatioFx/Foundatio.Mediator/actions/workflows/benchmarks.yml)**
+
+### Commands
 
 | Method | Mean | Allocated |
 |:-------|-----:|----------:|
 "@
 
-foreach ($row in $csv) {
+foreach ($row in $groups['Command']) {
+    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
+}
+
+$markdown += @"
+
+
+### Queries
+
+| Method | Mean | Allocated |
+|:-------|-----:|----------:|
+"@
+
+foreach ($row in $groups['Query']) {
+    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
+}
+
+$markdown += @"
+
+
+### Events (Publish)
+
+| Method | Mean | Allocated |
+|:-------|-----:|----------:|
+"@
+
+foreach ($row in $groups['Publish']) {
+    $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
+}
+
+$markdown += @"
+
+
+### Queries with Dependencies
+
+| Method | Mean | Allocated |
+|:-------|-----:|----------:|
+"@
+
+foreach ($row in $groups['QueryWithDependencies']) {
     $markdown += "`n| $($row.Method) | $($row.Mean) | $($row.Allocated) |"
 }
 

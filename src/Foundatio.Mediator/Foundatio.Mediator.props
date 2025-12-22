@@ -4,5 +4,6 @@
     <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
     <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
+    <CompilerVisibleProperty Include="MediatorDisableConventionalDiscovery" />
   </ItemGroup>
 </Project>

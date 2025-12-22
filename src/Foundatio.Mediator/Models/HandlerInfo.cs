@@ -23,6 +23,11 @@ internal readonly record struct HandlerInfo
     public string? MessageGenericTypeDefinitionFullName { get; init; }
     public int MessageGenericArity { get; init; }
     public EquatableArray<string> GenericConstraints { get; init; }
+    /// <summary>
+    /// Whether this handler was discovered via explicit means (IHandler interface or [Handler] attribute)
+    /// rather than conventional discovery (class name ending with Handler/Consumer).
+    /// </summary>
+    public bool IsExplicitlyDeclared { get; init; }
 }
 
 internal readonly record struct ParameterInfo

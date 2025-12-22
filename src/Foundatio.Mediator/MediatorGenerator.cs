@@ -32,7 +32,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     && openTelemetrySwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
                 var openTelemetryEnabled = !openTelemetryDisabled;
 
-                return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled);
+                // Read conventional discovery disabled property. Default: false (conventional discovery enabled by default)
+                var conventionalDiscoveryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableConventionalDiscoveryPropertyName}", out string? conventionalDiscoverySwitch)
+                    && conventionalDiscoverySwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled);
             })
             .WithTrackingName(TrackingNames.Settings);
 
@@ -79,6 +83,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
     private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, GeneratorConfiguration configuration, Compilation compilation, SourceProductionContext context)
     {
+        // Filter out conventionally-discovered handlers when conventional discovery is disabled
+        var filteredHandlers = configuration.ConventionalDiscoveryDisabled
+            ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
+            : handlers;
+
         // Scan referenced assemblies for cross-assembly middleware
         var metadataMiddleware = MetadataMiddlewareScanner.ScanReferencedAssemblies(compilation);
 
@@ -99,7 +108,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlers.Select(h => h.MessageType.FullName));
 
         var handlersWithInfo = new List<HandlerInfo>();
-        foreach (var handler in handlers)
+        foreach (var handler in filteredHandlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
             var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
@@ -113,7 +122,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 continue;
 
             // Check if this message type has a handler in a referenced assembly but NOT in the current assembly
-            bool hasLocalHandler = handlers.Any(h => h.MessageType.FullName == callSite.MessageType.FullName);
+            bool hasLocalHandler = filteredHandlers.Any(h => h.MessageType.FullName == callSite.MessageType.FullName);
             bool hasCrossAssemblyHandler = crossAssemblyHandlerMessageTypes.Contains(callSite.MessageType.FullName);
 
             if (!hasLocalHandler && hasCrossAssemblyHandler)

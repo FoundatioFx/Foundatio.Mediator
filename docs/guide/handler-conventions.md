@@ -2,6 +2,8 @@
 
 Foundatio Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
 
+Alternatively, you can mark handlers explicitly using the `IHandler` marker interface or the `[Handler]` attribute. See [Explicit Handler Declaration](#explicit-handler-declaration) for details.
+
 ## Class Naming Conventions
 
 Handler classes must end with one of these suffixes:
@@ -461,6 +463,47 @@ public class OrderHandler
     public Result Handle(ProcessPayment cmd) { /* ... */ }
 }
 ```
+
+## Explicit Handler Declaration
+
+In addition to naming conventions, handlers can be explicitly declared using:
+
+1. **Interface** - Classes implementing the `IHandler` marker interface
+2. **Attribute** - Classes or methods decorated with `[Handler]`
+
+```csharp
+// Discovered via IHandler interface
+public class OrderProcessor : IHandler
+{
+    public Order Handle(CreateOrder command) { }
+}
+
+// Discovered via [Handler] attribute on class
+[Handler]
+public class EmailService
+{
+    public void Handle(SendEmail command) { }
+}
+
+// Discovered via [Handler] attribute on method
+public class NotificationService
+{
+    [Handler]
+    public void Process(SendNotification command) { }
+}
+```
+
+### Disabling Conventional Discovery
+
+If you prefer explicit handler declaration over naming conventions, you can disable conventional discovery entirely:
+
+```xml
+<PropertyGroup>
+    <MediatorDisableConventionalDiscovery>true</MediatorDisableConventionalDiscovery>
+</PropertyGroup>
+```
+
+When disabled, only handlers that implement `IHandler` or have the `[Handler]` attribute are discovered. Classes with names ending in `Handler` or `Consumer` will not be automatically discovered.
 
 ## Next Steps
 

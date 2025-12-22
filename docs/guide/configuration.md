@@ -18,6 +18,9 @@ These properties control the source generator at compile time and affect code ge
 
     <!-- Disable OpenTelemetry integration (default: false) -->
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
+
+    <!-- Disable conventional handler discovery (default: false) -->
+    <MediatorDisableConventionalDiscovery>true</MediatorDisableConventionalDiscovery>
 </PropertyGroup>
 ```
 
@@ -44,6 +47,13 @@ These properties control the source generator at compile time and affect code ge
 - **Effect:** When `true`, disables OpenTelemetry integration code generation
 - **Use Case:** Reduce generated code size when telemetry is not needed
 
+**`MediatorDisableConventionalDiscovery`**
+
+- **Values:** `true`, `false`
+- **Default:** `false`
+- **Effect:** When `true`, disables convention-based handler discovery (class names ending with `Handler` or `Consumer`). Only handlers that implement `IHandler` interface or have the `[Handler]` attribute will be discovered.
+- **Use Case:** Explicit control over which classes are treated as handlers, avoiding accidental handler discovery
+
 ### Example .csproj Configuration
 
 ```xml
@@ -56,6 +66,7 @@ These properties control the source generator at compile time and affect code ge
     <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
+    <MediatorDisableConventionalDiscovery>false</MediatorDisableConventionalDiscovery>
   </PropertyGroup>
 
   <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />

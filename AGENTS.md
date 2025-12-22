@@ -299,6 +299,10 @@ Defined in `src/Foundatio.Mediator/Foundatio.Mediator.props`:
 
 <!-- Disable OpenTelemetry tracing (default: false) -->
 <MediatorDisableOpenTelemetry>true|false</MediatorDisableOpenTelemetry>
+
+<!-- Disable conventional handler discovery (default: false) -->
+<!-- When true, only handlers with IHandler interface or [Handler] attribute are discovered -->
+<MediatorDisableConventionalDiscovery>true|false</MediatorDisableConventionalDiscovery>
 ```
 
 Requirements for interceptors:

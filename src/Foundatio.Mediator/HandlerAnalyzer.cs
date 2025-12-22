@@ -83,6 +83,9 @@ internal static class HandlerAnalyzer
         bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IHandler");
         bool hasClassHandlerAttribute = classSymbol.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
 
+        // Explicit discovery: IHandler interface or [Handler] attribute on class
+        bool isExplicitlyDeclared = implementsMarker || hasClassHandlerAttribute;
+
         bool treatAsHandlerClass = nameMatches || implementsMarker || hasClassHandlerAttribute;
 
         var handlerMethods = GetMethods(classSymbol)
@@ -158,6 +161,10 @@ internal static class HandlerAnalyzer
                 }
             }
 
+            // Check if this specific method has [Handler] attribute (also counts as explicit declaration)
+            bool hasMethodHandlerAttribute = handlerMethod.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
+            bool methodIsExplicitlyDeclared = isExplicitlyDeclared || hasMethodHandlerAttribute;
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -177,6 +184,7 @@ internal static class HandlerAnalyzer
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],
+                IsExplicitlyDeclared = methodIsExplicitlyDeclared,
             });
         }
 

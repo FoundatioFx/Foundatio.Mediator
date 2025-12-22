@@ -103,8 +103,8 @@ internal static class CrossAssemblyHandlerScanner
             if (classSymbol.DeclaredAccessibility != Accessibility.Public)
                 return;
 
-            // Exclude generated handler classes in Foundatio.Mediator namespace with names ending in "_Handler"
-            if (classSymbol.ContainingNamespace?.ToDisplayString() == "Foundatio.Mediator" &&
+            // Exclude generated handler classes in Foundatio.Mediator.Generated namespace with names ending in "_Handler"
+            if (classSymbol.ContainingNamespace?.ToDisplayString() == "Foundatio.Mediator.Generated" &&
                 classSymbol.Name.EndsWith("_Handler"))
                 return;
 

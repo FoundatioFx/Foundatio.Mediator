@@ -50,7 +50,7 @@ internal static class CrossAssemblyInterceptorGenerator
             using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
 
-            namespace Foundatio.Mediator;
+            namespace Foundatio.Mediator.Generated;
             """);
 
         source.AppendLine();

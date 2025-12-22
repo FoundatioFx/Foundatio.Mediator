@@ -58,7 +58,7 @@ internal static class HandlerGenerator
             using Microsoft.Extensions.DependencyInjection;
             using Microsoft.Extensions.Logging;
 
-            namespace Foundatio.Mediator;
+            namespace Foundatio.Mediator.Generated;
             """);
 
         source.AppendLine();
@@ -670,9 +670,9 @@ internal static class HandlerGenerator
 
     public static string GetHandlerFullName(HandlerInfo handler, string? handlerNamespace = null, string? assemblyName = null)
     {
-        // Handler wrappers are always generated in Foundatio.Mediator namespace
+        // Handler wrappers are always generated in Foundatio.Mediator.Generated namespace
         // The handlerNamespace and assemblyName parameters are reserved for future use
-        return $"Foundatio.Mediator.{GetHandlerClassName(handler)}";
+        return $"Foundatio.Mediator.Generated.{GetHandlerClassName(handler)}";
     }
 
     public static string GetHandlerMethodName(HandlerInfo handler)

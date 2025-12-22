@@ -29,6 +29,7 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("using System.Diagnostics.CodeAnalysis;");
             source.AppendLine("using System.Threading;");
             source.AppendLine("using System.Threading.Tasks;");
+            source.AppendLine("using Foundatio.Mediator.Generated;");
         }
 
         source.AppendLine();

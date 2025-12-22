@@ -60,12 +60,20 @@ internal static class CrossAssemblyInterceptorGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
+        bool hasAsyncHandlers = false;
+        bool hasSyncHandlers = false;
+
         int messageTypeCounter = 0;
         foreach (var group in crossAssemblyCallSites)
         {
             var messageTypeName = group.Key;
             var handler = handlersByMessageType[messageTypeName];
             var callSitesForMessage = group.ToList();
+
+            if (handler.IsAsync)
+                hasAsyncHandlers = true;
+            else
+                hasSyncHandlers = true;
 
             // Group call sites by method name and response type
             var callSiteGroups = callSitesForMessage
@@ -83,7 +91,7 @@ internal static class CrossAssemblyInterceptorGenerator
         }
 
         // Generate shared helper methods
-        GenerateGetOrCreateScope(source);
+        GenerateGetOrCreateScope(source, hasAsyncHandlers, hasSyncHandlers);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -123,7 +131,14 @@ internal static class CrossAssemblyInterceptorGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
-        source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+        if (handler.IsAsync)
+        {
+            source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
+        }
+        else
+        {
+            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+        }
         source.AppendLine($"var typedMessage = (global::{handler.MessageType.FullName})message;");
 
         // Call the handler in the referenced assembly
@@ -185,14 +200,29 @@ internal static class CrossAssemblyInterceptorGenerator
         source.AppendLine("}");
     }
 
-    private static void GenerateGetOrCreateScope(IndentedStringBuilder source)
+    private static void GenerateGetOrCreateScope(IndentedStringBuilder source, bool hasAsyncHandlers, bool hasSyncHandlers)
     {
-        source.AppendLines("""
-            [DebuggerStepThrough]
-            private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
-            {
-                return HandlerScope.GetOrCreate(mediator, cancellationToken);
-            }
-            """);
+        if (hasSyncHandlers)
+        {
+            source.AppendLines("""
+                [DebuggerStepThrough]
+                private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
+                {
+                    return HandlerScope.GetOrCreate(mediator, cancellationToken);
+                }
+                """);
+        }
+        if (hasAsyncHandlers)
+        {
+            if (hasSyncHandlers)
+                source.AppendLine();
+            source.AppendLines("""
+                [DebuggerStepThrough]
+                private static System.Threading.Tasks.ValueTask<HandlerScopeValue> GetOrCreateScopeAsync(IMediator mediator, CancellationToken cancellationToken)
+                {
+                    return HandlerScope.GetOrCreateAsync(mediator, cancellationToken);
+                }
+                """);
+        }
     }
 }

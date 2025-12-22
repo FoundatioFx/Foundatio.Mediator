@@ -135,7 +135,7 @@ public static class PingHandler_Ping_Handler
 
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
-        using var handlerScope = GetOrCreateScope(mediator, cancellationToken);
+        await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);
         var typedMessage = (Ping)message;
         var result = await HandleAsync(handlerScope.Services, typedMessage, cancellationToken);
 
@@ -148,9 +148,9 @@ public static class PingHandler_Ping_Handler
     }
 
     [DebuggerStepThrough]
-    private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
+    private static System.Threading.Tasks.ValueTask<HandlerScopeValue> GetOrCreateScopeAsync(IMediator mediator, CancellationToken cancellationToken)
     {
-        return HandlerScope.GetOrCreate(mediator, cancellationToken);
+        return HandlerScope.GetOrCreateAsync(mediator, cancellationToken);
     }
 
     [DebuggerStepThrough]

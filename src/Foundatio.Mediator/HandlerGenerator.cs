@@ -381,7 +381,14 @@ internal static class HandlerGenerator
 
         using (source.Indent())
         {
-            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+            if (handler.IsAsync)
+            {
+                source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
+            }
+            else
+            {
+                source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+            }
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
             string stronglyTypedMethodName = GetHandlerMethodName(handler);
@@ -480,7 +487,14 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+        if (handler.IsAsync)
+        {
+            source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
+        }
+        else
+        {
+            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+        }
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
         asyncModifier = handler.IsAsync ? "await " : "";
@@ -641,14 +655,28 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateScope(IndentedStringBuilder source, HandlerInfo handler)
     {
-        source.AppendLine()
-              .AppendLines($$"""
-                [DebuggerStepThrough]
-                private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
-                {
-                    return HandlerScope.GetOrCreate(mediator, cancellationToken);
-                }
-                """);
+        if (handler.IsAsync)
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    [DebuggerStepThrough]
+                    private static System.Threading.Tasks.ValueTask<HandlerScopeValue> GetOrCreateScopeAsync(IMediator mediator, CancellationToken cancellationToken)
+                    {
+                        return HandlerScope.GetOrCreateAsync(mediator, cancellationToken);
+                    }
+                    """);
+        }
+        else
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    [DebuggerStepThrough]
+                    private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
+                    {
+                        return HandlerScope.GetOrCreate(mediator, cancellationToken);
+                    }
+                    """);
+        }
     }
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)

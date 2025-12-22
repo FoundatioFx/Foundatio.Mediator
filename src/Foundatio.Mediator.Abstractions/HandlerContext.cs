@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator;
 
-public sealed class HandlerScopeValue(IServiceScope scope, IDisposable disposable, CancellationToken token) : IDisposable
+public sealed class HandlerScopeValue(IServiceScope scope, IDisposable? disposable, CancellationToken token) : IDisposable, IAsyncDisposable
 {
     public IServiceScope Scope { get; } = scope ?? throw new ArgumentNullException(nameof(scope));
     public IServiceProvider Services => Scope.ServiceProvider;
@@ -10,7 +10,16 @@ public sealed class HandlerScopeValue(IServiceScope scope, IDisposable disposabl
 
     public void Dispose()
     {
-        disposable.Dispose();
+        disposable?.Dispose();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        if (disposable is IAsyncDisposable asyncDisposable)
+            return asyncDisposable.DisposeAsync();
+
+        disposable?.Dispose();
+        return default;
     }
 }
 
@@ -34,6 +43,21 @@ public static class HandlerScope
         return _stack.Value!.Peek();
     }
 
+    public static ValueTask<HandlerScopeValue> GetOrCreateAsync(IMediator mediator, CancellationToken cancellationToken)
+    {
+        if (mediator is null) throw new ArgumentNullException(nameof(mediator));
+
+        if (_stack.Value is null or { Count: 0 })
+        {
+            var serviceProvider = (IServiceProvider)mediator;
+            _stack.Value ??= new Stack<HandlerScopeValue>(4);
+            var asyncScope = serviceProvider.CreateAsyncScope();
+            _stack.Value.Push(new HandlerScopeValue(asyncScope, new AsyncPopScope(asyncScope), cancellationToken));
+        }
+
+        return new ValueTask<HandlerScopeValue>(_stack.Value!.Peek());
+    }
+
     public static IDisposable Push(HandlerScopeValue value)
     {
         _stack.Value ??= new Stack<HandlerScopeValue>(4);
@@ -48,6 +72,36 @@ public static class HandlerScope
             var s = _stack.Value;
             if (s is { Count: > 0 })
                 s.Pop();
+        }
+    }
+
+    private sealed class AsyncPopScope : IDisposable, IAsyncDisposable
+    {
+        private readonly IAsyncDisposable _scope;
+
+        public AsyncPopScope(IAsyncDisposable scope)
+        {
+            _scope = scope;
+        }
+
+        public void Dispose()
+        {
+            var s = _stack.Value;
+            if (s is { Count: > 0 })
+                s.Pop();
+
+            // Sync disposal - best effort
+            if (_scope is IDisposable disposable)
+                disposable.Dispose();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            var s = _stack.Value;
+            if (s is { Count: > 0 })
+                s.Pop();
+
+            return _scope.DisposeAsync();
         }
     }
 }

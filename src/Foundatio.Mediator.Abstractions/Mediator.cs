@@ -56,6 +56,53 @@ public class Mediator : IMediator, IServiceProvider
         return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
     }
 
+    /// <summary>
+    /// Internal method to invoke a handler with a specific mediator instance (used by ScopedMediator).
+    /// </summary>
+    internal ValueTask InvokeAsyncWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
+    {
+        var handlerFunc = GetInvokeAsyncDelegate(message.GetType());
+        return handlerFunc(mediator, message, cancellationToken);
+    }
+
+    /// <summary>
+    /// Internal method to invoke a handler with a specific mediator instance (used by ScopedMediator).
+    /// </summary>
+    internal async ValueTask<TResponse> InvokeAsyncWithMediator<TResponse>(IMediator mediator, object message, CancellationToken cancellationToken)
+    {
+        var handlerFunc = GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
+        object? result = await handlerFunc(mediator, message, cancellationToken);
+        return (TResponse)result!;
+    }
+
+    /// <summary>
+    /// Internal method to invoke a handler synchronously with a specific mediator instance (used by ScopedMediator).
+    /// </summary>
+    internal void InvokeWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
+    {
+        var handlerFunc = GetInvokeDelegate(message.GetType());
+        handlerFunc(mediator, message, cancellationToken);
+    }
+
+    /// <summary>
+    /// Internal method to invoke a handler synchronously with a specific mediator instance (used by ScopedMediator).
+    /// </summary>
+    internal TResponse InvokeWithMediator<TResponse>(IMediator mediator, object message, CancellationToken cancellationToken)
+    {
+        var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
+        object? result = handlerFunc(mediator, message, cancellationToken);
+        return (TResponse)result!;
+    }
+
+    /// <summary>
+    /// Internal method to publish a message with a specific mediator instance (used by ScopedMediator).
+    /// </summary>
+    internal ValueTask PublishAsyncWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
+    {
+        var handlersList = GetAllApplicableHandlers(message).ToList();
+        return _configuration.NotificationPublisher.PublishAsync(mediator, handlersList, message, cancellationToken);
+    }
+
     public void ShowRegisteredHandlers()
     {
         var registrations = _serviceProvider.GetServices<HandlerRegistration>().ToArray();

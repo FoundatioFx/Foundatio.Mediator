@@ -60,20 +60,12 @@ internal static class CrossAssemblyInterceptorGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
-        bool hasAsyncHandlers = false;
-        bool hasSyncHandlers = false;
-
         int messageTypeCounter = 0;
         foreach (var group in crossAssemblyCallSites)
         {
             var messageTypeName = group.Key;
             var handler = handlersByMessageType[messageTypeName];
             var callSitesForMessage = group.ToList();
-
-            if (handler.IsAsync)
-                hasAsyncHandlers = true;
-            else
-                hasSyncHandlers = true;
 
             // Group call sites by method name and response type
             var callSiteGroups = callSitesForMessage
@@ -89,9 +81,6 @@ internal static class CrossAssemblyInterceptorGenerator
 
             messageTypeCounter++;
         }
-
-        // Generate shared helper methods
-        GenerateGetOrCreateScope(source, hasAsyncHandlers, hasSyncHandlers);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -133,12 +122,13 @@ internal static class CrossAssemblyInterceptorGenerator
 
         if (handler.IsAsync)
         {
-            source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
+            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
         }
         else
         {
-            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
         }
+
         source.AppendLine($"var typedMessage = (global::{handler.MessageType.FullName})message;");
 
         // Call the handler in the referenced assembly
@@ -147,7 +137,7 @@ internal static class CrossAssemblyInterceptorGenerator
         if (handler.ReturnType.IsTuple)
         {
             // Handle tuple return types (cascading messages)
-            source.AppendLine($"var result = {awaitKeyword}{wrapperClassName}.{handlerMethodName}(handlerScope.Services, typedMessage, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
             source.AppendLine();
 
             // Find the return item and publish items
@@ -161,7 +151,7 @@ internal static class CrossAssemblyInterceptorGenerator
             foreach (var publishItem in publishItems)
             {
                 source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await mediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
+                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
             }
 
             if (publishItems.Count > 0)
@@ -176,7 +166,7 @@ internal static class CrossAssemblyInterceptorGenerator
 
             if (responseType.IsVoid)
             {
-                source.AppendLine($"{awaitKeyword}{wrapperClassName}.{handlerMethodName}(handlerScope.Services, typedMessage, cancellationToken);");
+                source.AppendLine($"{awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
 
                 if (needsValueTaskWrap)
                 {
@@ -187,42 +177,16 @@ internal static class CrossAssemblyInterceptorGenerator
             {
                 if (needsValueTaskWrap)
                 {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({wrapperClassName}.{handlerMethodName}(handlerScope.Services, typedMessage, cancellationToken));");
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken));");
                 }
                 else
                 {
-                    source.AppendLine($"return {awaitKeyword}{wrapperClassName}.{handlerMethodName}(handlerScope.Services, typedMessage, cancellationToken);");
+                    source.AppendLine($"return {awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
                 }
             }
         }
 
         source.DecrementIndent();
         source.AppendLine("}");
-    }
-
-    private static void GenerateGetOrCreateScope(IndentedStringBuilder source, bool hasAsyncHandlers, bool hasSyncHandlers)
-    {
-        if (hasSyncHandlers)
-        {
-            source.AppendLines("""
-                [DebuggerStepThrough]
-                private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
-                {
-                    return HandlerScope.GetOrCreate(mediator, cancellationToken);
-                }
-                """);
-        }
-        if (hasAsyncHandlers)
-        {
-            if (hasSyncHandlers)
-                source.AppendLine();
-            source.AppendLines("""
-                [DebuggerStepThrough]
-                private static System.Threading.Tasks.ValueTask<HandlerScopeValue> GetOrCreateScopeAsync(IMediator mediator, CancellationToken cancellationToken)
-                {
-                    return HandlerScope.GetOrCreateAsync(mediator, cancellationToken);
-                }
-                """);
-        }
     }
 }

@@ -92,8 +92,6 @@ internal static class HandlerGenerator
 
         GenerateInterceptorMethods(source, handler, configuration.InterceptorsEnabled);
 
-        GenerateGetOrCreateScope(source, handler);
-
         if (!handler.IsStatic)
         {
             GenerateGetOrCreateHandler(source, handler);
@@ -378,70 +376,70 @@ internal static class HandlerGenerator
             : "public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
 
         source.AppendLine("{");
+        source.IncrementIndent();
 
-        using (source.Indent())
+        if (handler.IsAsync)
         {
-            if (handler.IsAsync)
-            {
-                source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
-            }
-            else
-            {
-                source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
-            }
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            string stronglyTypedMethodName = GetHandlerMethodName(handler);
-            string asyncModifier = handler.IsAsync ? "await " : "";
-            string result = handler.ReturnType.IsVoid ? "" : "var result = ";
-
-            source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(handlerScope.Services, typedMessage, cancellationToken);");
-
-            if (handler.ReturnType.IsTuple)
-            {
-                source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
-            }
-            else if (handler.HasReturnValue)
-            {
-                source.AppendLine();
-                source.AppendLine("if (responseType == null)");
-                source.AppendLine("{");
-                source.AppendLine("    return null;");
-                source.AppendLine("}");
-                source.AppendLine();
-
-                if (handler.ReturnType.IsResult)
-                {
-                    source.AppendLine("""
-                        if (result == null || result.GetType() == responseType || responseType.IsAssignableFrom(result.GetType()))
-                        {
-                            return result;
-                        }
-
-                        if (result is IResult r)
-                        {
-                            if (!r.IsSuccess)
-                            {
-                                throw new InvalidCastException($"Handler returned failed result with status {r.Status} for requested type { responseType?.Name ?? "null" }");
-                            }
-
-                            var resultValue = r.GetValue();
-                            if (resultValue != null && responseType.IsAssignableFrom(resultValue.GetType()))
-                            {
-                                return resultValue;
-                            }
-                        }
-                        """);
-                }
-
-                source.AppendLine(!handler.ReturnType.IsVoid ? "return result;" : "return null;");
-            }
-            else
-            {
-                source.AppendLine("return null;");
-            }
+            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+        }
+        else
+        {
+            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
         }
 
+        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+
+        string stronglyTypedMethodName = GetHandlerMethodName(handler);
+        string asyncModifier = handler.IsAsync ? "await " : "";
+        string result = handler.ReturnType.IsVoid ? "" : "var result = ";
+
+        source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+
+        if (handler.ReturnType.IsTuple)
+        {
+            source.AppendLine("return await PublishCascadingMessagesAsync(scopedMediator, result, responseType);");
+        }
+        else if (handler.HasReturnValue)
+        {
+            source.AppendLine();
+            source.AppendLine("if (responseType == null)");
+            source.AppendLine("{");
+            source.AppendLine("    return null;");
+            source.AppendLine("}");
+            source.AppendLine();
+
+            if (handler.ReturnType.IsResult)
+            {
+                source.AppendLine("""
+                    if (result == null || result.GetType() == responseType || responseType.IsAssignableFrom(result.GetType()))
+                    {
+                        return result;
+                    }
+
+                    if (result is IResult r)
+                    {
+                        if (!r.IsSuccess)
+                        {
+                            throw new InvalidCastException($"Handler returned failed result with status {r.Status} for requested type { responseType?.Name ?? "null" }");
+                        }
+
+                        var resultValue = r.GetValue();
+                        if (resultValue != null && responseType.IsAssignableFrom(resultValue.GetType()))
+                        {
+                            return resultValue;
+                        }
+                    }
+                    """);
+            }
+
+            source.AppendLine(!handler.ReturnType.IsVoid ? "return result;" : "return null;");
+        }
+        else
+        {
+            source.AppendLine("return null;");
+        }
+
+        source.DecrementIndent();
         source.AppendLine("}");
     }
 
@@ -489,18 +487,19 @@ internal static class HandlerGenerator
 
         if (handler.IsAsync)
         {
-            source.AppendLine("await using var handlerScope = await GetOrCreateScopeAsync(mediator, cancellationToken);");
+            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
         }
         else
         {
-            source.AppendLine("using var handlerScope = GetOrCreateScope(mediator, cancellationToken);");
+            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
         }
+
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
         asyncModifier = handler.IsAsync ? "await " : "";
         if (handler.ReturnType.IsTuple)
         {
-            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
+            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
             source.AppendLine();
 
             var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
@@ -513,7 +512,7 @@ internal static class HandlerGenerator
             foreach (var publishItem in publishItems)
             {
                 source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await mediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
+                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
             }
             source.AppendLineIf(publishItems.Any());
 
@@ -525,7 +524,7 @@ internal static class HandlerGenerator
 
             if (responseType.IsVoid)
             {
-                source.AppendLine($"{asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
+                source.AppendLine($"{asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
 
                 if (needsValueTaskWrap)
                 {
@@ -536,17 +535,16 @@ internal static class HandlerGenerator
             {
                 if (needsValueTaskWrap)
                 {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(handlerScope.Services, typedMessage, cancellationToken));");
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken));");
                 }
                 else
                 {
-                    source.AppendLine($"return {asyncModifier}{handlerMethod}(handlerScope.Services, typedMessage, cancellationToken);");
+                    source.AppendLine($"return {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
                 }
             }
         }
 
         source.DecrementIndent();
-
         source.AppendLine("}");
     }
 
@@ -653,31 +651,7 @@ internal static class HandlerGenerator
                 """);
     }
 
-    private static void GenerateGetOrCreateScope(IndentedStringBuilder source, HandlerInfo handler)
-    {
-        if (handler.IsAsync)
-        {
-            source.AppendLine()
-                  .AppendLines($$"""
-                    [DebuggerStepThrough]
-                    private static System.Threading.Tasks.ValueTask<HandlerScopeValue> GetOrCreateScopeAsync(IMediator mediator, CancellationToken cancellationToken)
-                    {
-                        return HandlerScope.GetOrCreateAsync(mediator, cancellationToken);
-                    }
-                    """);
-        }
-        else
-        {
-            source.AppendLine()
-                  .AppendLines($$"""
-                    [DebuggerStepThrough]
-                    private static HandlerScopeValue GetOrCreateScope(IMediator mediator, CancellationToken cancellationToken)
-                    {
-                        return HandlerScope.GetOrCreate(mediator, cancellationToken);
-                    }
-                    """);
-        }
-    }
+
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {

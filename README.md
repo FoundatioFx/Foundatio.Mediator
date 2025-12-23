@@ -20,6 +20,40 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - 🧪 **Easy testing** - Plain objects, no framework coupling
 - 🐛 **Superior debugging** - Short, simple call stacks
 
+### Why Convention-Based?
+
+Traditional mediator libraries force you into rigid interface contracts like `IRequestHandler<TRequest, TResponse>`. This means:
+
+- One handler class per message type
+- Fixed method signatures
+- Always async (even for simple operations)
+- Lots of boilerplate
+
+**Foundatio Mediator's conventions give you freedom:**
+
+```csharp
+public class OrderHandler
+{
+    // Sync handler - no async overhead
+    public decimal Handle(CalculateTotal query) => query.Items.Sum(i => i.Price);
+
+    // Async with any DI parameters you need
+    public async Task<Order> HandleAsync(GetOrder query, IOrderRepo repo, CancellationToken ct)
+        => await repo.FindAsync(query.Id, ct);
+
+    // Cascading: first element returned, rest auto-published as events
+    public (Order order, OrderCreated evt) Handle(CreateOrder cmd) { /* ... */ }
+}
+
+// Static handlers for maximum performance
+public static class MathHandler
+{
+    public static int Handle(Add query) => query.A + query.B;
+}
+```
+
+> **Prefer explicit interfaces?** Use `IHandler` marker interface or `[Handler]` attributes instead. See [Handler Conventions](https://mediator.foundatio.dev/guide/handler-conventions.html#explicit-handler-declaration).
+
 ## 🚀 Complete Example
 
 ### 1. Install & Register

@@ -52,6 +52,22 @@ public static class OrderHandler
 }
 ```
 
+Unlike traditional mediator libraries that lock you into rigid interface contracts, conventions give you **unprecedented flexibility**:
+
+- **Sync or async** - Return `void`, `Task`, `T`, `Task<T>`, `ValueTask<T>`
+- **Any parameters** - Message first, then any dependencies injected automatically
+- **Multiple handlers per class** - Group related operations naturally
+- **Static handlers** - Zero allocation for stateless operations
+- **Tuple returns** - Cascading messages for event-driven workflows
+
+```csharp
+// All of these are valid handlers:
+public int Handle(AddNumbers q) => q.A + q.B;                    // Sync, returns value
+public void Handle(LogMessage cmd) => _log.Info(cmd.Text);       // Fire-and-forget
+public async Task<User> HandleAsync(GetUser q, IRepo r) => ...;  // Async with DI
+public (Order, OrderCreated) Handle(CreateOrder c) => ...;       // Cascading events
+```
+
 ### 🔧 Seamless Dependency Injection
 
 Full support for Microsoft.Extensions.DependencyInjection with both constructor and method injection:
@@ -134,7 +150,8 @@ public class LoggingMiddleware
 - **Simple CRUD** applications with minimal business logic
 - **Performance-critical** inner loops where even 10ns matters
 - **Legacy codebases** that can't adopt modern .NET features
-- **Teams resistant** to convention-based approaches
+
+> **Note:** If you prefer explicit interfaces over conventions, Foundatio Mediator fully supports that too! Use `IHandler` marker interface or `[Handler]` attributes, and optionally disable conventional discovery. See [Handler Conventions](./handler-conventions#explicit-handler-declaration) for details.
 
 ## Next Steps
 

@@ -2,6 +2,30 @@
 
 Foundatio Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
 
+## Why Conventions?
+
+Some developers initially feel that convention-based discovery is "too magical." But consider: **all abstractions are magic until you learn them.**
+
+- ASP.NET discovers `*Controller` classes automatically
+- Entity Framework treats `Id` properties as primary keys
+- xUnit runs methods decorated with `[Fact]`
+- C# records generate equality, `ToString()`, and more from a single line
+
+The real question isn't "is it magic?" but **"does the magic help or hurt?"**
+
+Convention-based handlers provide tangible benefits over traditional interface-based approaches:
+
+| Benefit | Convention-Based | Interface-Based |
+| ------- | ---------------- | --------------- |
+| **Multiple handlers per class** | ✅ Natural grouping | ❌ One interface per handler |
+| **Flexible method signatures** | ✅ Any params via DI | ❌ Fixed `Handle(TRequest, CancellationToken)` |
+| **Sync or async** | ✅ Return `void`, `T`, `Task<T>`, etc. | ❌ Must return `Task<T>` |
+| **Static handlers** | ✅ Zero allocation | ❌ Always instance-based |
+| **Cascading messages** | ✅ Tuple returns auto-publish | ❌ Manual `IPublisher` injection |
+| **Boilerplate** | ✅ Just a class + methods | ❌ Interface inheritance per handler |
+
+**Prefer explicit declaration?** Use `IHandler` or `[Handler]` attributes. See [Explicit Handler Declaration](#explicit-handler-declaration).
+
 Alternatively, you can mark handlers explicitly using the `IHandler` marker interface or the `[Handler]` attribute. See [Explicit Handler Declaration](#explicit-handler-declaration) for details.
 
 ## Class Naming Conventions

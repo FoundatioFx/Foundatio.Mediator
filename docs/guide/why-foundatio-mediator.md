@@ -45,6 +45,83 @@ public class UserHandler : IRequestHandler<GetUser, User>
 }
 ```
 
+### But Isn't Convention-Based Discovery "Too Magic"?
+
+Some developers prefer explicit interfaces because they feel conventions are "too magical." Let's address this concern directly.
+
+**All abstractions are "magic."** Consider what you already accept without question:
+
+- **ASP.NET Controllers** - Classes ending in `Controller` are automatically discovered and routed
+- **Entity Framework** - Properties named `Id` become primary keys; navigation properties create relationships
+- **xUnit/NUnit** - Methods with `[Fact]` or `[Test]` attributes are discovered and executed
+- **Dependency Injection** - Constructor parameters are magically resolved from a container
+- **C# Records** - `record Person(string Name)` generates equality, `ToString()`, and deconstruction
+
+The difference between "magic" and "convention" is simply **familiarity**. Once you learn a convention, it becomes invisible—you stop thinking about it.
+
+**Why conventions are actually _better_ for mediator patterns:**
+
+| Traditional Interfaces | Convention-Based |
+| ---------------------- | ---------------- |
+| Forces `IRequestHandler<TRequest, TResponse>` inheritance | Plain classes with any name ending in `Handler` |
+| One handler method per class (or awkward multiple interface inheritance) | Multiple handler methods per class, naturally grouped |
+| Fixed method signature: `Handle(TRequest, CancellationToken)` | Flexible signatures: sync/async, any parameters via DI |
+| Must return `Task<TResponse>` even for sync operations | Return `void`, `Task`, `T`, `Task<T>`, `Result<T>`, tuples |
+| Handler classes must be registered in DI | Auto-discovered at compile time |
+| Runtime dispatch via reflection | Compile-time interceptors for near-direct call performance |
+
+**With conventions, you get unprecedented flexibility:**
+
+```csharp
+// Sync handler - no async overhead
+public int Handle(AddNumbers query) => query.A + query.B;
+
+// Async handler with injected dependencies
+public async Task<User> HandleAsync(GetUser query, IUserRepo repo, CancellationToken ct)
+    => await repo.FindAsync(query.Id, ct);
+
+// Static handler - zero allocation, maximum performance
+public static class MathHandler
+{
+    public static int Handle(Multiply query) => query.A * query.B;
+}
+
+// Multiple handlers in one cohesive class
+public class OrderHandler
+{
+    public Result<Order> Handle(CreateOrder cmd) { /* ... */ }
+    public Result<Order> Handle(GetOrder query) { /* ... */ }
+    public Result Handle(DeleteOrder cmd) { /* ... */ }
+}
+
+// Cascading messages with tuple returns
+public (User user, UserCreated evt) Handle(CreateUser cmd)
+{
+    var user = CreateUser(cmd);
+    return (user, new UserCreated(user.Id)); // Event auto-published!
+}
+```
+
+**If you still prefer explicit declaration**, that's supported too:
+
+```csharp
+// Use IHandler marker interface
+public class MyService : IHandler
+{
+    public User Handle(GetUser query) { /* ... */ }
+}
+
+// Or use [Handler] attribute on class or method
+[Handler]
+public class AnotherService
+{
+    public void Process(SendEmail cmd) { /* ... */ }
+}
+
+// Disable conventions entirely via MSBuild
+// <MediatorDisableConventionalDiscovery>true</MediatorDisableConventionalDiscovery>
+```
+
 ### Rich Error Handling
 
 Built-in `Result<T>` types eliminate exception-driven control flow:
@@ -221,8 +298,9 @@ Compare this to complex reflection-based call stacks in other libraries.
 
 - **Legacy .NET Framework** projects (requires modern .NET)
 - **Simple CRUD applications** without complex business logic
-- **Teams preferring explicit interfaces** over conventions
 - **Existing MediatR codebases** where migration cost isn't justified
+
+> **Note:** If your team prefers explicit interfaces over conventions, Foundatio Mediator supports that too! Use `IHandler` or `[Handler]` attributes and optionally disable conventional discovery entirely. See [Explicit Handler Declaration](./handler-conventions#explicit-handler-declaration).
 
 ## Migration from Other Libraries
 

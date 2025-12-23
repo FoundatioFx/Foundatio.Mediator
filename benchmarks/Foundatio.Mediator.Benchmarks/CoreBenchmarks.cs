@@ -32,8 +32,8 @@ public class CoreBenchmarks
     private readonly FoundatioQueryHandler _directQueryHandler = new();
     private readonly FoundatioEventHandler _directEventHandler = new();
     private readonly FoundatioCreateOrderHandler _directCreateOrderHandler = new();
-    private readonly FoundatioOrderCreatedHandler1 _directOrderCreatedHandler1 = new();
-    private readonly FoundatioOrderCreatedHandler2 _directOrderCreatedHandler2 = new();
+    private readonly FoundatioFirstOrderCreatedHandler _directOrderCreatedHandler1 = new();
+    private readonly FoundatioSecondOrderCreatedHandler _directOrderCreatedHandler2 = new();
     private FoundatioFullQueryHandler _directFullQueryHandler = null!;
 
     private readonly PingCommand _pingCommand = new("test-123");
@@ -323,7 +323,7 @@ public class CoreBenchmarks
     [Benchmark]
     public async Task<Order> Direct_CascadingMessages()
     {
-        var (order, evt) = await _directCreateOrderHandler.HandleAsync(_createOrder);
+        var (order, evt) = _directCreateOrderHandler.HandleAsync(_createOrder);
         await _directOrderCreatedHandler1.HandleAsync(evt);
         await _directOrderCreatedHandler2.HandleAsync(evt);
         return order;

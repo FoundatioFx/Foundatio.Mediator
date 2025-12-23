@@ -4,45 +4,49 @@ using Foundatio.Mediator.Benchmarks.Services;
 namespace Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
 
 // Scenario 1: Command handler (InvokeAsync without response)
+[Handler]
 public class FoundatioCommandHandler
 {
-    public async Task HandleAsync(PingCommand command, CancellationToken cancellationToken = default)
+    public Task HandleAsync(PingCommand command, CancellationToken cancellationToken = default)
     {
-        // Simulate minimal work
-        await Task.CompletedTask;
+        // Simulate minimal work - no async state machine
+        return Task.CompletedTask;
     }
 }
 
 // Scenario 2: Query handler (InvokeAsync<T>)
+[Handler]
 public class FoundatioQueryHandler
 {
-    public async Task<Order> HandleAsync(GetOrder query, CancellationToken cancellationToken = default)
+    public ValueTask<Order> HandleAsync(GetOrder query, CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
-        return new Order(query.Id, 99.99m, DateTime.UtcNow);
+        return new ValueTask<Order>(new Order(query.Id, 99.99m, DateTime.UtcNow));
     }
 }
 
 // Scenario 3: Event handlers (PublishAsync with multiple handlers)
+[Handler]
 public class FoundatioEventHandler
 {
-    public async Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
+    public Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
-        // Simulate minimal event handling work
-        await Task.CompletedTask;
+        // Simulate minimal event handling work - returns completed task with no allocation
+        return Task.CompletedTask;
     }
 }
 
-public class FoundatioEventHandler2
+[Handler]
+public class FoundatioSecondEventHandler
 {
-    public async Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
+    public Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
         // Second handler listening for the same event
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 }
 
 // Scenario 4: Query handler with dependency injection
+[Handler]
 public class FoundatioFullQueryHandler
 {
     private readonly IOrderService _orderService;
@@ -59,36 +63,40 @@ public class FoundatioFullQueryHandler
 }
 
 // Scenario 5: Cascading messages - returns tuple with result + events that auto-publish
+[Handler]
 public class FoundatioCreateOrderHandler
 {
-    public async Task<(Order order, OrderCreatedEvent evt)> HandleAsync(CreateOrder command, CancellationToken cancellationToken = default)
+    public (Order order, OrderCreatedEvent evt) HandleAsync(CreateOrder command, CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
+        // No async state machine needed
         var order = new Order(1, command.Amount, DateTime.UtcNow);
         return (order, new OrderCreatedEvent(order.Id, command.CustomerId));
     }
 }
 
 // Handlers for the cascaded OrderCreatedEvent
-public class FoundatioOrderCreatedHandler1
+[Handler]
+public class FoundatioFirstOrderCreatedHandler
 {
-    public async Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
-        // First handler for order created event
-        await Task.CompletedTask;
+        // First handler for order created event - no async state machine
+        return Task.CompletedTask;
     }
 }
 
-public class FoundatioOrderCreatedHandler2
+[Handler]
+public class FoundatioSecondOrderCreatedHandler
 {
-    public async Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
-        // Second handler for order created event
-        await Task.CompletedTask;
+        // Second handler for order created event - no async state machine
+        return Task.CompletedTask;
     }
 }
 
 // Scenario 6: Short-circuit handler (never actually called due to ShortCircuitMiddleware)
+[Handler]
 public class FoundatioShortCircuitHandler
 {
     public Task<Order> HandleAsync(GetCachedOrder query, CancellationToken cancellationToken = default)

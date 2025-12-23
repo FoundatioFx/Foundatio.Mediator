@@ -25,6 +25,18 @@ internal static class TypeExtensions
         return false;
     }
 
+    internal static bool IsValueTask(this ITypeSymbol typeSymbol, Compilation compilation)
+    {
+        if (typeSymbol is not INamedTypeSymbol namedType)
+            return false;
+
+        var valueTaskType = compilation.GetTypeByMetadataName(WellKnownTypes.ValueTask);
+        var valueTaskOfTType = compilation.GetTypeByMetadataName(WellKnownTypes.ValueTaskOfT);
+
+        return SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, valueTaskType)
+            || SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, valueTaskOfTType);
+    }
+
     internal static ITypeSymbol UnwrapTask(this ITypeSymbol typeSymbol, Compilation compilation)
     {
         var taskOfTType = compilation.GetTypeByMetadataName(WellKnownTypes.TaskOfT);

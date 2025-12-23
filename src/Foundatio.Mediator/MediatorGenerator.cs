@@ -156,6 +156,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         if (handlersWithInfo.Count == 0)
             return;
 
+        // Generate shared async helpers once per assembly (used by all handlers)
+        HelpersGenerator.Execute(context);
+
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
     }
 

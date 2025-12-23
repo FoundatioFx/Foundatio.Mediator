@@ -68,7 +68,7 @@ public interface IMediator
     TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asynchronously publishes a message to zero or more handlers.
+    /// Asynchronously publishes a notification message to zero or more handlers.
     /// </summary>
     /// <param name="message">The message to publish to handlers.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
@@ -76,7 +76,7 @@ public interface IMediator
     /// <remarks>
     /// All handlers for the message type will be executed. The execution mode (sequential or parallel) is determined
     /// by the mediator configuration. If any handler throws an exception, all other handlers will still execute,
-    /// and the first exception encountered will be thrown after all handlers complete.
+    /// and an aggregate exception with all encountered exceptions will be thrown after all handlers complete.
     /// </remarks>
     ValueTask PublishAsync(object message, CancellationToken cancellationToken = default);
 }

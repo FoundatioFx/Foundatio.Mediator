@@ -44,15 +44,15 @@ public class FoundatioBenchmarks
     }
 
     [Benchmark]
-    public async Task<Order> Query()
+    public ValueTask<Order> Query()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getOrder);
+        return _foundatioMediator.InvokeAsync<Order>(_getOrder);
     }
 
     [Benchmark]
-    public async Task Publish()
+    public ValueTask Publish()
     {
-        await _foundatioMediator.PublishAsync(_userRegisteredEvent);
+        return _foundatioMediator.PublishAsync(_userRegisteredEvent);
     }
 
     [Benchmark]

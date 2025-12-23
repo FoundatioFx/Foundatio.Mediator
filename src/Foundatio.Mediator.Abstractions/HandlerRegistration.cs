@@ -13,13 +13,32 @@ public class HandlerRegistration
     /// <param name="handleAsync">The delegate to handle the message asynchronously</param>
     /// <param name="handle">The delegate to handle the message synchronously (null for async-only handlers)</param>
     /// <param name="isAsync">Whether the handler supports async operations</param>
-    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync)
+    /// <param name="publishAsync">The delegate for publish scenarios (discards return value, avoids allocation)</param>
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, PublishAsyncDelegate? publishAsync = null)
     {
         MessageTypeName = messageTypeName;
         HandlerClassName = handlerClassName;
         HandleAsync = handleAsync;
         Handle = handle;
         IsAsync = isAsync;
+        // If no publish delegate provided, create a wrapper that discards the result
+        PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
+    }
+
+    private static PublishAsyncDelegate CreatePublishDelegate(HandleAsyncDelegate handleAsync)
+    {
+        return (mediator, msg, cancellationToken) =>
+        {
+            var task = handleAsync(mediator, msg, cancellationToken, null);
+            if (task.IsCompletedSuccessfully)
+                return default;
+            return AwaitAndDiscard(task);
+        };
+
+        static async ValueTask AwaitAndDiscard(ValueTask<object?> task)
+        {
+            await task.ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -41,6 +60,11 @@ public class HandlerRegistration
     /// The delegate to handle the message synchronously (null for async-only handlers)
     /// </summary>
     public HandleDelegate? Handle { get; }
+
+    /// <summary>
+    /// The delegate for publish scenarios (discards return value, avoids allocation when sync)
+    /// </summary>
+    public PublishAsyncDelegate PublishAsync { get; }
 
     /// <summary>
     /// Whether the handler supports async operations

@@ -52,8 +52,8 @@ public class Mediator : IMediator, IServiceProvider
 
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
-        var handlersList = GetAllApplicableHandlers(message).ToList();
-        return _configuration.NotificationPublisher.PublishAsync(this, handlersList, message, cancellationToken);
+        var handlers = GetAllApplicableHandlers(message);
+        return _configuration.NotificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
     }
 
     /// <summary>
@@ -99,8 +99,8 @@ public class Mediator : IMediator, IServiceProvider
     /// </summary>
     internal ValueTask PublishAsyncWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
     {
-        var handlersList = GetAllApplicableHandlers(message).ToList();
-        return _configuration.NotificationPublisher.PublishAsync(mediator, handlersList, message, cancellationToken);
+        var handlers = GetAllApplicableHandlers(message);
+        return _configuration.NotificationPublisher.PublishAsync(mediator, handlers, message, cancellationToken);
     }
 
     public void ShowRegisteredHandlers()
@@ -209,35 +209,46 @@ public class Mediator : IMediator, IServiceProvider
     {
         var messageType = message.GetType();
 
-        return _publishCache.GetOrAdd(messageType, mt =>
+        // Fast path - check if already cached to avoid lambda allocation
+        if (_publishCache.TryGetValue(messageType, out var cachedHandlers))
+            return cachedHandlers;
+
+        // Slow path - build and cache handlers (allocates)
+        return BuildAndCacheHandlers(messageType);
+    }
+
+    private PublishAsyncDelegate[] BuildAndCacheHandlers(Type messageType)
+    {
+        var allHandlers = new List<HandlerRegistration>();
+
+        // Add handlers for the exact message type
+        var exactHandlers = GetHandlersForType(messageType);
+        allHandlers.AddRange(exactHandlers);
+
+        // Add handlers for all implemented interfaces
+        foreach (var interfaceType in messageType.GetInterfaces())
         {
-            var allHandlers = new List<HandlerRegistration>();
+            var interfaceHandlers = GetHandlersForType(interfaceType);
+            allHandlers.AddRange(interfaceHandlers);
+        }
 
-            // Add handlers for the exact message type
-            var exactHandlers = GetHandlersForType(messageType);
-            allHandlers.AddRange(exactHandlers);
+        // Add handlers for all base classes
+        var currentType = messageType.BaseType;
+        while (currentType != null && currentType != typeof(object))
+        {
+            var baseHandlers = GetHandlersForType(currentType);
+            allHandlers.AddRange(baseHandlers);
+            currentType = currentType.BaseType;
+        }
 
-            // Add handlers for all implemented interfaces
-            foreach (var interfaceType in messageType.GetInterfaces())
-            {
-                var interfaceHandlers = GetHandlersForType(interfaceType);
-                allHandlers.AddRange(interfaceHandlers);
-            }
+        var handlers = allHandlers
+            .Distinct()
+            .Select(h => h.PublishAsync)
+            .ToArray();
 
-            // Add handlers for all base classes
-            var currentType = messageType.BaseType;
-            while (currentType != null && currentType != typeof(object))
-            {
-                var baseHandlers = GetHandlersForType(currentType);
-                allHandlers.AddRange(baseHandlers);
-                currentType = currentType.BaseType;
-            }
-
-            return allHandlers
-                .Distinct()
-                .Select<HandlerRegistration, PublishAsyncDelegate>(h => async (mediator, msg, cancellationToken) => await h.HandleAsync(mediator, msg, cancellationToken, null))
-                .ToArray();
-        });
+        // Note: We may compute this more than once due to race conditions,
+        // but GetOrAdd ensures we store a consistent value
+        return _publishCache.GetOrAdd(messageType, handlers);
     }
 
     [DebuggerStepThrough]

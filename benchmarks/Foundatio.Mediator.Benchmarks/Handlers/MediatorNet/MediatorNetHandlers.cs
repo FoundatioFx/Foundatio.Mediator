@@ -6,29 +6,21 @@ namespace Foundatio.Mediator.Benchmarks.Handlers.MediatorNet;
 // Message types for Mediator.SourceGenerator
 // Note: We define separate message types because Mediator uses different interfaces than MediatR
 
-[FoundatioIgnore]
 public record MediatorNetPingCommand(string Id) : MediatorLib.ICommand;
 
-[FoundatioIgnore]
 public record MediatorNetGetOrder(int Id) : MediatorLib.IQuery<Order>;
 
-[FoundatioIgnore]
 public record MediatorNetGetFullQuery(int Id) : MediatorLib.IQuery<Order>;
 
-[FoundatioIgnore]
 public record MediatorNetUserRegisteredEvent(string UserId, string Email) : MediatorLib.INotification;
 
-[FoundatioIgnore]
 public record MediatorNetCreateOrder(int CustomerId, decimal Amount) : MediatorLib.IRequest<Order>;
 
-[FoundatioIgnore]
 public record MediatorNetOrderCreatedEvent(int OrderId, int CustomerId) : MediatorLib.INotification;
 
-[FoundatioIgnore]
 public record MediatorNetGetCachedOrder(int Id) : MediatorLib.IQuery<Order>;
 
 // Scenario 1: Command handler (InvokeAsync without response)
-[FoundatioIgnore]
 public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<MediatorNetPingCommand>
 {
     public ValueTask<MediatorLib.Unit> Handle(MediatorNetPingCommand command, CancellationToken cancellationToken)
@@ -39,7 +31,6 @@ public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<MediatorNet
 }
 
 // Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
-[FoundatioIgnore]
 public class MediatorNetQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetOrder, Order>
 {
     public ValueTask<Order> Handle(MediatorNetGetOrder query, CancellationToken cancellationToken)
@@ -49,7 +40,6 @@ public class MediatorNetQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetO
 }
 
 // Scenario 3: Notification handlers (PublishAsync with multiple handlers)
-[FoundatioIgnore]
 public class MediatorNetEventHandler : MediatorLib.INotificationHandler<MediatorNetUserRegisteredEvent>
 {
     public ValueTask Handle(MediatorNetUserRegisteredEvent notification, CancellationToken cancellationToken)
@@ -59,7 +49,6 @@ public class MediatorNetEventHandler : MediatorLib.INotificationHandler<Mediator
     }
 }
 
-[FoundatioIgnore]
 public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<MediatorNetUserRegisteredEvent>
 {
     public ValueTask Handle(MediatorNetUserRegisteredEvent notification, CancellationToken cancellationToken)
@@ -70,7 +59,6 @@ public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<Mediato
 }
 
 // Scenario 4: Query handler with dependency injection
-[FoundatioIgnore]
 public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetFullQuery, Order>
 {
     private readonly IOrderService _orderService;
@@ -87,7 +75,6 @@ public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNet
 }
 
 // Scenario 5: Cascading messages - MediatorNet requires manual publish of events
-[FoundatioIgnore]
 public class MediatorNetCreateOrderHandler : MediatorLib.IRequestHandler<MediatorNetCreateOrder, Order>
 {
     private readonly MediatorLib.IMediator _mediator;
@@ -106,7 +93,6 @@ public class MediatorNetCreateOrderHandler : MediatorLib.IRequestHandler<Mediato
 }
 
 // Handlers for the cascaded OrderCreatedEvent
-[FoundatioIgnore]
 public class MediatorNetOrderCreatedHandler1 : MediatorLib.INotificationHandler<MediatorNetOrderCreatedEvent>
 {
     public ValueTask Handle(MediatorNetOrderCreatedEvent notification, CancellationToken cancellationToken)
@@ -116,7 +102,6 @@ public class MediatorNetOrderCreatedHandler1 : MediatorLib.INotificationHandler<
     }
 }
 
-[FoundatioIgnore]
 public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<MediatorNetOrderCreatedEvent>
 {
     public ValueTask Handle(MediatorNetOrderCreatedEvent notification, CancellationToken cancellationToken)
@@ -127,7 +112,6 @@ public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<
 }
 
 // Scenario 6: Short-circuit handler - MediatorNet uses IPipelineBehavior to short-circuit
-[FoundatioIgnore]
 public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<MediatorNetGetCachedOrder, Order>
 {
     public ValueTask<Order> Handle(MediatorNetGetCachedOrder query, CancellationToken cancellationToken)
@@ -138,7 +122,6 @@ public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<Mediator
 }
 
 // MediatorNet short-circuit behavior - returns cached value without calling handler
-[FoundatioIgnore]
 public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<MediatorNetGetCachedOrder, Order>
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);

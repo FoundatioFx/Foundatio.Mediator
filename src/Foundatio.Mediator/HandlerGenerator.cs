@@ -375,6 +375,17 @@ internal static class HandlerGenerator
 
     private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
     {
+        // For async handlers that can use fast path and return void, generate a non-async version
+        // that avoids state machine allocation when the handler completes synchronously
+        bool canUseFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
+        bool generateZeroAllocPath = handler.IsAsync && canUseFastPath && handler.ReturnType.IsVoid && !handler.ReturnType.IsTuple;
+
+        if (generateZeroAllocPath)
+        {
+            GenerateZeroAllocUntypedHandleMethod(source, handler);
+            return;
+        }
+
         source.AppendLine(handler.IsAsync
             ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)"
             : "public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
@@ -383,7 +394,6 @@ internal static class HandlerGenerator
         source.IncrementIndent();
 
         // For handlers that can use fast path, skip scope creation entirely
-        bool canUseFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
         string serviceProviderExpr;
 
         if (canUseFastPath)
@@ -459,6 +469,31 @@ internal static class HandlerGenerator
         source.AppendLine("}");
     }
 
+    private static void GenerateZeroAllocUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        // Generate a non-async UntypedHandleAsync that avoids state machine allocation
+        // when the handler completes synchronously (common case for event handlers)
+        source.AppendLine("public static ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+        source.AppendLine("var handlerInstance = GetOrCreateHandler((System.IServiceProvider)mediator);");
+
+        string stronglyTypedMethodName = handler.MethodName;
+        source.AppendLine($"var task = handlerInstance.{stronglyTypedMethodName}(typedMessage, cancellationToken);");
+        source.AppendLine();
+        source.AppendLine("if (task.IsCompletedSuccessfully)");
+        source.AppendLine("{");
+        source.AppendLine("    return default;");
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return task.AsNullResult();");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+    }
+
     private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler, bool interceptorsEnabled)
     {
         if (!interceptorsEnabled)
@@ -485,13 +520,16 @@ internal static class HandlerGenerator
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
         string handlerMethod = GetHandlerMethodName(handler);
         bool methodIsAsync = methodName.EndsWith("Async") || handler.IsAsync;
+        // For fast-path handlers, we generate zero-alloc code that doesn't need async keyword
+        bool useFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
 
         foreach (var callSite in callSites)
         {
             source.AppendLine($"[System.Runtime.CompilerServices.InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        string asyncModifier = handler.IsAsync ? "async " : "";
+        // Only use async modifier for non-fast-path handlers that are async
+        string asyncModifier = (handler.IsAsync && !useFastPath) ? "async " : "";
         string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
             returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
@@ -544,15 +582,23 @@ internal static class HandlerGenerator
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
             source.AppendLine($"var handlerInstance = GetOrCreateHandler((System.IServiceProvider)mediator);");
 
-            asyncModifier = handler.IsAsync ? "await " : "";
-
             if (responseType.IsVoid)
             {
-                source.AppendLine($"{asyncModifier}handlerInstance.{handler.MethodName}({handlerArgs});");
-
-                if (needsValueTaskWrap)
+                if (handler.IsAsync)
                 {
-                    source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                    // Generate zero-alloc path for async void handlers
+                    source.AppendLine($"var task = handlerInstance.{handler.MethodName}({handlerArgs});");
+                    source.AppendLine("if (task.IsCompletedSuccessfully)");
+                    source.AppendLine("    return default;");
+                    source.AppendLine($"return task.AsValueTask();");
+                }
+                else
+                {
+                    source.AppendLine($"handlerInstance.{handler.MethodName}({handlerArgs});");
+                    if (needsValueTaskWrap)
+                    {
+                        source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                    }
                 }
             }
             else
@@ -561,9 +607,17 @@ internal static class HandlerGenerator
                 {
                     source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>(handlerInstance.{handler.MethodName}({handlerArgs}));");
                 }
+                else if (handler.IsAsync)
+                {
+                    // Generate zero-alloc path for async handlers with return value
+                    source.AppendLine($"var task = handlerInstance.{handler.MethodName}({handlerArgs});");
+                    source.AppendLine("if (task.IsCompletedSuccessfully)");
+                    source.AppendLine($"    return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>(task.Result);");
+                    source.AppendLine($"return task.AsValueTask();");
+                }
                 else
                 {
-                    source.AppendLine($"return {asyncModifier}handlerInstance.{handler.MethodName}({handlerArgs});");
+                    source.AppendLine($"return handlerInstance.{handler.MethodName}({handlerArgs});");
                 }
             }
         }

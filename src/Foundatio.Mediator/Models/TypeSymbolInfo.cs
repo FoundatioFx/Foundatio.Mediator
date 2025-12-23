@@ -37,6 +37,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsTask { get; init; }
     /// <summary>
+    /// Indicates if the type is a ValueTask or ValueTask&lt;T&gt; (vs Task or Task&lt;T&gt;).
+    /// </summary>
+    public bool IsValueTask { get; init; }
+    /// <summary>
     /// Indicates if the type is System.Object.
     /// </summary>
     public bool IsObject { get; init; }
@@ -85,6 +89,7 @@ internal readonly record struct TypeSymbolInfo
             IsResult = false,
             IsVoid = true,
             IsTask = false,
+            IsValueTask = false,
             IsObject = false,
             IsInterface = false,
             IsHandlerResult = false,
@@ -146,6 +151,7 @@ internal readonly record struct TypeSymbolInfo
         }
 
         bool isGeneric = typeSymbol is INamedTypeSymbol { IsGenericType: true } nts && !nts.IsUnboundGenericType;
+        bool isValueTask = typeSymbol.IsValueTask(compilation);
 
         return new TypeSymbolInfo
         {
@@ -157,6 +163,7 @@ internal readonly record struct TypeSymbolInfo
             IsResult = isResult,
             IsVoid = isVoid,
             IsTask = isTask,
+            IsValueTask = isValueTask,
             IsObject = isObject,
             IsInterface = isInterface,
             IsHandlerResult = isHandlerResult,

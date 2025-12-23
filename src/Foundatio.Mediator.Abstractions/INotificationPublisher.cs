@@ -14,32 +14,113 @@ public delegate ValueTask PublishAsyncDelegate(IMediator mediator, object messag
 /// </summary>
 public interface INotificationPublisher
 {
-    ValueTask PublishAsync(IMediator mediator, IEnumerable<PublishAsyncDelegate> handlers, object message, CancellationToken cancellationToken);
+    ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// Publisher that invokes each handler sequentially.
+/// All handlers execute even if one throws; an AggregateException with all exceptions is thrown after all complete.
 /// </summary>
 public class ForeachAwaitPublisher : INotificationPublisher
 {
-    public async ValueTask PublishAsync(IMediator mediator, IEnumerable<PublishAsyncDelegate> handlers, object message, CancellationToken cancellationToken)
+    public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
-        foreach (var handler in handlers)
+        if (handlers.Length == 0)
+            return default;
+
+        // Sequential execution - start each handler after the previous completes
+        // Loop until we find one that doesn't complete synchronously
+        for (int i = 0; i < handlers.Length; i++)
         {
-            await handler(mediator, message, cancellationToken).ConfigureAwait(false);
+            var task = handlers[i](mediator, message, cancellationToken);
+            if (!task.IsCompletedSuccessfully)
+            {
+                return AwaitRemainingAsync(task, mediator, handlers, message, cancellationToken, i + 1);
+            }
         }
+
+        return default;
+    }
+
+    private static async ValueTask AwaitRemainingAsync(ValueTask current, IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken, int startIndex)
+    {
+        List<Exception>? exceptions = null;
+
+        try
+        {
+            await current.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            exceptions ??= [];
+            exceptions.Add(ex);
+        }
+
+        for (int i = startIndex; i < handlers.Length; i++)
+        {
+            try
+            {
+                await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions ??= [];
+                exceptions.Add(ex);
+            }
+        }
+
+        if (exceptions != null)
+            throw new AggregateException(exceptions);
     }
 }
 
 /// <summary>
 /// Publisher that invokes all handlers concurrently and waits for all to complete.
+/// All handlers execute even if one throws; an AggregateException with all exceptions is thrown after all complete.
 /// </summary>
 public class TaskWhenAllPublisher : INotificationPublisher
 {
-    public async ValueTask PublishAsync(IMediator mediator, IEnumerable<PublishAsyncDelegate> handlers, object message, CancellationToken cancellationToken)
+    public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
-        var tasks = handlers.Select(h => h(mediator, message, cancellationToken));
-        await Task.WhenAll(tasks.Select(t => t.AsTask()));
+        if (handlers.Length == 0)
+            return default;
+        if (handlers.Length == 1)
+            return handlers[0](mediator, message, cancellationToken);
+
+        // Start all handlers concurrently
+        var tasks = new ValueTask[handlers.Length];
+        for (int i = 0; i < handlers.Length; i++)
+            tasks[i] = handlers[i](mediator, message, cancellationToken);
+
+        // Check if all completed synchronously and successfully
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            if (!tasks[i].IsCompletedSuccessfully)
+                return AwaitAllAsync(tasks);
+        }
+
+        return default;
+    }
+
+    private static async ValueTask AwaitAllAsync(ValueTask[] tasks)
+    {
+        List<Exception>? exceptions = null;
+
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            try
+            {
+                await tasks[i].ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions ??= [];
+                exceptions.Add(ex);
+            }
+        }
+
+        if (exceptions != null)
+            throw new AggregateException(exceptions);
     }
 }
 
@@ -49,11 +130,11 @@ public class TaskWhenAllPublisher : INotificationPublisher
 /// </summary>
 public class FireAndForgetPublisher : INotificationPublisher
 {
-    public ValueTask PublishAsync(IMediator mediator, IEnumerable<PublishAsyncDelegate> handlers, object message, CancellationToken cancellationToken)
+    public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
-        foreach (var handler in handlers)
+        for (int i = 0; i < handlers.Length; i++)
         {
-            // Fire and forget - don't await, use Task.Run to ensure truly async execution
+            var handler = handlers[i];
             _ = Task.Run(async () =>
             {
                 try
@@ -66,6 +147,7 @@ public class FireAndForgetPublisher : INotificationPublisher
                 }
             }, CancellationToken.None);
         }
+
         return default;
     }
 }

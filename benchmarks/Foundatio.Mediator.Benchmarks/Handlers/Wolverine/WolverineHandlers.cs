@@ -5,7 +5,6 @@ using Wolverine;
 namespace Foundatio.Mediator.Benchmarks.Handlers.Wolverine;
 
 // Scenario 1: Command handler (InvokeAsync without response)
-[FoundatioIgnore]
 public class WolverineCommandHandler
 {
     public Task Handle(PingCommand command)
@@ -16,7 +15,6 @@ public class WolverineCommandHandler
 }
 
 // Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
-[FoundatioIgnore]
 public class WolverineQueryHandler
 {
     public Task<Order> Handle(GetOrder query)
@@ -26,7 +24,6 @@ public class WolverineQueryHandler
 }
 
 // Scenario 3: Event handlers (PublishAsync with multiple handlers)
-[FoundatioIgnore]
 public class WolverineEventHandler
 {
     public Task Handle(UserRegisteredEvent notification)
@@ -36,7 +33,6 @@ public class WolverineEventHandler
     }
 }
 
-[FoundatioIgnore]
 public class WolverineEventHandler2
 {
     public Task Handle(UserRegisteredEvent notification)
@@ -47,7 +43,6 @@ public class WolverineEventHandler2
 }
 
 // Scenario 4: Query handler with dependency injection
-[FoundatioIgnore]
 public class WolverineFullQueryHandler
 {
     public Task<Order> Handle(GetFullQuery query, IOrderService orderService)
@@ -57,7 +52,6 @@ public class WolverineFullQueryHandler
 }
 
 // Scenario 5: Cascading messages - Wolverine supports cascading via return values
-[FoundatioIgnore]
 public class WolverineCreateOrderHandler
 {
     public (Order, OrderCreatedEvent) Handle(CreateOrder command)
@@ -68,7 +62,6 @@ public class WolverineCreateOrderHandler
 }
 
 // Handlers for the cascaded OrderCreatedEvent
-[FoundatioIgnore]
 public class WolverineOrderCreatedHandler1
 {
     public Task Handle(OrderCreatedEvent notification)
@@ -78,7 +71,6 @@ public class WolverineOrderCreatedHandler1
     }
 }
 
-[FoundatioIgnore]
 public class WolverineOrderCreatedHandler2
 {
     public Task Handle(OrderCreatedEvent notification)
@@ -89,7 +81,6 @@ public class WolverineOrderCreatedHandler2
 }
 
 // Scenario 6: Short-circuit - Wolverine uses Before middleware with HandlerContinuation.Stop
-[FoundatioIgnore]
 public class WolverineShortCircuitHandler
 {
     public Task<Order> Handle(GetCachedOrder query)
@@ -100,7 +91,6 @@ public class WolverineShortCircuitHandler
 }
 
 // Wolverine short-circuit middleware - uses HandlerContinuation to stop processing
-[FoundatioIgnore]
 public class WolverineShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);

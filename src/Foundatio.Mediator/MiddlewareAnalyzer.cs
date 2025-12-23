@@ -196,6 +196,7 @@ internal static class MiddlewareAnalyzer
             Order = order,
             DeclaredAccessibility = classSymbol.DeclaredAccessibility,
             AssemblyName = classSymbol.ContainingAssembly.Name,
+            IsExplicitlyDeclared = middlewareAttr != null,
             HasConstructorParameters = hasConstructorParameters,
             HasMethodDIParameters = hasMethodDIParameters,
             Diagnostics = new(diagnostics.ToArray()),

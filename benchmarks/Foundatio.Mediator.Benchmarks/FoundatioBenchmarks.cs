@@ -19,7 +19,9 @@ public class FoundatioBenchmarks
     private readonly PingCommand _pingCommand = new("test-123");
     private readonly GetOrder _getOrder = new(42);
     private readonly GetFullQuery _getFullQuery = new(42);
+    private readonly GetCachedOrder _getCachedOrder = new(42);
     private readonly UserRegisteredEvent _userRegisteredEvent = new("User-456", "test@example.com");
+    private readonly CreateOrder _createOrder = new(123, 99.99m);
 
     [GlobalSetup]
     public void Setup()
@@ -59,5 +61,17 @@ public class FoundatioBenchmarks
     public async Task<Order> FullQuery()
     {
         return await _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
+    }
+
+    [Benchmark]
+    public async Task<Order> CascadingMessages()
+    {
+        return await _foundatioMediator.InvokeAsync<Order>(_createOrder);
+    }
+
+    [Benchmark]
+    public async Task<Order> ShortCircuit()
+    {
+        return await _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
     }
 }

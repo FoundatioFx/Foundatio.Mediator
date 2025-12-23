@@ -88,11 +88,16 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
             : handlers;
 
+        // Filter out conventionally-discovered middleware when conventional discovery is disabled
+        var filteredMiddleware = configuration.ConventionalDiscoveryDisabled
+            ? middleware.Where(m => m.IsExplicitlyDeclared).ToImmutableArray()
+            : middleware;
+
         // Scan referenced assemblies for cross-assembly middleware
         var metadataMiddleware = MetadataMiddlewareScanner.ScanReferencedAssemblies(compilation);
 
         // Combine syntax-based middleware (from current assembly) with metadata-based middleware (from referenced assemblies)
-        var allMiddleware = middleware.ToList();
+        var allMiddleware = filteredMiddleware.ToList();
         allMiddleware.AddRange(metadataMiddleware);
 
         // Scan referenced assemblies for cross-assembly handlers

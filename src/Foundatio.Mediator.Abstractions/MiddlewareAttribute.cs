@@ -1,7 +1,7 @@
 namespace Foundatio.Mediator;
 
 /// <summary>
-/// Marks a class or method as middleware for cross-assembly discovery.
+/// Marks a class or method as middleware for discovery and allows controlling execution order.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class MiddlewareAttribute : Attribute

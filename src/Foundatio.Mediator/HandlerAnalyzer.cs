@@ -161,7 +161,10 @@ internal static class HandlerAnalyzer
                 }
             }
 
-            // Check if this specific method has [Handler] attribute (also counts as explicit declaration)
+            // A handler method is explicitly declared if:
+            // 1. The class implements IHandler interface (isExplicitlyDeclared includes implementsMarker)
+            // 2. The class has [Handler] attribute (isExplicitlyDeclared includes hasClassHandlerAttribute)
+            // 3. The method has [Handler] attribute
             bool hasMethodHandlerAttribute = handlerMethod.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
             bool methodIsExplicitlyDeclared = isExplicitlyDeclared || hasMethodHandlerAttribute;
 

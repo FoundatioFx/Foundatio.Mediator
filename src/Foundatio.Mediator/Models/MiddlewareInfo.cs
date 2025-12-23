@@ -18,6 +18,11 @@ internal readonly record struct MiddlewareInfo
     public EquatableArray<DiagnosticInfo> Diagnostics { get; init; }
 
     /// <summary>
+    /// Whether this middleware was explicitly declared via [Middleware] attribute (not just by naming convention).
+    /// </summary>
+    public bool IsExplicitlyDeclared { get; init; }
+
+    /// <summary>
     /// Whether this middleware class has constructor parameters (indicating DI dependencies).
     /// </summary>
     public bool HasConstructorParameters { get; init; }

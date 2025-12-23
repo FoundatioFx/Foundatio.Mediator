@@ -9,14 +9,15 @@ namespace Foundatio.Mediator.Benchmarks.Middleware;
 /// Simple timing middleware for benchmarking - simulates real-world logging/timing middleware.
 /// Only applies to GetFullQuery (FullQuery benchmark).
 /// </summary>
-public class TimingMiddleware
+[Middleware]
+public static class TimingMiddleware
 {
-    public Stopwatch Before(GetFullQuery message, HandlerExecutionInfo info)
+    public static Stopwatch Before(GetFullQuery message, HandlerExecutionInfo info)
     {
         return Stopwatch.StartNew();
     }
 
-    public void Finally(GetFullQuery message, Stopwatch? stopwatch, HandlerExecutionInfo info)
+    public static void Finally(GetFullQuery message, Stopwatch? stopwatch, HandlerExecutionInfo info)
     {
         stopwatch?.Stop();
         // In real middleware, you'd log here - we just stop the timer for the benchmark
@@ -27,6 +28,7 @@ public class TimingMiddleware
 /// Short-circuit middleware that immediately returns a cached result without calling the handler.
 /// This demonstrates middleware returning early (cache hit, validation success with cached result, etc.)
 /// </summary>
+[Middleware]
 public class ShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);

@@ -13,7 +13,7 @@ public record MediatorNetPingCommand(string Id) : MediatorLib.ICommand;
 public record MediatorNetGetOrder(int Id) : MediatorLib.IQuery<Order>;
 
 [FoundatioIgnore]
-public record MediatorNetGetOrderWithDependencies(int Id) : MediatorLib.IQuery<Order>;
+public record MediatorNetGetFullQuery(int Id) : MediatorLib.IQuery<Order>;
 
 [FoundatioIgnore]
 public record MediatorNetUserRegisteredEvent(string UserId, string Email) : MediatorLib.INotification;
@@ -71,16 +71,16 @@ public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<Mediato
 
 // Scenario 4: Query handler with dependency injection
 [FoundatioIgnore]
-public class MediatorNetQueryWithDependenciesHandler : MediatorLib.IQueryHandler<MediatorNetGetOrderWithDependencies, Order>
+public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetFullQuery, Order>
 {
     private readonly IOrderService _orderService;
 
-    public MediatorNetQueryWithDependenciesHandler(IOrderService orderService)
+    public MediatorNetFullQueryHandler(IOrderService orderService)
     {
         _orderService = orderService;
     }
 
-    public async ValueTask<Order> Handle(MediatorNetGetOrderWithDependencies query, CancellationToken cancellationToken)
+    public async ValueTask<Order> Handle(MediatorNetGetFullQuery query, CancellationToken cancellationToken)
     {
         return await _orderService.GetOrderAsync(query.Id, cancellationToken);
     }

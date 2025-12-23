@@ -206,6 +206,10 @@ internal static class CrossAssemblyHandlerScanner
                 }
             }
 
+            // Check if the handler has constructor parameters (indicating DI dependencies)
+            bool hasConstructorParameters = !handlerMethod.IsStatic &&
+                classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
+
             return new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -225,6 +229,7 @@ internal static class CrossAssemblyHandlerScanner
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],
+                HasConstructorParameters = hasConstructorParameters,
             };
         }
 

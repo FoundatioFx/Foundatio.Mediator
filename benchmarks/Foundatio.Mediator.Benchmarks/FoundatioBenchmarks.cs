@@ -18,7 +18,7 @@ public class FoundatioBenchmarks
 
     private readonly PingCommand _pingCommand = new("test-123");
     private readonly GetOrder _getOrder = new(42);
-    private readonly GetOrderWithDependencies _getOrderWithDependencies = new(42);
+    private readonly GetFullQuery _getFullQuery = new(42);
     private readonly UserRegisteredEvent _userRegisteredEvent = new("User-456", "test@example.com");
 
     [GlobalSetup]
@@ -56,8 +56,8 @@ public class FoundatioBenchmarks
     }
 
     [Benchmark]
-    public async Task<Order> QueryWithDependencies()
+    public async Task<Order> FullQuery()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getOrderWithDependencies);
+        return await _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
     }
 }

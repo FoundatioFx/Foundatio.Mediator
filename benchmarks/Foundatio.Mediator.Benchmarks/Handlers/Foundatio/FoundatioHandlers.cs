@@ -43,16 +43,16 @@ public class FoundatioEventHandler2
 }
 
 // Scenario 4: Query handler with dependency injection
-public class FoundatioQueryWithDependenciesHandler
+public class FoundatioFullQueryHandler
 {
     private readonly IOrderService _orderService;
 
-    public FoundatioQueryWithDependenciesHandler(IOrderService orderService)
+    public FoundatioFullQueryHandler(IOrderService orderService)
     {
         _orderService = orderService;
     }
 
-    public async Task<Order> HandleAsync(GetOrderWithDependencies query, CancellationToken cancellationToken = default)
+    public async Task<Order> HandleAsync(GetFullQuery query, CancellationToken cancellationToken = default)
     {
         return await _orderService.GetOrderAsync(query.Id, cancellationToken);
     }

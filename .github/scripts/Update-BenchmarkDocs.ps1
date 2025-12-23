@@ -89,16 +89,28 @@ foreach ($row in $csv) {
     }
 }
 
-# Sort each group by implementation order
+# Helper function to parse Mean value to nanoseconds for sorting
+function Parse-MeanToNs {
+    param([string]$Value)
+    if ($Value -match '^([\d,.]+)\s*(ns|us|μs|ms|s)$') {
+        $num = [double]($Matches[1] -replace ',', '')
+        $unit = $Matches[2]
+        switch ($unit) {
+            'ns' { return $num }
+            'us' { return $num * 1000 }
+            'μs' { return $num * 1000 }
+            'ms' { return $num * 1000000 }
+            's'  { return $num * 1000000000 }
+            default { return $num }
+        }
+    }
+    return [double]::MaxValue
+}
+
+# Sort each group by Mean (best performance first)
 $groupKeys = @($groups.Keys)
 foreach ($key in $groupKeys) {
-    $groups[$key] = $groups[$key] | Sort-Object {
-        $method = $_.Method
-        for ($i = 0; $i -lt $implOrder.Count; $i++) {
-            if ($method -match "^$($implOrder[$i])_") { return $i }
-        }
-        return 999
-    }
+    $groups[$key] = $groups[$key] | Sort-Object { Parse-MeanToNs $_.Mean }
 }
 
 # Helper function to format allocated bytes with thousand separators

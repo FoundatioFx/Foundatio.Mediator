@@ -16,6 +16,22 @@ internal readonly record struct MiddlewareInfo
     public Accessibility DeclaredAccessibility { get; init; }
     public string AssemblyName { get; init; }
     public EquatableArray<DiagnosticInfo> Diagnostics { get; init; }
+
+    /// <summary>
+    /// Whether this middleware class has constructor parameters (indicating DI dependencies).
+    /// </summary>
+    public bool HasConstructorParameters { get; init; }
+
+    /// <summary>
+    /// Whether any middleware method has DI parameters beyond message, HandlerExecutionInfo, exception, or before method return values.
+    /// </summary>
+    public bool HasMethodDIParameters { get; init; }
+
+    /// <summary>
+    /// Whether this middleware can use a fast path (no DI required).
+    /// True when the middleware is static or has no constructor parameters and no method DI parameters.
+    /// </summary>
+    public bool CanUseFastPath => IsStatic || (!HasConstructorParameters && !HasMethodDIParameters);
 }
 
 internal readonly record struct MiddlewareMethodInfo

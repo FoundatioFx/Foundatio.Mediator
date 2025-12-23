@@ -44,16 +44,16 @@ public class MassTransitEventConsumer2 : IConsumer<UserRegisteredEvent>
 }
 
 // Scenario 4: Query handler with dependency injection
-public class MassTransitQueryWithDependenciesConsumer : IConsumer<GetOrderWithDependencies>
+public class MassTransitFullQueryConsumer : IConsumer<GetFullQuery>
 {
     private readonly IOrderService _orderService;
 
-    public MassTransitQueryWithDependenciesConsumer(IOrderService orderService)
+    public MassTransitFullQueryConsumer(IOrderService orderService)
     {
         _orderService = orderService;
     }
 
-    public async Task Consume(ConsumeContext<GetOrderWithDependencies> context)
+    public async Task Consume(ConsumeContext<GetFullQuery> context)
     {
         var order = await _orderService.GetOrderAsync(context.Message.Id);
         await context.RespondAsync(order);

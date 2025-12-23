@@ -86,6 +86,10 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
+        // Static cached logger - initialized once on first use
+        source.AppendLine("private static ILogger? _logger;");
+        source.AppendLine();
+
         GenerateHandleMethod(source, handler, configuration);
 
         GenerateUntypedHandleMethod(source, handler);
@@ -140,8 +144,8 @@ internal static class HandlerGenerator
         source.IncrementIndent();
 
         variables["System.IServiceProvider"] = "serviceProvider";
-        source.AppendLine($"var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
-        source.AppendLine($"if (logger != null) logger.LogProcessingMessage(\"{handler.MessageType.Identifier}\");");
+        source.AppendLine($"var logger = _logger ??= serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
+        source.AppendLine($"logger?.LogProcessingMessage(\"{handler.MessageType.Identifier}\");");
 
         if (configuration.OpenTelemetryEnabled)
         {
@@ -246,7 +250,7 @@ internal static class HandlerGenerator
 
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
                 source.AppendLine("{");
-                source.AppendLine($"    if (logger != null) logger.LogShortCircuitedMessage(\"{handler.MessageType.Identifier}\");");
+                source.AppendLine($"    logger?.LogShortCircuitedMessage(\"{handler.MessageType.Identifier}\");");
 
                 if (handler.HasReturnValue)
                 {
@@ -307,7 +311,7 @@ internal static class HandlerGenerator
         }
         source.AppendLineIf(afterMiddleware.Any());
 
-        source.AppendLineIf($"if (logger != null) logger.LogCompletedMessage(\"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
+        source.AppendLineIf($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
         if (configuration.OpenTelemetryEnabled && !shouldUseTryCatch)
         {
             source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
@@ -358,7 +362,7 @@ internal static class HandlerGenerator
             {
                 source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
             }
-            source.AppendLine($"if (logger != null) logger.LogCompletedMessage(\"{handler.MessageType.Identifier}\");");
+            source.AppendLine($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");");
             source.DecrementIndent();
 
             source.AppendLine("}");
@@ -378,13 +382,24 @@ internal static class HandlerGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
-        if (handler.IsAsync)
+        // For handlers that can use fast path, skip scope creation entirely
+        bool canUseFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
+        string serviceProviderExpr;
+
+        if (canUseFastPath)
+        {
+            // Cast mediator directly to IServiceProvider - no scope needed
+            serviceProviderExpr = "(System.IServiceProvider)mediator";
+        }
+        else if (handler.IsAsync)
         {
             source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+            serviceProviderExpr = "scopedMediator.Services";
         }
         else
         {
             source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
+            serviceProviderExpr = "scopedMediator.Services";
         }
 
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
@@ -393,11 +408,12 @@ internal static class HandlerGenerator
         string asyncModifier = handler.IsAsync ? "await " : "";
         string result = handler.ReturnType.IsVoid ? "" : "var result = ";
 
-        source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+        source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}({serviceProviderExpr}, typedMessage, cancellationToken);");
 
         if (handler.ReturnType.IsTuple)
         {
-            source.AppendLine("return await PublishCascadingMessagesAsync(scopedMediator, result, responseType);");
+            // Cascading messages need the mediator for publishing
+            source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
         }
         else if (handler.HasReturnValue)
         {
@@ -485,46 +501,23 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        if (handler.IsAsync)
+        // Build handler call arguments - only include CancellationToken if handler accepts it
+        bool hasCancellationToken = handler.Parameters.Any(p => p.Type.IsCancellationToken);
+        string handlerArgs = hasCancellationToken ? "typedMessage, cancellationToken" : "typedMessage";
+        bool needsValueTaskWrap = methodIsAsync && !handler.IsAsync;
+
+        // Zero-alloc fast path for static handlers: skip scope creation and call handler directly
+        // This applies when handler is static, has no DI method parameters, no middleware, and no cascading messages
+        if (handler.CanUseZeroAllocFastPath)
         {
-            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
-        }
-        else
-        {
-            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
-        }
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+            asyncModifier = handler.IsAsync ? "await " : "";
 
-        asyncModifier = handler.IsAsync ? "await " : "";
-        if (handler.ReturnType.IsTuple)
-        {
-            source.AppendLine($"var result = {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-            source.AppendLine();
-
-            var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
-            if (returnItem == default)
-            {
-                returnItem = handler.ReturnType.TupleItems.First();
-            }
-            var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
-
-            foreach (var publishItem in publishItems)
-            {
-                source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
-            }
-            source.AppendLineIf(publishItems.Any());
-
-            source.AppendLine($"return result.{returnItem.Name};");
-        }
-        else
-        {
-            bool needsValueTaskWrap = methodIsAsync && !handler.IsAsync;
-
+            // Static handler: call directly
             if (responseType.IsVoid)
             {
-                source.AppendLine($"{asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                source.AppendLine($"{asyncModifier}{handler.FullName}.{handler.MethodName}({handlerArgs});");
 
                 if (needsValueTaskWrap)
                 {
@@ -535,11 +528,102 @@ internal static class HandlerGenerator
             {
                 if (needsValueTaskWrap)
                 {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken));");
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handler.FullName}.{handler.MethodName}({handlerArgs}));");
                 }
                 else
                 {
-                    source.AppendLine($"return {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    source.AppendLine($"return {asyncModifier}{handler.FullName}.{handler.MethodName}({handlerArgs});");
+                }
+            }
+        }
+        // Singleton fast path: resolve handler from root service provider without creating a scope
+        // GetOrCreateHandler caches the handler instance since CanUseSingletonFastPath is true
+        // WARNING: This will behave incorrectly if the handler is registered as Scoped!
+        else if (handler.CanUseSingletonFastPath)
+        {
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+            source.AppendLine($"var handlerInstance = GetOrCreateHandler((System.IServiceProvider)mediator);");
+
+            asyncModifier = handler.IsAsync ? "await " : "";
+
+            if (responseType.IsVoid)
+            {
+                source.AppendLine($"{asyncModifier}handlerInstance.{handler.MethodName}({handlerArgs});");
+
+                if (needsValueTaskWrap)
+                {
+                    source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                }
+            }
+            else
+            {
+                if (needsValueTaskWrap)
+                {
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>(handlerInstance.{handler.MethodName}({handlerArgs}));");
+                }
+                else
+                {
+                    source.AppendLine($"return {asyncModifier}handlerInstance.{handler.MethodName}({handlerArgs});");
+                }
+            }
+        }
+        else
+        {
+            // Standard path: create scope and go through HandleAsync
+            if (handler.IsAsync)
+            {
+                source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+            }
+            else
+            {
+                source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
+            }
+
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+
+            asyncModifier = handler.IsAsync ? "await " : "";
+            if (handler.ReturnType.IsTuple)
+            {
+                source.AppendLine($"var result = {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                source.AppendLine();
+
+                var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
+                if (returnItem == default)
+                {
+                    returnItem = handler.ReturnType.TupleItems.First();
+                }
+                var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
+
+                foreach (var publishItem in publishItems)
+                {
+                    source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
+                    source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
+                }
+                source.AppendLineIf(publishItems.Any());
+
+                source.AppendLine($"return result.{returnItem.Name};");
+            }
+            else
+            {
+                if (responseType.IsVoid)
+                {
+                    source.AppendLine($"{asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+
+                    if (needsValueTaskWrap)
+                    {
+                        source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                    }
+                }
+                else
+                {
+                    if (needsValueTaskWrap)
+                    {
+                        source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken));");
+                    }
+                    else
+                    {
+                        source.AppendLine($"return {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    }
                 }
             }
         }
@@ -655,14 +739,33 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {
-        source.AppendLine()
-              .AppendLines($$"""
-                [DebuggerStepThrough]
-                private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
-                {
-                    return serviceProvider.GetRequiredService<{{handler.FullName}}>();
-                }
-                """);
+        // For handlers that can use singleton fast path, cache a directly-instantiated instance
+        // This is safe because CanUseSingletonFastPath ensures no constructor parameters
+        if (handler.CanUseSingletonFastPath)
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    private static readonly {{handler.FullName}} _cachedHandler = new();
+
+                    [DebuggerStepThrough]
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+                    {
+                        return _cachedHandler;
+                    }
+                    """);
+        }
+        else
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    [DebuggerStepThrough]
+                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+                    {
+                        return serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                    }
+                    """);
+        }
     }
 
     public static string GetHandlerClassName(HandlerInfo handler)

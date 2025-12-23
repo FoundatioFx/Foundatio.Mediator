@@ -49,16 +49,16 @@ public class MediatREventHandler2 : INotificationHandler<UserRegisteredEvent>
 
 // Scenario 4: Query handler with dependency injection
 [FoundatioIgnore]
-public class MediatRQueryWithDependenciesHandler : IRequestHandler<GetOrderWithDependencies, Order>
+public class MediatRFullQueryHandler : IRequestHandler<GetFullQuery, Order>
 {
     private readonly IOrderService _orderService;
 
-    public MediatRQueryWithDependenciesHandler(IOrderService orderService)
+    public MediatRFullQueryHandler(IOrderService orderService)
     {
         _orderService = orderService;
     }
 
-    public async Task<Order> Handle(GetOrderWithDependencies request, CancellationToken cancellationToken)
+    public async Task<Order> Handle(GetFullQuery request, CancellationToken cancellationToken)
     {
         return await _orderService.GetOrderAsync(request.Id, cancellationToken);
     }

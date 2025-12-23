@@ -18,22 +18,12 @@ await UserHandler_Generated.HandleAsync(new GetUser(123), serviceProvider, cance
 
 This results in:
 
-- **2-15x faster** than other mediator libraries
+- **Significantly faster** than other mediator libraries
 - **Zero allocations** for fire-and-forget commands
 - **No reflection overhead** at runtime
 - **Full compiler optimizations** including inlining
 
-### Benchmark Results
-
-Benchmark highlights (see root README for full tables):
-
-| Scenario | Foundatio | MediatR | MassTransit |
-|----------|-----------|---------|------------|
-| Commands | 17.93 ns (2.15x direct) | 54.81 ns | 1,585.85 ns |
-| Queries  | 46.36 ns (1.44x direct) | 81.40 ns | 6,354.47 ns |
-| Events (publish) | 121.57 ns | 59.29 ns | 1,697.53 ns |
-
-Event publishing involves multiple handler pipeline steps; Foundatio optimizes single-handler command/query paths for near-direct performance.
+For detailed benchmark comparisons, see the [Performance](./performance.md) page which is kept up-to-date with the latest results.
 
 ## Developer Experience
 
@@ -260,20 +250,6 @@ public class UserHandler
 - **Improved error handling** with Result types
 - **Enhanced middleware** with state passing
 - **Reduced boilerplate** with convention-based discovery
-
-## Real-World Success Stories
-
-### Performance-Critical APIs
-
-> "We migrated our high-throughput order processing API from MediatR to Foundatio Mediator and saw a 40% reduction in P99 latency while simplifying our error handling patterns."
-
-### Microservices Architecture
-
-> "The convention-based approach reduced onboarding time for new team members, and the automatic event publishing simplified our event-driven architecture."
-
-### Large Enterprise Applications
-
-> "The compile-time validation caught numerous handler registration issues that would have been runtime errors in our previous mediator library."
 
 ## Getting Started
 

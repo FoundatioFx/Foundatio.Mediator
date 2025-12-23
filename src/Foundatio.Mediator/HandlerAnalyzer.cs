@@ -165,6 +165,10 @@ internal static class HandlerAnalyzer
             bool hasMethodHandlerAttribute = handlerMethod.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
             bool methodIsExplicitlyDeclared = isExplicitlyDeclared || hasMethodHandlerAttribute;
 
+            // Check if the handler has constructor parameters (indicating DI dependencies)
+            bool hasConstructorParameters = !handlerMethod.IsStatic &&
+                classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -185,6 +189,7 @@ internal static class HandlerAnalyzer
                 CallSites = [],
                 Middleware = [],
                 IsExplicitlyDeclared = methodIsExplicitlyDeclared,
+                HasConstructorParameters = hasConstructorParameters,
             });
         }
 

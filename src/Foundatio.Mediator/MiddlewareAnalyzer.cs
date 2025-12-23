@@ -177,6 +177,13 @@ internal static class MiddlewareAnalyzer
                 order = namedOrderValue;
         }
 
+        // Detect constructor parameters (for non-static middleware)
+        bool hasConstructorParameters = !isStatic && classSymbol.InstanceConstructors
+            .Any(c => c.Parameters.Length > 0);
+
+        // Detect method DI parameters - parameters that aren't message, CancellationToken, HandlerExecutionInfo, or Exception
+        bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod, context.SemanticModel.Compilation);
+
         return new MiddlewareInfo
         {
             Identifier = classSymbol.Name.ToIdentifier(),
@@ -189,6 +196,8 @@ internal static class MiddlewareAnalyzer
             Order = order,
             DeclaredAccessibility = classSymbol.DeclaredAccessibility,
             AssemblyName = classSymbol.ContainingAssembly.Name,
+            HasConstructorParameters = hasConstructorParameters,
+            HasMethodDIParameters = hasMethodDIParameters,
             Diagnostics = new(diagnostics.ToArray()),
         };
     }
@@ -252,6 +261,76 @@ internal static class MiddlewareAnalyzer
             if (containingType.IsGenericType)
                 return true;
             containingType = containingType.ContainingType;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if any middleware method has DI parameters that would require serviceProvider.GetRequiredService.
+    /// Parameters that are NOT DI parameters: message (first param), CancellationToken, HandlerExecutionInfo, Exception.
+    /// Note: Before method return values passed to After/Finally are matched by type at generation time,
+    /// so we conservatively consider them as non-DI if they're common middleware-related types.
+    /// </summary>
+    private static bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod, Compilation compilation)
+    {
+        return HasDIParameters(beforeMethod, compilation) ||
+               HasDIParameters(afterMethod, compilation) ||
+               HasDIParameters(finallyMethod, compilation);
+    }
+
+    private static bool HasDIParameters(IMethodSymbol? method, Compilation compilation)
+    {
+        if (method == null)
+            return false;
+
+        var exceptionType = compilation.GetTypeByMetadataName("System.Exception");
+        var cancellationTokenType = compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
+        var handlerExecutionInfoType = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+        var objectType = compilation.GetSpecialType(SpecialType.System_Object);
+
+        foreach (var param in method.Parameters)
+        {
+            // First parameter is always the message
+            if (SymbolEqualityComparer.Default.Equals(param, method.Parameters[0]))
+                continue;
+
+            // CancellationToken is not a DI parameter
+            if (SymbolEqualityComparer.Default.Equals(param.Type, cancellationTokenType))
+                continue;
+
+            // HandlerExecutionInfo is not a DI parameter
+            if (SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionInfoType))
+                continue;
+
+            // Exception (including nullable Exception?) is not a DI parameter (used in Finally methods)
+            var unwrappedType = param.Type;
+            if (param.Type is INamedTypeSymbol { IsGenericType: true } nullable &&
+                nullable.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+            {
+                unwrappedType = nullable.TypeArguments[0];
+            }
+            if (exceptionType != null && IsExceptionType(unwrappedType, exceptionType))
+                continue;
+
+            // Object type with name "handlerResult" is not a DI parameter
+            if (SymbolEqualityComparer.Default.Equals(param.Type, objectType) && param.Name == "handlerResult")
+                continue;
+
+            // Any other parameter type is considered a DI parameter
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsExceptionType(ITypeSymbol type, INamedTypeSymbol exceptionType)
+    {
+        var current = type;
+        while (current != null)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, exceptionType))
+                return true;
+            current = current.BaseType;
         }
         return false;
     }

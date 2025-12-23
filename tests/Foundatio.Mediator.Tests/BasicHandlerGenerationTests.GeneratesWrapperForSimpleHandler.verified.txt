@@ -115,10 +115,12 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class PingHandler_Ping_Handler
 {
+    private static ILogger? _logger;
+
     public static async System.Threading.Tasks.Task<string> HandleAsync(System.IServiceProvider serviceProvider, Ping message, System.Threading.CancellationToken cancellationToken)
     {
-        var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingHandler");
-        if (logger != null) logger.LogProcessingMessage("Ping");
+        var logger = _logger ??= serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingHandler");
+        logger?.LogProcessingMessage("Ping");
 
         using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
@@ -128,16 +130,15 @@ public static class PingHandler_Ping_Handler
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         handlerResult = await handlerInstance.HandleAsync(message, cancellationToken);
 
-        if (logger != null) logger.LogCompletedMessage("Ping");
+        logger?.LogCompletedMessage("Ping");
         activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
         return handlerResult;
     }
 
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
-        await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);
         var typedMessage = (Ping)message;
-        var result = await HandleAsync(scopedMediator.Services, typedMessage, cancellationToken);
+        var result = await HandleAsync((System.IServiceProvider)mediator, typedMessage, cancellationToken);
 
         if (responseType == null)
         {
@@ -147,10 +148,13 @@ public static class PingHandler_Ping_Handler
         return result;
     }
 
+    private static readonly PingHandler _cachedHandler = new();
+
     [DebuggerStepThrough]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredService<PingHandler>();
+        return _cachedHandler;
     }
 }
 

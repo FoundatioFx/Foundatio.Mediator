@@ -48,9 +48,9 @@ public class WolverineEventHandler2
 
 // Scenario 4: Query handler with dependency injection
 [FoundatioIgnore]
-public class WolverineQueryWithDependenciesHandler
+public class WolverineFullQueryHandler
 {
-    public Task<Order> Handle(GetOrderWithDependencies query, IOrderService orderService)
+    public Task<Order> Handle(GetFullQuery query, IOrderService orderService)
     {
         return orderService.GetOrderAsync(query.Id);
     }

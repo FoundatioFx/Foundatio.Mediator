@@ -45,8 +45,9 @@ public class SyncHandlerAsyncCallTests : GeneratorTestBase
         Assert.Contains("System.Threading.Tasks.ValueTask<string>", wrapper.Source);
 
         // The interceptor should wrap the sync result properly
+        // For singleton fast path handlers (no constructor params), it uses handlerInstance.Handle
         // It should use new ValueTask<T>(...) to wrap the sync result
-        Assert.Contains("new System.Threading.Tasks.ValueTask<string>(Handle(", wrapper.Source);
+        Assert.Contains("new System.Threading.Tasks.ValueTask<string>(handlerInstance.Handle(", wrapper.Source);
     }
 
     [Fact]

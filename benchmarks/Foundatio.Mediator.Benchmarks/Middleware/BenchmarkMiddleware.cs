@@ -7,16 +7,16 @@ namespace Foundatio.Mediator.Benchmarks.Middleware;
 
 /// <summary>
 /// Simple timing middleware for benchmarking - simulates real-world logging/timing middleware.
-/// Only applies to GetOrderWithDependencies (FullQuery benchmark).
+/// Only applies to GetFullQuery (FullQuery benchmark).
 /// </summary>
 public class TimingMiddleware
 {
-    public Stopwatch Before(GetOrderWithDependencies message, HandlerExecutionInfo info)
+    public Stopwatch Before(GetFullQuery message, HandlerExecutionInfo info)
     {
         return Stopwatch.StartNew();
     }
 
-    public void Finally(GetOrderWithDependencies message, Stopwatch? stopwatch, HandlerExecutionInfo info)
+    public void Finally(GetFullQuery message, Stopwatch? stopwatch, HandlerExecutionInfo info)
     {
         stopwatch?.Stop();
         // In real middleware, you'd log here - we just stop the timer for the benchmark

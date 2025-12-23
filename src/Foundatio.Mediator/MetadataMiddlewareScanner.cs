@@ -150,18 +150,33 @@ internal static class MetadataMiddlewareScanner
 
             var messageType = TypeSymbolInfo.From(firstMethod.Parameters[0].Type, _compilation);
 
+            // Determine if middleware is static (class or all methods are static)
+            bool isStatic = classSymbol.IsStatic ||
+                            (beforeMethod?.IsStatic ?? true) &&
+                            (afterMethod?.IsStatic ?? true) &&
+                            (finallyMethod?.IsStatic ?? true);
+
+            // Detect constructor parameters (for non-static middleware)
+            bool hasConstructorParameters = !isStatic && classSymbol.InstanceConstructors
+                .Any(c => c.Parameters.Length > 0);
+
+            // Detect method DI parameters
+            bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod);
+
             return new MiddlewareInfo
             {
                 Identifier = classSymbol.Name,
                 FullName = classSymbol.ToDisplayString(),
                 MessageType = messageType,
-                IsStatic = classSymbol.IsStatic,
+                IsStatic = isStatic,
                 Order = order,
                 BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
                 AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
                 FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
                 DeclaredAccessibility = classSymbol.DeclaredAccessibility,
                 AssemblyName = classSymbol.ContainingAssembly.Name,
+                HasConstructorParameters = hasConstructorParameters,
+                HasMethodDIParameters = hasMethodDIParameters,
                 Diagnostics = new EquatableArray<DiagnosticInfo>([]) // No diagnostics for metadata-based
             };
         }
@@ -218,6 +233,73 @@ internal static class MetadataMiddlewareScanner
                    method.DeclaredAccessibility == Accessibility.Public &&
                    !method.HasIgnoreAttribute(_compilation) &&
                    method.Parameters.Length > 0;
+        }
+
+        /// <summary>
+        /// Checks if any middleware method has DI parameters that would require serviceProvider.GetRequiredService.
+        /// </summary>
+        private bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod)
+        {
+            return HasDIParameters(beforeMethod) ||
+                   HasDIParameters(afterMethod) ||
+                   HasDIParameters(finallyMethod);
+        }
+
+        private bool HasDIParameters(IMethodSymbol? method)
+        {
+            if (method == null)
+                return false;
+
+            var exceptionType = _compilation.GetTypeByMetadataName("System.Exception");
+            var cancellationTokenType = _compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
+            var handlerExecutionInfoType = _compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+            var objectType = _compilation.GetSpecialType(SpecialType.System_Object);
+
+            foreach (var param in method.Parameters)
+            {
+                // First parameter is always the message
+                if (SymbolEqualityComparer.Default.Equals(param, method.Parameters[0]))
+                    continue;
+
+                // CancellationToken is not a DI parameter
+                if (SymbolEqualityComparer.Default.Equals(param.Type, cancellationTokenType))
+                    continue;
+
+                // HandlerExecutionInfo is not a DI parameter
+                if (SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionInfoType))
+                    continue;
+
+                // Exception (including nullable Exception?) is not a DI parameter
+                var unwrappedType = param.Type;
+                if (param.Type is INamedTypeSymbol { IsGenericType: true } nullable &&
+                    nullable.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+                {
+                    unwrappedType = nullable.TypeArguments[0];
+                }
+                if (exceptionType != null && IsExceptionType(unwrappedType, exceptionType))
+                    continue;
+
+                // Object type with name "handlerResult" is not a DI parameter
+                if (SymbolEqualityComparer.Default.Equals(param.Type, objectType) && param.Name == "handlerResult")
+                    continue;
+
+                // Any other parameter type is considered a DI parameter
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsExceptionType(ITypeSymbol type, INamedTypeSymbol exceptionType)
+        {
+            var current = type;
+            while (current != null)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, exceptionType))
+                    return true;
+                current = current.BaseType;
+            }
+            return false;
         }
     }
 }

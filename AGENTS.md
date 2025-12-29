@@ -1,34 +1,92 @@
-# AGENTS.md
+# Agent Guidelines for Foundatio.Mediator
 
-This file provides essential context for AI coding agents working on Foundatio.Mediator - a convention-based C# mediator powered by source generators and interceptors.
+You are an expert .NET engineer working on Foundatio.Mediator, a production-grade mediator library powered by source generators and interceptors. Your changes must maintain backward compatibility, performance, and reliability. Approach each task methodically: research existing patterns, make surgical changes, and validate thoroughly.
 
-## Project Overview
+**Craftsmanship Mindset**: Every line of code should be intentional, readable, and maintainable. Write code you'd be proud to have reviewed by senior engineers. Prefer simplicity over cleverness. When in doubt, favor explicitness and clarity.
 
-Foundatio.Mediator is a high-performance mediator library for .NET that achieves near-direct call performance through compile-time code generation. The project has two main components:
+## Repository Overview
 
-- **Runtime** (`src/Foundatio.Mediator.Abstractions/`) - Core abstractions, interfaces, and runtime support
+Foundatio.Mediator is a high-performance mediator library for .NET that achieves near-direct call performance through compile-time code generation:
+
+- **Runtime** (`src/Foundatio.Mediator.Abstractions/`) - Core abstractions, interfaces, and runtime support (`IMediator`, `Result<T>`, middleware)
 - **Generators** (`src/Foundatio.Mediator/`) - Source generators and analyzers that emit handler wrappers and interceptor attributes
+- **Convention-Based Discovery** - Handlers discovered by class name (`*Handler`, `*Consumer`) or explicit `[Handler]` attribute
+- **Middleware Pipeline** - Before/After/Finally hooks with state passing for cross-cutting concerns
+- **Result Pattern** - Rich status handling without exceptions via `Result<T>`
+- **Tuple Returns** - Automatic cascading messages for event-driven patterns
 
 **Key innovation**: Zero runtime reflection. All handler dispatch is resolved at compile time via source generators that scan for handlers and emit strongly-typed wrappers with optional C# 11+ interceptor attributes for direct call redirection.
 
-## Commands (ALWAYS use these)
+Design principles: **convention-over-configuration**, **compile-time safety**, **near-direct call performance**, **testable handlers**.
 
-**IMPORTANT**: Always use these exact commands. Do not create ad-hoc scripts or alternative approaches.
+## Quick Start
 
-- **Build** (triggers source generators): `dotnet build`
-- **Run tests** (validate ALL changes): `dotnet test`
-- **Run benchmarks** (measure performance): `cd benchmarks/Foundatio.Mediator.Benchmarks; dotnet run -c Release -- foundatio`
-- **Run samples**: `cd samples/ConsoleSample; dotnet run`
-- **Clean** (removes generated files): `dotnet clean`
+```bash
+# Clean (recommended before rebuilding generators)
+dotnet clean Foundatio.Mediator.slnx
+
+# Build (triggers source generators)
+dotnet build Foundatio.Mediator.slnx
+
+# Test (validate ALL changes)
+dotnet test Foundatio.Mediator.slnx
+
+# Run benchmarks
+cd benchmarks/Foundatio.Mediator.Benchmarks && dotnet run -c Release -- foundatio
+
+# Run samples
+cd samples/ConsoleSample && dotnet run
+
+# Format code
+dotnet format Foundatio.Mediator.slnx
+```
 
 **Workflow**: After making code changes, ALWAYS run `dotnet build` then `dotnet test` to validate your work before considering the task complete.
 
-## Code Conventions
+## Project Structure
 
-### Coding Standards
+```text
+src/
+├── Foundatio.Mediator/                # Source generators
+│   ├── MediatorGenerator.cs           # Main generator orchestrator
+│   ├── HandlerAnalyzer.cs             # Discovers handler classes
+│   ├── HandlerGenerator.cs            # Emits handler wrappers
+│   ├── MiddlewareAnalyzer.cs          # Discovers middleware
+│   ├── CallSiteAnalyzer.cs            # Finds mediator call sites
+│   ├── InterceptsLocationGenerator.cs # Emits interceptor attributes
+│   └── Foundatio.Mediator.props       # MSBuild configuration options
+└── Foundatio.Mediator.Abstractions/   # Runtime library
+    ├── IMediator.cs                   # Core mediator interface
+    ├── Mediator.cs                    # Default implementation
+    ├── Result.cs, Result.Generic.cs   # Result pattern types
+    ├── HandlerRegistration.cs         # DI lookup metadata
+    ├── HandlerResult.cs               # Middleware flow control
+    ├── MediatorConfiguration.cs       # Runtime config
+    └── HandlerExecutionInfo.cs        # Execution context
+tests/
+└── Foundatio.Mediator.Tests/          # Unit and integration tests
+    ├── GeneratorTestBase.cs           # Base class for generator tests
+    ├── BasicHandlerGenerationTests.cs # Generator snapshot tests
+    └── Integration/                   # Integration test examples
+samples/
+├── ConsoleSample/                     # Working console example
+│   ├── Handlers/                      # Handler examples
+│   ├── Middleware/                    # Middleware examples
+│   └── Messages/                      # Message definitions
+└── ModularMonolithSample/             # Multi-module architecture example
+benchmarks/
+└── Foundatio.Mediator.Benchmarks/     # Performance benchmarks
+docs/                                  # VitePress documentation site
+```
 
-- Follow `.editorconfig` settings strictly
-- Keep comments minimal - only for complex logic or non-obvious intent
+## Coding Standards
+
+### Style & Formatting
+
+- Follow `.editorconfig` rules and [Microsoft C# conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)
+- Run `dotnet format` to auto-format code
+- Match existing file style; minimize diffs
+- Keep comments minimal—only for complex logic or non-obvious intent
 
 ### Source Generator Code Style
 
@@ -65,6 +123,48 @@ source.AppendLine($"    return serviceProvider.GetRequiredService<{handler.FullN
 source.AppendLine("}");
 ```
 
+### Architecture Patterns
+
+- **Convention-based discovery**: Handlers discovered by naming convention (`*Handler`, `*Consumer`) or explicit attributes
+- **Dependency Injection**: Use constructor injection; handlers resolved via `IServiceProvider`
+- **Naming**: `Foundatio.Mediator.[Feature]` for projects, handlers end with `Handler` or `Consumer`
+- **Compile-time generation**: Source generators emit strongly-typed wrapper code
+
+### Code Quality
+
+- Write complete, runnable code—no placeholders, TODOs, or `// existing code...` comments
+- Use modern C# features: pattern matching, nullable references, `is` expressions, target-typed `new()`
+- Follow SOLID, DRY principles; remove unused code and parameters
+- Clear, descriptive naming; prefer explicit over clever
+- Use `ConfigureAwait(false)` in library code (not in tests)
+- Prefer `ValueTask<T>` for hot paths that may complete synchronously
+- Always dispose resources: use `using` statements or `IAsyncDisposable`
+- Handle cancellation tokens properly: check `token.IsCancellationRequested`, pass through call chains
+
+### Common Patterns
+
+- **Async suffix**: All async methods end with `Async` (e.g., `HandleAsync`, `InvokeAsync`)
+- **CancellationToken**: Last parameter, defaulted to `default` in public APIs
+- **Logging**: Use structured logging with `ILogger`, log at appropriate levels
+- **Exceptions**: For handler errors, prefer `Result<T>` pattern over exceptions. Throw `ArgumentNullException`, `ArgumentException`, `InvalidOperationException` with clear messages for validation errors.
+
+### Single Responsibility
+
+- Each class has one reason to change
+- Methods do one thing well; extract when doing multiple things
+- Keep files focused: one primary type per file
+- Separate concerns: don't mix I/O, business logic, and presentation
+- If a method needs a comment explaining what it does, it should probably be extracted
+
+### Performance Considerations
+
+- **Avoid allocations in hot paths**: Use `Span<T>`, `Memory<T>`, pooled buffers
+- **Prefer structs for small, immutable types**: But be aware of boxing
+- **Cache expensive computations**: Use `Lazy<T>` or explicit caching
+- **Profile before optimizing**: Don't guess—measure with benchmarks
+- **Consider concurrent access**: Use `ConcurrentDictionary`, `Interlocked`, or proper locking
+- **Avoid async in tight loops**: Consider batching or `ValueTask` for hot paths
+- **Dispose resources promptly**: Don't hold connections/handles longer than needed
 
 ### Handler Discovery Rules
 
@@ -146,20 +246,155 @@ public class LoggingMiddleware
 - **Invoke/InvokeAsync**: Requires EXACTLY one handler. Throws if zero or multiple handlers found.
 - **PublishAsync**: Runs ALL applicable handlers (exact type, interfaces, base classes) in parallel.
 
-## Testing Instructions
+## Making Changes
 
-### Test Organization
+### Before Starting
 
-All tests are in `tests/Foundatio.Mediator.Tests/`. DO NOT create ad-hoc console apps or sample projects for testing.
+1. **Gather context**: Read related files, search for similar implementations, understand the full scope
+2. **Research patterns**: Find existing usages of the code you're modifying using grep/semantic search
+3. **Understand completely**: Know the problem, side effects, and edge cases before coding
+4. **Plan the approach**: Choose the simplest solution that satisfies all requirements
+5. **Check dependencies**: Verify you understand how changes affect dependent code
 
-```bash
-# Run all tests
-dotnet test
+### Pre-Implementation Analysis
 
-# Run specific test file
-dotnet test --filter "FullyQualifiedName~BasicHandlerGenerationTests"
+Before writing any implementation code, think critically:
 
-# VS Code: Use "run tests" task (default test task)
+1. **What could go wrong?** Consider race conditions, null references, edge cases, resource exhaustion
+2. **What are the failure modes?** Network failures, timeouts, out-of-memory, concurrent access
+3. **What assumptions am I making?** Validate each assumption against the codebase
+4. **Is this the root cause?** Don't fix symptoms—trace to the core problem
+5. **Will this scale?** Consider performance under load, memory allocation patterns
+6. **Is there existing code that does this?** Search before creating new utilities
+
+### Test-First Development
+
+**Always write or extend tests before implementing changes:**
+
+1. **Find existing tests first**: Search for tests covering the code you're modifying
+2. **Extend existing tests**: Add test cases to existing test classes/methods when possible for maintainability
+3. **Write failing tests**: Create tests that demonstrate the bug or missing feature
+4. **Implement the fix**: Write minimal code to make tests pass
+5. **Refactor**: Clean up while keeping tests green
+6. **Verify edge cases**: Add tests for boundary conditions and error paths
+
+**Why extend existing tests?** Consolidates related test logic, reduces duplication, improves discoverability, maintains consistent test patterns.
+
+### While Coding
+
+- **Minimize diffs**: Change only what's necessary, preserve formatting and structure
+- **Preserve behavior**: Don't break existing functionality or change semantics unintentionally
+- **Build incrementally**: Run `dotnet build` after each logical change to catch errors early
+- **Test continuously**: Run `dotnet test` frequently to verify correctness
+- **Match style**: Follow the patterns in surrounding code exactly
+
+### Validation
+
+Before marking work complete, verify:
+
+1. **Builds successfully**: `dotnet build Foundatio.Mediator.slnx` exits with code 0
+2. **All tests pass**: `dotnet test Foundatio.Mediator.slnx` shows no failures
+3. **No new warnings**: Check build output for new compiler warnings
+4. **API compatibility**: Public API changes are intentional and backward-compatible when possible
+5. **Documentation updated**: XML doc comments added/updated for public APIs
+6. **Interface documentation**: Update interface definitions and docs with any API changes
+7. **Feature documentation**: Add entries to [docs/](docs/) folder for new features or significant changes
+8. **Breaking changes flagged**: Clearly identify any breaking changes for review
+
+### Error Handling
+
+- **Validate inputs**: Check for null, empty strings, invalid ranges at method entry
+- **Fail fast**: Throw exceptions immediately for invalid arguments (don't propagate bad data)
+- **Meaningful messages**: Include parameter names and expected values in exception messages
+- **Don't swallow exceptions**: Log and rethrow, or let propagate unless you can handle properly
+- **Use guard clauses**: Early returns for invalid conditions, keep happy path unindented
+
+## Security
+
+- **Validate all inputs**: Use guard clauses, check bounds, validate formats before processing
+- **Sanitize external data**: Never trust data from queues, caches, or external sources
+- **Avoid injection attacks**: Use parameterized queries, escape user input, validate file paths
+- **No sensitive data in logs**: Never log passwords, tokens, keys, or PII
+- **Use secure defaults**: Default to encrypted connections, secure protocols, restricted permissions
+- **Follow OWASP guidelines**: Review [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- **Dependency security**: Check for known vulnerabilities before adding dependencies
+- **No deprecated APIs**: Avoid obsolete cryptography, serialization, or framework features
+- **Mediator-specific**: Always validate message parameters; use middleware for cross-cutting security (authentication, authorization); return `Result.Unauthorized()` or `Result.Forbidden()` instead of throwing
+- **Sanitize before logging**: In middleware, sanitize data before logging to avoid leaking sensitive information
+
+## Testing
+
+### Philosophy: Battle-Tested Code
+
+Tests are not just validation—they're **executable documentation** and **design tools**. Well-tested code is:
+
+- **Trustworthy**: Confidence to refactor and extend
+- **Documented**: Tests show how the API should be used
+- **Resilient**: Edge cases are covered before they become production bugs
+
+### Framework
+
+- **xUnit** as the primary testing framework
+- **Verify library** for snapshot testing of generated code
+- Follow [Microsoft unit testing best practices](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
+
+### Test-First Workflow
+
+1. **Search for existing tests**: `dotnet test --filter "FullyQualifiedName~MethodYouAreChanging"`
+2. **Extend existing test classes**: Add new `[Fact]` or `[Theory]` cases to existing files
+3. **Write the failing test first**: Verify it fails for the right reason
+4. **Implement minimal code**: Just enough to pass the test
+5. **Add edge case tests**: Null inputs, empty collections, boundary values, concurrent access
+6. **Run full test suite**: Ensure no regressions
+
+### Generator Test Workflow
+
+When modifying source generators:
+
+1. Make code changes to generator files
+2. Run `dotnet test` immediately
+3. Fix any failures before proceeding
+4. Review snapshot diffs carefully if generator tests fail
+5. Accept snapshots only after verifying the generated code is correct
+
+### Test Principles (FIRST)
+
+- **Fast**: Tests execute quickly
+- **Isolated**: No dependencies on external services or execution order
+- **Repeatable**: Consistent results every run
+- **Self-checking**: Tests validate their own outcomes
+- **Timely**: Write tests alongside code
+
+### Naming Convention
+
+Use the pattern: `MethodName_StateUnderTest_ExpectedBehavior`
+
+Examples:
+
+- `GenerateHandler_WithSimpleMessage_CreatesValidWrapper`
+- `InvokeAsync_WithRegisteredHandler_ReturnsExpectedResult`
+- `BeforeMiddleware_WithValidState_PassesStateToAfter`
+
+### Test Structure
+
+Follow the AAA (Arrange-Act-Assert) pattern:
+
+```csharp
+[Fact]
+public async Task InvokeAsync_WithRegisteredHandler_ReturnsExpectedResult()
+{
+    // Arrange
+    var services = new ServiceCollection();
+    services.AddMediator();
+    using var provider = services.BuildServiceProvider();
+    var mediator = provider.GetRequiredService<IMediator>();
+
+    // Act
+    var result = await mediator.InvokeAsync<string>(new GetGreeting("World"));
+
+    // Assert
+    Assert.Equal("Hello, World!", result);
+}
 ```
 
 ### Generator Testing with Snapshots
@@ -179,7 +414,16 @@ public class MyGeneratorTests : GeneratorTestBase
     public async Task TestName()
     {
         var source = """
-            // C# code here
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Ping(string Message) : IQuery<string>;
+
+            public class PingHandler {
+                public Task<string> HandleAsync(Ping message, CancellationToken ct)
+                    => Task.FromResult(message.Message + " Pong");
+            }
             """;
 
         await VerifyGenerated(source, new MediatorGenerator());
@@ -191,15 +435,36 @@ public class MyGeneratorTests : GeneratorTestBase
 
 - Prefer unit tests over integration tests
 - When integration tests are needed, use existing message types from `Integration/` directory
-- See `tests/Foundatio.Mediator.Tests/Integration/ScopedDependencyTests.cs` for examples
+- See [tests/Foundatio.Mediator.Tests/Integration/ScopedDependencyTests.cs](tests/Foundatio.Mediator.Tests/Integration/ScopedDependencyTests.cs) for examples
 
-### Test Workflow
+### Running Tests
 
-1. Make code changes
-2. Run `dotnet test` immediately
-3. Fix any failures before proceeding
-4. Review snapshot diffs if generator tests fail
-5. Accept snapshots only after verifying correctness
+```bash
+# All tests
+dotnet test Foundatio.Mediator.slnx
+
+# Specific test file
+dotnet test --filter "FullyQualifiedName~BasicHandlerGenerationTests"
+
+# With logging
+dotnet test --logger "console;verbosity=detailed"
+```
+
+## Debugging
+
+1. **Reproduce** with minimal steps
+2. **Understand** the root cause before fixing
+3. **Test** the fix thoroughly
+4. **Document** non-obvious fixes in code if needed
+
+## Resilience & Reliability
+
+- **Expect failures**: Network calls fail, resources exhaust, concurrent access races
+- **Timeouts everywhere**: Never wait indefinitely; use cancellation tokens
+- **Retry with backoff**: Use exponential backoff with jitter for transient failures
+- **Graceful degradation**: Return cached data, default values, or partial results when appropriate
+- **Idempotency**: Design operations to be safely retryable
+- **Resource limits**: Bound queues, caches, and buffers to prevent memory exhaustion
 
 ## Architecture Deep Dive
 
@@ -325,7 +590,6 @@ src/
     MiddlewareAnalyzer.cs          # Discovers middleware
     CallSiteAnalyzer.cs            # Finds mediator call sites
     InterceptsLocationGenerator.cs # Emits interceptor attributes
-    DIRegistrationGenerator.cs     # Emits DI registrations
 
   Foundatio.Mediator.Abstractions/ # Runtime library
     IMediator.cs                   # Core mediator interface
@@ -334,11 +598,11 @@ src/
     HandlerResult.cs               # Middleware flow control
     IResult.cs, Result.cs          # Result pattern types
     MediatorConfiguration.cs       # Runtime config
-    HandlerContext.cs              # Execution context
+    HandlerExecutionInfo.cs        # Execution context
 
 tests/Foundatio.Mediator.Tests/
   GeneratorTestBase.cs             # Base class for generator tests
-  BasicHandlerGenerationTests.cs  # Example generator tests
+  BasicHandlerGenerationTests.cs   # Example generator tests
   Integration/                     # Integration test examples
 
 samples/
@@ -348,13 +612,11 @@ samples/
     Program.cs, ServiceConfiguration.cs
 ```
 
-## Common Patterns
+## Advanced Patterns
 
 ### Cascading Messages (Tuple Returns)
 
 First element = response; remaining non-null elements = auto-published events:
-
-```csharp
 
 ```csharp
 public async Task<(User user, UserCreated evt, WelcomeEmail email)> HandleAsync(RegisterUser cmd)
@@ -383,25 +645,11 @@ public class EntityHandler<T> where T : IEntity
 }
 ```
 
-## Security Considerations
+## Resources
 
-- Always validate message parameters; never trust input
-- Use middleware for cross-cutting security (authentication, authorization)
-- Return `Result.Unauthorized()` or `Result.Forbidden()` instead of throwing
-- Sanitize data before logging in middleware
-
-## Additional Guidelines
-
-- Reference existing instruction files for complete standards:
-  - [.github/instructions/general.instructions.md](.github/instructions/general.instructions.md) - General coding guidelines
-  - [.github/instructions/testing.instructions.md](.github/instructions/testing.instructions.md) - C# testing standards
-
-- When modifying generator code, always:
-  1. Update corresponding tests
-  2. Run `dotnet test` to verify snapshots
-  3. Check generated code in `samples/ConsoleSample/Generated/` for correctness
-
-- For questions about usage patterns, reference:
-  - `samples/ConsoleSample/` - Complete working examples
-  - `docs/` - Detailed documentation
-  - `tests/Foundatio.Mediator.Tests/Integration/` - Real-world scenarios
+- [README.md](README.md) - Overview and feature list
+- [docs/](docs/) - Full documentation (VitePress)
+- [samples/ConsoleSample/](samples/ConsoleSample/) - Complete working examples
+- [samples/ModularMonolithSample/](samples/ModularMonolithSample/) - Multi-module architecture
+- [tests/Foundatio.Mediator.Tests/Integration/](tests/Foundatio.Mediator.Tests/Integration/) - Real-world scenarios
+- [benchmarks/](benchmarks/) - Performance testing

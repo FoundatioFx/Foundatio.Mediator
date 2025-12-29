@@ -42,7 +42,7 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageReference Include="MassTransit" Version="8.5.7" />
-    <PackageReference Include="MediatR" Version="12.4.1" />
+    <PackageReference Include="MediatR" Version="14.0.0" />
     <PackageReference Include="WolverineFx" Version="5.9.2" />
     <PackageReference Include="Mediator.Abstractions" Version="3.0.1" />
     <PackageReference Include="Mediator.SourceGenerator" Version="3.0.1">

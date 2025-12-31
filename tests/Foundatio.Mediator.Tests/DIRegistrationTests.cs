@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class DIRegistrationTests : GeneratorTestBase
+public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void RegistersMultipleHandlers()

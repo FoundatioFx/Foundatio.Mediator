@@ -1,7 +1,6 @@
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Xunit.Abstractions;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
@@ -76,7 +75,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
         var mediator = provider.GetRequiredService<IMediator>();
         var collector = provider.GetRequiredService<EventCollector>();
 
-        await mediator.PublishAsync(new E2eEvent("evt"));
+        await mediator.PublishAsync(new E2eEvent("evt"), TestCancellationToken);
 
         Assert.Collection(collector.Events,
             e => Assert.Equal("second:evt", e),
@@ -98,7 +97,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
         var mediator = provider.GetRequiredService<IMediator>();
         var collector = provider.GetRequiredService<EventCollector>();
 
-        var result = await mediator.InvokeAsync<Result>(new E2eCommand("command"));
+        var result = await mediator.InvokeAsync<Result>(new E2eCommand("command"), TestCancellationToken);
         Assert.True(result.IsSuccess);
 
         Assert.Collection(collector.Events,
@@ -108,7 +107,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
 
         collector.Reset();
 
-        object objectResult = await mediator.InvokeAsync<object>(new E2eCommand("command"));
+        object objectResult = await mediator.InvokeAsync<object>(new E2eCommand("command"), TestCancellationToken);
         Assert.True(result.IsSuccess);
         Assert.IsType<Result>(objectResult);
 

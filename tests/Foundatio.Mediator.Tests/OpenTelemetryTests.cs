@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class OpenTelemetryTests : GeneratorTestBase
+public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void OpenTelemetry_Disabled_NoActivityCodeGenerated()

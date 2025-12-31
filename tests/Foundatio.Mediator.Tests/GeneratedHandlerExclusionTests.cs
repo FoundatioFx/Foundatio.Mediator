@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class GeneratedHandlerExclusionTests : GeneratorTestBase
+public class GeneratedHandlerExclusionTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void DoesNotGenerateHandlerForGeneratedHandlerClasses()

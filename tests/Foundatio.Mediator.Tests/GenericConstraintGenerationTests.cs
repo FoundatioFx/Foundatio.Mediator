@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class GenericConstraintGenerationTests : GeneratorTestBase
+public class GenericConstraintGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void EmitsConstraintsForMultiParameterOpenGenericHandler()

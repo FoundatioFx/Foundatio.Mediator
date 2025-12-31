@@ -1,9 +1,10 @@
+using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
-public class IdentifierGenerationTests : GeneratorTestBase
+public class IdentifierGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public async Task GeneratesValidIdentifierForAssemblyNameStartingWithDigit()
@@ -21,7 +22,7 @@ public class IdentifierGenerationTests : GeneratorTestBase
             """;
 
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
+        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions, cancellationToken: TestCancellationToken);
 
         var references = new List<MetadataReference>
         {
@@ -44,7 +45,7 @@ public class IdentifierGenerationTests : GeneratorTestBase
             additionalTexts: null,
             parseOptions: parseOptions,
             optionsProvider: null);
-        driver = driver.RunGeneratorsAndUpdateCompilation(customCompilation, out var outputCompilation, out var outputDiagnostics);
+        driver = driver.RunGeneratorsAndUpdateCompilation(customCompilation, out var outputCompilation, out var outputDiagnostics, TestCancellationToken);
 
         var genResult = driver.GetRunResult();
         var generatedSources = genResult.Results

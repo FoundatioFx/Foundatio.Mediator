@@ -1,12 +1,13 @@
 using System.Collections.Immutable;
 using System.Text.RegularExpressions;
+using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Foundatio.Mediator.Tests;
 
-public abstract class GeneratorTestBase
+public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     protected async Task VerifyGenerated(string source, params IIncrementalGenerator[] generators)
     {

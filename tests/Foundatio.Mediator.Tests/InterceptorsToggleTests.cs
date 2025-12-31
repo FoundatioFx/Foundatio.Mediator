@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class InterceptorsToggleTests : GeneratorTestBase
+public class InterceptorsToggleTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void Interceptors_Disabled_NoAttributeOrInterceptsMethods()

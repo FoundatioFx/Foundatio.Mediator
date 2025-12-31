@@ -1,9 +1,10 @@
+using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
-public class CrossAssemblyMiddlewareTests : GeneratorTestBase
+public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void DiscoversMiddlewareFromReferencedAssembly()

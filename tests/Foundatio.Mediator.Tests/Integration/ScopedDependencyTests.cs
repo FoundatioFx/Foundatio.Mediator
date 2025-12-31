@@ -1,8 +1,9 @@
+using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class ScopedDependencyTests
+public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     // Test services
     public interface IScopedTestService
@@ -89,7 +90,7 @@ public class ScopedDependencyTests
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Act
-        await mediator.InvokeAsync(new RootCommand("Test1"));
+        await mediator.InvokeAsync(new RootCommand("Test1"), TestCancellationToken);
 
         // Assert - Get all recorded activities from any scoped service instances
         using var scope = provider.CreateScope();
@@ -115,8 +116,8 @@ public class ScopedDependencyTests
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Act - Make two separate root invocations
-        await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices));
-        await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices));
+        await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
+        await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
 
         // Assert
         Assert.Equal(2, capturedServices.Count);
@@ -140,7 +141,7 @@ public class ScopedDependencyTests
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Act
-        await mediator.InvokeAsync<string>(new CascadingWithCaptureCommand("Test", capturedServices));
+        await mediator.InvokeAsync<string>(new CascadingWithCaptureCommand("Test", capturedServices), TestCancellationToken);
 
         // Assert - Both the main handler and the cascading event handler should use the same scoped service
         Assert.Equal(2, capturedServices.Count);

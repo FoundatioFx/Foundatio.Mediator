@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class MiddlewareGenerationTests : GeneratorTestBase
+public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void GeneratesBeforeAfterFinally_WithTryFinally()

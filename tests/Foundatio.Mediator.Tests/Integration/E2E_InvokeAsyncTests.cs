@@ -1,8 +1,9 @@
+using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class E2E_InvokeAsyncTests
+public class E2E_InvokeAsyncTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     public record E2ePing(string Message) : IQuery;
 
@@ -20,7 +21,7 @@ public class E2E_InvokeAsyncTests
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        var result = await mediator.InvokeAsync<string>(new E2ePing("Ping"));
+        var result = await mediator.InvokeAsync<string>(new E2ePing("Ping"), TestCancellationToken);
         Assert.Equal("Ping Pong", result);
     }
 }

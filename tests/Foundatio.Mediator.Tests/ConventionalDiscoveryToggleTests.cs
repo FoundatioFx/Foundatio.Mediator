@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class ConventionalDiscoveryToggleTests : GeneratorTestBase
+public class ConventionalDiscoveryToggleTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void ConventionalDiscovery_Enabled_DiscoversHandlerByNamingConvention()

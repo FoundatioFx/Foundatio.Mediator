@@ -1,9 +1,11 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
 /// <summary>
 /// Tests for handlers nested inside generic classes.
 /// </summary>
-public class NestedInGenericClassTests : GeneratorTestBase
+public class NestedInGenericClassTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void HandlerNestedInGenericClass_IsSkipped()

@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class TupleReturnTests : GeneratorTestBase
+public class TupleReturnTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void PublishesCascadingMessages_FromTupleReturn()

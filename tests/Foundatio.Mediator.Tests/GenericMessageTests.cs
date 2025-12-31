@@ -1,8 +1,9 @@
+using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests;
 
-public class GenericMessageTests : GeneratorTestBase
+public class GenericMessageTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void GeneratesDistinctWrappersForClosedGenericMessages()
@@ -51,10 +52,10 @@ public class GenericMessageTests : GeneratorTestBase
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        var intResult = await mediator.InvokeAsync<int>(new MyMessage<int>(40));
+        var intResult = await mediator.InvokeAsync<int>(new MyMessage<int>(40), TestCancellationToken);
         Assert.Equal(42, intResult);
 
-        var stringResult = await mediator.InvokeAsync<string>(new MyMessage<string>("Hello"));
+        var stringResult = await mediator.InvokeAsync<string>(new MyMessage<string>("Hello"), TestCancellationToken);
         Assert.Equal("Hello?", stringResult);
     }
 

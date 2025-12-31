@@ -1,8 +1,9 @@
+using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class E2E_MiddlewareTests
+public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     public record E2eCmd(string Name) : ICommand;
 
@@ -32,7 +33,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
         var mw = provider.GetRequiredService<TrackingMiddleware>();
 
-        await mediator.InvokeAsync(new E2eCmd("x"));
+        await mediator.InvokeAsync(new E2eCmd("x"), TestCancellationToken);
         Assert.Equal(new[] { "before:x", "handle:x", "after:x", "finally:x" }, mw.Steps);
     }
 
@@ -61,7 +62,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
         var mw = provider.GetRequiredService<InterfaceMiddleware>();
 
-        await mediator.InvokeAsync(new ValidatableCommand("test"));
+        await mediator.InvokeAsync(new ValidatableCommand("test"), TestCancellationToken);
         Assert.Contains("interface-before", mw.Steps);
     }
 
@@ -90,7 +91,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
         var mw = provider.GetRequiredService<BaseClassMiddleware>();
 
-        await mediator.InvokeAsync(new DerivedCommand("123", "Test"));
+        await mediator.InvokeAsync(new DerivedCommand("123", "Test"), TestCancellationToken);
         Assert.Contains("base-before:123", mw.Steps);
     }
 
@@ -124,7 +125,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
         var mw = provider.GetRequiredService<HandlerInfoMiddleware>();
 
-        await mediator.InvokeAsync(new HandlerInfoTestCommand("test"));
+        await mediator.InvokeAsync(new HandlerInfoTestCommand("test"), TestCancellationToken);
 
         Assert.Contains("HandlerType:HandlerInfoTestCommandHandler", mw.CapturedInfo);
         Assert.Contains("MethodName:HandleAsync", mw.CapturedInfo);
@@ -171,7 +172,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
         var mw = provider.GetRequiredService<HandlerInfoAllPhasesMiddleware>();
 
-        await mediator.InvokeAsync(new HandlerInfoAllPhasesCommand("test"));
+        await mediator.InvokeAsync(new HandlerInfoAllPhasesCommand("test"), TestCancellationToken);
 
         Assert.Equal(3, mw.CapturedInfo.Count);
         Assert.Equal("Before-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[0]);
@@ -208,7 +209,7 @@ public class E2E_MiddlewareTests
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        await mediator.InvokeAsync(new StaticHandlerInfoCommand("test"));
+        await mediator.InvokeAsync(new StaticHandlerInfoCommand("test"), TestCancellationToken);
 
         Assert.Single(StaticHandlerInfoMiddleware.CapturedInfo);
         Assert.Equal("Static-StaticHandlerInfoCommandHandler-HandleAsync", StaticHandlerInfoMiddleware.CapturedInfo[0]);

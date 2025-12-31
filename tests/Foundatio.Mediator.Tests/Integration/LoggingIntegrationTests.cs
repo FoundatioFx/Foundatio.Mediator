@@ -1,18 +1,12 @@
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Xunit.Abstractions;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class LoggingIntegrationTests
+public class LoggingIntegrationTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
-    private readonly ITestOutputHelper _output;
-
-    public LoggingIntegrationTests(ITestOutputHelper output)
-    {
-        _output = output;
-    }
+    private readonly ITestOutputHelper _output = output;
 
     [Fact]
     public void Handler_Should_Log_Debug_Messages()
@@ -31,7 +25,7 @@ public class LoggingIntegrationTests
         var testLogger = serviceProvider.GetRequiredService<TestLogger>();
 
         // Act
-        var result = mediator.Invoke<string>(new TestMessage("Hello"));
+        var result = mediator.Invoke<string>(new TestMessage("Hello"), TestCancellationToken);
 
         // Assert - Now let's check if the logging actually worked
         _output.WriteLine($"Handler result: {result}");

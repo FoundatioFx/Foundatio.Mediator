@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class HandlerConventionOverrideTests : GeneratorTestBase
+public class HandlerConventionOverrideTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void GeneratesWrapperForMarkerInterfaceHandler()

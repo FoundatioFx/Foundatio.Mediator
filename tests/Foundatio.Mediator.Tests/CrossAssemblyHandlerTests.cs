@@ -1,9 +1,10 @@
+using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
-public class CrossAssemblyHandlerTests : GeneratorTestBase
+public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void DiscoversHandlerFromReferencedAssembly()

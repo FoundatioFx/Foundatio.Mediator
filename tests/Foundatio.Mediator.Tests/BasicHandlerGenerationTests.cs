@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class BasicHandlerGenerationTests : GeneratorTestBase
+public class BasicHandlerGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public async Task GeneratesWrapperForSimpleHandler()

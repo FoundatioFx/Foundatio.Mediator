@@ -1,3 +1,4 @@
+using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests;
@@ -30,7 +31,7 @@ public class EntityPairHandler<T1, T2>
     }
 }
 
-public class OpenGenericHandlerTests
+public class OpenGenericHandlerTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     [Fact]
     public async Task CanInvokeSingleGenericParameterHandler()
@@ -40,7 +41,7 @@ public class OpenGenericHandlerTests
         services.AddMediator();
         var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
-        await mediator.InvokeAsync(new UpdateEntity<Order>(new Order()));
+        await mediator.InvokeAsync(new UpdateEntity<Order>(new Order()), TestCancellationToken);
     }
 
     [Fact]
@@ -51,6 +52,6 @@ public class OpenGenericHandlerTests
         services.AddMediator();
         var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
-        await mediator.InvokeAsync(new UpdateEntityPair<Order, Order>(new Order(), new Order()));
+        await mediator.InvokeAsync(new UpdateEntityPair<Order, Order>(new Order(), new Order()), TestCancellationToken);
     }
 }

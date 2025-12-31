@@ -1,6 +1,8 @@
+using Foundatio.Xunit;
+
 namespace Foundatio.Mediator.Tests;
 
-public class SyncHandlerAsyncCallTests : GeneratorTestBase
+public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     [Fact]
     public void SyncHandler_WithReturnValue_CalledViaInvokeAsync_GeneratesValidCode()

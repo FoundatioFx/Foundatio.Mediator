@@ -1,9 +1,10 @@
+using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
-public class DiagnosticValidationTests : GeneratorTestBase
+public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     private static readonly MediatorGenerator Gen = new();
 

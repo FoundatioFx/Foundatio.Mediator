@@ -336,7 +336,7 @@ internal static class MiddlewareAnalyzer
         return false;
     }
 
-    private static readonly string[] MiddlewareBeforeMethodNames = [ "Before", "BeforeAsync" ];
-    private static readonly string[] MiddlewareAfterMethodNames = [ "After", "AfterAsync" ];
-    private static readonly string[] MiddlewareFinallyMethodNames = [ "Finally", "FinallyAsync" ];
+    private static readonly string[] MiddlewareBeforeMethodNames = ["Before", "BeforeAsync"];
+    private static readonly string[] MiddlewareAfterMethodNames = ["After", "AfterAsync"];
+    private static readonly string[] MiddlewareFinallyMethodNames = ["Finally", "FinallyAsync"];
 }

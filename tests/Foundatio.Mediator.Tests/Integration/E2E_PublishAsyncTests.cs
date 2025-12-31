@@ -9,7 +9,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
 {
     private readonly ITestOutputHelper _output = output;
 
-    public interface IE2eEvent {}
+    public interface IE2eEvent { }
     public record E2eEvent(string Name) : IE2eEvent;
     public record E2eCommand(string Name) : ICommand;
 
@@ -56,7 +56,8 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
 
     public class CascadingConsumer(EventCollector collector, ILogger<CascadingConsumer> logger)
     {
-        public Task<(Result, E2eEvent)> HandleAsync(E2eCommand command, CancellationToken ct) {
+        public Task<(Result, E2eEvent)> HandleAsync(E2eCommand command, CancellationToken ct)
+        {
             logger.LogInformation("Handling command: {CommandName}", command.Name);
             collector.AddEvent("cascading:" + command.Name);
             return Task.FromResult((Result.Success(), new E2eEvent(command.Name)));

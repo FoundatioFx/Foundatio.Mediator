@@ -76,7 +76,7 @@ public class GenericMessageTests : GeneratorTestBase
              }
              """;
 
-        var (compilation, diagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
+        var (compilation, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
         Assert.Empty(diagnostics);
 
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");

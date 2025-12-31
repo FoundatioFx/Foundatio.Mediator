@@ -21,7 +21,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        
+
 
         // Assert that a handler wrapper was generated for PingProcessor
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("PingProcessor"));
@@ -56,7 +56,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        
+
 
         // Assert that a handler wrapper was generated for PingProcessor
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("PingProcessor"));
@@ -91,7 +91,7 @@ public class HandlerConventionOverrideTests : GeneratorTestBase
 
         // Assert no compilation or generator diagnostics
         Assert.Empty(diagnostics);
-        
+
 
         // Assert that a handler wrapper was generated for SomeClass
         var handlerWrapper = generatedTrees.FirstOrDefault(t => t.HintName.Contains("SomeClass"));

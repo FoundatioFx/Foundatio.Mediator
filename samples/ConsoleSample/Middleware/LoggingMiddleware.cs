@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
 namespace ConsoleSample.Middleware;
 

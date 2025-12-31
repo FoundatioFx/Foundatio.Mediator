@@ -60,7 +60,7 @@ internal static class Helpers
             return String.Empty;
 
         var identifier = new string(name.Select(c => Char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
-        
+
         // C# identifiers cannot start with a digit, so prefix with underscore if needed
         if (identifier.Length > 0 && Char.IsDigit(identifier[0]))
             return "_" + identifier;

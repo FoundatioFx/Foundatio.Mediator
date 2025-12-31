@@ -1,8 +1,10 @@
 namespace Foundatio.Mediator.Tests;
 
-public class GenericConstraintGenerationTests : GeneratorTestBase {
+public class GenericConstraintGenerationTests : GeneratorTestBase
+{
     [Fact]
-    public void EmitsConstraintsForMultiParameterOpenGenericHandler() {
+    public void EmitsConstraintsForMultiParameterOpenGenericHandler()
+    {
         const string source = @"using System.Threading; using System.Threading.Tasks; using Foundatio.Mediator;
 
 public record DualCommand<T1,T2>(T1 First, T2 Second) : ICommand;
@@ -14,7 +16,7 @@ public class DualHandler<T1,T2>
     public Task HandleAsync(DualCommand<T1,T2> cmd, CancellationToken ct) => Task.CompletedTask;
 }";
 
-        var (compilation, diagnostics, trees) = RunGenerator(source, [ new MediatorGenerator() ]);
+        var (compilation, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
 

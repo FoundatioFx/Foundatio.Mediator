@@ -16,7 +16,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.DoesNotContain("MediatorActivitySource", wrapper.Source);
@@ -38,7 +38,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
@@ -60,7 +60,7 @@ public class OpenTelemetryTests : GeneratorTestBase
 
         // Not setting MediatorDisableOpenTelemetry property - should default to enabled (false)
         var opts = CreateOptions();
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("MediatorActivitySource", wrapper.Source);
@@ -80,7 +80,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("using var activity = MediatorActivitySource.Instance.StartActivity(", wrapper.Source);
@@ -100,7 +100,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);", wrapper.Source);
@@ -120,7 +120,7 @@ public class OpenTelemetryTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
         Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);", wrapper.Source);

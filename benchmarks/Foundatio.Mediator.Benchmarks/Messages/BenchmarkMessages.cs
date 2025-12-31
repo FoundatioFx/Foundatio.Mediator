@@ -1,5 +1,5 @@
-using MediatR;
 using Foundatio.Mediator.Benchmarks.Services;
+using MediatR;
 
 namespace Foundatio.Mediator.Benchmarks.Messages;
 

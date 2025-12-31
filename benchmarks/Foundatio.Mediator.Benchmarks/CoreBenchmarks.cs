@@ -1,12 +1,12 @@
 using BenchmarkDotNet.Attributes;
-using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
 using Foundatio.Mediator.Benchmarks.Handlers.MediatorNet;
+using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
+using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MassTransit;
 using Wolverine;
 using MediatorLib = Mediator;
 

@@ -1,9 +1,9 @@
 using Common.Module;
+using Common.Module.Extensions;
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Common.Module.Extensions;
 using Products.Module.Messages;
 
 namespace Products.Module.Api;

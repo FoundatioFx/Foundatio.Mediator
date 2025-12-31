@@ -34,9 +34,9 @@ internal static class HandlerAnalyzer
                 .SelectMany(al => al.Attributes)
                 .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "Handler" }
                     or QualifiedNameSyntax
-                    {
-                        Right.Identifier.ValueText: "Handler"
-                    }))
+                {
+                    Right.Identifier.ValueText: "Handler"
+                }))
         {
             return true;
         }
@@ -49,9 +49,9 @@ internal static class HandlerAnalyzer
             if (m.AttributeLists.SelectMany(al => al.Attributes)
                 .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "Handler" }
                     or QualifiedNameSyntax
-                    {
-                        Right.Identifier.ValueText: "Handler"
-                    }))
+                {
+                    Right.Identifier.ValueText: "Handler"
+                }))
             {
                 return true;
             }

@@ -177,7 +177,8 @@ internal static class TypeExtensions
     }
 }
 
-internal static class WellKnownTypes {
+internal static class WellKnownTypes
+{
     public const string ValueTask = "System.Threading.Tasks.ValueTask";
     public const string ValueTaskOfT = "System.Threading.Tasks.ValueTask`1";
     public const string Task = "System.Threading.Tasks.Task";

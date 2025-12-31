@@ -1,7 +1,6 @@
-using Foundatio.Mediator;
+using System.Diagnostics;
 using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
-using System.Diagnostics;
 
 namespace Foundatio.Mediator.Benchmarks.Middleware;
 

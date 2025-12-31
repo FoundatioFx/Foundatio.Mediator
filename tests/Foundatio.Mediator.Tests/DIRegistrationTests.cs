@@ -15,7 +15,7 @@ public class DIRegistrationTests : GeneratorTestBase
             public class BHandler { public void Handle(B m) { } }
             """;
 
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.Contains("MessageTypeKey.Get(typeof(A))", di.Source);
         Assert.Contains("MessageTypeKey.Get(typeof(B))", di.Source);
@@ -31,7 +31,7 @@ public class DIRegistrationTests : GeneratorTestBase
             public static class Empty { }
             """;
 
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         // If no handlers, MediatorGenerator returns early and DI file isn't generated.
         Assert.DoesNotContain(trees, t => t.HintName.EndsWith("_MediatorHandlers.g.cs"));
     }
@@ -48,7 +48,7 @@ public class DIRegistrationTests : GeneratorTestBase
             public class AHandler { public Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
             """;
 
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.DoesNotContain("AddScoped<AHandler>()", di.Source);
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
@@ -70,7 +70,7 @@ public class DIRegistrationTests : GeneratorTestBase
             }
             """;
 
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ]);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.Contains("MessageTypeKey.Get(typeof(A))", di.Source);
         Assert.Contains("MessageTypeKey.Get(typeof(B))", di.Source);
@@ -94,7 +94,7 @@ public class DIRegistrationTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorHandlerLifetime", lifetime));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.Contains(expected, di.Source);
     }
@@ -112,7 +112,7 @@ public class DIRegistrationTests : GeneratorTestBase
             """;
 
         var opts = CreateOptions(("build_property.MediatorHandlerLifetime", "Transient"));
-        var (_, _, trees) = RunGenerator(src, [ new MediatorGenerator() ], opts);
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
     }

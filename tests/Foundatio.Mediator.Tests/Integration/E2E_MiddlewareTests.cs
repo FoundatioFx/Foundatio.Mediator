@@ -99,7 +99,7 @@ public class E2E_MiddlewareTests
     public class HandlerInfoMiddleware
     {
         public List<string> CapturedInfo { get; } = new();
-        
+
         public Task BeforeAsync(HandlerInfoTestCommand cmd, HandlerExecutionInfo handlerInfo)
         {
             CapturedInfo.Add($"HandlerType:{handlerInfo.HandlerType.Name}");
@@ -125,7 +125,7 @@ public class E2E_MiddlewareTests
         var mw = provider.GetRequiredService<HandlerInfoMiddleware>();
 
         await mediator.InvokeAsync(new HandlerInfoTestCommand("test"));
-        
+
         Assert.Contains("HandlerType:HandlerInfoTestCommandHandler", mw.CapturedInfo);
         Assert.Contains("MethodName:HandleAsync", mw.CapturedInfo);
     }
@@ -135,19 +135,19 @@ public class E2E_MiddlewareTests
     public class HandlerInfoAllPhasesMiddleware
     {
         public List<string> CapturedInfo { get; } = new();
-        
+
         public Task BeforeAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
         {
             CapturedInfo.Add($"Before-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
             return Task.CompletedTask;
         }
-        
+
         public Task AfterAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
         {
             CapturedInfo.Add($"After-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
             return Task.CompletedTask;
         }
-        
+
         public Task FinallyAsync(HandlerInfoAllPhasesCommand cmd, HandlerExecutionInfo info)
         {
             CapturedInfo.Add($"Finally-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
@@ -172,7 +172,7 @@ public class E2E_MiddlewareTests
         var mw = provider.GetRequiredService<HandlerInfoAllPhasesMiddleware>();
 
         await mediator.InvokeAsync(new HandlerInfoAllPhasesCommand("test"));
-        
+
         Assert.Equal(3, mw.CapturedInfo.Count);
         Assert.Equal("Before-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[0]);
         Assert.Equal("After-HandlerInfoAllPhasesCommandHandler-HandleAsync", mw.CapturedInfo[1]);
@@ -184,7 +184,7 @@ public class E2E_MiddlewareTests
     public static class StaticHandlerInfoMiddleware
     {
         public static List<string> CapturedInfo { get; } = new();
-        
+
         public static Task BeforeAsync(StaticHandlerInfoCommand cmd, HandlerExecutionInfo info)
         {
             CapturedInfo.Add($"Static-{info.HandlerType.Name}-{info.HandlerMethod.Name}");
@@ -201,7 +201,7 @@ public class E2E_MiddlewareTests
     public async Task Middleware_CanAccess_HandlerExecutionInfo_StaticMiddleware()
     {
         StaticHandlerInfoMiddleware.CapturedInfo.Clear();
-        
+
         var services = new ServiceCollection();
         services.AddMediator(b => b.AddAssembly<StaticHandlerInfoCommandHandler>());
 
@@ -209,7 +209,7 @@ public class E2E_MiddlewareTests
         var mediator = provider.GetRequiredService<IMediator>();
 
         await mediator.InvokeAsync(new StaticHandlerInfoCommand("test"));
-        
+
         Assert.Single(StaticHandlerInfoMiddleware.CapturedInfo);
         Assert.Equal("Static-StaticHandlerInfoCommandHandler-HandleAsync", StaticHandlerInfoMiddleware.CapturedInfo[0]);
     }

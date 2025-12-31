@@ -5,12 +5,12 @@ namespace Foundatio.Mediator.Tests;
 
 public class DiagnosticValidationTests : GeneratorTestBase
 {
-	private static readonly MediatorGenerator Gen = new();
+    private static readonly MediatorGenerator Gen = new();
 
-	[Fact]
-	public void FMED007_MultipleHandlersForInvoke()
-	{
-		var src = """
+    [Fact]
+    public void FMED007_MultipleHandlersForInvoke()
+    {
+        var src = """
 			using System.Threading;
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
@@ -25,14 +25,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED007");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED007");
+    }
 
-	[Fact]
-	public void FMED008_SyncInvokeOnAsyncHandler()
-	{
-		var src = """
+    [Fact]
+    public void FMED008_SyncInvokeOnAsyncHandler()
+    {
+        var src = """
 			using System.Threading;
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
@@ -44,14 +44,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 				public static void Call(IMediator m) { m.Invoke(new Msg()); }
 			}
 			""";
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED008");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED008");
+    }
 
-	[Fact]
-	public void FMED009_SyncInvokeWithAsyncMiddleware()
-	{
-		var src = """
+    [Fact]
+    public void FMED009_SyncInvokeWithAsyncMiddleware()
+    {
+        var src = """
 			using System.Threading;
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
@@ -67,14 +67,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 				public static void Call(IMediator m) { m.Invoke(new Msg()); }
 			}
 			""";
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED009");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED009");
+    }
 
-	[Fact]
-	public void FMED010_SyncInvokeOnTupleReturnHandler()
-	{
-		var src = """
+    [Fact]
+    public void FMED010_SyncInvokeOnTupleReturnHandler()
+    {
+        var src = """
 			using System.Threading;
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
@@ -87,14 +87,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 				public static void Call(IMediator m) { m.Invoke(new Msg()); }
 			}
 			""";
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED010");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED010");
+    }
 
-	[Fact]
-	public void GenericMessageArgument_NoDiagnostic()
-	{
-		var src = """
+    [Fact]
+    public void GenericMessageArgument_NoDiagnostic()
+    {
+        var src = """
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
 
@@ -105,14 +105,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.DoesNotContain(genDiags, d => d.Id == "FMED007");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.DoesNotContain(genDiags, d => d.Id == "FMED007");
+    }
 
-	[Fact]
-	public void FMED006_PrivateMiddlewareNotAllowed()
-	{
-		var src = """
+    [Fact]
+    public void FMED006_PrivateMiddlewareNotAllowed()
+    {
+        var src = """
 			using System.Threading;
 			using Foundatio.Mediator;
 
@@ -128,14 +128,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.Contains(genDiags, d => d.Id == "FMED006" && d.GetMessage().Contains("PrivateMiddleware"));
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED006" && d.GetMessage().Contains("PrivateMiddleware"));
+    }
 
-	[Fact]
-	public void MiddlewareWithIgnoreAttribute_NoDiagnostic()
-	{
-		var src = """
+    [Fact]
+    public void MiddlewareWithIgnoreAttribute_NoDiagnostic()
+    {
+        var src = """
 			using System.Threading;
 			using Foundatio.Mediator;
 
@@ -149,14 +149,14 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+    }
 
-	[Fact]
-	public void InternalMiddleware_NoError()
-	{
-		var src = """
+    [Fact]
+    public void InternalMiddleware_NoError()
+    {
+        var src = """
 			using System.Threading;
 			using Foundatio.Mediator;
 
@@ -169,15 +169,15 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, genDiags, _) = RunGenerator(src, [ Gen ]);
-		Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
-	}
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.DoesNotContain(genDiags, d => d.Id == "FMED006");
+    }
 
-	[Fact]
-	public void FMED007_MultipleHandlersAcrossAssemblies()
-	{
-		// Handler in referenced assembly
-		var handlerSource = """
+    [Fact]
+    public void FMED007_MultipleHandlersAcrossAssemblies()
+    {
+        // Handler in referenced assembly
+        var handlerSource = """
 			using System.Threading;
 			using Foundatio.Mediator;
 
@@ -193,10 +193,10 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateHandlerAssembly(handlerSource);
 
-		// Local handler for the same message type
-		var consumerSource = """
+        // Local handler for the same message type
+        var consumerSource = """
 			using System.Threading;
 			using Foundatio.Mediator;
 			using SharedHandlers;
@@ -218,16 +218,16 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
+        var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
 
-		Assert.Contains(diagnostics, d => d.Id == "FMED007" && d.GetMessage().Contains("referenced assembly"));
-	}
+        Assert.Contains(diagnostics, d => d.Id == "FMED007" && d.GetMessage().Contains("referenced assembly"));
+    }
 
-	[Fact]
-	public void FMED008_SyncInvokeOnAsyncCrossAssemblyHandler()
-	{
-		// Async handler in referenced assembly
-		var handlerSource = """
+    [Fact]
+    public void FMED008_SyncInvokeOnAsyncCrossAssemblyHandler()
+    {
+        // Async handler in referenced assembly
+        var handlerSource = """
 			using System.Threading;
 			using System.Threading.Tasks;
 			using Foundatio.Mediator;
@@ -244,10 +244,10 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateHandlerAssembly(handlerSource);
 
-		// Consumer using sync Invoke on async handler
-		var consumerSource = """
+        // Consumer using sync Invoke on async handler
+        var consumerSource = """
 			using Foundatio.Mediator;
 			using SharedHandlers;
 
@@ -263,50 +263,50 @@ public class DiagnosticValidationTests : GeneratorTestBase
 			}
 			""";
 
-		var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
+        var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
 
-		Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
-	}
+        Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
+    }
 
-	private static MetadataReference CreateHandlerAssembly(string source)
-	{
-		var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
-		var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
+    private static MetadataReference CreateHandlerAssembly(string source)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
+        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
 
-		var references = new List<MetadataReference>
-		{
-			MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-			MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-			MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-		};
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
+        };
 
-		var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-		var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
-		var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
+        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
+        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
 
-		if (File.Exists(runtimePath))
-			references.Add(MetadataReference.CreateFromFile(runtimePath));
-		if (File.Exists(netstandardPath))
-			references.Add(MetadataReference.CreateFromFile(netstandardPath));
+        if (File.Exists(runtimePath))
+            references.Add(MetadataReference.CreateFromFile(runtimePath));
+        if (File.Exists(netstandardPath))
+            references.Add(MetadataReference.CreateFromFile(netstandardPath));
 
-		var compilation = CSharpCompilation.Create(
-			assemblyName: "HandlerAssembly",
-			syntaxTrees: [syntaxTree],
-			references: references,
-			options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CSharpCompilation.Create(
+            assemblyName: "HandlerAssembly",
+            syntaxTrees: [syntaxTree],
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-		using var ms = new System.IO.MemoryStream();
-		var emitResult = compilation.Emit(ms);
+        using var ms = new System.IO.MemoryStream();
+        var emitResult = compilation.Emit(ms);
 
-		if (!emitResult.Success)
-		{
-			var errors = string.Join("\n", emitResult.Diagnostics
-				.Where(d => d.Severity == DiagnosticSeverity.Error)
-				.Select(d => d.ToString()));
-			throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
-		}
+        if (!emitResult.Success)
+        {
+            var errors = string.Join("\n", emitResult.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => d.ToString()));
+            throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
+        }
 
-		ms.Seek(0, System.IO.SeekOrigin.Begin);
-		return MetadataReference.CreateFromStream(ms);
-	}
+        ms.Seek(0, System.IO.SeekOrigin.Begin);
+        return MetadataReference.CreateFromStream(ms);
+    }
 }

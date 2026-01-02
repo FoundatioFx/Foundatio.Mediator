@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
+using Foundatio.Mediator.Benchmarks.Handlers.ImmediateHandlers;
 using Foundatio.Mediator.Benchmarks.Handlers.MediatorNet;
 using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
@@ -17,14 +18,27 @@ namespace Foundatio.Mediator.Benchmarks;
 public class CoreBenchmarks
 {
     private IServiceProvider _foundatioServices = null!;
+    private IServiceProvider _ihServices = null!;
     private IServiceProvider _mediatrServices = null!;
     private IServiceProvider _masstransitServices = null!;
     private IServiceProvider _mediatorNetServices = null!;
-    private IHost _wolverineHost = null!;
+
     private Foundatio.Mediator.IMediator _foundatioMediator = null!;
+
+    private ImmediateHandlersCommandHandler.Handler _immediateHandlersCommandHandler = null!;
+    private ImmediateHandlersQueryHandler.Handler _immediateHandlersQueryHandler = null!;
+    private Publisher<UserRegisteredEvent> _immediateHandlersEventHandler = null!;
+    private ImmediateHandlersFullQuery.Handler _immediateHandlersFullQueryHandler = null!;
+    private ImmediateHandlersCreateOrderConsumer.Handler _immediateHandlersCreateOrderConsumer = null!;
+    private ImmediateHandlersShortCircuitHandler.Handler _immediateHandlersShortCircuitHandler = null!;
+
     private MediatR.IMediator _mediatrMediator = null!;
+
     private MassTransit.Mediator.IMediator _masstransitMediator = null!;
+
     private MediatorLib.IMediator _mediatorNetMediator = null!;
+
+    private IHost _wolverineHost = null!;
     private IMessageBus _wolverineBus = null!;
 
     // Direct handler instances for baseline comparison
@@ -65,6 +79,20 @@ public class CoreBenchmarks
         _directFullQueryHandler = new FoundatioFullQueryHandler(
             _foundatioServices.GetRequiredService<IOrderService>());
 
+        // Setup IH
+        var ihServices = new ServiceCollection();
+        ihServices.AddFoundatioMediatorBenchmarksBehaviors();
+        ihServices.AddFoundatioMediatorBenchmarksHandlers();
+        ihServices.AddSingleton<IOrderService, OrderService>();
+        ihServices.AddScoped(typeof(Publisher<>));
+        _ihServices = ihServices.BuildServiceProvider();
+        _immediateHandlersCommandHandler = _ihServices.GetRequiredService<ImmediateHandlersCommandHandler.Handler>();
+        _immediateHandlersQueryHandler = _ihServices.GetRequiredService<ImmediateHandlersQueryHandler.Handler>();
+        _immediateHandlersEventHandler = _ihServices.GetRequiredService<Publisher<UserRegisteredEvent>>();
+        _immediateHandlersFullQueryHandler = _ihServices.GetRequiredService<ImmediateHandlersFullQuery.Handler>();
+        _immediateHandlersCreateOrderConsumer = _ihServices.GetRequiredService<ImmediateHandlersCreateOrderConsumer.Handler>();
+        _immediateHandlersShortCircuitHandler = _ihServices.GetRequiredService<ImmediateHandlersShortCircuitHandler.Handler>();
+
         // Setup MediatR
         var mediatrServices = new ServiceCollection();
         mediatrServices.AddSingleton<IOrderService, OrderService>();
@@ -100,7 +128,7 @@ public class CoreBenchmarks
             {
                 mcfg.UseConsumeFilter(typeof(Handlers.MassTransit.MassTransitTimingFilter<>), context);
                 mcfg.UseConsumeFilter(typeof(Handlers.MassTransit.MassTransitShortCircuitFilter<>), context);
-            });
+        });
         });
         _masstransitServices = masstransitServices.BuildServiceProvider();
         _masstransitMediator = _masstransitServices.GetRequiredService<MassTransit.Mediator.IMediator>();
@@ -152,6 +180,7 @@ public class CoreBenchmarks
     public async Task Cleanup()
     {
         (_foundatioServices as IDisposable)?.Dispose();
+        (_ihServices as IDisposable)?.Dispose();
         (_mediatrServices as IDisposable)?.Dispose();
 
         if (_masstransitServices is IAsyncDisposable asyncDisposable)
@@ -193,6 +222,12 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
+    public ValueTask<ValueTuple> IH_Command()
+    {
+        return _immediateHandlersCommandHandler.HandleAsync(_pingCommand);
+    }
+
+    [Benchmark]
     public Task MediatR_Command()
     {
         return _mediatrMediator.Send(_pingCommand);
@@ -218,19 +253,25 @@ public class CoreBenchmarks
 
     // Scenario 2: InvokeAsync<T> (Query)
     [Benchmark]
-    public ValueTask<Order> Foundatio_Query()
+    public async ValueTask<Order> Foundatio_Query()
     {
-        return _foundatioMediator.InvokeAsync<Order>(_getOrder);
+        return await _foundatioMediator.InvokeAsync<Order>(_getOrder);
     }
 
     [Benchmark]
-    public Task<Order> MediatR_Query()
+    public async ValueTask<Order> IH_Query()
     {
-        return _mediatrMediator.Send(_getOrder);
+        return await _immediateHandlersQueryHandler.HandleAsync(_getOrder);
     }
 
     [Benchmark]
-    public async Task<Order> MassTransit_Query()
+    public async ValueTask<Order> MediatR_Query()
+    {
+        return await _mediatrMediator.Send(_getOrder);
+    }
+
+    [Benchmark]
+    public async ValueTask<Order> MassTransit_Query()
     {
         var client = _masstransitMediator.CreateRequestClient<GetOrder>();
         var response = await client.GetResponse<Order>(_getOrder);
@@ -238,15 +279,15 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public Task<Order?> Wolverine_Query()
+    public async ValueTask<Order?> Wolverine_Query()
     {
-        return _wolverineBus.InvokeAsync<Order?>(_getOrder);
+        return await _wolverineBus.InvokeAsync<Order?>(_getOrder);
     }
 
     [Benchmark]
-    public ValueTask<Order> MediatorNet_Query()
+    public async ValueTask<Order> MediatorNet_Query()
     {
-        return _mediatorNetMediator.Send(_mediatorNetGetOrder);
+        return await _mediatorNetMediator.Send(_mediatorNetGetOrder);
     }
 
     // Scenario 3: PublishAsync with a single handler
@@ -254,6 +295,12 @@ public class CoreBenchmarks
     public ValueTask Foundatio_Publish()
     {
         return _foundatioMediator.PublishAsync(_userRegisteredEvent);
+    }
+
+    [Benchmark]
+    public ValueTask IH_Publish()
+    {
+        return _immediateHandlersEventHandler.Publish(_userRegisteredEvent);
     }
 
     [Benchmark]
@@ -298,19 +345,25 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public ValueTask<Order> Foundatio_FullQuery()
+    public async ValueTask<Order> Foundatio_FullQuery()
     {
-        return _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
+        return await _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
     }
 
     [Benchmark]
-    public async Task<Order> MediatR_FullQuery()
+    public async ValueTask<Order> IH_FullQuery()
+    {
+        return await _immediateHandlersFullQueryHandler.HandleAsync(_getFullQuery);
+    }
+
+    [Benchmark]
+    public async ValueTask<Order> MediatR_QueryWithDependencies()
     {
         return await _mediatrMediator.Send(_getFullQuery);
     }
 
     [Benchmark]
-    public async Task<Order> MassTransit_FullQuery()
+    public async ValueTask<Order> MassTransit_FullQuery()
     {
         var client = _masstransitMediator.CreateRequestClient<GetFullQuery>();
         var response = await client.GetResponse<Order>(_getFullQuery);
@@ -318,7 +371,7 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public async Task<Order?> Wolverine_FullQuery()
+    public async ValueTask<Order?> Wolverine_FullQuery()
     {
         return await _wolverineBus.InvokeAsync<Order>(_getFullQuery);
     }
@@ -340,19 +393,25 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public ValueTask<Order> Foundatio_CascadingMessages()
+    public async ValueTask<Order> Foundatio_CascadingMessages()
     {
-        return _foundatioMediator.InvokeAsync<Order>(_createOrder);
+        return await _foundatioMediator.InvokeAsync<Order>(_createOrder);
     }
 
     [Benchmark]
-    public async Task<Order> MediatR_CascadingMessages()
+    public async ValueTask<Order> IH_CascadingMessages()
+    {
+        return await _immediateHandlersCreateOrderConsumer.HandleAsync(_createOrder);
+    }
+
+    [Benchmark]
+    public async ValueTask<Order> MediatR_CascadingMessages()
     {
         return await _mediatrMediator.Send(_createOrder);
     }
 
     [Benchmark]
-    public async Task<Order> MassTransit_CascadingMessages()
+    public async ValueTask<Order> MassTransit_CascadingMessages()
     {
         var client = _masstransitMediator.CreateRequestClient<CreateOrder>();
         var response = await client.GetResponse<Order>(_createOrder);
@@ -360,15 +419,15 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public async Task<Order?> Wolverine_CascadingMessages()
+    public async ValueTask<Order?> Wolverine_CascadingMessages()
     {
         return await _wolverineBus.InvokeAsync<Order>(_createOrder);
     }
 
     [Benchmark]
-    public ValueTask<Order> MediatorNet_CascadingMessages()
+    public async ValueTask<Order> MediatorNet_CascadingMessages()
     {
-        return _mediatorNetMediator.Send(_mediatorNetCreateOrder);
+        return await _mediatorNetMediator.Send(_mediatorNetCreateOrder);
     }
 
     // Scenario 6: Short-circuit middleware - returns cached result, handler is never invoked
@@ -376,16 +435,24 @@ public class CoreBenchmarks
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
     [Benchmark]
-    public ValueTask<Order> Direct_ShortCircuit()
+    public async ValueTask<Order> Direct_ShortCircuit()
     {
         // Simulate ShortCircuitMiddleware.Before returning cached result
-        return ValueTask.FromResult(_cachedOrder);
+        // awaiting created `ValueTask<>` to remove async state machine as variance between
+        // this test and others
+        return await ValueTask.FromResult(_cachedOrder);
     }
 
     [Benchmark]
-    public ValueTask<Order> Foundatio_ShortCircuit()
+    public async ValueTask<Order> Foundatio_ShortCircuit()
     {
-        return _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
+        return await _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
+    }
+
+    [Benchmark]
+    public async Task<Order> IH_ShortCircuit()
+    {
+        return await _immediateHandlersShortCircuitHandler.HandleAsync(_getCachedOrder);
     }
 
     [Benchmark]
@@ -409,8 +476,8 @@ public class CoreBenchmarks
     }
 
     [Benchmark]
-    public ValueTask<Order> MediatorNet_ShortCircuit()
+    public async ValueTask<Order> MediatorNet_ShortCircuit()
     {
-        return _mediatorNetMediator.Send(_mediatorNetGetCachedOrder);
+        return await _mediatorNetMediator.Send(_mediatorNetGetCachedOrder);
     }
 }

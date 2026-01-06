@@ -68,9 +68,9 @@ public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNet
         _orderService = orderService;
     }
 
-    public async ValueTask<Order> Handle(MediatorNetGetFullQuery query, CancellationToken cancellationToken)
+    public ValueTask<Order> Handle(MediatorNetGetFullQuery query, CancellationToken cancellationToken)
     {
-        return await _orderService.GetOrderAsync(query.Id, cancellationToken);
+        return _orderService.GetOrderAsync(query.Id, cancellationToken);
     }
 }
 
@@ -130,5 +130,23 @@ public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<Med
     {
         // Short-circuit by returning cached value - never calls next()
         return ValueTask.FromResult(_cachedOrder);
+    }
+}
+
+// MediatorNet timing behavior for FullQuery benchmark (equivalent to Foundatio's TimingMiddleware)
+public class MediatorNetTimingBehavior : MediatorLib.IPipelineBehavior<MediatorNetGetFullQuery, Order>
+{
+    public async ValueTask<Order> Handle(MediatorNetGetFullQuery message, MediatorLib.MessageHandlerDelegate<MediatorNetGetFullQuery, Order> next, CancellationToken cancellationToken)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            return await next(message, cancellationToken);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            // In real middleware, you'd log here - we just stop the timer for the benchmark
+        }
     }
 }

@@ -1,17 +1,19 @@
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
 
 internal static class InterceptsLocationGenerator
 {
-    public static void Execute(SourceProductionContext context, bool interceptorsEnabled)
+    public static void Execute(SourceProductionContext context, GeneratorConfiguration configuration)
     {
-        if (!interceptorsEnabled)
+        if (!configuration.InterceptorsEnabled)
             return;
 
+        const string hintName = "_InterceptsLocationAttribute.g.cs";
         var source = new IndentedStringBuilder();
 
-        source.AddGeneratedFileHeader();
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, hintName);
         source.AppendLine("using System;");
         source.AppendLine();
         source.AppendLine("namespace System.Runtime.CompilerServices;");
@@ -45,6 +47,6 @@ internal static class InterceptsLocationGenerator
         source.AppendLine("    public string Data { get; }");
         source.AppendLine("}");
 
-        context.AddSource("_InterceptsLocationAttribute.g.cs", source.ToString());
+        context.AddSource(hintName, source.ToString());
     }
 }

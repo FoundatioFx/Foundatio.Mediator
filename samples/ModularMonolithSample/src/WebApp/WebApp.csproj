@@ -11,12 +11,14 @@
     <MediatorHandlerLifetime>None</MediatorHandlerLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
+    <MediatorEnableGenerationCounter>true</MediatorEnableGenerationCounter>
   </PropertyGroup>
 
   <ItemGroup>
     <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
     <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
+    <CompilerVisibleProperty Include="MediatorEnableGenerationCounter" />
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />

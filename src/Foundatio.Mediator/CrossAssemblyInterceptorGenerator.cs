@@ -13,9 +13,9 @@ internal static class CrossAssemblyInterceptorGenerator
         SourceProductionContext context,
         List<HandlerInfo> crossAssemblyHandlers,
         ImmutableArray<CallSiteInfo> callSites,
-        bool interceptorsEnabled)
+        GeneratorConfiguration configuration)
     {
-        if (!interceptorsEnabled)
+        if (!configuration.InterceptorsEnabled)
             return;
 
         if (crossAssemblyHandlers.Count == 0)
@@ -37,9 +37,10 @@ internal static class CrossAssemblyInterceptorGenerator
         if (crossAssemblyCallSites.Count == 0)
             return;
 
+        const string hintName = "_CrossAssemblyInterceptors.g.cs";
         var source = new IndentedStringBuilder();
 
-        source.AddGeneratedFileHeader();
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, hintName);
 
         source.AppendLines("""
             using System;
@@ -85,7 +86,7 @@ internal static class CrossAssemblyInterceptorGenerator
         source.DecrementIndent();
         source.AppendLine("}");
 
-        context.AddSource("_CrossAssemblyInterceptors.g.cs", source.ToString());
+        context.AddSource(hintName, source.ToString());
     }
 
     private static void GenerateInterceptorMethod(
@@ -110,7 +111,11 @@ internal static class CrossAssemblyInterceptorGenerator
             source.AppendLine($"[InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        string asyncModifier = handler.IsAsync ? "async " : "";
+        // Need async for:
+        // - Tuple returns (await PublishAsync for cascading messages)
+        // - Async handlers (await using for scope management)
+        bool needsAsyncModifier = handler.ReturnType.IsTuple || handler.IsAsync;
+        string asyncModifier = needsAsyncModifier ? "async " : "";
         string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
             returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
@@ -131,12 +136,10 @@ internal static class CrossAssemblyInterceptorGenerator
 
         source.AppendLine($"var typedMessage = (global::{handler.MessageType.FullName})message;");
 
-        // Call the handler in the referenced assembly
-        string awaitKeyword = handler.IsAsync ? "await " : "";
-
         if (handler.ReturnType.IsTuple)
         {
             // Handle tuple return types (cascading messages)
+            string awaitKeyword = handler.IsAsync ? "await " : "";
             source.AppendLine($"var result = {awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
             source.AppendLine();
 
@@ -166,22 +169,32 @@ internal static class CrossAssemblyInterceptorGenerator
 
             if (responseType.IsVoid)
             {
-                source.AppendLine($"{awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-
-                if (needsValueTaskWrap)
+                if (handler.IsAsync)
                 {
-                    source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                    source.AppendLine($"await {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+                }
+                else
+                {
+                    source.AppendLine($"{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    if (methodIsAsync)
+                    {
+                        source.AppendLine("return default;");
+                    }
                 }
             }
             else
             {
-                if (needsValueTaskWrap)
+                if (handler.IsAsync)
+                {
+                    source.AppendLine($"return await {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+                }
+                else if (needsValueTaskWrap)
                 {
                     source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken));");
                 }
                 else
                 {
-                    source.AppendLine($"return {awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    source.AppendLine($"return {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
                 }
             }
         }

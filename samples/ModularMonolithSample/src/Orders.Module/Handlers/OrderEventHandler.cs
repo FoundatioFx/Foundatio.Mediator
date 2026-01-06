@@ -5,7 +5,7 @@ namespace Orders.Module.Handlers;
 
 public class OrderEventHandler(ILogger<OrderEventHandler> logger)
 {
-    public Task HandleAsync(OrderCreated evt)
+    public Task HandleAsync(OrderCreated evt, CancellationToken cancellationToken)
     {
         logger.LogInformation("Order {OrderId} created for customer {CustomerId} with amount {Amount:C}",
             evt.OrderId, evt.CustomerId, evt.Amount);

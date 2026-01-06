@@ -7,45 +7,45 @@ namespace Foundatio.Mediator.Benchmarks.Handlers.Wolverine;
 // Scenario 1: Command handler (InvokeAsync without response)
 public class WolverineCommandHandler
 {
-    public Task Handle(PingCommand command)
+    public ValueTask Handle(PingCommand command)
     {
         // Simulate minimal work
-        return Task.CompletedTask;
+        return default;
     }
 }
 
 // Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
 public class WolverineQueryHandler
 {
-    public Task<Order> Handle(GetOrder query)
+    public ValueTask<Order> Handle(GetOrder query)
     {
-        return Task.FromResult(new Order(query.Id, 99.99m, DateTime.UtcNow));
+        return ValueTask.FromResult(new Order(query.Id, 99.99m, DateTime.UtcNow));
     }
 }
 
 // Scenario 3: Event handlers (PublishAsync with multiple handlers)
 public class WolverineEventHandler
 {
-    public Task Handle(UserRegisteredEvent notification)
+    public ValueTask Handle(UserRegisteredEvent notification)
     {
         // Simulate minimal event handling work
-        return Task.CompletedTask;
+        return default;
     }
 }
 
 public class WolverineEventHandler2
 {
-    public Task Handle(UserRegisteredEvent notification)
+    public ValueTask Handle(UserRegisteredEvent notification)
     {
         // Second handler listening for the same event
-        return Task.CompletedTask;
+        return default;
     }
 }
 
 // Scenario 4: Query handler with dependency injection
 public class WolverineFullQueryHandler
 {
-    public Task<Order> Handle(GetFullQuery query, IOrderService orderService)
+    public ValueTask<Order> Handle(GetFullQuery query, IOrderService orderService)
     {
         return orderService.GetOrderAsync(query.Id);
     }
@@ -54,36 +54,36 @@ public class WolverineFullQueryHandler
 // Scenario 5: Cascading messages - Wolverine supports cascading via return values
 public class WolverineCreateOrderHandler
 {
-    public (Order, OrderCreatedEvent) Handle(CreateOrder command)
+    public ValueTask<(Order, OrderCreatedEvent)> Handle(CreateOrder command)
     {
         var order = new Order(1, command.Amount, DateTime.UtcNow);
-        return (order, new OrderCreatedEvent(order.Id, command.CustomerId));
+        return ValueTask.FromResult((order, new OrderCreatedEvent(order.Id, command.CustomerId)));
     }
 }
 
 // Handlers for the cascaded OrderCreatedEvent
 public class WolverineOrderCreatedHandler1
 {
-    public Task Handle(OrderCreatedEvent notification)
+    public ValueTask Handle(OrderCreatedEvent notification)
     {
         // First handler for order created event
-        return Task.CompletedTask;
+        return default;
     }
 }
 
 public class WolverineOrderCreatedHandler2
 {
-    public Task Handle(OrderCreatedEvent notification)
+    public ValueTask Handle(OrderCreatedEvent notification)
     {
         // Second handler for order created event
-        return Task.CompletedTask;
+        return default;
     }
 }
 
 // Scenario 6: Short-circuit - Wolverine uses Before middleware with HandlerContinuation.Stop
 public class WolverineShortCircuitHandler
 {
-    public Task<Order> Handle(GetCachedOrder query)
+    public ValueTask<Order> Handle(GetCachedOrder query)
     {
         // This should never be called - middleware short-circuits before reaching handler
         throw new InvalidOperationException("Short-circuit middleware should have prevented this call");
@@ -95,10 +95,25 @@ public class WolverineShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
-    // Wolverine Before method with tuple return for short-circuit
-    public static (HandlerContinuation, Order) Before(GetCachedOrder message)
+    // Wolverine Before method with async ValueTask tuple return for short-circuit
+    public static ValueTask<(HandlerContinuation, Order)> BeforeAsync(GetCachedOrder message)
     {
         // Short-circuit by returning Stop with the cached value
-        return (HandlerContinuation.Stop, _cachedOrder);
+        return ValueTask.FromResult((HandlerContinuation.Stop, _cachedOrder));
+    }
+}
+
+// Wolverine timing middleware for FullQuery benchmark (equivalent to Foundatio's TimingMiddleware)
+public class WolverineTimingMiddleware
+{
+    public static System.Diagnostics.Stopwatch Before(GetFullQuery message)
+    {
+        return System.Diagnostics.Stopwatch.StartNew();
+    }
+
+    public static void Finally(GetFullQuery message, System.Diagnostics.Stopwatch? stopwatch)
+    {
+        stopwatch?.Stop();
+        // In real middleware, you'd log here - we just stop the timer for the benchmark
     }
 }

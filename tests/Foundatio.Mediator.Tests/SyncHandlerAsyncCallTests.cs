@@ -46,10 +46,10 @@ public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTest
         // The interceptor should return ValueTask<string>, not just string
         Assert.Contains("System.Threading.Tasks.ValueTask<string>", wrapper.Source);
 
-        // The interceptor should wrap the sync result properly
-        // For singleton fast path handlers (no constructor params), it uses handlerInstance.Handle
-        // It should use new ValueTask<T>(...) to wrap the sync result
-        Assert.Contains("new System.Threading.Tasks.ValueTask<string>(handlerInstance.Handle(", wrapper.Source);
+        // The interceptor should call HandleAsync (renamed to Handle for consistency with method name) which contains logging/telemetry
+        // and wrap the result in ValueTask since HandleAsync returns string but interceptor must return ValueTask<string>
+        // The test handler has no constructor params, so it qualifies for singleton fast path
+        Assert.Contains("return new System.Threading.Tasks.ValueTask<string>(Handle((System.IServiceProvider)mediator, typedMessage, cancellationToken));", wrapper.Source);
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTest
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
 
-        // Should return ValueTask.CompletedTask for void sync handlers
-        Assert.Contains("ValueTask.CompletedTask", wrapper.Source);
+        // Should return default for void sync handlers (default(ValueTask) == ValueTask.CompletedTask)
+        Assert.Contains("return default;", wrapper.Source);
     }
 
     [Fact]

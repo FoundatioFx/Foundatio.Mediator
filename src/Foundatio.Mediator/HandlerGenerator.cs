@@ -17,10 +17,10 @@ internal static class HandlerGenerator
             try
             {
                 string wrapperClassName = GetHandlerClassName(handler);
+                string hintName = $"{wrapperClassName}.g.cs";
 
-                string source = GenerateHandler(handler, wrapperClassName, configuration);
-                string fileName = $"{wrapperClassName}.g.cs";
-                context.AddSource(fileName, source);
+                string source = GenerateHandler(handler, wrapperClassName, configuration, hintName);
+                context.AddSource(hintName, source);
             }
             catch (Exception ex)
             {
@@ -39,11 +39,11 @@ internal static class HandlerGenerator
         }
     }
 
-    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration)
+    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration, string hintName)
     {
         var source = new IndentedStringBuilder();
 
-        source.AddGeneratedFileHeader();
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, hintName);
 
         source.AppendLine($$"""
             using System;
@@ -99,11 +99,6 @@ internal static class HandlerGenerator
         if (!handler.IsStatic)
         {
             GenerateGetOrCreateHandler(source, handler);
-        }
-
-        if (handler.ReturnType.IsTuple)
-        {
-            GeneratePublishCascadingMessages(source);
         }
 
         source.DecrementIndent();
@@ -181,11 +176,11 @@ internal static class HandlerGenerator
         }
 
         // build middleware instances
-        foreach (var m in handler.Middleware.Where(m => m.IsStatic == false))
+        foreach (var m in handler.Middleware.Where(m => !m.IsStatic))
         {
             source.AppendLine($"var {m.Identifier.ToCamelCase()} = Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
         }
-        source.AppendLineIf(handler.Middleware.Any(m => m.IsStatic == false));
+        source.AppendLineIf(handler.Middleware.Any(m => !m.IsStatic));
 
         // build result variables for before methods
         foreach (var m in beforeMiddleware.Where(m => m.Method.HasReturnValue))
@@ -422,8 +417,7 @@ internal static class HandlerGenerator
 
         if (handler.ReturnType.IsTuple)
         {
-            // Cascading messages need the mediator for publishing
-            source.AppendLine("return await PublishCascadingMessagesAsync(mediator, result, responseType);");
+            source.AppendLine("return await mediator.PublishCascadingMessagesAsync(result, responseType);");
         }
         else if (handler.HasReturnValue)
         {
@@ -478,10 +472,9 @@ internal static class HandlerGenerator
         source.IncrementIndent();
 
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-        source.AppendLine("var handlerInstance = GetOrCreateHandler((System.IServiceProvider)mediator);");
 
-        string stronglyTypedMethodName = handler.MethodName;
-        source.AppendLine($"var task = handlerInstance.{stronglyTypedMethodName}(typedMessage, cancellationToken);");
+        string stronglyTypedMethodName = GetHandlerMethodName(handler);
+        source.AppendLine($"var task = {stronglyTypedMethodName}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
         source.AppendLine();
         source.AppendLine("if (task.IsCompletedSuccessfully)");
         source.AppendLine("{");
@@ -520,16 +513,20 @@ internal static class HandlerGenerator
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
         string handlerMethod = GetHandlerMethodName(handler);
         bool methodIsAsync = methodName.EndsWith("Async") || handler.IsAsync;
-        // For fast-path handlers, we generate zero-alloc code that doesn't need async keyword
-        bool useFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
+
+        // Determine if we need async modifier:
+        // - Standard path with async handlers needs async for "await using" scope management
+        // - Tuple returns always need async because of await PublishAsync for cascading messages
+        // - Zero-alloc and singleton fast paths can avoid async state machine by using .AsValueTask() helper
+        bool usesStandardPath = !handler.CanUseZeroAllocFastPath && !handler.CanUseSingletonFastPath;
+        bool needsAsyncModifier = handler.ReturnType.IsTuple || (usesStandardPath && handler.IsAsync);
 
         foreach (var callSite in callSites)
         {
             source.AppendLine($"[System.Runtime.CompilerServices.InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        // Only use async modifier for non-fast-path handlers that are async
-        string asyncModifier = (handler.IsAsync && !useFastPath) ? "async " : "";
+        string asyncModifier = needsAsyncModifier ? "async " : "";
         string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
             returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
@@ -550,80 +547,130 @@ internal static class HandlerGenerator
         {
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-            asyncModifier = handler.IsAsync ? "await " : "";
-
             // Static handler: call directly
-            if (responseType.IsVoid)
-            {
-                source.AppendLine($"{asyncModifier}{handler.FullName}.{handler.MethodName}({handlerArgs});");
-
-                if (needsValueTaskWrap)
-                {
-                    source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
-                }
-            }
-            else
-            {
-                if (needsValueTaskWrap)
-                {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handler.FullName}.{handler.MethodName}({handlerArgs}));");
-                }
-                else
-                {
-                    source.AppendLine($"return {asyncModifier}{handler.FullName}.{handler.MethodName}({handlerArgs});");
-                }
-            }
-        }
-        // Singleton fast path: resolve handler from root service provider without creating a scope
-        // GetOrCreateHandler caches the handler instance since CanUseSingletonFastPath is true
-        // WARNING: This will behave incorrectly if the handler is registered as Scoped!
-        else if (handler.CanUseSingletonFastPath)
-        {
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-            source.AppendLine($"var handlerInstance = GetOrCreateHandler((System.IServiceProvider)mediator);");
-
             if (responseType.IsVoid)
             {
                 if (handler.IsAsync)
                 {
-                    // Generate zero-alloc path for async void handlers
-                    source.AppendLine($"var task = handlerInstance.{handler.MethodName}({handlerArgs});");
-                    source.AppendLine("if (task.IsCompletedSuccessfully)");
-                    source.AppendLine("    return default;");
-                    source.AppendLine($"return task.AsValueTask();");
+                    // Async void handler - use helper to avoid state machine
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs});");
+                    else
+                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTask();");
                 }
                 else
                 {
-                    source.AppendLine($"handlerInstance.{handler.MethodName}({handlerArgs});");
-                    if (needsValueTaskWrap)
+                    source.AppendLine($"{handler.FullName}.{handler.MethodName}({handlerArgs});");
+                    if (methodIsAsync)
                     {
-                        source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                        source.AppendLine("return default;");
                     }
                 }
             }
             else
             {
-                if (needsValueTaskWrap)
+                if (handler.IsAsync)
                 {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>(handlerInstance.{handler.MethodName}({handlerArgs}));");
+                    // Async handler with response - use helper to avoid state machine
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTaskAwaited();");
+                    else
+                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTask();");
                 }
-                else if (handler.IsAsync)
+                else if (needsValueTaskWrap)
                 {
-                    // Generate zero-alloc path for async handlers with return value
-                    source.AppendLine($"var task = handlerInstance.{handler.MethodName}({handlerArgs});");
-                    source.AppendLine("if (task.IsCompletedSuccessfully)");
-                    source.AppendLine($"    return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>(task.Result);");
-                    source.AppendLine($"return task.AsValueTask();");
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handler.FullName}.{handler.MethodName}({handlerArgs}));");
                 }
                 else
                 {
-                    source.AppendLine($"return handlerInstance.{handler.MethodName}({handlerArgs});");
+                    source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs});");
+                }
+            }
+        }
+        // Singleton fast path: skip scope creation and use cached handler with static middleware
+        // GetOrCreateHandler caches the handler instance since CanUseSingletonFastPath is true
+        // All middleware must be able to use fast path (static or cacheable) for this path to be valid
+        else if (handler.CanUseSingletonFastPath)
+        {
+            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
+
+            // Always call HandleAsync to ensure logging, telemetry, and middleware are executed
+            // Handle tuple returns (cascading messages) - publish cascading items after calling HandleAsync
+            if (handler.ReturnType.IsTuple)
+            {
+                // Call HandleAsync to get the full tuple with all infrastructure (logging, telemetry, middleware)
+                // Use await if the wrapper HandleAsync is async (which it is if handler is async OR has async middleware)
+                if (handler.IsAsync)
+                {
+                    source.AppendLine($"var result = await {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
+                }
+                else
+                {
+                    source.AppendLine($"var result = {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
+                }
+
+                // Publish cascading messages (all tuple items except the one matching responseType)
+                var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
+                if (returnItem == default)
+                {
+                    returnItem = handler.ReturnType.TupleItems.First();
+                }
+                var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
+
+                foreach (var publishItem in publishItems)
+                {
+                    source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
+                    source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await mediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
+                }
+                source.AppendLineIf(publishItems.Any());
+
+                source.AppendLine($"return result.{returnItem.Name};");
+            }
+            else if (responseType.IsVoid)
+            {
+                if (handler.IsAsync)
+                {
+                    // Async void handler - use helper to avoid state machine
+                    // Wrapper returns Task if handler returns Task, ValueTask if handler returns ValueTask
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
+                    else
+                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTask();");
+                }
+                else
+                {
+                    source.AppendLine($"{handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
+                    if (methodIsAsync)
+                    {
+                        source.AppendLine("return default;");
+                    }
+                }
+            }
+            else
+            {
+                if (handler.IsAsync)
+                {
+                    // Async handler with response - use helper to avoid state machine
+                    // Wrapper returns Task<T> if handler returns Task<T>, ValueTask<T> if handler returns ValueTask<T>
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTaskAwaited();");
+                    else
+                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTask();");
+                }
+                else if (needsValueTaskWrap)
+                {
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken));");
+                }
+                else
+                {
+                    source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
                 }
             }
         }
         else
         {
             // Standard path: create scope and go through HandleAsync
+            // This path needs async for scope management (await using) and tuple cascading
             if (handler.IsAsync)
             {
                 source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
@@ -635,10 +682,10 @@ internal static class HandlerGenerator
 
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-            asyncModifier = handler.IsAsync ? "await " : "";
             if (handler.ReturnType.IsTuple)
             {
-                source.AppendLine($"var result = {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                string awaitModifier = handler.IsAsync ? "await " : "";
+                source.AppendLine($"var result = {awaitModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
                 source.AppendLine();
 
                 var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
@@ -661,22 +708,32 @@ internal static class HandlerGenerator
             {
                 if (responseType.IsVoid)
                 {
-                    source.AppendLine($"{asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-
-                    if (needsValueTaskWrap)
+                    if (handler.IsAsync)
                     {
-                        source.AppendLine("return System.Threading.Tasks.ValueTask.CompletedTask;");
+                        source.AppendLine($"await {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    }
+                    else
+                    {
+                        source.AppendLine($"{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                        if (methodIsAsync)
+                        {
+                            source.AppendLine("return default;");
+                        }
                     }
                 }
                 else
                 {
-                    if (needsValueTaskWrap)
+                    if (handler.IsAsync)
+                    {
+                        source.AppendLine($"return await {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                    }
+                    else if (needsValueTaskWrap)
                     {
                         source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken));");
                     }
                     else
                     {
-                        source.AppendLine($"return {asyncModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
+                        source.AppendLine($"return {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
                     }
                 }
             }
@@ -743,53 +800,6 @@ internal static class HandlerGenerator
 
         return String.Join(", ", parameterValues);
     }
-
-    private static void GeneratePublishCascadingMessages(IndentedStringBuilder source)
-    {
-        source.AppendLine()
-              .AppendLines("""
-                private static async ValueTask<object?> PublishCascadingMessagesAsync(IMediator mediator, object? result, Type? responseType)
-                {
-                    if (result == null)
-                        return null;
-
-                    if (result is not ITuple tuple)
-                        return result;
-
-                    object? foundResult = null;
-
-                    if (responseType == typeof(object) && tuple.Length > 0)
-                    {
-                        foundResult = tuple[0];
-                        for (int i = 1; i < tuple.Length; i++)
-                        {
-                            var item = tuple[i];
-                            if (item != null)
-                                await mediator.PublishAsync(item, CancellationToken.None);
-                        }
-
-                        return foundResult;
-                    }
-
-                    for (int i = 0; i < tuple.Length; i++)
-                    {
-                        var item = tuple[i];
-                        if (item != null && responseType != null && responseType.IsAssignableFrom(item.GetType()))
-                        {
-                            foundResult = item;
-                        }
-                        else if (item != null)
-                        {
-                            await mediator.PublishAsync(item, CancellationToken.None);
-                        }
-                    }
-
-                    return foundResult;
-                }
-                """);
-    }
-
-
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {

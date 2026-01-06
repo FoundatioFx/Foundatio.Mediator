@@ -135,9 +135,19 @@ public class MediatorConfigurationBuilder
     /// Uses the TaskWhenAllPublisher for the mediator.
     /// </summary>
     /// <returns></returns>
-    public MediatorConfigurationBuilder TaskWhenAllPublisher()
+    public MediatorConfigurationBuilder UseTaskWhenAllPublisher()
     {
         _configuration.NotificationPublisher = new TaskWhenAllPublisher();
+        return this;
+    }
+
+    /// <summary>
+    /// Uses the FireAndForgetPublisher for the mediator.
+    /// </summary>
+    /// <returns></returns>
+    public MediatorConfigurationBuilder UseFireAndForgetPublisher()
+    {
+        _configuration.NotificationPublisher = new FireAndForgetPublisher();
         return this;
     }
 

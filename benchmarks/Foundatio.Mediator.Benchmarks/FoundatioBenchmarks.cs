@@ -40,9 +40,9 @@ public class FoundatioBenchmarks
     }
 
     [Benchmark]
-    public async Task Command()
+    public ValueTask Command()
     {
-        await _foundatioMediator.InvokeAsync(_pingCommand);
+        return _foundatioMediator.InvokeAsync(_pingCommand);
     }
 
     [Benchmark]
@@ -58,20 +58,20 @@ public class FoundatioBenchmarks
     }
 
     [Benchmark]
-    public async Task<Order> FullQuery()
+    public ValueTask<Order> FullQuery()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
+        return _foundatioMediator.InvokeAsync<Order>(_getFullQuery);
     }
 
     [Benchmark]
-    public async Task<Order> CascadingMessages()
+    public ValueTask<Order> CascadingMessages()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_createOrder);
+        return _foundatioMediator.InvokeAsync<Order>(_createOrder);
     }
 
     [Benchmark]
-    public async Task<Order> ShortCircuit()
+    public ValueTask<Order> ShortCircuit()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
+        return _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
     }
 }

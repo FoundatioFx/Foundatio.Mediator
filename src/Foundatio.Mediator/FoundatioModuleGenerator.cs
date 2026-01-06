@@ -10,14 +10,15 @@ internal static class FoundatioModuleGenerator
     /// This attribute is used by MetadataMiddlewareScanner to discover middleware in referenced assemblies.
     /// Also generates the AddHandlers extension method for DI registration.
     /// </summary>
-    public static void Execute(SourceProductionContext context, Compilation compilation, List<HandlerInfo> handlers, string handlerLifetime)
+    public static void Execute(SourceProductionContext context, Compilation compilation, List<HandlerInfo> handlers, GeneratorConfiguration configuration)
     {
         var assemblyName = compilation.AssemblyName?.ToIdentifier() ?? Guid.NewGuid().ToString("N").Substring(0, 10);
         var className = $"{assemblyName}_MediatorHandlers";
+        const string hintName = "_FoundatioModule.cs";
 
         var source = new IndentedStringBuilder();
 
-        source.AddGeneratedFileHeader();
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, hintName);
 
         if (handlers.Count > 0)
         {
@@ -51,9 +52,9 @@ internal static class FoundatioModuleGenerator
             source.IncrementIndent().IncrementIndent();
 
             string lifetimeMethod;
-            if (String.Equals(handlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(configuration.HandlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
                 lifetimeMethod = "TryAddTransient";
-            else if (String.Equals(handlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
+            else if (String.Equals(configuration.HandlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
                 lifetimeMethod = "TryAddScoped";
             else
                 lifetimeMethod = "TryAddSingleton";
@@ -130,6 +131,6 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("}");
         }
 
-        context.AddSource("_FoundatioModule.cs", source.ToString());
+        context.AddSource(hintName, source.ToString());
     }
 }

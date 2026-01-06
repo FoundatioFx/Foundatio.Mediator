@@ -22,8 +22,11 @@ public class TupleReturnTests(ITestOutputHelper output) : GeneratorTestBase(outp
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-        Assert.Contains("PublishCascadingMessagesAsync", wrapper.Source);
-        Assert.Contains("PublishAsync(", wrapper.Source);
+        // PublishCascadingMessagesAsync is now an extension method on IMediator from MediatorHelpers
+        Assert.Contains("mediator.PublishCascadingMessagesAsync", wrapper.Source);
+
+        var helpers = trees.First(t => t.HintName == "_MediatorHelpers.g.cs");
+        Assert.Contains("PublishAsync(", helpers.Source);
     }
 }
 

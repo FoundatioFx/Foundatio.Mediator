@@ -1,4 +1,5 @@
-﻿using Foundatio.Mediator.Models;
+﻿using System.Diagnostics;
+using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
@@ -36,7 +37,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 var conventionalDiscoveryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableConventionalDiscoveryPropertyName}", out string? conventionalDiscoverySwitch)
                     && conventionalDiscoverySwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled);
+                // Read generation counter enabled property. Default: false (disabled by default)
+                var generationCounterEnabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.EnableGenerationCounterPropertyName}", out string? counterSwitch)
+                    && counterSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
             })
             .WithTrackingName(TrackingNames.Settings);
 
@@ -83,6 +88,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
     private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, GeneratorConfiguration configuration, Compilation compilation, SourceProductionContext context)
     {
+        var sw = Stopwatch.StartNew();
+
         // Filter out conventionally-discovered handlers when conventional discovery is disabled
         var filteredHandlers = configuration.ConventionalDiscoveryDisabled
             ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
@@ -142,29 +149,48 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
         {
-            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, configuration.HandlerLifetime);
+            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, configuration);
         }
 
         // Generate the InterceptsLocation attribute if we need interceptors (for local or cross-assembly handlers)
         bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0;
         if (needsInterceptors)
         {
-            InterceptsLocationGenerator.Execute(context, configuration.InterceptorsEnabled);
+            InterceptsLocationGenerator.Execute(context, configuration);
         }
 
         // Generate cross-assembly interceptors if there are call sites to handlers in referenced assemblies
         if (crossAssemblyCallSites.Count > 0)
         {
-            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlers, crossAssemblyCallSites.ToImmutableArray(), configuration.InterceptorsEnabled);
+            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlers, crossAssemblyCallSites.ToImmutableArray(), configuration);
         }
 
         if (handlersWithInfo.Count == 0)
+        {
+            sw.Stop();
+            GeneratorDiagnostics.LogExecute(
+                compilation.AssemblyName ?? "Unknown",
+                handlersWithInfo.Count,
+                allMiddleware.Count,
+                callSites.Length,
+                crossAssemblyHandlers.Count,
+                sw.ElapsedMilliseconds);
             return;
+        }
 
         // Generate shared async helpers once per assembly (used by all handlers)
-        HelpersGenerator.Execute(context);
+        HelpersGenerator.Execute(context, configuration);
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
+
+        sw.Stop();
+        GeneratorDiagnostics.LogExecute(
+            compilation.AssemblyName ?? "Unknown",
+            handlersWithInfo.Count,
+            allMiddleware.Count,
+            callSites.Length,
+            crossAssemblyHandlers.Count,
+            sw.ElapsedMilliseconds);
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)

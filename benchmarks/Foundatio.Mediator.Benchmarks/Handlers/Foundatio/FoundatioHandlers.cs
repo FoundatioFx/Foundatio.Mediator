@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
 
@@ -7,10 +8,10 @@ namespace Foundatio.Mediator.Benchmarks.Handlers.Foundatio;
 [Handler]
 public class FoundatioCommandHandler
 {
-    public Task HandleAsync(PingCommand command, CancellationToken cancellationToken = default)
+    public ValueTask HandleAsync(PingCommand command, CancellationToken cancellationToken = default)
     {
-        // Simulate minimal work - no async state machine
-        return Task.CompletedTask;
+        // Simulate minimal work
+        return default;
     }
 }
 
@@ -20,7 +21,7 @@ public class FoundatioQueryHandler
 {
     public ValueTask<Order> HandleAsync(GetOrder query, CancellationToken cancellationToken = default)
     {
-        return new ValueTask<Order>(new Order(query.Id, 99.99m, DateTime.UtcNow));
+        return ValueTask.FromResult(new Order(query.Id, 99.99m, DateTime.UtcNow));
     }
 }
 
@@ -28,20 +29,20 @@ public class FoundatioQueryHandler
 [Handler]
 public class FoundatioEventHandler
 {
-    public Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
+    public ValueTask HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
-        // Simulate minimal event handling work - returns completed task with no allocation
-        return Task.CompletedTask;
+        // Simulate minimal event handling work
+        return default;
     }
 }
 
 [Handler]
 public class FoundatioSecondEventHandler
 {
-    public Task HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
+    public ValueTask HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
         // Second handler listening for the same event
-        return Task.CompletedTask;
+        return default;
     }
 }
 
@@ -56,9 +57,9 @@ public class FoundatioFullQueryHandler
         _orderService = orderService;
     }
 
-    public async Task<Order> HandleAsync(GetFullQuery query, CancellationToken cancellationToken = default)
+    public ValueTask<Order> HandleAsync(GetFullQuery query, CancellationToken cancellationToken = default)
     {
-        return await _orderService.GetOrderAsync(query.Id, cancellationToken);
+        return _orderService.GetOrderAsync(query.Id, cancellationToken);
     }
 }
 
@@ -66,11 +67,10 @@ public class FoundatioFullQueryHandler
 [Handler]
 public class FoundatioCreateOrderHandler
 {
-    public (Order order, OrderCreatedEvent evt) HandleAsync(CreateOrder command, CancellationToken cancellationToken = default)
+    public ValueTask<(Order order, OrderCreatedEvent evt)> HandleAsync(CreateOrder command, CancellationToken cancellationToken = default)
     {
-        // No async state machine needed
         var order = new Order(1, command.Amount, DateTime.UtcNow);
-        return (order, new OrderCreatedEvent(order.Id, command.CustomerId));
+        return ValueTask.FromResult((order, new OrderCreatedEvent(order.Id, command.CustomerId)));
     }
 }
 
@@ -78,20 +78,20 @@ public class FoundatioCreateOrderHandler
 [Handler]
 public class FoundatioFirstOrderCreatedHandler
 {
-    public Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
-        // First handler for order created event - no async state machine
-        return Task.CompletedTask;
+        // First handler for order created event
+        return default;
     }
 }
 
 [Handler]
 public class FoundatioSecondOrderCreatedHandler
 {
-    public Task HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
-        // Second handler for order created event - no async state machine
-        return Task.CompletedTask;
+        // Second handler for order created event
+        return default;
     }
 }
 
@@ -99,9 +99,44 @@ public class FoundatioSecondOrderCreatedHandler
 [Handler]
 public class FoundatioShortCircuitHandler
 {
-    public Task<Order> HandleAsync(GetCachedOrder query, CancellationToken cancellationToken = default)
+    public ValueTask<Order> HandleAsync(GetCachedOrder query, CancellationToken cancellationToken = default)
     {
         // This should never be called - middleware short-circuits before reaching handler
         throw new InvalidOperationException("Short-circuit middleware should have prevented this call");
+    }
+}
+
+/// <summary>
+/// Simple timing middleware for benchmarking - simulates real-world logging/timing middleware.
+/// Only applies to GetFullQuery (FullQuery benchmark).
+/// </summary>
+[Middleware]
+public static class TimingMiddleware
+{
+    public static Stopwatch Before(GetFullQuery message)
+    {
+        return Stopwatch.StartNew();
+    }
+
+    public static void Finally(GetFullQuery message, Stopwatch? stopwatch)
+    {
+        stopwatch?.Stop();
+        // In real middleware, you'd log here - we just stop the timer for the benchmark
+    }
+}
+
+/// <summary>
+/// Short-circuit middleware that immediately returns a cached result without calling the handler.
+/// This demonstrates middleware returning early (cache hit, validation success with cached result, etc.)
+/// </summary>
+[Middleware]
+public class ShortCircuitMiddleware
+{
+    private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
+
+    public ValueTask<HandlerResult> BeforeAsync(GetCachedOrder message)
+    {
+        // Always short-circuit with cached result - simulates cache hit scenario
+        return ValueTask.FromResult(HandlerResult.ShortCircuit(_cachedOrder));
     }
 }

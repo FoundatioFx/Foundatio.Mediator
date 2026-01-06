@@ -53,9 +53,9 @@ public class MediatRFullQueryHandler : IRequestHandler<GetFullQuery, Order>
         _orderService = orderService;
     }
 
-    public async Task<Order> Handle(GetFullQuery request, CancellationToken cancellationToken)
+    public Task<Order> Handle(GetFullQuery request, CancellationToken cancellationToken)
     {
-        return await _orderService.GetOrderAsync(request.Id, cancellationToken);
+        return _orderService.GetOrderAsync(request.Id, cancellationToken).AsTask();
     }
 }
 

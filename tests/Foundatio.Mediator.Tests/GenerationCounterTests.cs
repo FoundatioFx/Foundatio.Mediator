@@ -1,0 +1,127 @@
+namespace Foundatio.Mediator.Tests;
+
+/// <summary>
+/// Tests for the MediatorEnableGenerationCounter MSBuild property feature.
+/// When enabled, generated files include a generation counter comment to help diagnose
+/// when files are being regenerated during development.
+/// </summary>
+public class GenerationCounterTests(ITestOutputHelper output) : GeneratorTestBase(output)
+{
+    private const string HandlerSource = """
+        using System.Threading;
+        using System.Threading.Tasks;
+        using Foundatio.Mediator;
+
+        public record Msg;
+        public class MsgHandler { public void Handle(Msg m) { } }
+        """;
+
+    [Fact]
+    public void GenerationCounter_Disabled_ByDefault_NoCounterInOutput()
+    {
+        // Default behavior - no MSBuild property set
+        var (_, _, trees) = RunGenerator(HandlerSource, [new MediatorGenerator()]);
+
+        // Verify handler file is generated
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Generation counter should NOT be present
+        Assert.DoesNotContain("Generation #", wrapper.Source);
+    }
+
+    [Fact]
+    public void GenerationCounter_Disabled_Explicitly_NoCounterInOutput()
+    {
+        var opts = CreateOptions(("build_property.MediatorEnableGenerationCounter", "false"));
+        var (_, _, trees) = RunGenerator(HandlerSource, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Generation counter should NOT be present
+        Assert.DoesNotContain("Generation #", wrapper.Source);
+    }
+
+    [Fact]
+    public void GenerationCounter_Enabled_CounterPresentInAllGeneratedFiles()
+    {
+        var opts = CreateOptions(("build_property.MediatorEnableGenerationCounter", "true"));
+        var (_, _, trees) = RunGenerator(HandlerSource, [new MediatorGenerator()], opts);
+
+        // All generated files should have the counter
+        foreach (var tree in trees)
+        {
+            Assert.Contains("Generation #", tree.Source);
+            Assert.Contains(" UTC", tree.Source); // Timestamp is also present
+        }
+    }
+
+    [Fact]
+    public void GenerationCounter_Enabled_EachFileHasCounter()
+    {
+        var opts = CreateOptions(("build_property.MediatorEnableGenerationCounter", "true"));
+        var (_, _, trees) = RunGenerator(HandlerSource, [new MediatorGenerator()], opts);
+
+        // With per-file counters, each file should have a generation counter
+        foreach (var tree in trees)
+        {
+            Assert.Contains("Generation #", tree.Source);
+        }
+    }
+
+    [Fact]
+    public void GenerationCounter_Enabled_AllFileTypes_HaveCounter()
+    {
+        // Source with handler and call site to generate more file types
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public static class Calls { public static void C(IMediator m) { m.Invoke(new Msg()); } }
+            """;
+
+        var opts = CreateOptions(
+            ("build_property.MediatorEnableGenerationCounter", "true"),
+            ("build_property.MediatorDisableInterceptors", "false"));
+        var (_, _, trees) = RunGenerator(source, [new MediatorGenerator()], opts);
+
+        // Verify we have multiple file types
+        var handlerFile = trees.FirstOrDefault(t => t.HintName.EndsWith("_Handler.g.cs"));
+        var helpersFile = trees.FirstOrDefault(t => t.HintName == "_MediatorHelpers.g.cs");
+        var interceptsFile = trees.FirstOrDefault(t => t.HintName == "_InterceptsLocationAttribute.g.cs");
+
+        Assert.False(string.IsNullOrEmpty(handlerFile.Source), "Handler file should be generated");
+        Assert.False(string.IsNullOrEmpty(helpersFile.Source), "Helpers file should be generated");
+        Assert.False(string.IsNullOrEmpty(interceptsFile.Source), "Intercepts file should be generated");
+
+        // All should have generation counter
+        Assert.Contains("Generation #", handlerFile.Source);
+        Assert.Contains("Generation #", helpersFile.Source);
+        Assert.Contains("Generation #", interceptsFile.Source);
+
+        // Also verify module file if it exists (depends on assembly name)
+        var moduleFile = trees.FirstOrDefault(t => t.HintName.Contains("_MediatorHandlers"));
+        if (!string.IsNullOrEmpty(moduleFile.Source))
+        {
+            Assert.Contains("Generation #", moduleFile.Source);
+        }
+    }
+
+    [Fact]
+    public void GenerationCounter_Enabled_HeaderFormatIsCorrect()
+    {
+        var opts = CreateOptions(("build_property.MediatorEnableGenerationCounter", "true"));
+        var (_, _, trees) = RunGenerator(HandlerSource, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Verify the header format
+        Assert.Contains("// <auto-generated>", wrapper.Source);
+        Assert.Contains("// Generated by Foundatio.Mediator", wrapper.Source);
+        Assert.Matches(@"// Generation #\d+ at \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} UTC", wrapper.Source);
+        Assert.Contains("// Changes to this file may be lost when the code is regenerated.", wrapper.Source);
+        Assert.Contains("// </auto-generated>", wrapper.Source);
+    }
+}

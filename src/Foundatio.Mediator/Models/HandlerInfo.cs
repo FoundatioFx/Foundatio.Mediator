@@ -54,15 +54,17 @@ internal readonly record struct HandlerInfo
 
     /// <summary>
     /// Whether this handler can use the singleton fast path interceptor.
-    /// True when the handler has no constructor parameters, no DI method parameters, no middleware, and no cascading messages.
+    /// True when the handler has no constructor parameters, no DI method parameters, and all middleware can use fast path.
     /// This applies to handlers that have parameterless constructors and no DI dependencies.
+    /// The handler instance is cached in a static field, and scope creation is skipped in the interceptor.
+    /// Middleware can use fast path if they are static or have no constructor/method DI parameters.
+    /// Cascading messages are allowed - they're published using the mediator without creating a scope.
     /// </summary>
     public bool CanUseSingletonFastPath =>
         !IsStatic && // Instance handler (static uses zero-alloc path)
         !HasConstructorParameters && // No constructor DI parameters
         !HasMethodDIParameters && // No DI parameters in the method
-        !Middleware.Any() && // No middleware - fast path skips middleware execution entirely
-        !ReturnType.IsTuple; // No cascading messages
+        Middleware.All(m => m.CanUseFastPath); // All middleware must be able to use fast path (or no middleware)
 }
 
 internal readonly record struct ParameterInfo

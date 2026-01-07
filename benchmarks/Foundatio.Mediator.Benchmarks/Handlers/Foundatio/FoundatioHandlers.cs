@@ -130,11 +130,11 @@ public static class TimingMiddleware
 /// This demonstrates middleware returning early (cache hit, validation success with cached result, etc.)
 /// </summary>
 [Middleware]
-public class ShortCircuitMiddleware
+public static class ShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
-    public ValueTask<HandlerResult> BeforeAsync(GetCachedOrder message)
+    public static ValueTask<HandlerResult<Order>> BeforeAsync(GetCachedOrder message)
     {
         // Always short-circuit with cached result - simulates cache hit scenario
         return ValueTask.FromResult(HandlerResult.ShortCircuit(_cachedOrder));

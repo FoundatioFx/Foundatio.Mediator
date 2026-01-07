@@ -100,7 +100,16 @@ internal static class TypeExtensions
         if (handlerResultType == null)
             return false;
 
-        return SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, handlerResultType);
+        // Check for non-generic HandlerResult
+        if (SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, handlerResultType))
+            return true;
+
+        // Check for generic HandlerResult<T>
+        var genericHandlerResultType = compilation.GetTypeByMetadataName(WellKnownTypes.GenericHandlerResult);
+        if (genericHandlerResultType == null)
+            return false;
+
+        return SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, genericHandlerResultType);
     }
 
     internal static bool IsNullable(this ITypeSymbol typeSymbol, Compilation compilation)
@@ -186,6 +195,7 @@ internal static class WellKnownTypes
     public const string Result = "Foundatio.Mediator.Result";
     public const string ResultOfT = "Foundatio.Mediator.Result`1";
     public const string HandlerResult = "Foundatio.Mediator.HandlerResult";
+    public const string GenericHandlerResult = "Foundatio.Mediator.HandlerResult`1";
     public const string IgnoreAttribute = "Foundatio.Mediator.FoundatioIgnoreAttribute";
     public const string HandlerAttribute = "Foundatio.Mediator.HandlerAttribute";
     public const string MiddlewareAttribute = "Foundatio.Mediator.MiddlewareAttribute";

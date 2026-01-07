@@ -230,17 +230,28 @@ internal static class HandlerGenerator
             if (m.Method.ReturnType.IsHandlerResult)
             {
                 string shortCircuitValue = "";
+                // For generic HandlerResult<T>, .Value is already typed as T, no cast needed
+                string valueAccess = m.Method.ReturnType.IsGeneric 
+                    ? $"{m.Middleware.Identifier.ToCamelCase()}Result.Value"
+                    : $"{m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                    
                 if (handler.ReturnType.IsResult)
                 {
-                    shortCircuitValue = $"{m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                    shortCircuitValue = m.Method.ReturnType.IsGeneric
+                        ? $"{valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){valueAccess}!"
+                        : $"({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?)({handler.ReturnType.UnwrappedFullName}){valueAccess})!";
                 }
                 else if (handler.ReturnType.IsTuple)
                 {
-                    shortCircuitValue = $"(({m.Middleware.Identifier.ToCamelCase()}Result.Value is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){m.Middleware.Identifier.ToCamelCase()}Result.Value!), {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => i.IsNullable ? "null" : "default"))})";
+                    shortCircuitValue = m.Method.ReturnType.IsGeneric
+                        ? $"(({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){valueAccess})!, {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => "default!"))})"
+                        : $"(({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?)({handler.ReturnType.TupleItems.First().TypeFullName}){valueAccess})!, {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => "default!"))})";
                 }
                 else
                 {
-                    shortCircuitValue = $"({handler.ReturnType.UnwrappedFullName}){m.Middleware.Identifier.ToCamelCase()}Result.Value!";
+                    shortCircuitValue = m.Method.ReturnType.IsGeneric
+                        ? valueAccess
+                        : $"({handler.ReturnType.UnwrappedFullName}){valueAccess}";
                 }
 
                 source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");

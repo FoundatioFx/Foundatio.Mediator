@@ -128,7 +128,7 @@ public class CoreBenchmarks
             {
                 mcfg.UseConsumeFilter(typeof(Handlers.MassTransit.MassTransitTimingFilter<>), context);
                 mcfg.UseConsumeFilter(typeof(Handlers.MassTransit.MassTransitShortCircuitFilter<>), context);
-        });
+            });
         });
         _masstransitServices = masstransitServices.BuildServiceProvider();
         _masstransitMediator = _masstransitServices.GetRequiredService<MassTransit.Mediator.IMediator>();

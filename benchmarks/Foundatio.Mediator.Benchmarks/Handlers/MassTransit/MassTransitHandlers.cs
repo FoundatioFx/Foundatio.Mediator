@@ -111,6 +111,7 @@ public class MassTransitShortCircuitFilter<T> : IFilter<ConsumeContext<T>> where
         if (context.Message is GetCachedOrder)
         {
             // Short-circuit by responding with cached value - never calls next()
+            await context.NotifyConsumed(context.ReceiveContext.ElapsedTime, TypeCache<MassTransitShortCircuitFilter<T>>.ShortName);
             await context.RespondAsync(_cachedOrder);
             return;
         }

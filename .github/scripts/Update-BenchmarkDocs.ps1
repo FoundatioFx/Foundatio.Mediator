@@ -70,7 +70,7 @@ $groups = @{
 }
 
 # Define the order of implementations
-$implOrder = @('Direct', 'MediatorNet', 'MediatR', 'Foundatio', 'Wolverine', 'MassTransit')
+$implOrder = @('Direct', 'MediatorNet', 'MediatR', 'Foundatio', 'Wolverine', 'MassTransit', 'ImmediateHandlers')
 
 foreach ($row in $csv) {
     $method = $row.Method

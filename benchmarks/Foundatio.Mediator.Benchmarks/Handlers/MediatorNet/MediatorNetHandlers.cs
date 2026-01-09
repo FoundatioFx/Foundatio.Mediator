@@ -1,29 +1,13 @@
+using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
 using MediatorLib = Mediator;
 
 namespace Foundatio.Mediator.Benchmarks.Handlers.MediatorNet;
 
-// Message types for Mediator.SourceGenerator
-// Note: We define separate message types because Mediator uses different interfaces than MediatR
-
-public record MediatorNetPingCommand(string Id) : MediatorLib.ICommand;
-
-public record MediatorNetGetOrder(int Id) : MediatorLib.IQuery<Order>;
-
-public record MediatorNetGetFullQuery(int Id) : MediatorLib.IQuery<Order>;
-
-public record MediatorNetUserRegisteredEvent(string UserId, string Email) : MediatorLib.INotification;
-
-public record MediatorNetCreateOrder(int CustomerId, decimal Amount) : MediatorLib.IRequest<Order>;
-
-public record MediatorNetOrderCreatedEvent(int OrderId, int CustomerId) : MediatorLib.INotification;
-
-public record MediatorNetGetCachedOrder(int Id) : MediatorLib.IQuery<Order>;
-
 // Scenario 1: Command handler (InvokeAsync without response)
-public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<MediatorNetPingCommand>
+public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<PingCommand>
 {
-    public ValueTask<MediatorLib.Unit> Handle(MediatorNetPingCommand command, CancellationToken cancellationToken)
+    public ValueTask<MediatorLib.Unit> Handle(PingCommand command, CancellationToken cancellationToken)
     {
         // Simulate minimal work
         return ValueTask.FromResult(MediatorLib.Unit.Value);
@@ -31,27 +15,27 @@ public class MediatorNetCommandHandler : MediatorLib.ICommandHandler<MediatorNet
 }
 
 // Scenario 2: Query handler (InvokeAsync<T>) - No DI for baseline comparison
-public class MediatorNetQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetOrder, Order>
+public class MediatorNetQueryHandler : MediatorLib.IQueryHandler<GetOrder, Order>
 {
-    public ValueTask<Order> Handle(MediatorNetGetOrder query, CancellationToken cancellationToken)
+    public ValueTask<Order> Handle(GetOrder query, CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(new Order(query.Id, 99.99m, DateTime.UtcNow));
     }
 }
 
 // Scenario 3: Notification handlers (PublishAsync with multiple handlers)
-public class MediatorNetEventHandler : MediatorLib.INotificationHandler<MediatorNetUserRegisteredEvent>
+public class MediatorNetEventHandler : MediatorLib.INotificationHandler<UserRegisteredEvent>
 {
-    public ValueTask Handle(MediatorNetUserRegisteredEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
     {
         // Simulate minimal event handling work
         return ValueTask.CompletedTask;
     }
 }
 
-public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<MediatorNetUserRegisteredEvent>
+public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<UserRegisteredEvent>
 {
-    public ValueTask Handle(MediatorNetUserRegisteredEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(UserRegisteredEvent notification, CancellationToken cancellationToken)
     {
         // Second handler listening for the same event
         return ValueTask.CompletedTask;
@@ -59,7 +43,7 @@ public class MediatorNetEventHandler2 : MediatorLib.INotificationHandler<Mediato
 }
 
 // Scenario 4: Query handler with dependency injection
-public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNetGetFullQuery, Order>
+public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<GetFullQuery, Order>
 {
     private readonly IOrderService _orderService;
 
@@ -68,14 +52,14 @@ public class MediatorNetFullQueryHandler : MediatorLib.IQueryHandler<MediatorNet
         _orderService = orderService;
     }
 
-    public ValueTask<Order> Handle(MediatorNetGetFullQuery query, CancellationToken cancellationToken)
+    public ValueTask<Order> Handle(GetFullQuery query, CancellationToken cancellationToken)
     {
         return _orderService.GetOrderAsync(query.Id, cancellationToken);
     }
 }
 
 // Scenario 5: Cascading messages - MediatorNet requires manual publish of events
-public class MediatorNetCreateOrderHandler : MediatorLib.IRequestHandler<MediatorNetCreateOrder, Order>
+public class MediatorNetCreateOrderHandler : MediatorLib.IRequestHandler<CreateOrder, Order>
 {
     private readonly MediatorLib.IMediator _mediator;
 
@@ -84,27 +68,27 @@ public class MediatorNetCreateOrderHandler : MediatorLib.IRequestHandler<Mediato
         _mediator = mediator;
     }
 
-    public async ValueTask<Order> Handle(MediatorNetCreateOrder request, CancellationToken cancellationToken)
+    public async ValueTask<Order> Handle(CreateOrder request, CancellationToken cancellationToken)
     {
         var order = new Order(1, request.Amount, DateTime.UtcNow);
-        await _mediator.Publish(new MediatorNetOrderCreatedEvent(order.Id, request.CustomerId), cancellationToken);
+        await _mediator.Publish(new OrderCreatedEvent(order.Id, request.CustomerId), cancellationToken);
         return order;
     }
 }
 
 // Handlers for the cascaded OrderCreatedEvent
-public class MediatorNetOrderCreatedHandler1 : MediatorLib.INotificationHandler<MediatorNetOrderCreatedEvent>
+public class MediatorNetOrderCreatedHandler1 : MediatorLib.INotificationHandler<OrderCreatedEvent>
 {
-    public ValueTask Handle(MediatorNetOrderCreatedEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(OrderCreatedEvent notification, CancellationToken cancellationToken)
     {
         // First handler for order created event
         return ValueTask.CompletedTask;
     }
 }
 
-public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<MediatorNetOrderCreatedEvent>
+public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<OrderCreatedEvent>
 {
-    public ValueTask Handle(MediatorNetOrderCreatedEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(OrderCreatedEvent notification, CancellationToken cancellationToken)
     {
         // Second handler for order created event
         return ValueTask.CompletedTask;
@@ -112,9 +96,9 @@ public class MediatorNetOrderCreatedHandler2 : MediatorLib.INotificationHandler<
 }
 
 // Scenario 6: Short-circuit handler - MediatorNet uses IPipelineBehavior to short-circuit
-public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<MediatorNetGetCachedOrder, Order>
+public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<GetCachedOrder, Order>
 {
-    public ValueTask<Order> Handle(MediatorNetGetCachedOrder query, CancellationToken cancellationToken)
+    public ValueTask<Order> Handle(GetCachedOrder query, CancellationToken cancellationToken)
     {
         // This should never be called - pipeline behavior short-circuits before reaching handler
         throw new InvalidOperationException("Short-circuit behavior should have prevented this call");
@@ -122,11 +106,11 @@ public class MediatorNetShortCircuitHandler : MediatorLib.IQueryHandler<Mediator
 }
 
 // MediatorNet short-circuit behavior - returns cached value without calling handler
-public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<MediatorNetGetCachedOrder, Order>
+public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<GetCachedOrder, Order>
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
-    public ValueTask<Order> Handle(MediatorNetGetCachedOrder message, MediatorLib.MessageHandlerDelegate<MediatorNetGetCachedOrder, Order> next, CancellationToken cancellationToken)
+    public ValueTask<Order> Handle(GetCachedOrder message, MediatorLib.MessageHandlerDelegate<GetCachedOrder, Order> next, CancellationToken cancellationToken)
     {
         // Short-circuit by returning cached value - never calls next()
         return ValueTask.FromResult(_cachedOrder);
@@ -134,9 +118,9 @@ public class MediatorNetShortCircuitBehavior : MediatorLib.IPipelineBehavior<Med
 }
 
 // MediatorNet timing behavior for FullQuery benchmark (equivalent to Foundatio's TimingMiddleware)
-public class MediatorNetTimingBehavior : MediatorLib.IPipelineBehavior<MediatorNetGetFullQuery, Order>
+public class MediatorNetTimingBehavior : MediatorLib.IPipelineBehavior<GetFullQuery, Order>
 {
-    public async ValueTask<Order> Handle(MediatorNetGetFullQuery message, MediatorLib.MessageHandlerDelegate<MediatorNetGetFullQuery, Order> next, CancellationToken cancellationToken)
+    public async ValueTask<Order> Handle(GetFullQuery message, MediatorLib.MessageHandlerDelegate<GetFullQuery, Order> next, CancellationToken cancellationToken)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try

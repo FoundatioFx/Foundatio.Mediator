@@ -250,30 +250,30 @@ public class CoreBenchmarks
     // Scenario 2: InvokeAsync<T> (Query)
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order> Direct_Query()
+    public ValueTask<Order> Direct_Query()
     {
-        return await _directQueryHandler.HandleAsync(_getOrder);
+        return _directQueryHandler.HandleAsync(_getOrder);
     }
 
     [Benchmark]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order> Foundatio_Query()
+    public ValueTask<Order> Foundatio_Query()
     {
-        return await _foundatioMediator.InvokeAsync<Order>(_getOrder);
+        return _foundatioMediator.InvokeAsync<Order>(_getOrder);
     }
 
     [Benchmark]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order> IH_Query()
+    public ValueTask<Order> IH_Query()
     {
-        return await _immediateHandlersQueryHandler.HandleAsync(_getOrder);
+        return _immediateHandlersQueryHandler.HandleAsync(_getOrder);
     }
 
     [Benchmark]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order> MediatR_Query()
+    public Task<Order> MediatR_Query()
     {
-        return await _mediatrMediator.Send(_getOrder);
+        return _mediatrMediator.Send(_getOrder);
     }
 
     [Benchmark]
@@ -287,16 +287,16 @@ public class CoreBenchmarks
 
     [Benchmark]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order?> Wolverine_Query()
+    public Task<Order?> Wolverine_Query()
     {
-        return await _wolverineBus.InvokeAsync<Order?>(_getOrder);
+        return _wolverineBus.InvokeAsync<Order?>(_getOrder);
     }
 
     [Benchmark]
     [BenchmarkCategory("Query")]
-    public async ValueTask<Order> MediatorNet_Query()
+    public ValueTask<Order> MediatorNet_Query()
     {
-        return await _mediatorNetMediator.Send(_mediatorNetGetOrder);
+        return _mediatorNetMediator.Send(_mediatorNetGetOrder);
     }
 
     // Scenario 3: PublishAsync with a single handler

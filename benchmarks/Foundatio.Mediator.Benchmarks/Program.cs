@@ -20,7 +20,7 @@ class Program
             case "all":
             case "compare":
             default:
-                Console.WriteLine("Running Foundatio.Mediator vs MediatR vs MassTransit benchmarks...");
+                Console.WriteLine("Running Foundatio.Mediator comparison benchmarks...");
                 BenchmarkRunner.Run<CoreBenchmarks>(SpotlightConfig.Instance, args: args.Length > 1 ? args[1..] : []);
                 break;
         }

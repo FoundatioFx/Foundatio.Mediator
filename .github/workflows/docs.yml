@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   deploy-docs:

@@ -23,8 +23,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Configuration - .github/scripts -> .github -> repo root (2 levels up)
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# Configuration - repo root (1 level up)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $RepoRoot -or -not (Test-Path $RepoRoot)) {
     $RepoRoot = Get-Location
 }

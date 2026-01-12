@@ -127,11 +127,11 @@ internal static class CrossAssemblyInterceptorGenerator
 
         if (handler.IsAsync)
         {
-            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+            source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
         }
         else
         {
-            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
+            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
         }
 
         source.AppendLine($"var typedMessage = (global::{handler.MessageType.FullName})message;");

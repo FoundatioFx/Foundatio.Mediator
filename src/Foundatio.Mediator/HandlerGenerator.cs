@@ -231,10 +231,10 @@ internal static class HandlerGenerator
             {
                 string shortCircuitValue = "";
                 // For generic HandlerResult<T>, .Value is already typed as T, no cast needed
-                string valueAccess = m.Method.ReturnType.IsGeneric 
+                string valueAccess = m.Method.ReturnType.IsGeneric
                     ? $"{m.Middleware.Identifier.ToCamelCase()}Result.Value"
                     : $"{m.Middleware.Identifier.ToCamelCase()}Result.Value!";
-                    
+
                 if (handler.ReturnType.IsResult)
                 {
                     shortCircuitValue = m.Method.ReturnType.IsGeneric
@@ -409,12 +409,12 @@ internal static class HandlerGenerator
         }
         else if (handler.IsAsync)
         {
-            source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+            source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
             serviceProviderExpr = "scopedMediator.Services";
         }
         else
         {
-            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
+            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
             serviceProviderExpr = "scopedMediator.Services";
         }
 
@@ -684,11 +684,11 @@ internal static class HandlerGenerator
             // This path needs async for scope management (await using) and tuple cascading
             if (handler.IsAsync)
             {
-                source.AppendLine("await using var scopedMediator = await ScopedMediator.GetOrCreateAsync(mediator);");
+                source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
             }
             else
             {
-                source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreate(mediator);");
+                source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
             }
 
             source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");

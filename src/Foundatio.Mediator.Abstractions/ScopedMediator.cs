@@ -47,7 +47,7 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
     /// <summary>
     /// Gets or creates a scoped mediator. If already a ScopedMediator, increments ref count and returns the same instance.
     /// </summary>
-    public static ScopedMediator GetOrCreate(IMediator mediator)
+    public static ScopedMediator GetOrCreateScope(IMediator mediator)
     {
         if (mediator is null) throw new ArgumentNullException(nameof(mediator));
 
@@ -64,18 +64,18 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
     /// <summary>
     /// Gets or creates a scoped mediator asynchronously. If already a ScopedMediator, increments ref count and returns the same instance.
     /// </summary>
-    public static ValueTask<ScopedMediator> GetOrCreateAsync(IMediator mediator)
+    public static ScopedMediator GetOrCreateAsyncScope(IMediator mediator)
     {
         if (mediator is null) throw new ArgumentNullException(nameof(mediator));
 
         if (mediator is ScopedMediator scopedMediator)
         {
             scopedMediator.AddRef();
-            return new ValueTask<ScopedMediator>(scopedMediator);
+            return scopedMediator;
         }
 
         var serviceProvider = (IServiceProvider)mediator;
-        return new ValueTask<ScopedMediator>(new ScopedMediator(mediator, serviceProvider.CreateAsyncScope()));
+        return new ScopedMediator(mediator, serviceProvider.CreateAsyncScope());
     }
 
     /// <inheritdoc />

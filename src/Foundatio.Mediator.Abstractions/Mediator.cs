@@ -243,6 +243,7 @@ public class Mediator : IMediator, IServiceProvider
 
         var handlers = allHandlers
             .Distinct()
+            .OrderBy(h => h.Order)
             .Select(h => h.PublishAsync)
             .ToArray();
 

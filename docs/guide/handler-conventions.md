@@ -529,6 +529,108 @@ If you prefer explicit handler declaration over naming conventions, you can disa
 
 When disabled, only handlers that implement `IHandler` or have the `[Handler]` attribute are discovered. Classes with names ending in `Handler` or `Consumer` will not be automatically discovered.
 
+## Handler Execution Order
+
+When using `PublishAsync` to broadcast messages to multiple handlers, you can control the execution order using the `Order` property on the `[Handler]` attribute:
+
+```csharp
+// Handlers execute in order: 1, 2, 3, then handlers without explicit order (default)
+
+[Handler(Order = 1)]
+public class HighPriorityHandler
+{
+    public void Handle(OrderCreated evt)
+    {
+        // Executes first - e.g., validate order data
+    }
+}
+
+[Handler(Order = 2)]
+public class MediumPriorityHandler
+{
+    public void Handle(OrderCreated evt)
+    {
+        // Executes second - e.g., update inventory
+    }
+}
+
+[Handler(Order = 3)]
+public class LowPriorityHandler
+{
+    public void Handle(OrderCreated evt)
+    {
+        // Executes third - e.g., send notifications
+    }
+}
+
+// No Order specified - executes last (default is int.MaxValue)
+public class DefaultOrderHandler
+{
+    public void Handle(OrderCreated evt)
+    {
+        // Executes after all handlers with explicit Order
+    }
+}
+```
+
+### Order Property Details
+
+- **Lower values execute first** - A handler with `Order = 1` executes before `Order = 10`
+- **Default order is `int.MaxValue`** - Handlers without explicit order execute last
+- **Only affects `PublishAsync`** - `InvokeAsync` always invokes exactly one handler
+- **Two syntax options:**
+  - Constructor argument: `[Handler(5)]`
+  - Named property: `[Handler(Order = 5)]`
+
+### Use Cases
+
+Handler ordering is useful for scenarios like:
+
+1. **Validation before processing** - Ensure validation handlers run first
+2. **Audit logging** - Record events before or after processing
+3. **Cascading updates** - Update parent entities before children
+4. **Priority-based notifications** - Send critical notifications first
+
+```csharp
+public record PaymentReceived(string OrderId, decimal Amount);
+
+[Handler(Order = 1)]
+public class PaymentValidationHandler
+{
+    public void Handle(PaymentReceived evt)
+    {
+        // First: Validate payment data
+    }
+}
+
+[Handler(Order = 2)]
+public class OrderStatusHandler
+{
+    public void Handle(PaymentReceived evt)
+    {
+        // Second: Update order status
+    }
+}
+
+[Handler(Order = 3)]
+public class CustomerNotificationHandler
+{
+    public void Handle(PaymentReceived evt)
+    {
+        // Third: Send customer confirmation
+    }
+}
+
+[Handler(Order = 100)]
+public class AnalyticsHandler
+{
+    public void Handle(PaymentReceived evt)
+    {
+        // Last (among explicit orders): Record analytics
+    }
+}
+```
+
 ## Next Steps
 
 - [Result Types](./result-types) - Robust error handling patterns

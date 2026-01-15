@@ -119,7 +119,8 @@ internal static class FoundatioModuleGenerator
                         source.AppendLine($"        {handlerClassName}.UntypedHandle,");
                     }
 
-                    source.AppendLine($"        {handler.IsAsync.ToString().ToLower()}));");
+                    source.AppendLine($"        {handler.IsAsync.ToString().ToLower()},");
+                    source.AppendLine($"        {handler.Order}));");
                     source.AppendLine();
                 }
             }

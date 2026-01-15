@@ -168,6 +168,26 @@ internal static class HandlerAnalyzer
             bool hasMethodHandlerAttribute = handlerMethod.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
             bool methodIsExplicitlyDeclared = isExplicitlyDeclared || hasMethodHandlerAttribute;
 
+            // Extract Order from [Handler] attribute (method attribute takes precedence over class attribute)
+            int order = int.MaxValue;
+            var handlerAttr = hasMethodHandlerAttribute
+                ? handlerMethod.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute)
+                : hasClassHandlerAttribute
+                    ? classSymbol.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute)
+                    : null;
+
+            if (handlerAttr != null)
+            {
+                // Check constructor argument
+                if (handlerAttr.ConstructorArguments.Length > 0 && handlerAttr.ConstructorArguments[0].Value is int orderValue)
+                    order = orderValue;
+
+                // Check named argument (property)
+                var orderArg = handlerAttr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
+                if (orderArg.Value.Value is int namedOrderValue)
+                    order = namedOrderValue;
+            }
+
             // Check if the handler has constructor parameters (indicating DI dependencies)
             bool hasConstructorParameters = !handlerMethod.IsStatic &&
                 classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
@@ -192,6 +212,7 @@ internal static class HandlerAnalyzer
                 CallSites = [],
                 Middleware = [],
                 IsExplicitlyDeclared = methodIsExplicitlyDeclared,
+                Order = order,
                 HasConstructorParameters = hasConstructorParameters,
             });
         }

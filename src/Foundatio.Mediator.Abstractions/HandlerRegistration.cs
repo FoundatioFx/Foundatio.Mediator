@@ -13,14 +13,16 @@ public class HandlerRegistration
     /// <param name="handleAsync">The delegate to handle the message asynchronously</param>
     /// <param name="handle">The delegate to handle the message synchronously (null for async-only handlers)</param>
     /// <param name="isAsync">Whether the handler supports async operations</param>
+    /// <param name="order">The execution order for this handler during PublishAsync. Lower values execute first.</param>
     /// <param name="publishAsync">The delegate for publish scenarios (discards return value, avoids allocation)</param>
-    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, PublishAsyncDelegate? publishAsync = null)
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null)
     {
         MessageTypeName = messageTypeName;
         HandlerClassName = handlerClassName;
         HandleAsync = handleAsync;
         Handle = handle;
         IsAsync = isAsync;
+        Order = order;
         // If no publish delegate provided, create a wrapper that discards the result
         PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
     }
@@ -70,6 +72,12 @@ public class HandlerRegistration
     /// Whether the handler supports async operations
     /// </summary>
     public bool IsAsync { get; }
+
+    /// <summary>
+    /// The execution order for this handler during PublishAsync.
+    /// Lower values execute first. Default is int.MaxValue.
+    /// </summary>
+    public int Order { get; }
 }
 
 public delegate ValueTask<object?> HandleAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken, Type? returnType);

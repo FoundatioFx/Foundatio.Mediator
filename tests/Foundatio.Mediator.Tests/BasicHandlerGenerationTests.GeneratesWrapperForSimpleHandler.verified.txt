@@ -39,7 +39,8 @@ public static class Tests_MediatorHandlers
                 "PingHandler_Ping_Handler",
                 PingHandler_Ping_Handler.UntypedHandleAsync,
                 null,
-                true));
+                true,
+                2147483647));
 
     }
 }

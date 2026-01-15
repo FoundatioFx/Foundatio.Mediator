@@ -30,6 +30,12 @@ internal readonly record struct HandlerInfo
     public bool IsExplicitlyDeclared { get; init; }
 
     /// <summary>
+    /// The execution order for this handler during PublishAsync.
+    /// Lower values execute first. Default is int.MaxValue.
+    /// </summary>
+    public int Order { get; init; }
+
+    /// <summary>
     /// Whether this handler class has constructor parameters (indicating DI dependencies).
     /// </summary>
     public bool HasConstructorParameters { get; init; }

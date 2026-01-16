@@ -90,7 +90,7 @@ public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(ou
     }
 
     [Fact]
-    public void OpenTelemetry_Enabled_SuccessStatusSet()
+    public void OpenTelemetry_Enabled_GeneratesTryCatchWithoutMiddleware()
     {
         var src = """
             using System.Threading;
@@ -105,7 +105,19 @@ public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(ou
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-        Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);", wrapper.Source);
+
+        // Verify try-catch-finally is generated even without middleware
+        Assert.Contains("try", wrapper.Source);
+        Assert.Contains("catch (Exception ex)", wrapper.Source);
+        Assert.Contains("finally", wrapper.Source);
+
+        // Verify error handling is present in catch block
+        Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);", wrapper.Source);
+        Assert.Contains("activity?.SetTag(\"exception.type\", ex.GetType().FullName);", wrapper.Source);
+        Assert.Contains("activity?.SetTag(\"exception.message\", ex.Message);", wrapper.Source);
+
+        // Verify we don't set Ok status (Unset is the correct default per OpenTelemetry spec)
+        Assert.DoesNotContain("ActivityStatusCode.Ok", wrapper.Source);
     }
 
     [Fact]
@@ -128,6 +140,36 @@ public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(ou
         Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);", wrapper.Source);
         Assert.Contains("activity?.SetTag(\"exception.type\", ex.GetType().FullName);", wrapper.Source);
         Assert.Contains("activity?.SetTag(\"exception.message\", ex.Message);", wrapper.Source);
+    }
+
+    [Fact]
+    public void OpenTelemetry_ErrorStatus_NotOverwrittenByFinallyBlock()
+    {
+        var src = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public class TestMiddleware { public void Finally(Msg m) { } }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Verify that Error status is set in catch block
+        Assert.Contains("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);", wrapper.Source);
+
+        // Verify that we don't set Ok status in the finally block (which would overwrite Error status)
+        // The default status is Unset which is fine for successful operations
+        // Extract the finally block content and verify it doesn't contain SetStatus(Ok)
+        var finallyIndex = wrapper.Source.IndexOf("finally", StringComparison.Ordinal);
+        Assert.True(finallyIndex > 0, "Expected a finally block");
+        var finallyBlock = wrapper.Source.Substring(finallyIndex);
+        Assert.DoesNotContain("ActivityStatusCode.Ok", finallyBlock);
     }
 
     [Fact]

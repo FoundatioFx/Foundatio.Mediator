@@ -273,12 +273,27 @@ public static class PingHandler_Ping_Handler
         activity?.SetTag("messaging.message.type", "Ping");
 
         string? handlerResult = default;
-        var handlerInstance = GetOrCreateHandler(serviceProvider);
-        handlerResult = await handlerInstance.HandleAsync(message, cancellationToken);
+        System.Exception? exception = null;
 
-        logger?.LogCompletedMessage("Ping");
-        activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
-        return handlerResult;
+        try
+        {
+            var handlerInstance = GetOrCreateHandler(serviceProvider);
+            handlerResult = await handlerInstance.HandleAsync(message, cancellationToken);
+
+            return handlerResult;
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.SetTag("exception.type", ex.GetType().FullName);
+            activity?.SetTag("exception.message", ex.Message);
+            throw;
+        }
+        finally
+        {
+            logger?.LogCompletedMessage("Ping");
+        }
     }
 
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)

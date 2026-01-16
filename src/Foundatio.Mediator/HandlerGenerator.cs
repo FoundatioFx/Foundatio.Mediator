@@ -122,7 +122,7 @@ internal static class HandlerGenerator
         var afterMiddleware = handler.Middleware.Where(m => m.AfterMethod != null).Reverse().Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList();
         var finallyMiddleware = handler.Middleware.Where(m => m.FinallyMethod != null).Reverse().Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList();
 
-        var shouldUseTryCatch = finallyMiddleware.Any();
+        var shouldUseTryCatch = finallyMiddleware.Any() || configuration.OpenTelemetryEnabled;
 
         // change return type to async if needed
         if (handler.ReturnType.IsTask == false && handler.IsAsync)
@@ -328,10 +328,6 @@ internal static class HandlerGenerator
         source.AppendLineIf(afterMiddleware.Any());
 
         source.AppendLineIf($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
-        if (configuration.OpenTelemetryEnabled && !shouldUseTryCatch)
-        {
-            source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
-        }
         if (handler.HasReturnValue)
         {
             source.AppendLine("return handlerResult;");
@@ -374,10 +370,6 @@ internal static class HandlerGenerator
                 source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
             }
 
-            if (configuration.OpenTelemetryEnabled)
-            {
-                source.AppendLine("activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);");
-            }
             source.AppendLine($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");");
             source.DecrementIndent();
 

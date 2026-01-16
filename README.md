@@ -9,7 +9,7 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 
 ## ✨ Why Choose Foundatio Mediator?
 
-- 🚀 **Near-direct call performance** - Zero runtime reflection, minimal overhead
+- 🚀 **Near-direct call performance** - Zero runtime reflection, minimal overhead ([see benchmarks](https://mediator.foundatio.dev/guide/performance.html))
 - ⚡ **Convention-based** - No interfaces or base classes required
 - 🔧 **Full DI support** - Microsoft.Extensions.DependencyInjection integration
 - 🧩 **Plain handler classes** - Drop in static or instance methods anywhere

@@ -822,9 +822,22 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {
+        // If handler has a specified lifetime, it's registered in DI - use simple GetRequiredService
+        if (!string.IsNullOrEmpty(handler.Lifetime))
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    [DebuggerStepThrough]
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+                    {
+                        return serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                    }
+                    """);
+        }
         // For handlers that can use singleton fast path, cache a directly-instantiated instance
         // This is safe because CanUseSingletonFastPath ensures no constructor parameters
-        if (handler.CanUseSingletonFastPath)
+        else if (handler.CanUseSingletonFastPath)
         {
             source.AppendLine()
                   .AppendLines($$"""

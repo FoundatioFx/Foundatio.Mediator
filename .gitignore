@@ -17,6 +17,9 @@ docs/.vitepress/cache/
 
 # Benchmark Results
 BenchmarkDotNet.Artifacts/
+# But keep the CoreBenchmarks CSV for the update script
+!benchmarks/Foundatio.Mediator.Benchmarks/BenchmarkDotNet.Artifacts/results/
+!benchmarks/Foundatio.Mediator.Benchmarks/BenchmarkDotNet.Artifacts/results/Foundatio.Mediator.Benchmarks.CoreBenchmarks-report.csv
 
 # MSTest test Results
 [Tt]est[Rr]esult*/

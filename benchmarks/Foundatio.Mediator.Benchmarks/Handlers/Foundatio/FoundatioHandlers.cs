@@ -47,7 +47,7 @@ public class FoundatioSecondEventHandler
 }
 
 // Scenario 4: Query handler with dependency injection
-[Handler]
+[Handler(Lifetime = MediatorLifetime.Singleton)]
 public class FoundatioFullQueryHandler
 {
     private readonly IOrderService _orderService;

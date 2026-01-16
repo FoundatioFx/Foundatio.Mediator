@@ -3,6 +3,7 @@
     <!-- CompilerVisibleProperties for Mediator settings -->
     <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
     <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
+    <CompilerVisibleProperty Include="MediatorDefaultMiddlewareLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
     <CompilerVisibleProperty Include="MediatorDisableConventionalDiscovery" />
     <CompilerVisibleProperty Include="MediatorEnableGenerationCounter" />

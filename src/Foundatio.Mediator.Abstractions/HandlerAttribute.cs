@@ -30,8 +30,8 @@ public sealed class HandlerAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the dependency injection lifetime for this handler.
-    /// When set to <see cref="HandlerLifetime.Default"/>, uses the project-level
+    /// When set to <see cref="MediatorLifetime.Default"/>, uses the project-level
     /// MediatorDefaultHandlerLifetime MSBuild property.
     /// </summary>
-    public HandlerLifetime Lifetime { get; set; } = HandlerLifetime.Default;
+    public MediatorLifetime Lifetime { get; set; } = MediatorLifetime.Default;
 }

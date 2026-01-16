@@ -1,7 +1,7 @@
 namespace Foundatio.Mediator;
 
 /// <summary>
-/// Marks a class or method as middleware for discovery and allows controlling execution order.
+/// Marks a class or method as middleware for discovery and allows controlling execution order and lifetime.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class MiddlewareAttribute : Attribute
@@ -27,4 +27,11 @@ public sealed class MiddlewareAttribute : Attribute
     /// Lower values execute first in Before methods, last in After/Finally methods.
     /// </summary>
     public int Order { get; set; }
+
+    /// <summary>
+    /// Gets or sets the dependency injection lifetime for this middleware.
+    /// When set to <see cref="MediatorLifetime.Default"/>, uses the project-level
+    /// MediatorDefaultMiddlewareLifetime MSBuild property.
+    /// </summary>
+    public MediatorLifetime Lifetime { get; set; } = MediatorLifetime.Default;
 }

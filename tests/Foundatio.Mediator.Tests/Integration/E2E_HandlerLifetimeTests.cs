@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggingBase(output)
+public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     private readonly ITestOutputHelper _output = output;
 
@@ -15,7 +15,7 @@ public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggin
     public record DefaultLifetimeMessage(string Value);
 
     // Singleton handler - should be the same instance across requests
-    [Handler(Lifetime = HandlerLifetime.Singleton)]
+    [Handler(Lifetime = MediatorLifetime.Singleton)]
     public class SingletonHandler(ILogger<SingletonHandler> logger)
     {
         public Guid InstanceId { get; } = Guid.NewGuid();
@@ -28,7 +28,7 @@ public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Transient handler - should be a new instance for each request
-    [Handler(Lifetime = HandlerLifetime.Transient)]
+    [Handler(Lifetime = MediatorLifetime.Transient)]
     public class TransientHandler(ILogger<TransientHandler> logger)
     {
         public Guid InstanceId { get; } = Guid.NewGuid();
@@ -41,7 +41,7 @@ public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Scoped handler - should be the same instance within a scope
-    [Handler(Lifetime = HandlerLifetime.Scoped)]
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
     public class ScopedHandler(ILogger<ScopedHandler> logger)
     {
         public Guid InstanceId { get; } = Guid.NewGuid();
@@ -137,7 +137,7 @@ public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggin
     [Fact]
     public async Task DefaultLifetimeHandler_UsesProjectDefault()
     {
-        // The test project has MediatorDefaultHandlerLifetime=Scoped
+        // The test project has MediatorDefaultMediatorLifetime=Scoped
         // So DefaultLifetimeHandler should behave like ScopedHandler (different instance per invocation)
 
         var services = new ServiceCollection();

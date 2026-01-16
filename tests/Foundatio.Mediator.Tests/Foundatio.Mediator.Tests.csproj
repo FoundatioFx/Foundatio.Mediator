@@ -14,10 +14,13 @@
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
     <!-- Default handler lifetime for testing (handlers can override with [Handler(Lifetime = ...)] attribute) -->
     <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
+    <!-- Default middleware lifetime for testing (middleware can override with [Middleware(Lifetime = ...)] attribute) -->
+    <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
   </PropertyGroup>
 
   <ItemGroup>
     <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
+    <CompilerVisibleProperty Include="MediatorDefaultMiddlewareLifetime" />
   </ItemGroup>
 
   <ItemGroup>

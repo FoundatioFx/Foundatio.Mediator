@@ -10,7 +10,7 @@ internal static class FoundatioModuleGenerator
     /// This attribute is used by MetadataMiddlewareScanner to discover middleware in referenced assemblies.
     /// Also generates the AddHandlers extension method for DI registration.
     /// </summary>
-    public static void Execute(SourceProductionContext context, Compilation compilation, List<HandlerInfo> handlers, GeneratorConfiguration configuration)
+    public static void Execute(SourceProductionContext context, Compilation compilation, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration)
     {
         var assemblyName = compilation.AssemblyName?.ToIdentifier() ?? Guid.NewGuid().ToString("N").Substring(0, 10);
         var className = $"{assemblyName}_MediatorHandlers";
@@ -20,7 +20,11 @@ internal static class FoundatioModuleGenerator
 
         source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, hintName);
 
-        if (handlers.Count > 0)
+        // Check if we need DI usings (for handlers or non-static middleware with lifetime)
+        bool hasHandlers = handlers.Count > 0;
+        bool hasMiddlewareToRegister = middleware.Any(m => !m.IsStatic && ShouldRegisterMiddleware(m, configuration));
+
+        if (hasHandlers || hasMiddlewareToRegister)
         {
             source.AppendLine();
             source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
@@ -37,7 +41,7 @@ internal static class FoundatioModuleGenerator
         source.AppendLine("[assembly: Foundatio.Mediator.FoundatioModule]");
         source.AppendLine();
 
-        if (handlers.Count > 0)
+        if (hasHandlers || hasMiddlewareToRegister)
         {
             source.AppendLine("namespace Foundatio.Mediator;");
             source.AppendLine();
@@ -47,80 +51,97 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("{");
             source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
             source.AppendLine("    {");
-            source.AppendLine("        // Register HandlerRegistration instances keyed by message type name");
-            source.AppendLine();
             source.IncrementIndent().IncrementIndent();
 
-            foreach (var handler in handlers)
+            // Register middleware first (they may be used by multiple handlers)
+            if (hasMiddlewareToRegister)
             {
-                string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
-
-                // Determine lifetime: use handler-specific lifetime if set, otherwise fall back to default
-                // Handler.Lifetime is null when not specified via attribute (use project default)
-                // Handler.Lifetime is set to "Transient"/"Scoped"/"Singleton" when explicitly specified
-                string effectiveLifetime = handler.Lifetime ?? configuration.DefaultHandlerLifetime;
-                bool shouldRegisterHandler = !String.Equals(effectiveLifetime, "None", StringComparison.OrdinalIgnoreCase);
-                string? lifetimeMethod = shouldRegisterHandler ? GetLifetimeMethod(effectiveLifetime) : null;
-
-                if (handler is { IsStatic: false, IsGenericHandlerClass: false } && lifetimeMethod != null)
+                source.AppendLine("// Register middleware instances");
+                foreach (var m in middleware.Where(m => !m.IsStatic && ShouldRegisterMiddleware(m, configuration)))
                 {
-                    source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
+                    string effectiveLifetime = m.Lifetime ?? configuration.DefaultMiddlewareLifetime;
+                    string lifetimeMethod = GetLifetimeMethod(effectiveLifetime);
+                    source.AppendLine($"services.{lifetimeMethod}<{m.FullName}>();");
                 }
+                source.AppendLine();
+            }
 
-                if (handler.IsGenericHandlerClass)
+            if (hasHandlers)
+            {
+                source.AppendLine("// Register HandlerRegistration instances keyed by message type name");
+                source.AppendLine();
+
+                foreach (var handler in handlers)
                 {
-                    if (handler is not { MessageGenericTypeDefinitionFullName: not null, GenericArity: > 0 })
-                        continue;
+                    string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
 
-                    string genericArity = handler.GenericArity switch
+                    // Determine lifetime: use handler-specific lifetime if set, otherwise fall back to default
+                    // Handler.Lifetime is null when not specified via attribute (use project default)
+                    // Handler.Lifetime is set to "Transient"/"Scoped"/"Singleton" when explicitly specified
+                    string effectiveLifetime = handler.Lifetime ?? configuration.DefaultHandlerLifetime;
+                    bool shouldRegisterHandler = !String.Equals(effectiveLifetime, "None", StringComparison.OrdinalIgnoreCase);
+                    string? lifetimeMethod = shouldRegisterHandler ? GetLifetimeMethod(effectiveLifetime) : null;
+
+                    if (handler is { IsStatic: false, IsGenericHandlerClass: false } && lifetimeMethod != null)
                     {
-                        1 => "<>",
-                        2 => "<,>",
-                        3 => "<,,>",
-                        4 => "<,,,>",
-                        5 => "<,,,,>",
-                        6 => "<,,,,,>",
-                        7 => "<,,,,,,>",
-                        8 => "<,,,,,,,>",
-                        9 => "<,,,,,,,,>",
-                        10 => "<,,,,,,,,,>",
-                        _ => "<>)" // fallback
-                    };
-
-                    string wrapperTypeOf = $"typeof({handlerClassName}{genericArity})";
-                    string msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
-                    if (!handler.IsStatic && lifetimeMethod != null)
-                    {
-                        string handlerFullName = handler.FullName;
-                        int index = handlerFullName.IndexOf('<');
-                        if (index > 0)
-                            handlerFullName = handlerFullName.Substring(0, index);
-                        source.AppendLine($"services.{lifetimeMethod}(typeof({handlerFullName}{genericArity}));");
-
+                        source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
                     }
 
-                    source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
-                }
-                else
-                {
-                    source.AppendLine($"services.AddHandler(new HandlerRegistration(");
-                    source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
-                    source.AppendLine($"        \"{handlerClassName}\",");
-
-                    if (handler.IsAsync)
+                    if (handler.IsGenericHandlerClass)
                     {
-                        source.AppendLine($"        {handlerClassName}.UntypedHandleAsync,");
-                        source.AppendLine($"        null,");
+                        if (handler is not { MessageGenericTypeDefinitionFullName: not null, GenericArity: > 0 })
+                            continue;
+
+                        string genericArity = handler.GenericArity switch
+                        {
+                            1 => "<>",
+                            2 => "<,>",
+                            3 => "<,,>",
+                            4 => "<,,,>",
+                            5 => "<,,,,>",
+                            6 => "<,,,,,>",
+                            7 => "<,,,,,,>",
+                            8 => "<,,,,,,,>",
+                            9 => "<,,,,,,,,>",
+                            10 => "<,,,,,,,,,>",
+                            _ => "<>)" // fallback
+                        };
+
+                        string wrapperTypeOf = $"typeof({handlerClassName}{genericArity})";
+                        string msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
+                        if (!handler.IsStatic && lifetimeMethod != null)
+                        {
+                            string handlerFullName = handler.FullName;
+                            int index = handlerFullName.IndexOf('<');
+                            if (index > 0)
+                                handlerFullName = handlerFullName.Substring(0, index);
+                            source.AppendLine($"services.{lifetimeMethod}(typeof({handlerFullName}{genericArity}));");
+
+                        }
+
+                        source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
                     }
                     else
                     {
-                        source.AppendLine($"        (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
-                        source.AppendLine($"        {handlerClassName}.UntypedHandle,");
-                    }
+                        source.AppendLine($"services.AddHandler(new HandlerRegistration(");
+                        source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
+                        source.AppendLine($"        \"{handlerClassName}\",");
 
-                    source.AppendLine($"        {handler.IsAsync.ToString().ToLower()},");
-                    source.AppendLine($"        {handler.Order}));");
-                    source.AppendLine();
+                        if (handler.IsAsync)
+                        {
+                            source.AppendLine($"        {handlerClassName}.UntypedHandleAsync,");
+                            source.AppendLine($"        null,");
+                        }
+                        else
+                        {
+                            source.AppendLine($"        (mediator, message, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, cancellationToken, responseType)),");
+                            source.AppendLine($"        {handlerClassName}.UntypedHandle,");
+                        }
+
+                        source.AppendLine($"        {handler.IsAsync.ToString().ToLower()},");
+                        source.AppendLine($"        {handler.Order}));");
+                        source.AppendLine();
+                    }
                 }
             }
 
@@ -132,6 +153,12 @@ internal static class FoundatioModuleGenerator
         }
 
         context.AddSource(hintName, source.ToString());
+    }
+
+    private static bool ShouldRegisterMiddleware(MiddlewareInfo middleware, GeneratorConfiguration configuration)
+    {
+        string effectiveLifetime = middleware.Lifetime ?? configuration.DefaultMiddlewareLifetime;
+        return !String.Equals(effectiveLifetime, "None", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetLifetimeMethod(string lifetime)

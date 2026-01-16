@@ -64,11 +64,11 @@ builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
 
 ### Automatic Handler Registration with MSBuild
 
-You can automatically register all handlers in your project with a specific lifetime using the `MediatorDefaultHandlerLifetime` MSBuild property:
+You can automatically register all handlers in your project with a specific lifetime using the `MediatorDefaultMediatorLifetime` MSBuild property:
 
 ```xml
 <PropertyGroup>
-    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
+    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
 </PropertyGroup>
 ```
 
@@ -93,7 +93,7 @@ You can automatically register all handlers in your project with a specific life
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
+    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
   </PropertyGroup>
 
   <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
@@ -130,14 +130,14 @@ builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
 
 ```csharp
-// Uses project-level MediatorDefaultHandlerLifetime
+// Uses project-level MediatorDefaultMediatorLifetime
 public class DefaultHandler
 {
     public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
 }
 
 // Explicitly registered as Singleton (overrides project default)
-[Handler(Lifetime = HandlerLifetime.Singleton)]
+[Handler(Lifetime = MediatorLifetime.Singleton)]
 public class CacheHandler
 {
     private readonly InMemoryCache _cache = new();
@@ -146,14 +146,14 @@ public class CacheHandler
 }
 
 // Explicitly registered as Transient
-[Handler(Lifetime = HandlerLifetime.Transient)]
+[Handler(Lifetime = MediatorLifetime.Transient)]
 public class StatelessHandler
 {
     public void Handle(LogEvent evt) { /* ... */ }
 }
 
 // Explicitly registered as Scoped (even if project default is different)
-[Handler(Lifetime = HandlerLifetime.Scoped)]
+[Handler(Lifetime = MediatorLifetime.Scoped)]
 public class ScopedHandler
 {
     private readonly DbContext _db;
@@ -167,11 +167,11 @@ public class ScopedHandler
 }
 ```
 
-**Available `HandlerLifetime` values:**
-- `HandlerLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
-- `HandlerLifetime.Transient` - New instance per request
-- `HandlerLifetime.Scoped` - Same instance within a scope
-- `HandlerLifetime.Singleton` - Single instance for application lifetime
+**Available `MediatorLifetime` values:**
+- `MediatorLifetime.Default` - Use project-level `MediatorDefaultMediatorLifetime`
+- `MediatorLifetime.Transient` - New instance per request
+- `MediatorLifetime.Scoped` - Same instance within a scope
+- `MediatorLifetime.Singleton` - Single instance for application lifetime
 
 ## Constructor Injection (Use with Caution)
 

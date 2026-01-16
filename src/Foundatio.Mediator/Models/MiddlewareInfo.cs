@@ -23,6 +23,12 @@ internal readonly record struct MiddlewareInfo
     public bool IsExplicitlyDeclared { get; init; }
 
     /// <summary>
+    /// The DI lifetime for this middleware when explicitly set via [Middleware(Lifetime = ...)] attribute.
+    /// Null means use the project-level MediatorDefaultMiddlewareLifetime setting.
+    /// </summary>
+    public string? Lifetime { get; init; }
+
+    /// <summary>
     /// Whether this middleware class has constructor parameters (indicating DI dependencies).
     /// </summary>
     public bool HasConstructorParameters { get; init; }

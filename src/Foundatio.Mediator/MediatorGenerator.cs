@@ -25,8 +25,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
                 // Read default handler lifetime property (None | Singleton | Scoped | Transient). Default: None
                 var defaultHandlerLifetime = "None";
-                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.DefaultHandlerLifetimePropertyName}", out string? lifetime) && !string.IsNullOrWhiteSpace(lifetime))
-                    defaultHandlerLifetime = lifetime.Trim();
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.DefaultHandlerLifetimePropertyName}", out string? handlerLifetime) && !string.IsNullOrWhiteSpace(handlerLifetime))
+                    defaultHandlerLifetime = handlerLifetime.Trim();
+
+                // Read default middleware lifetime property (None | Singleton | Scoped | Transient). Default: None
+                var defaultMiddlewareLifetime = "None";
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.DefaultMiddlewareLifetimePropertyName}", out string? middlewareLifetime) && !string.IsNullOrWhiteSpace(middlewareLifetime))
+                    defaultMiddlewareLifetime = middlewareLifetime.Trim();
 
                 // Read OpenTelemetry disabled property. Default: false (OpenTelemetry enabled by default)
                 var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableOpenTelemetryPropertyName}", out string? openTelemetrySwitch)
@@ -41,7 +46,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 var generationCounterEnabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.EnableGenerationCounterPropertyName}", out string? counterSwitch)
                     && counterSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
+                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, defaultMiddlewareLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
             })
             .WithTrackingName(TrackingNames.Settings);
 
@@ -149,7 +154,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
         {
-            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, configuration);
+            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, filteredMiddleware, configuration);
         }
 
         // Generate the InterceptsLocation attribute if we need interceptors (for local or cross-assembly handlers)

@@ -11,7 +11,10 @@ These properties control the source generator at compile time and affect code ge
 ```xml
 <PropertyGroup>
     <!-- Default lifetime for handlers that don't specify one (see per-handler lifetime below) -->
-    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
+    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+
+    <!-- Default lifetime for middleware that don't specify one (see per-middleware lifetime below) -->
+    <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
 
     <!-- Control interceptor generation (default: false) -->
     <MediatorDisableInterceptors>true</MediatorDisableInterceptors>
@@ -26,51 +29,97 @@ These properties control the source generator at compile time and affect code ge
 
 ### Property Details
 
-**`MediatorDefaultHandlerLifetime`**
+**`MediatorDefaultMediatorLifetime`**
 
 - **Values:** `Scoped`, `Transient`, `Singleton`, `None`
 - **Default:** `None` (handlers not auto-registered)
 - **Effect:** Automatically registers all discovered handlers with the specified DI lifetime, unless overridden by `[Handler(Lifetime = ...)]` attribute
 - **Note:** When set to `None`, handlers are not automatically registered in DI unless they specify a lifetime via attribute
 
+**`MediatorDefaultMiddlewareLifetime`**
+
+- **Values:** `Scoped`, `Transient`, `Singleton`, `None`
+- **Default:** `None` (middleware not auto-registered, uses internal caching)
+- **Effect:** Automatically registers all discovered middleware with the specified DI lifetime, unless overridden by `[Middleware(Lifetime = ...)]` attribute
+- **Note:** When set to `None`, middleware instances are cached internally (effectively singleton behavior). Setting a lifetime enables proper DI lifecycle management.
+
 ### Per-Handler Lifetime Override
 
 Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
 
 ```csharp
-// Uses project-level MediatorDefaultHandlerLifetime
+// Uses project-level MediatorDefaultMediatorLifetime
 public class DefaultLifetimeHandler
 {
     public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
 }
 
 // Explicitly registered as Singleton (overrides project default)
-[Handler(Lifetime = HandlerLifetime.Singleton)]
+[Handler(Lifetime = MediatorLifetime.Singleton)]
 public class CachedDataHandler
 {
     public CachedData Handle(GetCachedData query) => _cache.Get();
 }
 
 // Explicitly registered as Transient
-[Handler(Lifetime = HandlerLifetime.Transient)]
+[Handler(Lifetime = MediatorLifetime.Transient)]
 public class StatelessHandler
 {
     public void Handle(FireAndForgetEvent evt) { }
 }
 
 // Combined with Order for publish scenarios
-[Handler(Order = 1, Lifetime = HandlerLifetime.Scoped)]
+[Handler(Order = 1, Lifetime = MediatorLifetime.Scoped)]
 public class FirstScopedHandler
 {
     public void Handle(MyEvent evt) { }
 }
 ```
 
-**Available `HandlerLifetime` values:**
-- `HandlerLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
-- `HandlerLifetime.Transient` - New instance per request
-- `HandlerLifetime.Scoped` - Same instance within a scope
-- `HandlerLifetime.Singleton` - Single instance for application lifetime
+**Available `MediatorLifetime` values:**
+- `MediatorLifetime.Default` - Use project-level `MediatorDefaultMediatorLifetime`
+- `MediatorLifetime.Transient` - New instance per request
+- `MediatorLifetime.Scoped` - Same instance within a scope
+- `MediatorLifetime.Singleton` - Single instance for application lifetime
+
+### Per-Middleware Lifetime Override
+
+Individual middleware can override the project-level default lifetime using the `[Middleware]` attribute:
+
+```csharp
+// Uses project-level MediatorDefaultMiddlewareLifetime
+public class DefaultLifetimeMiddleware
+{
+    public void Before(object msg) { }
+}
+
+// Explicitly registered as Singleton (overrides project default)
+[Middleware(Lifetime = MediatorLifetime.Singleton)]
+public class CachingMiddleware
+{
+    private readonly IMemoryCache _cache;
+    public CachingMiddleware(IMemoryCache cache) => _cache = cache;
+
+    public void Before(object msg) { /* caching logic */ }
+}
+
+// Explicitly registered as Scoped
+[Middleware(Lifetime = MediatorLifetime.Scoped)]
+public class RequestScopedMiddleware
+{
+    private readonly IHttpContextAccessor _httpContext;
+    public RequestScopedMiddleware(IHttpContextAccessor httpContext) => _httpContext = httpContext;
+
+    public void Before(object msg) { /* request-scoped logic */ }
+}
+
+// Combined with Order for execution ordering
+[Middleware(Order = 1, Lifetime = MediatorLifetime.Transient)]
+public class FirstTransientMiddleware
+{
+    public void Before(object msg) { }
+}
+```
 
 **`MediatorDisableInterceptors`**
 
@@ -102,7 +151,8 @@ public class FirstScopedHandler
     <TargetFramework>net10.0</TargetFramework>
 
     <!-- Compile-time configuration -->
-    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
+    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+    <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
     <MediatorDisableConventionalDiscovery>false</MediatorDisableConventionalDiscovery>

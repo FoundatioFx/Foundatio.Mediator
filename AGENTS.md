@@ -237,6 +237,13 @@ public class LoggingMiddleware
         // Log timing
     }
 }
+
+// Control DI lifetime with the Lifetime property
+[Middleware(Order = 2, Lifetime = MediatorLifetime.Scoped)]
+public class ScopedMiddleware
+{
+    public void Before(object message) { }
+}
 ```
 
 **Cross-Assembly Limitation**: Middleware must be defined in the same project as handlers. The source generator only has access to the current project's source code. Use linked files (`<Compile Include="..." Link="..." />` in `.csproj`) to share middleware across projects, and declare middleware classes as `internal` to avoid type conflicts.
@@ -509,7 +516,7 @@ Handlers are NOT auto-registered in DI by default. Options:
 2. **Auto-registration via MSBuild**:
 
    ```xml
-   <MediatorDefaultHandlerLifetime>Transient|Scoped|Singleton</MediatorDefaultHandlerLifetime>
+   <MediatorDefaultMediatorLifetime>Transient|Scoped|Singleton</MediatorDefaultMediatorLifetime>
    ```
 
 ### Result Pattern
@@ -564,7 +571,10 @@ Defined in `src/Foundatio.Mediator/Foundatio.Mediator.props`:
 <MediatorDisableInterceptors>true|false</MediatorDisableInterceptors>
 
 <!-- Auto-register handlers in DI (default: None) -->
-<MediatorDefaultHandlerLifetime>None|Transient|Scoped|Singleton</MediatorDefaultHandlerLifetime>
+<MediatorDefaultMediatorLifetime>None|Transient|Scoped|Singleton</MediatorDefaultMediatorLifetime>
+
+<!-- Auto-register middleware in DI (default: None) -->
+<MediatorDefaultMiddlewareLifetime>None|Transient|Scoped|Singleton</MediatorDefaultMiddlewareLifetime>
 
 <!-- Disable OpenTelemetry tracing (default: false) -->
 <MediatorDisableOpenTelemetry>true|false</MediatorDisableOpenTelemetry>

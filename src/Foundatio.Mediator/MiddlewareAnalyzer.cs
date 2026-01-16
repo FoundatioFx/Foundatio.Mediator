@@ -156,6 +156,7 @@ internal static class MiddlewareAnalyzer
         }
 
         int? order = null;
+        string? lifetime = null;
 
         // First check [Middleware(order)] attribute
         var middlewareAttr = classSymbol.GetAttributes()
@@ -175,6 +176,20 @@ internal static class MiddlewareAnalyzer
             var orderArg = middlewareAttr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
             if (orderArg.Value.Value is int namedOrderValue)
                 order = namedOrderValue;
+
+            // Check Lifetime named argument
+            // HandlerLifetime enum: Default=0, Transient=1, Scoped=2, Singleton=3
+            var lifetimeArg = middlewareAttr.NamedArguments.FirstOrDefault(na => na.Key == "Lifetime");
+            if (lifetimeArg.Value.Value is int lifetimeValue && lifetimeValue > 0)
+            {
+                lifetime = lifetimeValue switch
+                {
+                    1 => "Transient",
+                    2 => "Scoped",
+                    3 => "Singleton",
+                    _ => null
+                };
+            }
         }
 
         // Detect constructor parameters (for non-static middleware)
@@ -194,6 +209,7 @@ internal static class MiddlewareAnalyzer
             FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
             IsStatic = isStatic,
             Order = order,
+            Lifetime = lifetime,
             DeclaredAccessibility = classSymbol.DeclaredAccessibility,
             AssemblyName = classSymbol.ContainingAssembly.Name,
             IsExplicitlyDeclared = middlewareAttr != null,

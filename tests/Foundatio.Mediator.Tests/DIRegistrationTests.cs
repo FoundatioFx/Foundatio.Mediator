@@ -95,7 +95,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             public class AHandler { public Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
             """;
 
-        var opts = CreateOptions(("build_property.MediatorHandlerLifetime", lifetime));
+        var opts = CreateOptions(("build_property.MediatorDefaultHandlerLifetime", lifetime));
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.Contains(expected, di.Source);
@@ -113,9 +113,13 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             public class AHandler { public static Task HandleAsync(A m, CancellationToken ct) => Task.CompletedTask; }
             """;
 
-        var opts = CreateOptions(("build_property.MediatorHandlerLifetime", "Transient"));
+        var opts = CreateOptions(("build_property.MediatorDefaultHandlerLifetime", "Transient"));
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
         var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
     }
+
+    // Note: Tests for per-handler [Handler(Lifetime = ...)] attribute are in Integration/E2E_HandlerLifetimeTests.cs
+    // because Roslyn's GetAttributes() doesn't fully populate named arguments in generator unit tests
+    // (attribute values from referenced assemblies are not serialized into test compilations).
 }

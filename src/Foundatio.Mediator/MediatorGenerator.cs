@@ -23,10 +23,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     && disableSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
                 var interceptorsEnabled = !interceptorsDisabled && isCSharpSufficient;
 
-                // Read handler lifetime property (None | Singleton | Scoped | Transient). Default: None
-                var handlerLifetime = "None";
-                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.HandlerLifetimePropertyName}", out string? lifetime) && !string.IsNullOrWhiteSpace(lifetime))
-                    handlerLifetime = lifetime.Trim();
+                // Read default handler lifetime property (None | Singleton | Scoped | Transient). Default: None
+                var defaultHandlerLifetime = "None";
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.DefaultHandlerLifetimePropertyName}", out string? lifetime) && !string.IsNullOrWhiteSpace(lifetime))
+                    defaultHandlerLifetime = lifetime.Trim();
 
                 // Read OpenTelemetry disabled property. Default: false (OpenTelemetry enabled by default)
                 var openTelemetryDisabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.DisableOpenTelemetryPropertyName}", out string? openTelemetrySwitch)
@@ -41,7 +41,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 var generationCounterEnabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.EnableGenerationCounterPropertyName}", out string? counterSwitch)
                     && counterSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
+                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
             })
             .WithTrackingName(TrackingNames.Settings);
 

@@ -36,6 +36,12 @@ internal readonly record struct HandlerInfo
     public int Order { get; init; }
 
     /// <summary>
+    /// The dependency injection lifetime for this handler.
+    /// When null, uses the project-level MediatorDefaultHandlerLifetime MSBuild property.
+    /// </summary>
+    public string? Lifetime { get; init; }
+
+    /// <summary>
     /// Whether this handler class has constructor parameters (indicating DI dependencies).
     /// </summary>
     public bool HasConstructorParameters { get; init; }

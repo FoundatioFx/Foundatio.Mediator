@@ -300,7 +300,7 @@ Use MSBuild property to auto-register handlers:
 
 ```xml
 <PropertyGroup>
-    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
 </PropertyGroup>
 ```
 

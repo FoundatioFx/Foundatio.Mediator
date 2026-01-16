@@ -12,7 +12,13 @@
     <!--Enable
     interceptors for testing-->
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
+    <!-- Default handler lifetime for testing (handlers can override with [Handler(Lifetime = ...)] attribute) -->
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
   </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Exclude the output of source generators from the compilation -->

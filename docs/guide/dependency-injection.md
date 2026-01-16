@@ -64,11 +64,11 @@ builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
 
 ### Automatic Handler Registration with MSBuild
 
-You can automatically register all handlers in your project with a specific lifetime using the `MediatorHandlerLifetime` MSBuild property:
+You can automatically register all handlers in your project with a specific lifetime using the `MediatorDefaultHandlerLifetime` MSBuild property:
 
 ```xml
 <PropertyGroup>
-    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
 </PropertyGroup>
 ```
 
@@ -93,7 +93,7 @@ You can automatically register all handlers in your project with a specific life
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
   </PropertyGroup>
 
   <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
@@ -124,6 +124,54 @@ public class OrderHandler
 builder.Services.AddMediator();
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 ```
+
+### Per-Handler Lifetime Override
+
+Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
+
+```csharp
+// Uses project-level MediatorDefaultHandlerLifetime
+public class DefaultHandler
+{
+    public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
+}
+
+// Explicitly registered as Singleton (overrides project default)
+[Handler(Lifetime = HandlerLifetime.Singleton)]
+public class CacheHandler
+{
+    private readonly InMemoryCache _cache = new();
+
+    public CachedData Handle(GetCachedData query) => _cache.Get(query.Key);
+}
+
+// Explicitly registered as Transient
+[Handler(Lifetime = HandlerLifetime.Transient)]
+public class StatelessHandler
+{
+    public void Handle(LogEvent evt) { /* ... */ }
+}
+
+// Explicitly registered as Scoped (even if project default is different)
+[Handler(Lifetime = HandlerLifetime.Scoped)]
+public class ScopedHandler
+{
+    private readonly DbContext _db;
+
+    public ScopedHandler(DbContext db) => _db = db;
+
+    public async Task<Order> HandleAsync(GetOrder query)
+    {
+        return await _db.Orders.FindAsync(query.Id);
+    }
+}
+```
+
+**Available `HandlerLifetime` values:**
+- `HandlerLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
+- `HandlerLifetime.Transient` - New instance per request
+- `HandlerLifetime.Scoped` - Same instance within a scope
+- `HandlerLifetime.Singleton` - Single instance for application lifetime
 
 ## Constructor Injection (Use with Caution)
 

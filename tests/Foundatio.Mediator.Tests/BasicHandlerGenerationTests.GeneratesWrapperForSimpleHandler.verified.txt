@@ -33,7 +33,6 @@ public static class Tests_MediatorHandlers
     {
         // Register HandlerRegistration instances keyed by message type name
 
-        services.TryAddSingleton<PingHandler>();
         services.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Ping)),
                 "PingHandler_Ping_Handler",

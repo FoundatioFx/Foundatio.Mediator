@@ -168,8 +168,9 @@ internal static class HandlerAnalyzer
             bool hasMethodHandlerAttribute = handlerMethod.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
             bool methodIsExplicitlyDeclared = isExplicitlyDeclared || hasMethodHandlerAttribute;
 
-            // Extract Order from [Handler] attribute (method attribute takes precedence over class attribute)
+            // Extract Order and Lifetime from [Handler] attribute (method attribute takes precedence over class attribute)
             int order = int.MaxValue;
+            string? lifetime = null;
             var handlerAttr = hasMethodHandlerAttribute
                 ? handlerMethod.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute)
                 : hasClassHandlerAttribute
@@ -178,14 +179,29 @@ internal static class HandlerAnalyzer
 
             if (handlerAttr != null)
             {
-                // Check constructor argument
+                // Check constructor argument for order
                 if (handlerAttr.ConstructorArguments.Length > 0 && handlerAttr.ConstructorArguments[0].Value is int orderValue)
                     order = orderValue;
 
-                // Check named argument (property)
+                // Check named argument (property) for Order
                 var orderArg = handlerAttr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
                 if (orderArg.Value.Value is int namedOrderValue)
                     order = namedOrderValue;
+
+                // Check named argument (property) for Lifetime
+                // The enum value is stored as an int in the attribute data
+                var lifetimeArg = handlerAttr.NamedArguments.FirstOrDefault(na => na.Key == "Lifetime");
+                if (lifetimeArg.Value.Value is int lifetimeValue && lifetimeValue > 0)
+                {
+                    // Map enum values: 0=Default, 1=Transient, 2=Scoped, 3=Singleton
+                    lifetime = lifetimeValue switch
+                    {
+                        1 => "Transient",
+                        2 => "Scoped",
+                        3 => "Singleton",
+                        _ => null // 0 (Default) means use project-level default
+                    };
+                }
             }
 
             // Check if the handler has constructor parameters (indicating DI dependencies)
@@ -213,6 +229,7 @@ internal static class HandlerAnalyzer
                 Middleware = [],
                 IsExplicitlyDeclared = methodIsExplicitlyDeclared,
                 Order = order,
+                Lifetime = lifetime,
                 HasConstructorParameters = hasConstructorParameters,
             });
         }

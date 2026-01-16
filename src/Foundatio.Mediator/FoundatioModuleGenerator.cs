@@ -51,19 +51,18 @@ internal static class FoundatioModuleGenerator
             source.AppendLine();
             source.IncrementIndent().IncrementIndent();
 
-            string lifetimeMethod;
-            if (String.Equals(configuration.HandlerLifetime, "Transient", StringComparison.OrdinalIgnoreCase))
-                lifetimeMethod = "TryAddTransient";
-            else if (String.Equals(configuration.HandlerLifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
-                lifetimeMethod = "TryAddScoped";
-            else
-                lifetimeMethod = "TryAddSingleton";
-
             foreach (var handler in handlers)
             {
                 string handlerClassName = HandlerGenerator.GetHandlerClassName(handler);
 
-                if (handler is { IsStatic: false, IsGenericHandlerClass: false })
+                // Determine lifetime: use handler-specific lifetime if set, otherwise fall back to default
+                // Handler.Lifetime is null when not specified via attribute (use project default)
+                // Handler.Lifetime is set to "Transient"/"Scoped"/"Singleton" when explicitly specified
+                string effectiveLifetime = handler.Lifetime ?? configuration.DefaultHandlerLifetime;
+                bool shouldRegisterHandler = !String.Equals(effectiveLifetime, "None", StringComparison.OrdinalIgnoreCase);
+                string? lifetimeMethod = shouldRegisterHandler ? GetLifetimeMethod(effectiveLifetime) : null;
+
+                if (handler is { IsStatic: false, IsGenericHandlerClass: false } && lifetimeMethod != null)
                 {
                     source.AppendLine($"services.{lifetimeMethod}<{handler.FullName}>();");
                 }
@@ -90,7 +89,7 @@ internal static class FoundatioModuleGenerator
 
                     string wrapperTypeOf = $"typeof({handlerClassName}{genericArity})";
                     string msgTypeOf = $"typeof({handler.MessageGenericTypeDefinitionFullName})";
-                    if (!handler.IsStatic)
+                    if (!handler.IsStatic && lifetimeMethod != null)
                     {
                         string handlerFullName = handler.FullName;
                         int index = handlerFullName.IndexOf('<');
@@ -133,5 +132,17 @@ internal static class FoundatioModuleGenerator
         }
 
         context.AddSource(hintName, source.ToString());
+    }
+
+    private static string GetLifetimeMethod(string lifetime)
+    {
+        if (String.Equals(lifetime, "Transient", StringComparison.OrdinalIgnoreCase))
+            return "TryAddTransient";
+        if (String.Equals(lifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
+            return "TryAddScoped";
+        if (String.Equals(lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            return "TryAddSingleton";
+        // None or unknown - default to Singleton for performance
+        return "TryAddSingleton";
     }
 }

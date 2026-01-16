@@ -10,8 +10,8 @@ These properties control the source generator at compile time and affect code ge
 
 ```xml
 <PropertyGroup>
-    <!-- Automatically register all handlers with specified lifetime -->
-    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <!-- Default lifetime for handlers that don't specify one (see per-handler lifetime below) -->
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
 
     <!-- Control interceptor generation (default: false) -->
     <MediatorDisableInterceptors>true</MediatorDisableInterceptors>
@@ -26,12 +26,51 @@ These properties control the source generator at compile time and affect code ge
 
 ### Property Details
 
-**`MediatorHandlerLifetime`**
+**`MediatorDefaultHandlerLifetime`**
 
 - **Values:** `Scoped`, `Transient`, `Singleton`, `None`
 - **Default:** `None` (handlers not auto-registered)
-- **Effect:** Automatically registers all discovered handlers with the specified DI lifetime
-- **Note:** When set to `None`, handlers are not automatically registered in DI
+- **Effect:** Automatically registers all discovered handlers with the specified DI lifetime, unless overridden by `[Handler(Lifetime = ...)]` attribute
+- **Note:** When set to `None`, handlers are not automatically registered in DI unless they specify a lifetime via attribute
+
+### Per-Handler Lifetime Override
+
+Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
+
+```csharp
+// Uses project-level MediatorDefaultHandlerLifetime
+public class DefaultLifetimeHandler
+{
+    public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
+}
+
+// Explicitly registered as Singleton (overrides project default)
+[Handler(Lifetime = HandlerLifetime.Singleton)]
+public class CachedDataHandler
+{
+    public CachedData Handle(GetCachedData query) => _cache.Get();
+}
+
+// Explicitly registered as Transient
+[Handler(Lifetime = HandlerLifetime.Transient)]
+public class StatelessHandler
+{
+    public void Handle(FireAndForgetEvent evt) { }
+}
+
+// Combined with Order for publish scenarios
+[Handler(Order = 1, Lifetime = HandlerLifetime.Scoped)]
+public class FirstScopedHandler
+{
+    public void Handle(MyEvent evt) { }
+}
+```
+
+**Available `HandlerLifetime` values:**
+- `HandlerLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
+- `HandlerLifetime.Transient` - New instance per request
+- `HandlerLifetime.Scoped` - Same instance within a scope
+- `HandlerLifetime.Singleton` - Single instance for application lifetime
 
 **`MediatorDisableInterceptors`**
 
@@ -63,7 +102,7 @@ These properties control the source generator at compile time and affect code ge
     <TargetFramework>net10.0</TargetFramework>
 
     <!-- Compile-time configuration -->
-    <MediatorHandlerLifetime>Scoped</MediatorHandlerLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
     <MediatorDisableConventionalDiscovery>false</MediatorDisableConventionalDiscovery>

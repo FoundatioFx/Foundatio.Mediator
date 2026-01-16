@@ -14,7 +14,7 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
     <!-- Foundatio generator options -->
-    <MediatorHandlerLifetime>None</MediatorHandlerLifetime>
+    <MediatorDefaultHandlerLifetime>None</MediatorDefaultHandlerLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
     <MediatorDisableConventionalDiscovery>true</MediatorDisableConventionalDiscovery>
@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
-    <CompilerVisibleProperty Include="MediatorHandlerLifetime" />
+    <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
     <CompilerVisibleProperty Include="MediatorDisableConventionalDiscovery" />
     <!-- Exclude the output of source generators from the compilation -->

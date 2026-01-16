@@ -1,7 +1,7 @@
 namespace Foundatio.Mediator;
 
 /// <summary>
-/// Marks a class or method as a handler for discovery and allows controlling execution order.
+/// Marks a class or method as a handler for discovery and allows controlling execution order and lifetime.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
 public sealed class HandlerAttribute : Attribute
@@ -27,4 +27,11 @@ public sealed class HandlerAttribute : Attribute
     /// Lower values execute first. Handlers without explicit order execute last.
     /// </summary>
     public int Order { get; set; } = int.MaxValue;
+
+    /// <summary>
+    /// Gets or sets the dependency injection lifetime for this handler.
+    /// When set to <see cref="HandlerLifetime.Default"/>, uses the project-level
+    /// MediatorDefaultHandlerLifetime MSBuild property.
+    /// </summary>
+    public HandlerLifetime Lifetime { get; set; } = HandlerLifetime.Default;
 }

@@ -840,12 +840,61 @@ internal static class HandlerGenerator
         }
         else
         {
+            // For handlers with constructor dependencies, check DI first, then fall back to ActivatorUtilities
+            // Cache whether the handler is registered in DI to avoid repeated lookups
             source.AppendLine()
                   .AppendLines($$"""
+                    private static int _isInDI = -1; // -1 = unknown, 0 = not in DI, 1 = in DI
+                    private static {{handler.FullName}}? _cachedHandler;
+                    private static readonly object _handlerLock = new object();
+
                     [DebuggerStepThrough]
                     private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                     {
-                        return serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                        var isInDI = System.Threading.Volatile.Read(ref _isInDI);
+
+                        // Handler is not registered in DI
+                        if (isInDI == 0)
+                        {
+                            if (_cachedHandler != null)
+                                return _cachedHandler;
+
+                            lock (_handlerLock)
+                            {
+                                if (_cachedHandler != null)
+                                    return _cachedHandler;
+
+                                var handler = ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
+                                _cachedHandler = handler;
+                                return handler;
+                            }
+                        }
+
+                        // Handler is registered in DI
+                        if (isInDI == 1)
+                        {
+                            return serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                        }
+
+                        // First call - check if handler is in DI
+                        var handlerFromDI = serviceProvider.GetService<{{handler.FullName}}>();
+                        if (handlerFromDI != null)
+                        {
+                            System.Threading.Volatile.Write(ref _isInDI, 1);
+                            return handlerFromDI;
+                        }
+
+                        // Not in DI - use ActivatorUtilities and cache
+                        System.Threading.Volatile.Write(ref _isInDI, 0);
+                        lock (_handlerLock)
+                        {
+                            if (_cachedHandler != null)
+                                return _cachedHandler;
+
+                            var handler = ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
+                            _cachedHandler = handler;
+                            return handler;
+                        }
                     }
                     """);
         }

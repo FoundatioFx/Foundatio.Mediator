@@ -59,6 +59,20 @@ internal static class CallSiteAnalyzer
             responseType = methodSymbol.TypeArguments[0];
         }
 
+        // Check if the method parameter type is IRequest<T> rather than object
+        // This determines which overload is being called
+        bool usesIRequestOverload = false;
+        if (methodSymbol?.Parameters.Length > 0)
+        {
+            var firstParamType = methodSymbol.Parameters[0].Type;
+            if (firstParamType is INamedTypeSymbol namedType &&
+                namedType.IsGenericType &&
+                namedType.ConstructedFrom.ToDisplayString().StartsWith("Foundatio.Mediator.IRequest<"))
+            {
+                usesIRequestOverload = true;
+            }
+        }
+
         return new CallSiteInfo
         {
             MethodName = methodName,
@@ -66,6 +80,7 @@ internal static class CallSiteAnalyzer
             ResponseType = responseType is not null ? TypeSymbolInfo.From(responseType, semanticModel.Compilation) : TypeSymbolInfo.Void(),
             IsPublish = isPublish,
             Location = LocationInfo.CreateFrom(invocation, interceptableLocation)!.Value,
+            UsesIRequestOverload = usesIRequestOverload,
         };
     }
 

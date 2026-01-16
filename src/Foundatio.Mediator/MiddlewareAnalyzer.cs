@@ -303,6 +303,7 @@ internal static class MiddlewareAnalyzer
         var exceptionType = compilation.GetTypeByMetadataName("System.Exception");
         var cancellationTokenType = compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
         var handlerExecutionInfoType = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+        var activityType = compilation.GetTypeByMetadataName("System.Diagnostics.Activity");
         var objectType = compilation.GetSpecialType(SpecialType.System_Object);
 
         foreach (var param in method.Parameters)
@@ -319,13 +320,17 @@ internal static class MiddlewareAnalyzer
             if (SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionInfoType))
                 continue;
 
-            // Exception (including nullable Exception?) is not a DI parameter (used in Finally methods)
+            // Activity (including nullable Activity?) is not a DI parameter (provided by OpenTelemetry)
             var unwrappedType = param.Type;
             if (param.Type is INamedTypeSymbol { IsGenericType: true } nullable &&
                 nullable.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
             {
                 unwrappedType = nullable.TypeArguments[0];
             }
+            if (activityType != null && SymbolEqualityComparer.Default.Equals(unwrappedType, activityType))
+                continue;
+
+            // Exception (including nullable Exception?) is not a DI parameter (used in Finally methods)
             if (exceptionType != null && IsExceptionType(unwrappedType, exceptionType))
                 continue;
 

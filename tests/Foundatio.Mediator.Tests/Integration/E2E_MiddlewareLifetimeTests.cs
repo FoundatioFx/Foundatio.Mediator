@@ -88,9 +88,9 @@ public class E2E_MiddlewareLifetimeTests(ITestOutputHelper output) : TestWithLog
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Make multiple requests
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"));
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"), TestContext.Current.CancellationToken);
 
         // All should use the same middleware instance
         Assert.Equal(3, SingletonMiddleware.InstanceIds.Count);
@@ -112,9 +112,9 @@ public class E2E_MiddlewareLifetimeTests(ITestOutputHelper output) : TestWithLog
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Make multiple requests
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"));
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"), TestContext.Current.CancellationToken);
 
         // Each should use a different middleware instance
         Assert.Equal(3, TransientMiddleware.InstanceIds.Count);
@@ -140,9 +140,9 @@ public class E2E_MiddlewareLifetimeTests(ITestOutputHelper output) : TestWithLog
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Each invocation creates a new scope, so scoped middleware gets new instances
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"));
-        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"));
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"), TestContext.Current.CancellationToken);
+        mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"), TestContext.Current.CancellationToken);
 
         // Each invocation has its own scope, so different instances
         Assert.Equal(3, ScopedMiddleware.InstanceIds.Count);

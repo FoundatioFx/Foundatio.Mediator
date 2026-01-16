@@ -76,9 +76,9 @@ public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggi
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Make multiple requests
-        var id1 = mediator.Invoke<Guid>(new SingletonMessage("request 1"));
-        var id2 = mediator.Invoke<Guid>(new SingletonMessage("request 2"));
-        var id3 = mediator.Invoke<Guid>(new SingletonMessage("request 3"));
+        var id1 = mediator.Invoke<Guid>(new SingletonMessage("request 1"), TestContext.Current.CancellationToken);
+        var id2 = mediator.Invoke<Guid>(new SingletonMessage("request 2"), TestContext.Current.CancellationToken);
+        var id3 = mediator.Invoke<Guid>(new SingletonMessage("request 3"), TestContext.Current.CancellationToken);
 
         // All should return the same instance ID
         Assert.Equal(id1, id2);
@@ -97,9 +97,9 @@ public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggi
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Make multiple requests
-        var id1 = mediator.Invoke<Guid>(new TransientMessage("request 1"));
-        var id2 = mediator.Invoke<Guid>(new TransientMessage("request 2"));
-        var id3 = mediator.Invoke<Guid>(new TransientMessage("request 3"));
+        var id1 = mediator.Invoke<Guid>(new TransientMessage("request 1"), TestContext.Current.CancellationToken);
+        var id2 = mediator.Invoke<Guid>(new TransientMessage("request 2"), TestContext.Current.CancellationToken);
+        var id3 = mediator.Invoke<Guid>(new TransientMessage("request 3"), TestContext.Current.CancellationToken);
 
         // All should return different instance IDs
         Assert.NotEqual(id1, id2);
@@ -123,9 +123,9 @@ public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggi
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Each invocation creates a new scope, so scoped handlers get new instances
-        var id1 = mediator.Invoke<Guid>(new ScopedMessage("request 1"));
-        var id2 = mediator.Invoke<Guid>(new ScopedMessage("request 2"));
-        var id3 = mediator.Invoke<Guid>(new ScopedMessage("request 3"));
+        var id1 = mediator.Invoke<Guid>(new ScopedMessage("request 1"), TestContext.Current.CancellationToken);
+        var id2 = mediator.Invoke<Guid>(new ScopedMessage("request 2"), TestContext.Current.CancellationToken);
+        var id3 = mediator.Invoke<Guid>(new ScopedMessage("request 3"), TestContext.Current.CancellationToken);
 
         // Each invocation has its own scope, so different instances
         Assert.NotEqual(id1, id2);
@@ -148,9 +148,9 @@ public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggi
         var mediator = provider.GetRequiredService<IMediator>();
 
         // Each invocation creates a new scope, so scoped handlers get new instances
-        var id1 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 1"));
-        var id2 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 2"));
-        var id3 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 3"));
+        var id1 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 1"), TestContext.Current.CancellationToken);
+        var id2 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 2"), TestContext.Current.CancellationToken);
+        var id3 = mediator.Invoke<Guid>(new DefaultLifetimeMessage("request 3"), TestContext.Current.CancellationToken);
 
         // Each invocation has its own scope, so different instances (default is Scoped)
         Assert.NotEqual(id1, id2);

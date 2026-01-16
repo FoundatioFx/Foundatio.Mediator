@@ -148,6 +148,7 @@ internal static class HandlerGenerator
             source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{handler.MessageType.Identifier}\");");
             source.AppendLine($"activity?.SetTag(\"messaging.system\", \"Foundatio.Mediator\");");
             source.AppendLine($"activity?.SetTag(\"messaging.message.type\", \"{handler.MessageType.FullName}\");");
+            variables["System.Diagnostics.Activity"] = "activity";
         }
 
         source.AppendLine();
@@ -212,8 +213,6 @@ internal static class HandlerGenerator
                 {
                 """);
 
-            variables["System.Exception"] = "exception";
-
             source.IncrementIndent();
         }
 
@@ -223,7 +222,7 @@ internal static class HandlerGenerator
             asyncModifier = m.Method.IsAsync ? "await " : "";
             result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
             accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-            parameters = BuildParameters(source, m.Method.Parameters);
+            parameters = BuildParameters(source, m.Method.Parameters, variables);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
 
@@ -273,6 +272,12 @@ internal static class HandlerGenerator
         }
         source.AppendLineIf(beforeMiddleware.Any());
 
+        // Add Exception to variables for After/Finally methods
+        if (shouldUseTryCatch)
+        {
+            variables["System.Exception"] = "exception";
+        }
+
         // call handler
         asyncModifier = handler.ReturnType.IsTask ? "await " : "";
         result = handler.ReturnType.IsVoid ? "" : "handlerResult = ";
@@ -286,6 +291,11 @@ internal static class HandlerGenerator
         if (handler.HasReturnValue)
         {
             variables[handler.ReturnType.FullName] = "handlerResult";
+
+            if (handler.ReturnType.QualifiedName != handler.ReturnType.FullName)
+            {
+                variables[handler.ReturnType.QualifiedName] = "handlerResult";
+            }
 
             if (handler.ReturnType.IsResult)
             {
@@ -503,9 +513,9 @@ internal static class HandlerGenerator
         if (!interceptorsEnabled)
             return;
 
-        // group by mediator method and response type
+        // group by mediator method, response type, and whether it uses IRequest<T> overload
         var callSiteGroups = handler.CallSites
-            .GroupBy(cs => new { cs.MethodName, cs.ResponseType })
+            .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload })
             .ToList();
 
         int methodCounter = 0;
@@ -515,11 +525,11 @@ internal static class HandlerGenerator
             var groupCallSites = group.ToList();
 
             source.AppendLine();
-            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, groupCallSites, methodCounter++);
+            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, key.UsesIRequestOverload, groupCallSites, methodCounter++);
         }
     }
 
-    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, List<CallSiteInfo> callSites, int methodIndex)
+    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, bool usesIRequestOverload, List<CallSiteInfo> callSites, int methodIndex)
     {
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
         string handlerMethod = GetHandlerMethodName(handler);
@@ -541,7 +551,12 @@ internal static class HandlerGenerator
         string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
             returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
-        string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
+
+        // Use IRequest<TResponse> parameter type when intercepting the IRequest overload
+        string messageParamType = usesIRequestOverload
+            ? $"Foundatio.Mediator.IRequest<{responseType.UnwrappedFullName}>"
+            : "object";
+        string parameters = $"this Foundatio.Mediator.IMediator mediator, {messageParamType} message, System.Threading.CancellationToken cancellationToken = default";
         source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
 
@@ -767,7 +782,7 @@ internal static class HandlerGenerator
 
         foreach (var param in parameters)
         {
-            source.AppendLineIf($"// Param: Name='{param.Name}', Type.FullName='{param.Type.FullName}', Type.UnwrappedFullName='{param.Type.UnwrappedFullName}', IsMessageParameter={param.IsMessageParameter}, Type.IsObject={param.Type.IsObject}, Type.IsCancellationToken={param.Type.IsCancellationToken}", outputDebugInfo);
+            source.AppendLineIf($"// Param: Name='{param.Name}', Type.FullName='{param.Type.FullName}', Type.QualifiedName='{param.Type.QualifiedName}', Type.UnwrappedFullName='{param.Type.UnwrappedFullName}', IsMessageParameter={param.IsMessageParameter}, Type.IsObject={param.Type.IsObject}, Type.IsCancellationToken={param.Type.IsCancellationToken}", outputDebugInfo);
 
             if (param.IsMessageParameter)
             {
@@ -785,6 +800,11 @@ internal static class HandlerGenerator
             {
                 parameterValues.Add("handlerExecutionInfo");
             }
+            else if (variables != null && variables.TryGetValue(param.Type.QualifiedName, out string? qualifiedVariableName))
+            {
+                // Use QualifiedName for reliable matching regardless of using directives
+                parameterValues.Add(qualifiedVariableName);
+            }
             else if (variables != null && variables.TryGetValue(param.Type.FullName, out string? variableName))
             {
                 parameterValues.Add(variableName);
@@ -792,10 +812,6 @@ internal static class HandlerGenerator
             else if (variables != null && variables.TryGetValue(param.Type.UnwrappedFullName, out string? unwrappedVariableName))
             {
                 parameterValues.Add(unwrappedVariableName);
-            }
-            else if (variables != null && param.Type.UnwrappedFullName.EndsWith("?") && variables.TryGetValue(param.Type.UnwrappedFullName.TrimEnd('?'), out string? nullableVariableName))
-            {
-                parameterValues.Add(nullableVariableName);
             }
             else if (param.Type.IsResult && param.Type.FullName == WellKnownTypes.Result && variables != null && variables.TryGetValue(WellKnownTypes.Result, out string? resultVariableName))
             {

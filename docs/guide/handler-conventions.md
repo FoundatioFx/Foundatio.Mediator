@@ -28,6 +28,61 @@ Convention-based handlers provide tangible benefits over traditional interface-b
 
 Alternatively, you can mark handlers explicitly using the `IHandler` marker interface or the `[Handler]` attribute. See [Explicit Handler Declaration](#explicit-handler-declaration) for details.
 
+## Message Type Interfaces
+
+Foundatio Mediator provides optional marker interfaces for messages. These enable type inference at call sites:
+
+### IRequest&lt;TResponse&gt;
+
+The base interface for messages that return a response:
+
+```csharp
+public record GetUser(int Id) : IRequest<User>;
+
+// Type inference - no need to specify <User>
+User user = await mediator.InvokeAsync(new GetUser(123));
+```
+
+### ICommand&lt;TResponse&gt;
+
+For commands (operations that change state):
+
+```csharp
+public record CreateUser(string Name, string Email) : ICommand<User>;
+
+// Type inference works
+User user = await mediator.InvokeAsync(new CreateUser("John", "john@example.com"));
+```
+
+### IQuery&lt;TResponse&gt;
+
+For queries (read-only operations):
+
+```csharp
+public record FindUsers(string SearchTerm) : IQuery<List<User>>;
+
+// Type inference works
+List<User> users = await mediator.InvokeAsync(new FindUsers("john"));
+```
+
+### Non-Generic Interfaces
+
+For messages without responses, use the non-generic versions:
+
+```csharp
+public record SendEmail(string To, string Body) : ICommand;  // No response
+public record LogEvent(string Message) : INotification;      // Multiple handlers
+```
+
+::: tip When to Use These Interfaces
+These interfaces are **optional**. Use them when you want:
+- Type inference at call sites (no need to specify `<TResponse>`)
+- Self-documenting message intent (command vs query)
+- Compatibility with MediatR-style patterns
+
+Plain messages (like `public record Ping(string Text);`) work fine without any interface.
+:::
+
 ## Class Naming Conventions
 
 Handler classes must end with one of these suffixes:

@@ -43,11 +43,21 @@ public class Mediator : IMediator, IServiceProvider
         return (TResponse)result!;
     }
 
+    public ValueTask<TResponse> InvokeAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+    {
+        return InvokeAsync<TResponse>((object)request, cancellationToken);
+    }
+
     public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
         object? result = handlerFunc(this, message, cancellationToken);
         return (TResponse)result!;
+    }
+
+    public TResponse Invoke<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+    {
+        return Invoke<TResponse>((object)request, cancellationToken);
     }
 
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)

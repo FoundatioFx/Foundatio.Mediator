@@ -129,4 +129,115 @@ public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(ou
         Assert.Contains("activity?.SetTag(\"exception.type\", ex.GetType().FullName);", wrapper.Source);
         Assert.Contains("activity?.SetTag(\"exception.message\", ex.Message);", wrapper.Source);
     }
+
+    [Fact]
+    public void OpenTelemetry_ActivityAvailableToMiddleware_BeforeMethod()
+    {
+        var src = """
+            using System.Diagnostics;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public class TracingMiddleware
+            {
+                public void Before(Msg m, Activity? activity)
+                {
+                    activity?.SetTag("custom.tag", "value");
+                }
+            }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        // Verify activity is passed to Before method (instance middleware uses camelCase variable name)
+        Assert.Contains("tracingMiddleware.Before(message, activity)", wrapper.Source);
+    }
+
+    [Fact]
+    public void OpenTelemetry_ActivityAvailableToMiddleware_AfterMethod()
+    {
+        var src = """
+            using System.Diagnostics;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public class TracingMiddleware
+            {
+                public void After(Msg m, Activity? activity)
+                {
+                    activity?.SetTag("result.status", "success");
+                }
+            }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        // Verify activity is passed to After method (instance middleware uses camelCase variable name)
+        Assert.Contains("tracingMiddleware.After(message, activity)", wrapper.Source);
+    }
+
+    [Fact]
+    public void OpenTelemetry_ActivityAvailableToMiddleware_FinallyMethod()
+    {
+        var src = """
+            using System.Diagnostics;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public class TracingMiddleware
+            {
+                public void Finally(Msg m, System.Diagnostics.Activity? activity, System.Exception? ex)
+                {
+                    if (ex != null)
+                        activity?.SetTag("error", "true");
+                }
+            }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "false"));
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        // Verify activity is passed to Finally method (instance middleware uses camelCase variable name)
+        Assert.Contains("tracingMiddleware.Finally(message, activity, exception)", wrapper.Source);
+    }
+
+    [Fact]
+    public void OpenTelemetry_Disabled_ActivityNotAvailableToMiddleware()
+    {
+        var src = """
+            using System.Diagnostics;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record Msg;
+            public class MsgHandler { public void Handle(Msg m) { } }
+            public class TracingMiddleware
+            {
+                public void Before(Msg m, Activity? activity) { }
+            }
+            """;
+
+        var opts = CreateOptions(("build_property.MediatorDisableOpenTelemetry", "true"));
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()], opts);
+
+        // When OpenTelemetry is disabled, activity won't be available, so it should try DI
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        // Activity should be resolved via DI when OTel is disabled (using full type name in generated code)
+        Assert.Contains("GetRequiredService<System.Diagnostics.Activity?>()", wrapper.Source);
+    }
 }

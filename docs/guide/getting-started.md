@@ -89,6 +89,15 @@ Define a simple message:
 public record Ping(string Text);
 ```
 
+For type inference support, implement `IRequest<TResponse>`:
+
+```csharp
+// With IRequest<T>, the response type is inferred automatically
+public record GetUser(int Id) : IRequest<User>;
+public record CreateUser(string Name) : ICommand<User>;  // ICommand<T> extends IRequest<T>
+public record FindUsers(string Query) : IQuery<List<User>>;  // IQuery<T> extends IRequest<T>
+```
+
 ### 3. Create a Handler
 
 Create a handler class following the naming conventions:
@@ -129,6 +138,26 @@ public class MyService
         // Async call - works with both sync and async handlers
         var result = await _mediator.InvokeAsync<string>(new Ping("Hello"));
         Console.WriteLine(result); // Output: "Pong: Hello"
+    }
+}
+```
+
+#### Type Inference with IRequest&lt;T&gt;
+
+When your messages implement `IRequest<TResponse>`, the return type is inferred automatically:
+
+```csharp
+public record GetUser(int Id) : IRequest<User>;
+
+public class MyService(IMediator mediator)
+{
+    public async Task DoSomethingAsync()
+    {
+        // Type inference - no need to specify <User>
+        User user = await mediator.InvokeAsync(new GetUser(123));
+
+        // Explicit generic still works
+        var user2 = await mediator.InvokeAsync<User>(new GetUser(456));
     }
 }
 ```

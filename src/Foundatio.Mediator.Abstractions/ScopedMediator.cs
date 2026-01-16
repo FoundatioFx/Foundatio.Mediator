@@ -97,6 +97,12 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
     }
 
     /// <inheritdoc />
+    public ValueTask<TResponse> InvokeAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+    {
+        return InvokeAsync<TResponse>((object)request, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public void Invoke(object message, CancellationToken cancellationToken = default)
     {
         if (_rootMediator is Mediator mediator)
@@ -114,6 +120,12 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
             return mediator.InvokeWithMediator<TResponse>(this, message, cancellationToken);
 
         return _rootMediator.Invoke<TResponse>(message, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public TResponse Invoke<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+    {
+        return Invoke<TResponse>((object)request, cancellationToken);
     }
 
     /// <inheritdoc />

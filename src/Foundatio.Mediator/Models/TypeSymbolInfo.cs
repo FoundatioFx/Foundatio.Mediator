@@ -10,8 +10,14 @@ internal readonly record struct TypeSymbolInfo
     public string Identifier { get; init; }
     /// <summary>
     /// The full name of the type, including namespace and any generic parameters.
+    /// This may use short names when types are in scope via using directives.
     /// </summary>
     public string FullName { get; init; }
+    /// <summary>
+    /// The fully qualified metadata name of the type, always including the full namespace.
+    /// Used for reliable type matching in variable lookups.
+    /// </summary>
+    public string QualifiedName { get; init; }
     /// <summary>
     /// The unwrapped full name of the type, which is the type without any nullable or task wrappers.
     /// </summary>
@@ -83,6 +89,7 @@ internal readonly record struct TypeSymbolInfo
         {
             Identifier = "void",
             FullName = "void",
+            QualifiedName = "void",
             UnwrappedFullName = "void",
             IsNullable = false,
             IsReferenceType = false,
@@ -153,10 +160,14 @@ internal readonly record struct TypeSymbolInfo
         bool isGeneric = typeSymbol is INamedTypeSymbol { IsGenericType: true } nts && !nts.IsUnboundGenericType;
         bool isValueTask = typeSymbol.IsValueTask(compilation);
 
+        // Get the fully qualified metadata name for reliable type matching
+        var qualifiedName = GetQualifiedName(unwrappedNullableType);
+
         return new TypeSymbolInfo
         {
             Identifier = identifier,
             FullName = typeSymbol.ToDisplayString(),
+            QualifiedName = qualifiedName,
             UnwrappedFullName = unwrappedTypeFullName,
             IsNullable = isNullable,
             IsReferenceType = isReferenceType,
@@ -174,6 +185,52 @@ internal readonly record struct TypeSymbolInfo
             TupleItems = tupleItems,
             IsGeneric = isGeneric
         };
+    }
+
+    /// <summary>
+    /// Gets the fully qualified metadata name for a type symbol.
+    /// This always includes the full namespace regardless of using directives.
+    /// </summary>
+    private static string GetQualifiedName(ITypeSymbol typeSymbol)
+    {
+        // For special types and primitives, use the metadata name
+        if (typeSymbol.SpecialType != SpecialType.None)
+        {
+            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).TrimStart("global::".ToCharArray());
+        }
+
+        // Build the fully qualified name by walking up the containing namespace chain
+        // This ensures we always get the full namespace regardless of using directives
+        var nameParts = new List<string>();
+
+        // Handle generic types - include type arguments
+        if (typeSymbol is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: > 0 } namedType)
+        {
+            var typeArgs = string.Join(", ", namedType.TypeArguments.Select(GetQualifiedName));
+            nameParts.Add($"{namedType.Name}<{typeArgs}>");
+        }
+        else
+        {
+            nameParts.Add(typeSymbol.Name);
+        }
+
+        // Handle nested types
+        var containingType = typeSymbol.ContainingType;
+        while (containingType != null)
+        {
+            nameParts.Insert(0, containingType.Name);
+            containingType = containingType.ContainingType;
+        }
+
+        // Add namespace parts
+        var ns = typeSymbol.ContainingType?.ContainingNamespace ?? typeSymbol.ContainingNamespace;
+        while (ns != null && !ns.IsGlobalNamespace)
+        {
+            nameParts.Insert(0, ns.Name);
+            ns = ns.ContainingNamespace;
+        }
+
+        return string.Join(".", nameParts);
     }
 }
 

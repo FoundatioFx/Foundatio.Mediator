@@ -45,7 +45,49 @@ Valid middleware method names:
 ### Method Parameters
 
 - **First parameter**: The message (can be `object`, interface, or concrete type)
-- **Remaining parameters**: Injected via DI (including `CancellationToken`)
+- **Remaining parameters**: Injected via DI or from built-in context (see below)
+
+### Built-in Parameter Types
+
+The following parameter types are automatically available in middleware methods without DI registration:
+
+| Parameter Type | Availability | Description |
+|----------------|--------------|-------------|
+| `CancellationToken` | Before, After, Finally | The cancellation token passed to the handler |
+| `IServiceProvider` | Before, After, Finally | The service provider for the current scope |
+| `Activity?` | Before, After, Finally | The OpenTelemetry activity (when OpenTelemetry is enabled) |
+| `Exception?` | **After, Finally only** | The exception if the handler failed (always `null` in Before) |
+| `HandlerExecutionInfo` | Before, After, Finally | Metadata about the executing handler (handler type and method) |
+| Handler return type | **After, Finally only** | The result returned by the handler (e.g., `Result<T>`, custom types) |
+| Before method return type | **After, Finally only** | Values returned from the `Before` method |
+
+**Example with built-in parameters:**
+
+```csharp
+public class TracingMiddleware
+{
+    // Activity is available when OpenTelemetry is enabled
+    public void Before(object message, Activity? activity, CancellationToken ct)
+    {
+        activity?.SetTag("custom.tag", "value");
+    }
+
+    // Exception is NOT available in Before methods
+    public void After(object message, Activity? activity)
+    {
+        activity?.SetTag("result.status", "success");
+    }
+
+    // Exception IS available in Finally methods
+    public void Finally(object message, Activity? activity, Exception? ex)
+    {
+        if (ex != null)
+            activity?.SetTag("error", "true");
+    }
+}
+```
+
+> **Note:** The `Exception?` parameter is only available in `After` and `Finally` methods since exceptions can only occur during or after handler execution.
 
 ## Lifecycle Methods
 

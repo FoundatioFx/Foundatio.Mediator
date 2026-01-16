@@ -88,7 +88,9 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.ServiceCollection)
                 .Assembly.Location),
             MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location)
+            MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Diagnostics.Activity).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Exception).Assembly.Location)
         };
 
         if (additionalReferences != null)

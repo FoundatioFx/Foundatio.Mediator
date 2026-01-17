@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Common.Module.Middleware;
+using Foundatio.Mediator;
 
 namespace Products.Module.Messages;
 
@@ -15,19 +16,19 @@ public record CreateProduct(
 
     [Required(ErrorMessage = "Price is required")]
     [Range(0.01, 1000000, ErrorMessage = "Price must be between $0.01 and $1,000,000")]
-    decimal Price) : IValidatable;
+    decimal Price) : IValidatable, ICommand<Result<Product>>;
 
 public record UpdateProduct(
     [Required] string ProductId,
     string? Name,
     string? Description,
-    decimal? Price) : IValidatable;
+    decimal? Price) : IValidatable, ICommand<Result<Product>>;
 
-public record DeleteProduct([Required] string ProductId) : IValidatable;
+public record DeleteProduct([Required] string ProductId) : IValidatable, ICommand<Result>;
 
 // Queries
-public record GetProduct([Required] string ProductId) : IValidatable;
-public record GetProducts();
+public record GetProduct([Required] string ProductId) : IValidatable, IQuery<Result<Product?>>;
+public record GetProducts() : IQuery<Result<List<Product>>>;
 
 // Events
 public record ProductCreated(string ProductId, string Name, decimal Price, DateTime CreatedAt);

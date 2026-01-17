@@ -17,7 +17,7 @@ public static class ProductsApi
 
         group.MapPost("/", async (CreateProduct command, IMediator mediator) =>
         {
-            var result = await mediator.InvokeAsync<Result<Product>>(command);
+            var result = await mediator.InvokeAsync(command);
             return result.ToCreatedResult($"/api/products/{result.Value?.Id}");
         })
         .WithName("CreateProduct")
@@ -25,7 +25,7 @@ public static class ProductsApi
 
         group.MapGet("/{productId}", async (string productId, IMediator mediator) =>
         {
-            var result = await mediator.InvokeAsync<Result<Product>>(new GetProduct(productId));
+            var result = await mediator.InvokeAsync(new GetProduct(productId));
             return result.ToHttpResult();
         })
         .WithName("GetProduct")
@@ -33,7 +33,7 @@ public static class ProductsApi
 
         group.MapGet("/", async (IMediator mediator) =>
         {
-            var result = await mediator.InvokeAsync<Result<List<Product>>>(new GetProducts());
+            var result = await mediator.InvokeAsync(new GetProducts());
             return result.ToHttpResult();
         })
         .WithName("GetProducts")
@@ -42,7 +42,7 @@ public static class ProductsApi
         group.MapPut("/{productId}", async (string productId, UpdateProduct request, IMediator mediator) =>
         {
             var command = request with { ProductId = productId };
-            var result = await mediator.InvokeAsync<Result<Product>>(command);
+            var result = await mediator.InvokeAsync(command);
             return result.ToHttpResult();
         })
         .WithName("UpdateProduct")
@@ -50,7 +50,7 @@ public static class ProductsApi
 
         group.MapDelete("/{productId}", async (string productId, IMediator mediator) =>
         {
-            var result = await mediator.InvokeAsync<Result>(new DeleteProduct(productId));
+            var result = await mediator.InvokeAsync(new DeleteProduct(productId));
             return result.ToHttpResult();
         })
         .WithName("DeleteProduct")

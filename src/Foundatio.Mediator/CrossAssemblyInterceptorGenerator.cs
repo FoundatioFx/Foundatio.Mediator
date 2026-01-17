@@ -68,15 +68,15 @@ internal static class CrossAssemblyInterceptorGenerator
             var handler = handlersByMessageType[messageTypeName];
             var callSitesForMessage = group.ToList();
 
-            // Group call sites by method name and response type
+            // Group call sites by method name, response type, and IRequest overload usage
             var callSiteGroups = callSitesForMessage
-                .GroupBy(cs => new { cs.MethodName, cs.ResponseType })
+                .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload })
                 .ToList();
 
             int methodCounter = 0;
             foreach (var csGroup in callSiteGroups)
             {
-                GenerateInterceptorMethod(source, handler, csGroup.Key.MethodName, csGroup.Key.ResponseType, csGroup.ToList(), messageTypeCounter, methodCounter++);
+                GenerateInterceptorMethod(source, handler, csGroup.Key.MethodName, csGroup.Key.ResponseType, csGroup.Key.UsesIRequestOverload, csGroup.ToList(), messageTypeCounter, methodCounter++);
                 source.AppendLine();
             }
 
@@ -94,6 +94,7 @@ internal static class CrossAssemblyInterceptorGenerator
         HandlerInfo handler,
         string methodName,
         TypeSymbolInfo responseType,
+        bool usesIRequestOverload,
         List<CallSiteInfo> callSites,
         int messageTypeIndex,
         int methodIndex)
@@ -119,7 +120,12 @@ internal static class CrossAssemblyInterceptorGenerator
         string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
         if (responseType.IsVoid)
             returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
-        string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
+
+        // Use IRequest<T> parameter type when the call site uses that overload
+        string messageParameterType = usesIRequestOverload
+            ? $"Foundatio.Mediator.IRequest<{responseType.UnwrappedFullName}>"
+            : "object";
+        string parameters = $"this Foundatio.Mediator.IMediator mediator, {messageParameterType} message, System.Threading.CancellationToken cancellationToken = default";
 
         source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");

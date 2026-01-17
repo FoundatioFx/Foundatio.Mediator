@@ -9,6 +9,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public string Identifier { get; init; }
     /// <summary>
+    /// The simple name of the type without namespace qualification.
+    /// </summary>
+    public string Name { get; init; }
+    /// <summary>
     /// The full name of the type, including namespace and any generic parameters.
     /// This may use short names when types are in scope via using directives.
     /// </summary>
@@ -88,6 +92,7 @@ internal readonly record struct TypeSymbolInfo
         return new TypeSymbolInfo
         {
             Identifier = "void",
+            Name = "void",
             FullName = "void",
             QualifiedName = "void",
             UnwrappedFullName = "void",
@@ -166,6 +171,7 @@ internal readonly record struct TypeSymbolInfo
         return new TypeSymbolInfo
         {
             Identifier = identifier,
+            Name = typeSymbol.Name,
             FullName = typeSymbol.ToDisplayString(),
             QualifiedName = qualifiedName,
             UnwrappedFullName = unwrappedTypeFullName,

@@ -296,6 +296,12 @@ public static class PingHandler_Ping_Handler
         }
     }
 
+    public static async System.Threading.Tasks.ValueTask<string> DefaultHandleAsync(Foundatio.Mediator.IMediator mediator, System.IServiceProvider serviceProvider, Ping message, System.Threading.CancellationToken cancellationToken)
+    {
+        var result = await HandleAsync(serviceProvider, message, cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
         var typedMessage = (Ping)message;

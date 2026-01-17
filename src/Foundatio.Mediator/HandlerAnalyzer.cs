@@ -1,3 +1,5 @@
+using System.Text;
+using System.Xml.Linq;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
@@ -208,12 +210,17 @@ internal static class HandlerAnalyzer
             bool hasConstructorParameters = !handlerMethod.IsStatic &&
                 classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
 
+            string? messageSummary = GetSummaryComment(messageType);
+            string? category = GetCategory(messageType) ?? GetCategory(classSymbol);
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
+                MessageSummary = messageSummary,
+                Category = category,
                 MessageInterfaces = new(messageInterfaces.ToArray()),
                 MessageBaseClasses = new(messageBaseClasses.ToArray()),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
@@ -235,6 +242,204 @@ internal static class HandlerAnalyzer
         }
 
         return handlers;
+    }
+
+    private static string? GetSummaryComment(ISymbol symbol)
+    {
+        var summary = ParseSummaryFromXml(symbol.GetDocumentationCommentXml(expandIncludes: true));
+        if (!String.IsNullOrWhiteSpace(summary))
+            return summary;
+
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax() is not CSharpSyntaxNode syntaxNode)
+                continue;
+
+            var docTrivia = syntaxNode.GetLeadingTrivia()
+                .Select(t => t.GetStructure())
+                .OfType<DocumentationCommentTriviaSyntax>()
+                .FirstOrDefault();
+
+            if (docTrivia == null)
+            {
+                var summaryFromSourceText = ParseSummaryFromSourceText(syntaxRef);
+                if (!String.IsNullOrWhiteSpace(summaryFromSourceText))
+                    return summaryFromSourceText;
+
+                continue;
+            }
+
+            var summaryElement = docTrivia.Content
+                .OfType<XmlElementSyntax>()
+                .FirstOrDefault(e => String.Equals(e.StartTag?.Name.ToString(), "summary", StringComparison.Ordinal));
+
+            if (summaryElement != null)
+            {
+                var summaryText = String.Join(" ", summaryElement.Content
+                    .OfType<XmlTextSyntax>()
+                    .SelectMany(t => t.TextTokens)
+                    .Select(tt => tt.Text.Trim())
+                    .Where(t => t.Length > 0));
+
+                if (!String.IsNullOrWhiteSpace(summaryText))
+                    return summaryText;
+            }
+
+            var summaryFromRaw = ParseSummaryFromRaw(docTrivia.ToFullString());
+            if (!String.IsNullOrWhiteSpace(summaryFromRaw))
+                return summaryFromRaw;
+
+            var summaryFromSource = ParseSummaryFromSourceText(syntaxRef);
+            if (!String.IsNullOrWhiteSpace(summaryFromSource))
+                return summaryFromSource;
+        }
+
+        return null;
+    }
+
+    private static string? GetCategory(ISymbol? symbol)
+    {
+        if (symbol == null)
+            return null;
+
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass is not { } attributeClass)
+                continue;
+
+            if (!IsCategoryAttribute(attributeClass))
+                continue;
+
+            if (attribute.ConstructorArguments.Length > 0)
+            {
+                foreach (var arg in attribute.ConstructorArguments)
+                {
+                    if (arg.Value is string category && !String.IsNullOrWhiteSpace(category))
+                        return category;
+                }
+            }
+
+            if (attribute.NamedArguments.Length > 0)
+            {
+                foreach (var arg in attribute.NamedArguments)
+                {
+                    if (arg.Value.Value is string namedCategory && !String.IsNullOrWhiteSpace(namedCategory))
+                        return namedCategory;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsCategoryAttribute(INamedTypeSymbol attributeClass)
+    {
+        if (attributeClass.Name == "CategoryAttribute")
+            return true;
+
+        var displayName = attributeClass.ToDisplayString();
+        return displayName == "System.ComponentModel.CategoryAttribute"
+            || displayName.EndsWith(".CategoryAttribute", StringComparison.Ordinal);
+    }
+
+    private static string? ParseSummaryFromSourceText(SyntaxReference syntaxRef)
+    {
+        var syntaxTree = syntaxRef.SyntaxTree;
+        if (syntaxTree == null)
+            return null;
+
+        var sourceText = syntaxTree.GetText();
+        var startLine = sourceText.Lines.GetLineFromPosition(syntaxRef.Span.Start).LineNumber;
+        if (startLine == 0)
+            return null;
+
+        var collectedLines = new Stack<string>();
+        bool foundDocLine = false;
+
+        for (int lineNumber = startLine - 1; lineNumber >= 0; lineNumber--)
+        {
+            var line = sourceText.Lines[lineNumber].ToString();
+            var trimmed = line.Trim();
+
+            if (trimmed.Length == 0)
+            {
+                if (foundDocLine)
+                    break;
+
+                continue;
+            }
+
+            if (!trimmed.StartsWith("///", StringComparison.Ordinal))
+            {
+                if (!foundDocLine)
+                    continue;
+
+                break;
+            }
+
+            foundDocLine = true;
+            collectedLines.Push(trimmed);
+        }
+
+        if (!foundDocLine || collectedLines.Count == 0)
+            return null;
+
+        var raw = string.Join("\n", collectedLines);
+        return ParseSummaryFromRaw(raw);
+    }
+
+    private static string? ParseSummaryFromRaw(string? rawText)
+    {
+        if (String.IsNullOrWhiteSpace(rawText))
+            return null;
+
+        var builder = new StringBuilder();
+        var lines = rawText!.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith("///", StringComparison.Ordinal))
+                continue;
+
+            var content = trimmed.Length > 3 ? trimmed.Substring(3).TrimStart() : String.Empty;
+            builder.AppendLine(content);
+        }
+
+        var inner = builder.ToString().Trim();
+        if (inner.Length == 0)
+            return null;
+
+        var wrapped = $"<root>{inner}</root>";
+        return ParseSummaryFromXml(wrapped);
+    }
+
+    private static string? ParseSummaryFromXml(string? documentation)
+    {
+        if (String.IsNullOrWhiteSpace(documentation))
+            return null;
+
+        try
+        {
+            var document = XDocument.Parse(documentation);
+            var summary = document.Root?.Elements("summary").FirstOrDefault();
+            if (summary == null)
+                return null;
+
+            var text = summary.Value;
+            if (String.IsNullOrWhiteSpace(text))
+                return null;
+
+            var normalized = String.Join(" ", text
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0));
+
+            return normalized.Length == 0 ? null : normalized;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation, bool treatAsHandlerClass)

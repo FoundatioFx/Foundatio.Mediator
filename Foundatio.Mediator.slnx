@@ -8,12 +8,13 @@
   <Folder Name="/samples/ModularMonolith/">
     <Project Path="samples/ModularMonolithSample/src/Orders.Module/Orders.Module.csproj" />
     <Project Path="samples/ModularMonolithSample/src/WebApp/WebApp.csproj" />
-    <Project Path="samples\ModularMonolithSample\src\Common.Module\Common.Module.csproj" Type="Classic C#" />
-    <Project Path="samples\ModularMonolithSample\src\Products.Module\Products.Module.csproj" Type="Classic C#" />
+    <Project Path="samples\ModularMonolithSample\src\Common.Module\Common.Module.csproj" Type="C#" />
+    <Project Path="samples\ModularMonolithSample\src\Products.Module\Products.Module.csproj" Type="C#" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".github/copilot-instructions.md" />
     <File Path="build/common.props" />
+    <File Path="global.json" />
     <File Path="README.md" />
   </Folder>
   <Folder Name="/src/">

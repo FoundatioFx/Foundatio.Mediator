@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
@@ -129,7 +129,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
             var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites ?? []), Middleware = applicableMiddleware });
         }
 
         // Collect call sites that need cross-assembly interceptors
@@ -188,6 +188,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         HandlerGenerator.Execute(context, handlersWithInfo, configuration);
 
+        EndpointGenerator.Execute(context, handlersWithInfo, compilation);
+        
         sw.Stop();
         GeneratorDiagnostics.LogExecute(
             compilation.AssemblyName ?? "Unknown",

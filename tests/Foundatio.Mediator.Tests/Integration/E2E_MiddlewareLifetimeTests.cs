@@ -123,11 +123,10 @@ public class E2E_MiddlewareLifetimeTests(ITestOutputHelper output) : TestWithLog
     }
 
     [Fact]
-    public async Task ScopedMiddleware_DifferentInstancePerInvocation()
+    public async Task ScopedMiddleware_SameInstanceWithinSameScope()
     {
-        // Note: The mediator creates its own internal scope for each invocation via ScopedMediator.
-        // Scoped middleware gets a new scope per invocation, which means different instances.
-        // This is by design - the mediator manages its own scoping for middleware resolution.
+        // The mediator does NOT create scopes - DI scope management is the caller's responsibility.
+        // Within the same scope, scoped middleware returns the same instance.
 
         // Clear static state
         ScopedMiddleware.InstanceIds.Clear();
@@ -139,14 +138,55 @@ public class E2E_MiddlewareLifetimeTests(ITestOutputHelper output) : TestWithLog
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        // Each invocation creates a new scope, so scoped middleware gets new instances
+        // Same scope = same scoped middleware instance
         mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"), TestContext.Current.CancellationToken);
         mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"), TestContext.Current.CancellationToken);
         mediator.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"), TestContext.Current.CancellationToken);
 
-        // Each invocation has its own scope, so different instances
+        // Same scope = same instance
+        Assert.Equal(3, ScopedMiddleware.InstanceIds.Count);
+        Assert.Single(ScopedMiddleware.InstanceIds.Distinct());
+        _output.WriteLine($"Scoped middleware instance IDs (same scope): {string.Join(", ", ScopedMiddleware.InstanceIds)}");
+    }
+
+    [Fact]
+    public async Task ScopedMiddleware_DifferentInstanceInDifferentScopes()
+    {
+        // When caller creates separate scopes, scoped middleware gets different instances.
+        // The mediator must be registered as Scoped so each scope gets its own mediator
+        // with the scope's IServiceProvider.
+
+        // Clear static state
+        ScopedMiddleware.InstanceIds.Clear();
+
+        var services = new ServiceCollection();
+        services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
+        services.AddMediator(b => b.AddAssembly<MiddlewareLifetimeTestMessage>().SetMediatorLifetime(ServiceLifetime.Scoped));
+
+        await using var provider = services.BuildServiceProvider();
+
+        // Each scope gets its own mediator and scoped middleware instance
+        await using (var scope1 = provider.CreateAsyncScope())
+        {
+            var mediator1 = scope1.ServiceProvider.GetRequiredService<IMediator>();
+            mediator1.Invoke<string>(new MiddlewareLifetimeTestMessage("request 1"), TestContext.Current.CancellationToken);
+        }
+
+        await using (var scope2 = provider.CreateAsyncScope())
+        {
+            var mediator2 = scope2.ServiceProvider.GetRequiredService<IMediator>();
+            mediator2.Invoke<string>(new MiddlewareLifetimeTestMessage("request 2"), TestContext.Current.CancellationToken);
+        }
+
+        await using (var scope3 = provider.CreateAsyncScope())
+        {
+            var mediator3 = scope3.ServiceProvider.GetRequiredService<IMediator>();
+            mediator3.Invoke<string>(new MiddlewareLifetimeTestMessage("request 3"), TestContext.Current.CancellationToken);
+        }
+
+        // Different scopes = different instances
         Assert.Equal(3, ScopedMiddleware.InstanceIds.Count);
         Assert.Equal(3, ScopedMiddleware.InstanceIds.Distinct().Count());
-        _output.WriteLine($"Scoped middleware instance IDs: {string.Join(", ", ScopedMiddleware.InstanceIds)}");
+        _output.WriteLine($"Scoped middleware instance IDs (different scopes): {string.Join(", ", ScopedMiddleware.InstanceIds)}");
     }
 }

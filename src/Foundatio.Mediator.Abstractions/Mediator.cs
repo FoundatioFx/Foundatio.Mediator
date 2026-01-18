@@ -10,15 +10,16 @@ namespace Foundatio.Mediator;
 public class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly MediatorConfiguration _configuration;
-    private readonly ILogger<Mediator> _logger;
+
+    /// <summary>
+    /// The notification publisher used by all Mediator instances. Set from MSBuild MediatorNotificationPublisher configuration.
+    /// </summary>
+    public static INotificationPublisher NotificationPublisher { get; set; } = new ForeachAwaitPublisher();
 
     [DebuggerStepThrough]
-    public Mediator(IServiceProvider serviceProvider, MediatorConfiguration? configuration = null)
+    public Mediator(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
-        _configuration = configuration ?? new MediatorConfiguration();
-        _logger = _serviceProvider.GetService<ILogger<Mediator>>() ?? NullLogger<Mediator>.Instance;
     }
 
     public IServiceProvider ServiceProvider => _serviceProvider;
@@ -63,7 +64,7 @@ public class Mediator : IMediator, IServiceProvider
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
         var handlers = GetAllApplicableHandlers(message);
-        return _configuration.NotificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
+        return NotificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
     }
 
     /// <summary>
@@ -110,15 +111,16 @@ public class Mediator : IMediator, IServiceProvider
     internal ValueTask PublishAsyncWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
     {
         var handlers = GetAllApplicableHandlers(message);
-        return _configuration.NotificationPublisher.PublishAsync(mediator, handlers, message, cancellationToken);
+        return NotificationPublisher.PublishAsync(mediator, handlers, message, cancellationToken);
     }
 
     public void ShowRegisteredHandlers()
     {
+        var logger = _serviceProvider.GetService<ILogger<Mediator>>() ?? NullLogger<Mediator>.Instance;
         var registrations = _serviceProvider.GetServices<HandlerRegistration>().ToArray();
         if (!registrations.Any())
         {
-            _logger.LogInformation("No handlers registered.");
+            logger.LogInformation("No handlers registered.");
             return;
         }
 
@@ -129,7 +131,7 @@ public class Mediator : IMediator, IServiceProvider
             sb.AppendLine($"- Message: {registration.MessageTypeName}, Handler: {registration.HandlerClassName}, IsAsync: {registration.IsAsync}");
         }
 
-        _logger.LogInformation(sb.ToString());
+        logger.LogInformation(sb.ToString());
     }
 
     [DebuggerStepThrough]
@@ -288,6 +290,16 @@ public class Mediator : IMediator, IServiceProvider
             list.Add(registration);
 
         return list;
+    }
+
+    public static void ClearCache()
+    {
+        _middlewareCache.Clear();
+        _invokeAsyncCache.Clear();
+        _invokeCache.Clear();
+        _invokeAsyncWithResponseCache.Clear();
+        _invokeWithResponseCache.Clear();
+        _publishCache.Clear();
     }
 
     private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();

@@ -252,4 +252,14 @@ internal readonly record struct TupleItemInfo
     /// Indicates if the tuple item type is nullable, meaning it can be null or has a nullable reference type.
     /// </summary>
     public bool IsNullable { get; init; }
+    /// <summary>
+    /// The full names of interfaces implemented by the tuple item type.
+    /// Used for finding handlers that handle interface types.
+    /// </summary>
+    public EquatableArray<string> Interfaces { get; init; }
+    /// <summary>
+    /// The full names of base classes of the tuple item type.
+    /// Used for finding handlers that handle base class types.
+    /// </summary>
+    public EquatableArray<string> BaseClasses { get; init; }
 }

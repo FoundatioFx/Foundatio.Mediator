@@ -5,7 +5,7 @@ namespace Foundatio.Mediator;
 
 internal static class HandlerGenerator
 {
-    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, GeneratorConfiguration configuration)
+    public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
         if (handlers.Count == 0)
             return;
@@ -19,7 +19,7 @@ internal static class HandlerGenerator
                 string wrapperClassName = GetHandlerClassName(handler);
                 string hintName = $"{wrapperClassName}.g.cs";
 
-                string source = GenerateHandler(handler, wrapperClassName, configuration, hintName);
+                string source = GenerateHandler(handler, wrapperClassName, allHandlers, configuration, hintName);
                 context.AddSource(hintName, source);
             }
             catch (Exception ex)
@@ -39,7 +39,7 @@ internal static class HandlerGenerator
         }
     }
 
-    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, GeneratorConfiguration configuration, string hintName)
+    public static string GenerateHandler(HandlerInfo handler, string wrapperClassName, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration, string hintName)
     {
         var source = new IndentedStringBuilder();
 
@@ -56,7 +56,6 @@ internal static class HandlerGenerator
             using System.Threading;
             using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
-            using Microsoft.Extensions.Logging;
 
             namespace Foundatio.Mediator.Generated;
             """);
@@ -86,15 +85,21 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
-        // Static cached logger - initialized once on first use
-        source.AppendLine("private static ILogger? _logger;");
-        source.AppendLine();
+        // Generate public entry point methods that include scope + handler invocation + cascading
+        // Each method is a single async state machine to minimize allocations
+        GenerateHandleMethod(source, handler, allHandlers, configuration);
 
-        GenerateHandleMethod(source, handler, configuration);
+        // Generate HandleItem2Async, HandleItem3Async, etc. for tuple handlers
+        if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1)
+        {
+            GenerateHandleItemMethods(source, handler, allHandlers, configuration);
+        }
 
-        GenerateUntypedHandleMethod(source, handler);
+        // Generate UntypedHandleAsync (uses PublishCascadingMessagesAsync for runtime dispatch)
+        GenerateUntypedHandleMethod(source, handler, configuration);
 
-        GenerateInterceptorMethods(source, handler, configuration.InterceptorsEnabled);
+        // Generate interceptor methods that delegate to HandleAsync/HandleItemNAsync
+        GenerateInterceptorMethods(source, handler, allHandlers, configuration);
 
         if (!handler.IsStatic)
         {
@@ -107,103 +112,210 @@ internal static class HandlerGenerator
         return source.ToString();
     }
 
-    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
+    /// <summary>
+    /// Generates the public HandleAsync/Handle method that is the single entry point.
+    /// This method includes: scope creation, handler invocation (middleware + logging + OTel + handler call), and cascading.
+    /// For tuple returns, this method returns the first tuple item and cascades the rest.
+    /// </summary>
+    private static void GenerateHandleMethod(IndentedStringBuilder source, HandlerInfo handler, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
-        string stronglyTypedMethodName = GetHandlerMethodName(handler);
+        string methodName = GetHandlerMethodName(handler);
+        bool isAsyncMethod = handler.IsAsync || handler.ReturnType.IsTuple;
+        string returnTypeName = GetReturnTypeName(handler);
+        string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, handler.ReturnType.IsVoid, returnTypeName);
 
-        string asyncModifier = handler.IsAsync ? "async " : "";
-        string result, accessor, parameters, defaultValue;
-        bool allowNull = false;
-        string returnType = handler.ReturnType.FullName;
+        // Check if we can generate a pass-through method without async state machine
+        // This applies when:
+        // 1. Static handler with no middleware, no OTel, no cascading (CanUseZeroAllocFastPath)
+        // 2. Singleton fast path handler with no middleware, no OTel, no cascading (CanUseSingletonFastPath + no middleware)
+        bool canUseStaticFastPath = handler.CanUseZeroAllocFastPath && !configuration.OpenTelemetryEnabled;
+        bool canUseSingletonFastPath = handler.CanUseSingletonFastPath && !handler.Middleware.Any() && !handler.ReturnType.IsTuple && !configuration.OpenTelemetryEnabled;
+        bool canSkipAsyncStateMachine = canUseStaticFastPath || canUseSingletonFastPath;
 
-        var variables = new Dictionary<string, string>();
+        string asyncModifier = (isAsyncMethod && !canSkipAsyncStateMachine) ? "async " : "";
+
+        source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
+              .AppendLine("{");
+
+        source.IncrementIndent();
+
+        // Check upfront if we have cascading handlers (for tuple returns)
+        bool hasCascadingHandlers = false;
+        List<TupleItemInfo> publishItems = [];
+        TupleItemInfo? returnItem = null;
+
+        if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1)
+        {
+            returnItem = handler.ReturnType.TupleItems.First();
+            publishItems = handler.ReturnType.TupleItems.Skip(1).ToList();
+            hasCascadingHandlers = publishItems.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+        }
+
+        // Fast path: skip the async state machine when possible
+        if (canSkipAsyncStateMachine)
+        {
+            bool hasCancellationToken = handler.Parameters.Any(p => p.Type.IsCancellationToken);
+            string handlerArgs = hasCancellationToken ? "message, cancellationToken" : "message";
+
+            // Determine accessor: static handlers use full type name, singleton fast path uses _cachedHandler
+            string accessor = handler.IsStatic ? handler.FullName : "_cachedHandler";
+
+            if (handler.ReturnType.IsVoid)
+            {
+                if (handler.IsAsync)
+                {
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {accessor}.{handler.MethodName}({handlerArgs});");
+                    else
+                        source.AppendLine($"return {accessor}.{handler.MethodName}({handlerArgs}).AsValueTask();");
+                }
+                else
+                {
+                    source.AppendLine($"{accessor}.{handler.MethodName}({handlerArgs});");
+                    if (isAsyncMethod)
+                    {
+                        source.AppendLine("return default;");
+                    }
+                }
+            }
+            else
+            {
+                if (handler.IsAsync)
+                {
+                    if (handler.ReturnType.IsValueTask)
+                        source.AppendLine($"return {accessor}.{handler.MethodName}({handlerArgs});");
+                    else
+                        source.AppendLine($"return {accessor}.{handler.MethodName}({handlerArgs}).AsValueTask();");
+                }
+                else if (isAsyncMethod)
+                {
+                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{returnTypeName}>({accessor}.{handler.MethodName}({handlerArgs}));");
+                }
+                else
+                {
+                    source.AppendLine($"return {accessor}.{handler.MethodName}({handlerArgs});");
+                }
+            }
+
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            return;
+        }
+
+        // Get service provider directly from mediator - no scope creation
+        // DI scope management is the caller's responsibility, not the mediator's
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+
+        // Emit the handler invocation code (middleware + logging + OTel + handler call)
+        EmitHandlerInvocationCode(source, handler, configuration, "result");
+
+        // For tuple returns, cascade non-first items
+        if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1 && publishItems.Count > 0)
+        {
+            source.AppendLine();
+
+            if (hasCascadingHandlers)
+            {
+                string strategy = configuration.NotificationPublisher ?? "ForeachAwait";
+                GenerateCascadingHandlerCalls(source, publishItems, allHandlers, strategy);
+                source.AppendLine();
+            }
+
+            source.AppendLine($"return result.{returnItem!.Value.Name};");
+        }
+        else if (handler.HasReturnValue)
+        {
+            source.AppendLine("return result;");
+        }
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates HandleItem2Async, HandleItem3Async, etc. for tuple handlers.
+    /// Each method returns the Nth tuple item and cascades the rest.
+    /// </summary>
+    private static void GenerateHandleItemMethods(IndentedStringBuilder source, HandlerInfo handler, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
+    {
+        if (!handler.ReturnType.IsTuple || handler.ReturnType.TupleItems.Length < 2)
+            return;
+
+        var tupleItems = handler.ReturnType.TupleItems;
+        string strategy = configuration.NotificationPublisher ?? "ForeachAwait";
+
+        // Generate a method for each non-first tuple item (index >= 1)
+        for (int targetIndex = 1; targetIndex < tupleItems.Length; targetIndex++)
+        {
+            var targetItem = tupleItems[targetIndex];
+            string methodName = GetHandlerItemMethodName(handler, targetIndex);
+            string returnTypeName = GetReturnTypeName(handler, targetIndex);
+            // Method is always async for tuple handlers
+            string methodReturnType = GetMethodSignatureReturnType(isAsync: true, isVoid: false, returnTypeName);
+
+            source.AppendLine($"public static async {methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+
+            // Get all items except the target item (those need to be cascaded)
+            var itemsToCascade = tupleItems
+                .Select((item, index) => (item, index))
+                .Where(x => x.index != targetIndex)
+                .Select(x => x.item)
+                .ToList();
+
+            // Check upfront if we have cascading handlers
+            bool hasCascadingHandlers = itemsToCascade.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+
+            // Get service provider directly from mediator - no scope creation
+            source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+
+            // Emit the handler invocation code with the target tuple index
+            EmitHandlerInvocationCode(source, handler, configuration, "result", "message", targetIndex);
+
+            if (hasCascadingHandlers)
+            {
+                source.AppendLine();
+                GenerateCascadingHandlerCalls(source, itemsToCascade, allHandlers, strategy);
+            }
+
+            source.AppendLine($"return result.{targetItem.Name};");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// Emits the handler invocation code: middleware + logging + OTel + handler call.
+    /// This is the core handler logic that is duplicated into each entry point method.
+    /// </summary>
+    /// <param name="source">The string builder to emit code to.</param>
+    /// <param name="handler">The handler info.</param>
+    /// <param name="configuration">Generator configuration.</param>
+    /// <param name="resultVar">Variable name to store the handler result.</param>
+    /// <param name="messageVar">Variable name containing the typed message (default: "message").</param>
+    /// <param name="targetTupleIndex">For tuple return types, the index of the tuple item this method returns (0 = Item1, 1 = Item2, etc.). -1 for non-tuple handlers.</param>
+    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0)
+    {
+        var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
         var beforeMiddleware = handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList();
         var afterMiddleware = handler.Middleware.Where(m => m.AfterMethod != null).Reverse().Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList();
         var finallyMiddleware = handler.Middleware.Where(m => m.FinallyMethod != null).Reverse().Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList();
 
-        var shouldUseTryCatch = finallyMiddleware.Any() || configuration.OpenTelemetryEnabled;
+        bool shouldUseTryCatch = finallyMiddleware.Any() || configuration.OpenTelemetryEnabled;
 
-        // change return type to async if needed
-        if (handler.ReturnType.IsTask == false && handler.IsAsync)
-        {
-            if (handler.ReturnType.IsVoid)
-                returnType = "System.Threading.Tasks.ValueTask";
-            else
-                returnType = $"System.Threading.Tasks.ValueTask<{returnType}>";
-        }
+        // Setup phase: OTel, handler info, middleware instances, result variables
+        EmitOpenTelemetrySetup(source, handler, configuration, variables);
+        EmitHandlerExecutionInfo(source, handler, variables);
+        EmitMiddlewareInstances(source, handler);
+        EmitBeforeMiddlewareResultVariables(source, beforeMiddleware, variables);
+        EmitHandlerResultVariable(source, handler, resultVar);
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {stronglyTypedMethodName}(System.IServiceProvider serviceProvider, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
-              .AppendLine("{");
-
-        source.IncrementIndent();
-
-        variables["System.IServiceProvider"] = "serviceProvider";
-        source.AppendLine($"var logger = _logger ??= serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"{handler.FullName}\");");
-        source.AppendLine($"logger?.LogProcessingMessage(\"{handler.MessageType.Identifier}\");");
-
-        if (configuration.OpenTelemetryEnabled)
-        {
-            source.AppendLine();
-            source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{handler.MessageType.Identifier}\");");
-            source.AppendLine($"activity?.SetTag(\"messaging.system\", \"Foundatio.Mediator\");");
-            source.AppendLine($"activity?.SetTag(\"messaging.message.type\", \"{handler.MessageType.FullName}\");");
-            variables["System.Diagnostics.Activity"] = "activity";
-        }
-
-        source.AppendLine();
-
-        // Check if any middleware needs HandlerExecutionInfo
-        var needsHandlerInfo = handler.Middleware.Any(m =>
-            (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
-            (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
-            (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
-
-        // Create HandlerExecutionInfo for middleware only if needed
-        if (needsHandlerInfo)
-        {
-            // Build parameter types array for GetMethod to handle overloaded methods
-            var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
-            if (string.IsNullOrEmpty(paramTypes))
-            {
-                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, System.Type.EmptyTypes, null)!);");
-            }
-            else
-            {
-                source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, new[] {{ {paramTypes} }}, null)!);");
-            }
-            variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
-            source.AppendLine();
-        }
-
-        // build middleware instances
-        foreach (var m in handler.Middleware.Where(m => !m.IsStatic))
-        {
-            source.AppendLine($"var {m.Identifier.ToCamelCase()} = Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
-        }
-        source.AppendLineIf(handler.Middleware.Any(m => !m.IsStatic));
-
-        // build result variables for before methods
-        foreach (var m in beforeMiddleware.Where(m => m.Method.HasReturnValue))
-        {
-            allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
-            defaultValue = allowNull ? "null" : "default";
-            source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {m.Middleware.Identifier.ToCamelCase()}Result = {defaultValue};");
-
-            variables[m.Method.ReturnType.FullName] = $"{m.Middleware.Identifier.ToCamelCase()}Result{(allowNull ? "!" : "")}";
-            if (m.Method.ReturnType.IsTuple)
-            {
-                foreach (var tupleItem in m.Method.ReturnType.TupleItems)
-                {
-                    variables[tupleItem.TypeFullName] = $"{m.Middleware.Identifier.ToCamelCase()}Result.{tupleItem.Name}{(allowNull ? "!" : "")}";
-                }
-            }
-        }
-        source.AppendLineIf(beforeMiddleware.Any(m => m.Method.HasReturnValue));
-
-        allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
-        source.AppendLineIf($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} handlerResult = default;", handler.HasReturnValue);
-
+        // Main execution with optional try-catch-finally
         if (shouldUseTryCatch)
         {
             source.AppendLine("""
@@ -212,234 +324,341 @@ internal static class HandlerGenerator
                 try
                 {
                 """);
-
             source.IncrementIndent();
+            variables["System.Exception"] = "exception";
         }
 
-        // call before middleware
+        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex);
+        EmitHandlerInvocation(source, handler, variables, resultVar, messageVar);
+        EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar);
+
+        if (shouldUseTryCatch)
+        {
+            source.DecrementIndent();
+            EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, variables, messageVar);
+        }
+    }
+
+    private static void EmitOpenTelemetrySetup(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, Dictionary<string, string> variables)
+    {
+        if (!configuration.OpenTelemetryEnabled)
+            return;
+
+        source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{handler.MessageType.Identifier}\");");
+        source.AppendLine($"activity?.SetTag(\"messaging.system\", \"Foundatio.Mediator\");");
+        source.AppendLine($"activity?.SetTag(\"messaging.message.type\", \"{handler.MessageType.FullName}\");");
+        variables["System.Diagnostics.Activity"] = "activity";
+    }
+
+    private static void EmitHandlerExecutionInfo(IndentedStringBuilder source, HandlerInfo handler, Dictionary<string, string> variables)
+    {
+        bool needsHandlerInfo = handler.Middleware.Any(m =>
+            (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+            (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+
+        if (!needsHandlerInfo)
+            return;
+
+        var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
+        string paramTypesArray = string.IsNullOrEmpty(paramTypes) ? "System.Type.EmptyTypes" : $"new[] {{ {paramTypes} }}";
+
+        source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {paramTypesArray}, null)!);");
+        variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+    }
+
+    private static void EmitMiddlewareInstances(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        foreach (var m in handler.Middleware.Where(m => !m.IsStatic))
+        {
+            source.AppendLine($"var {m.Identifier.ToCamelCase()} = Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
+        }
+        source.AppendLineIf(handler.Middleware.Any(m => !m.IsStatic));
+    }
+
+    private static void EmitBeforeMiddlewareResultVariables(
+        IndentedStringBuilder source,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
+        Dictionary<string, string> variables)
+    {
+        foreach (var m in beforeMiddleware.Where(m => m.Method.HasReturnValue))
+        {
+            bool allowNull = m.Method.ReturnType.IsNullable || m.Method.ReturnType.IsReferenceType;
+            string defaultValue = allowNull ? "null" : "default";
+            string nullableMarker = allowNull ? "?" : "";
+            string resultVarName = $"{m.Middleware.Identifier.ToCamelCase()}Result";
+
+            source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{nullableMarker} {resultVarName} = {defaultValue};");
+
+            variables[m.Method.ReturnType.FullName] = $"{resultVarName}{(allowNull ? "!" : "")}";
+            if (m.Method.ReturnType.IsTuple)
+            {
+                foreach (var tupleItem in m.Method.ReturnType.TupleItems)
+                {
+                    variables[tupleItem.TypeFullName] = $"{resultVarName}.{tupleItem.Name}{(allowNull ? "!" : "")}";
+                }
+            }
+        }
+        source.AppendLineIf(beforeMiddleware.Any(m => m.Method.HasReturnValue));
+    }
+
+    private static void EmitHandlerResultVariable(IndentedStringBuilder source, HandlerInfo handler, string resultVar)
+    {
+        if (!handler.HasReturnValue)
+            return;
+
+        bool allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
+        source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {resultVar} = default;");
+    }
+
+    private static void EmitBeforeMiddlewareCalls(
+        IndentedStringBuilder source,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
+        HandlerInfo handler,
+        Dictionary<string, string> variables,
+        string messageVar,
+        int targetTupleIndex)
+    {
         foreach (var m in beforeMiddleware)
         {
-            asyncModifier = m.Method.IsAsync ? "await " : "";
-            result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
-            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-            parameters = BuildParameters(source, m.Method.Parameters, variables);
+            string asyncModifier = m.Method.IsAsync ? "await " : "";
+            string result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
+            string accessor = m.Middleware.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
 
             if (m.Method.ReturnType.IsHandlerResult)
             {
-                string shortCircuitValue = "";
-                // For generic HandlerResult<T>, .Value is already typed as T, no cast needed
-                string valueAccess = m.Method.ReturnType.IsGeneric
-                    ? $"{m.Middleware.Identifier.ToCamelCase()}Result.Value"
-                    : $"{m.Middleware.Identifier.ToCamelCase()}Result.Value!";
-
-                if (handler.ReturnType.IsResult)
-                {
-                    shortCircuitValue = m.Method.ReturnType.IsGeneric
-                        ? $"{valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?){valueAccess}!"
-                        : $"({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.UnwrappedFullName})result : ({handler.ReturnType.UnwrappedFullName}?)({handler.ReturnType.UnwrappedFullName}){valueAccess})!";
-                }
-                else if (handler.ReturnType.IsTuple)
-                {
-                    shortCircuitValue = m.Method.ReturnType.IsGeneric
-                        ? $"(({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?){valueAccess})!, {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => "default!"))})"
-                        : $"(({valueAccess} is Foundatio.Mediator.Result result ? ({handler.ReturnType.TupleItems.First().TypeFullName})result : ({handler.ReturnType.TupleItems.First().TypeFullName}?)({handler.ReturnType.TupleItems.First().TypeFullName}){valueAccess})!, {String.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(i => "default!"))})";
-                }
-                else
-                {
-                    shortCircuitValue = m.Method.ReturnType.IsGeneric
-                        ? valueAccess
-                        : $"({handler.ReturnType.UnwrappedFullName}){valueAccess}";
-                }
-
-                source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}Result.IsShortCircuited)");
-                source.AppendLine("{");
-                source.AppendLine($"    logger?.LogShortCircuitedMessage(\"{handler.MessageType.Identifier}\");");
-
-                if (handler.HasReturnValue)
-                {
-                    source.AppendLine($"    handlerResult = {shortCircuitValue};");
-                    source.AppendLine("    return handlerResult;");
-                }
-                else
-                {
-                    source.AppendLine("    return;");
-                }
-
-                source.AppendLine("}");
+                EmitShortCircuitCheck(source, m, handler, targetTupleIndex);
             }
         }
         source.AppendLineIf(beforeMiddleware.Any());
+    }
 
-        // Add Exception to variables for After/Finally methods
-        if (shouldUseTryCatch)
-        {
-            variables["System.Exception"] = "exception";
-        }
+    private static void EmitShortCircuitCheck(
+        IndentedStringBuilder source,
+        (MiddlewareMethodInfo Method, MiddlewareInfo Middleware) m,
+        HandlerInfo handler,
+        int targetTupleIndex)
+    {
+        string resultVarName = $"{m.Middleware.Identifier.ToCamelCase()}Result";
+        string valueAccess = m.Method.ReturnType.IsGeneric ? $"{resultVarName}.Value" : $"{resultVarName}.Value!";
+        string shortCircuitValue = ComputeShortCircuitValue(m.Method.ReturnType, handler.ReturnType, valueAccess);
 
-        // call handler
-        asyncModifier = handler.ReturnType.IsTask ? "await " : "";
-        result = handler.ReturnType.IsVoid ? "" : "handlerResult = ";
-        accessor = handler.IsStatic ? handler.FullName : $"handlerInstance";
-        parameters = BuildParameters(source, handler.Parameters, variables);
-
-        source.AppendLineIf("var handlerInstance = GetOrCreateHandler(serviceProvider);", !handler.IsStatic);
-        source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
-        source.AppendLineIf(handler.HasReturnValue);
+        source.AppendLine($"if ({resultVarName}.IsShortCircuited)");
+        source.AppendLine("{");
 
         if (handler.HasReturnValue)
         {
-            variables[handler.ReturnType.FullName] = "handlerResult";
+            if (handler.ReturnType.IsTuple)
+            {
+                var targetItem = handler.ReturnType.TupleItems[targetTupleIndex];
+                source.AppendLine($"    return {shortCircuitValue}.{targetItem.Field};");
+            }
+            else
+            {
+                source.AppendLine($"    return {shortCircuitValue};");
+            }
+        }
+        else
+        {
+            source.AppendLine("    return;");
+        }
+
+        source.AppendLine("}");
+    }
+
+    private static string ComputeShortCircuitValue(TypeSymbolInfo middlewareReturnType, TypeSymbolInfo handlerReturnType, string valueAccess)
+    {
+        if (handlerReturnType.IsResult)
+        {
+            return middlewareReturnType.IsGeneric
+                ? $"{valueAccess} is Foundatio.Mediator.Result __r ? ({handlerReturnType.UnwrappedFullName})__r : ({handlerReturnType.UnwrappedFullName}?){valueAccess}!"
+                : $"({valueAccess} is Foundatio.Mediator.Result __r ? ({handlerReturnType.UnwrappedFullName})__r : ({handlerReturnType.UnwrappedFullName}?)({handlerReturnType.UnwrappedFullName}){valueAccess})!";
+        }
+
+        if (handlerReturnType.IsTuple)
+        {
+            var tupleItems = handlerReturnType.TupleItems;
+            var tupleElements = new List<string>();
+
+            for (int i = 0; i < tupleItems.Length; i++)
+            {
+                var item = tupleItems[i];
+                if (i == 0)
+                {
+                    string convertedValue = middlewareReturnType.IsGeneric
+                        ? $"({valueAccess} is Foundatio.Mediator.Result __r ? ({item.TypeFullName})__r : ({item.TypeFullName}?){valueAccess})!"
+                        : $"({valueAccess} is Foundatio.Mediator.Result __r ? ({item.TypeFullName})__r : ({item.TypeFullName}?)({item.TypeFullName}){valueAccess})!";
+                    tupleElements.Add(convertedValue);
+                }
+                else
+                {
+                    tupleElements.Add(item.IsNullable ? $"({item.TypeFullName})null" : $"default({item.TypeFullName})!");
+                }
+            }
+
+            return $"({String.Join(", ", tupleElements)})";
+        }
+
+        return middlewareReturnType.IsGeneric ? valueAccess : $"({handlerReturnType.UnwrappedFullName}){valueAccess}";
+    }
+
+    private static void EmitHandlerInvocation(
+        IndentedStringBuilder source,
+        HandlerInfo handler,
+        Dictionary<string, string> variables,
+        string resultVar,
+        string messageVar)
+    {
+        string asyncModifier = handler.ReturnType.IsTask ? "await " : "";
+        string result = handler.ReturnType.IsVoid ? "" : $"{resultVar} = ";
+        string parameters = BuildParameters(source, handler.Parameters, variables, messageVar);
+
+        // Determine handler accessor
+        string accessor;
+        if (handler.IsStatic)
+        {
+            accessor = handler.FullName;
+        }
+        else if (handler.CanUseSingletonFastPath)
+        {
+            accessor = "_cachedHandler";
+        }
+        else
+        {
+            source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
+            accessor = "handlerInstance";
+        }
+
+        source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
+
+        // Update variables with handler result for after/finally middleware
+        if (handler.HasReturnValue)
+        {
+            variables[handler.ReturnType.FullName] = resultVar;
 
             if (handler.ReturnType.QualifiedName != handler.ReturnType.FullName)
             {
-                variables[handler.ReturnType.QualifiedName] = "handlerResult";
+                variables[handler.ReturnType.QualifiedName] = resultVar;
             }
 
             if (handler.ReturnType.IsResult)
             {
-                variables[WellKnownTypes.Result] = "handlerResult!";
+                variables[WellKnownTypes.Result] = $"{resultVar}!";
             }
 
             if (handler.ReturnType.IsTuple)
             {
                 foreach (var tupleItem in handler.ReturnType.TupleItems)
                 {
-                    variables[tupleItem.TypeFullName] = $"handlerResult.{tupleItem.Name}";
+                    variables[tupleItem.TypeFullName] = $"{resultVar}.{tupleItem.Name}";
 
                     if (tupleItem.TypeFullName.StartsWith(WellKnownTypes.ResultOfT.Replace("`1", "<")))
                     {
-                        variables[WellKnownTypes.Result] = $"handlerResult.{tupleItem.Name}!";
+                        variables[WellKnownTypes.Result] = $"{resultVar}.{tupleItem.Name}!";
                     }
                 }
             }
         }
+    }
 
-        // call after middleware
+    private static void EmitAfterMiddlewareCalls(
+        IndentedStringBuilder source,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> afterMiddleware,
+        Dictionary<string, string> variables,
+        string messageVar)
+    {
         foreach (var m in afterMiddleware)
         {
-            asyncModifier = m.Method.IsAsync ? "await " : "";
-            accessor = m.Middleware.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-            parameters = BuildParameters(source, m.Method.Parameters, variables);
+            string asyncModifier = m.Method.IsAsync ? "await " : "";
+            string accessor = m.Middleware.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
 
             source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
         source.AppendLineIf(afterMiddleware.Any());
+    }
 
-        source.AppendLineIf($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");", !shouldUseTryCatch);
-        if (handler.HasReturnValue)
+    private static void EmitCatchAndFinallyBlocks(
+        IndentedStringBuilder source,
+        GeneratorConfiguration configuration,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> finallyMiddleware,
+        Dictionary<string, string> variables,
+        string messageVar)
+    {
+        source.AppendLine("""
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            """);
+
+        if (configuration.OpenTelemetryEnabled)
         {
-            source.AppendLine("return handlerResult;");
+            source.AppendLine("    activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);");
+            source.AppendLine("    activity?.SetTag(\"exception.type\", ex.GetType().FullName);");
+            source.AppendLine("    activity?.SetTag(\"exception.message\", ex.Message);");
         }
 
-        if (shouldUseTryCatch)
+        source.AppendLine("""
+                throw;
+            }
+            finally
+            {
+            """);
+
+        source.IncrementIndent();
+
+        foreach (var m in finallyMiddleware)
         {
-            source.DecrementIndent();
+            string asyncModifier = m.Method.IsAsync ? "await " : "";
+            string accessor = m.Method.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
 
-            source.AppendLine("""
-                }
-                catch (Exception ex)
-                {
-                    exception = ex;
-                """);
-
-            if (configuration.OpenTelemetryEnabled)
-            {
-                source.AppendLine("    activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);");
-                source.AppendLine("    activity?.SetTag(\"exception.type\", ex.GetType().FullName);");
-                source.AppendLine("    activity?.SetTag(\"exception.message\", ex.Message);");
-            }
-
-            source.AppendLine("""
-                    throw;
-                }
-                finally
-                {
-                """);
-
-            source.IncrementIndent();
-
-            // call finally middleware
-            foreach (var m in finallyMiddleware)
-            {
-                asyncModifier = m.Method.IsAsync ? "await " : "";
-                accessor = m.Method.IsStatic ? m.Middleware.FullName : $"{m.Middleware.Identifier.ToCamelCase()}";
-                parameters = BuildParameters(source, m.Method.Parameters, variables);
-
-                source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
-            }
-
-            source.AppendLine($"logger?.LogCompletedMessage(\"{handler.MessageType.Identifier}\");");
-            source.DecrementIndent();
-
-            source.AppendLine("}");
+            source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
 
         source.DecrementIndent();
         source.AppendLine("}");
-        source.AppendLine();
     }
 
-    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    /// <summary>
+    /// Generates the UntypedHandleAsync method that embeds handler code and uses PublishCascadingMessagesAsync for tuples.
+    /// This is used for runtime dispatch when the response type isn't known at compile time.
+    /// </summary>
+    private static void GenerateUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
     {
-        // For async handlers that can use fast path and return void, generate a non-async version
-        // that avoids state machine allocation when the handler completes synchronously
-        bool canUseFastPath = handler.CanUseZeroAllocFastPath || handler.CanUseSingletonFastPath;
-        bool generateZeroAllocPath = handler.IsAsync && canUseFastPath && handler.ReturnType.IsVoid && !handler.ReturnType.IsTuple;
+        bool isAsyncMethod = handler.IsAsync || handler.ReturnType.IsTuple;
 
-        if (generateZeroAllocPath)
-        {
-            GenerateZeroAllocUntypedHandleMethod(source, handler);
-            return;
-        }
-
-        source.AppendLine(handler.IsAsync
+        source.AppendLine(isAsyncMethod
             ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)"
             : "public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
 
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // For handlers that can use fast path, skip scope creation entirely
-        string serviceProviderExpr;
-
-        if (canUseFastPath)
-        {
-            // Cast mediator directly to IServiceProvider - no scope needed
-            serviceProviderExpr = "(System.IServiceProvider)mediator";
-        }
-        else if (handler.IsAsync)
-        {
-            source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
-            serviceProviderExpr = "scopedMediator.Services";
-        }
-        else
-        {
-            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
-            serviceProviderExpr = "scopedMediator.Services";
-        }
-
+        // Cast message to typed message
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-        string stronglyTypedMethodName = GetHandlerMethodName(handler);
-        string asyncModifier = handler.IsAsync ? "await " : "";
-        string result = handler.ReturnType.IsVoid ? "" : "var result = ";
+        // Get service provider directly from mediator - no scope creation
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
 
-        source.AppendLine($"{result}{asyncModifier}{stronglyTypedMethodName}({serviceProviderExpr}, typedMessage, cancellationToken);");
+        // Emit the handler invocation code - use "typedMessage" since we cast the object message above
+        EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessage");
 
+        // For tuple returns, use PublishCascadingMessagesAsync for runtime dispatch
         if (handler.ReturnType.IsTuple)
         {
             source.AppendLine("return await mediator.PublishCascadingMessagesAsync(result, responseType);");
         }
         else if (handler.HasReturnValue)
         {
-            source.AppendLine();
             source.AppendLine("if (responseType == null)");
             source.AppendLine("{");
             source.AppendLine("    return null;");
             source.AppendLine("}");
-            source.AppendLine();
 
             if (handler.ReturnType.IsResult)
             {
@@ -465,7 +684,7 @@ internal static class HandlerGenerator
                     """);
             }
 
-            source.AppendLine(!handler.ReturnType.IsVoid ? "return result;" : "return null;");
+            source.AppendLine("return result;");
         }
         else
         {
@@ -476,38 +695,18 @@ internal static class HandlerGenerator
         source.AppendLine("}");
     }
 
-    private static void GenerateZeroAllocUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler)
+    /// <summary>
+    /// Generates interceptor methods that delegate to HandleAsync/HandleItemNAsync.
+    /// Interceptors are thin wrappers that just cast the message and call the appropriate method.
+    /// </summary>
+    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
-        // Generate a non-async UntypedHandleAsync that avoids state machine allocation
-        // when the handler completes synchronously (common case for event handlers)
-        source.AppendLine("public static ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)");
-        source.AppendLine("{");
-        source.IncrementIndent();
-
-        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-        string stronglyTypedMethodName = GetHandlerMethodName(handler);
-        source.AppendLine($"var task = {stronglyTypedMethodName}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-        source.AppendLine();
-        source.AppendLine("if (task.IsCompletedSuccessfully)");
-        source.AppendLine("{");
-        source.AppendLine("    return default;");
-        source.AppendLine("}");
-        source.AppendLine();
-        source.AppendLine("return task.AsNullResult();");
-
-        source.DecrementIndent();
-        source.AppendLine("}");
-    }
-
-    private static void GenerateInterceptorMethods(IndentedStringBuilder source, HandlerInfo handler, bool interceptorsEnabled)
-    {
-        if (!interceptorsEnabled)
+        if (!configuration.InterceptorsEnabled)
             return;
 
-        // group by mediator method, response type, and whether it uses IRequest<T> overload
+        // group by mediator method, response type, whether it uses IRequest<T> overload, and whether it's async
         var callSiteGroups = handler.CallSites
-            .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload })
+            .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload, cs.IsAsyncMethod })
             .ToList();
 
         int methodCounter = 0;
@@ -517,251 +716,66 @@ internal static class HandlerGenerator
             var groupCallSites = group.ToList();
 
             source.AppendLine();
-            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, key.UsesIRequestOverload, groupCallSites, methodCounter++);
+            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, key.UsesIRequestOverload, key.IsAsyncMethod, groupCallSites, methodCounter++);
         }
     }
 
-    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, bool usesIRequestOverload, List<CallSiteInfo> callSites, int methodIndex)
+    /// <summary>
+    /// Generates a single interceptor method.
+    /// For non-fast-path handlers, the interceptor simply casts the message and calls HandleAsync/HandleItemNAsync.
+    /// The HandleAsync method handles scope creation, logging, middleware, and cascading internally.
+    /// </summary>
+    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, bool usesIRequestOverload, bool isAsyncMethod, List<CallSiteInfo> callSites, int methodIndex)
     {
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
-        string handlerMethod = GetHandlerMethodName(handler);
-        bool methodIsAsync = methodName.EndsWith("Async") || handler.IsAsync;
-
-        // Determine if we need async modifier:
-        // - Standard path with async handlers needs async for "await using" scope management
-        // - Tuple returns always need async because of await PublishAsync for cascading messages
-        // - Zero-alloc and singleton fast paths can avoid async state machine by using .AsValueTask() helper
-        bool usesStandardPath = !handler.CanUseZeroAllocFastPath && !handler.CanUseSingletonFastPath;
-        bool needsAsyncModifier = handler.ReturnType.IsTuple || (usesStandardPath && handler.IsAsync);
 
         foreach (var callSite in callSites)
         {
             source.AppendLine($"[System.Runtime.CompilerServices.InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        string asyncModifier = needsAsyncModifier ? "async " : "";
-        string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
-        if (responseType.IsVoid)
-            returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
+        var returnInfo = InterceptorCodeEmitter.ComputeReturnInfo(handler, responseType, isAsyncMethod);
 
         // Use IRequest<TResponse> parameter type when intercepting the IRequest overload
         string messageParamType = usesIRequestOverload
             ? $"Foundatio.Mediator.IRequest<{responseType.UnwrappedFullName}>"
             : "object";
         string parameters = $"this Foundatio.Mediator.IMediator mediator, {messageParamType} message, System.Threading.CancellationToken cancellationToken = default";
-        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
+
+        source.AppendLine($"public static {returnInfo.AsyncModifier}{returnInfo.ReturnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
 
         source.IncrementIndent();
 
-        // Build handler call arguments - only include CancellationToken if handler accepts it
-        bool hasCancellationToken = handler.Parameters.Any(p => p.Type.IsCancellationToken);
-        string handlerArgs = hasCancellationToken ? "typedMessage, cancellationToken" : "typedMessage";
-        bool needsValueTaskWrap = methodIsAsync && !handler.IsAsync;
+        source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-        // Zero-alloc fast path for static handlers: skip scope creation and call handler directly
-        // This applies when handler is static, has no DI method parameters, no middleware, and no cascading messages
-        if (handler.CanUseZeroAllocFastPath)
+        // Zero-alloc fast path for static handlers: call handler directly
+        if (!InterceptorCodeEmitter.TryEmitZeroAllocFastPath(source, handler, responseType, returnInfo.MethodIsAsync))
         {
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            // Static handler: call directly
-            if (responseType.IsVoid)
-            {
-                if (handler.IsAsync)
-                {
-                    // Async void handler - use helper to avoid state machine
-                    if (handler.ReturnType.IsValueTask)
-                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs});");
-                    else
-                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTask();");
-                }
-                else
-                {
-                    source.AppendLine($"{handler.FullName}.{handler.MethodName}({handlerArgs});");
-                    if (methodIsAsync)
-                    {
-                        source.AppendLine("return default;");
-                    }
-                }
-            }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    // Async handler with response - use helper to avoid state machine
-                    if (handler.ReturnType.IsValueTask)
-                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTaskAwaited();");
-                    else
-                        source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs}).AsValueTask();");
-                }
-                else if (needsValueTaskWrap)
-                {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handler.FullName}.{handler.MethodName}({handlerArgs}));");
-                }
-                else
-                {
-                    source.AppendLine($"return {handler.FullName}.{handler.MethodName}({handlerArgs});");
-                }
-            }
-        }
-        // Singleton fast path: skip scope creation and use cached handler with static middleware
-        // GetOrCreateHandler caches the handler instance since CanUseSingletonFastPath is true
-        // All middleware must be able to use fast path (static or cacheable) for this path to be valid
-        else if (handler.CanUseSingletonFastPath)
-        {
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            // Always call HandleAsync to ensure logging, telemetry, and middleware are executed
-            // Handle tuple returns (cascading messages) - publish cascading items after calling HandleAsync
-            if (handler.ReturnType.IsTuple)
-            {
-                // Call HandleAsync to get the full tuple with all infrastructure (logging, telemetry, middleware)
-                // Use await if the wrapper HandleAsync is async (which it is if handler is async OR has async middleware)
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"var result = await {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-                }
-                else
-                {
-                    source.AppendLine($"var result = {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-                }
-
-                // Publish cascading messages (all tuple items except the one matching responseType)
-                var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
-                if (returnItem == default)
-                {
-                    returnItem = handler.ReturnType.TupleItems.First();
-                }
-                var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
-
-                foreach (var publishItem in publishItems)
-                {
-                    source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                    source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await mediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
-                }
-                source.AppendLineIf(publishItems.Any());
-
-                source.AppendLine($"return result.{returnItem.Name};");
-            }
-            else if (responseType.IsVoid)
-            {
-                if (handler.IsAsync)
-                {
-                    // Async void handler - use helper to avoid state machine
-                    // Wrapper returns Task if handler returns Task, ValueTask if handler returns ValueTask
-                    if (handler.ReturnType.IsValueTask)
-                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-                    else
-                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTask();");
-                }
-                else
-                {
-                    source.AppendLine($"{handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-                    if (methodIsAsync)
-                    {
-                        source.AppendLine("return default;");
-                    }
-                }
-            }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    // Async handler with response - use helper to avoid state machine
-                    // Wrapper returns Task<T> if handler returns Task<T>, ValueTask<T> if handler returns ValueTask<T>
-                    if (handler.ReturnType.IsValueTask)
-                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTaskAwaited();");
-                    else
-                        source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken).AsValueTask();");
-                }
-                else if (needsValueTaskWrap)
-                {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken));");
-                }
-                else
-                {
-                    source.AppendLine($"return {handlerMethod}((System.IServiceProvider)mediator, typedMessage, cancellationToken);");
-                }
-            }
-        }
-        else
-        {
-            // Standard path: create scope and go through HandleAsync
-            // This path needs async for scope management (await using) and tuple cascading
-            if (handler.IsAsync)
-            {
-                source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
-            }
-            else
-            {
-                source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
-            }
-
-            source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
-
-            if (handler.ReturnType.IsTuple)
-            {
-                string awaitModifier = handler.IsAsync ? "await " : "";
-                source.AppendLine($"var result = {awaitModifier}{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-                source.AppendLine();
-
-                var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
-                if (returnItem == default)
-                {
-                    returnItem = handler.ReturnType.TupleItems.First();
-                }
-                var publishItems = handler.ReturnType.TupleItems.Except([returnItem]);
-
-                foreach (var publishItem in publishItems)
-                {
-                    source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                    source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
-                }
-                source.AppendLineIf(publishItems.Any());
-
-                source.AppendLine($"return result.{returnItem.Name};");
-            }
-            else
-            {
-                if (responseType.IsVoid)
-                {
-                    if (handler.IsAsync)
-                    {
-                        source.AppendLine($"await {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-                    }
-                    else
-                    {
-                        source.AppendLine($"{handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-                        if (methodIsAsync)
-                        {
-                            source.AppendLine("return default;");
-                        }
-                    }
-                }
-                else
-                {
-                    if (handler.IsAsync)
-                    {
-                        source.AppendLine($"return await {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-                    }
-                    else if (needsValueTaskWrap)
-                    {
-                        source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken));");
-                    }
-                    else
-                    {
-                        source.AppendLine($"return {handlerMethod}(scopedMediator.Services, typedMessage, cancellationToken);");
-                    }
-                }
-            }
+            // Standard path: call HandleAsync or HandleItemNAsync
+            string targetMethod = InterceptorCodeEmitter.GetTargetMethodName(handler, responseType);
+            InterceptorCodeEmitter.EmitInterceptorMethodBody(source, handler, "", targetMethod, responseType, returnInfo);
         }
 
         source.DecrementIndent();
         source.AppendLine("}");
     }
 
-    private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null)
+    /// <summary>
+    /// Gets the method name for returning a specific tuple item (0-indexed).
+    /// Item 0 uses HandleAsync.
+    /// Items 1+ use HandleItem2Async, HandleItem3Async, etc.
+    /// </summary>
+    public static string GetHandlerItemMethodName(HandlerInfo handler, int itemIndex)
+    {
+        if (itemIndex == 0)
+            return GetHandlerMethodName(handler);
+
+        // itemIndex 1 = Item2, itemIndex 2 = Item3, etc.
+        return $"HandleItem{itemIndex + 1}Async";
+    }
+
+    private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null, string messageVar = "message")
     {
         var parameterValues = new List<string>();
 
@@ -778,7 +792,7 @@ internal static class HandlerGenerator
 
             if (param.IsMessageParameter)
             {
-                parameterValues.Add("message");
+                parameterValues.Add(messageVar);
             }
             else if (param.Type.IsObject && param.Name == "handlerResult")
             {
@@ -822,8 +836,23 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {
-        // If handler has a specified lifetime, it's registered in DI - use simple GetRequiredService
-        if (!string.IsNullOrEmpty(handler.Lifetime))
+        // If handler has Singleton lifetime, cache after first DI retrieval
+        if (string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+        {
+            source.AppendLine()
+                  .AppendLines($$"""
+                    private static {{handler.FullName}}? _cachedHandler;
+
+                    [DebuggerStepThrough]
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+                    {
+                        return _cachedHandler ??= serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                    }
+                    """);
+        }
+        // If handler has Scoped or Transient lifetime, must call DI each time
+        else if (!string.IsNullOrEmpty(handler.Lifetime))
         {
             source.AppendLine()
                   .AppendLines($$"""
@@ -835,21 +864,12 @@ internal static class HandlerGenerator
                     }
                     """);
         }
-        // For handlers that can use singleton fast path, cache a directly-instantiated instance
-        // This is safe because CanUseSingletonFastPath ensures no constructor parameters
+        // For handlers that can use singleton fast path, just generate the static field
+        // The handler code uses _cachedHandler directly without calling GetOrCreateHandler
         else if (handler.CanUseSingletonFastPath)
         {
             source.AppendLine()
-                  .AppendLines($$"""
-                    private static readonly {{handler.FullName}} _cachedHandler = new();
-
-                    [DebuggerStepThrough]
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
-                    {
-                        return _cachedHandler;
-                    }
-                    """);
+                  .AppendLine($"private static readonly {handler.FullName} _cachedHandler = new();");
         }
         else
         {
@@ -883,7 +903,7 @@ internal static class HandlerGenerator
                             }
                         }
 
-                        // Handler is registered in DI
+                        // Handler is registered in DI - don't cache as it could be Scoped/Transient
                         if (isInDI == 1)
                         {
                             return serviceProvider.GetRequiredService<{{handler.FullName}}>();
@@ -927,7 +947,273 @@ internal static class HandlerGenerator
 
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
-        return handler.IsAsync ? "HandleAsync" : "Handle";
+        return handler.IsAsync || handler.ReturnType.IsTuple ? "HandleAsync" : "Handle";
+    }
+
+    /// <summary>
+    /// Gets the return type name for a handler method, handling tuple returns and nullable markers.
+    /// </summary>
+    /// <param name="handler">The handler info.</param>
+    /// <param name="tupleItemIndex">For tuple returns, the index of the item to return (0-based). Default is 0 (first item).</param>
+    /// <returns>The return type name string.</returns>
+    private static string GetReturnTypeName(HandlerInfo handler, int tupleItemIndex = 0)
+    {
+        if (handler.ReturnType.IsTuple)
+        {
+            return handler.ReturnType.TupleItems[tupleItemIndex].TypeFullName;
+        }
+
+        string returnTypeName = handler.ReturnType.UnwrappedFullName;
+        if (handler.ReturnType.IsNullable && !returnTypeName.EndsWith("?"))
+            returnTypeName += "?";
+        return returnTypeName;
+    }
+
+    /// <summary>
+    /// Gets the full method signature return type (including async wrappers).
+    /// </summary>
+    /// <param name="isAsync">Whether the method is async.</param>
+    /// <param name="isVoid">Whether the return type is void.</param>
+    /// <param name="returnTypeName">The inner return type name.</param>
+    /// <returns>The full method return type string (e.g., "ValueTask&lt;T&gt;", "void", etc.).</returns>
+    private static string GetMethodSignatureReturnType(bool isAsync, bool isVoid, string returnTypeName)
+    {
+        if (isAsync)
+        {
+            return isVoid
+                ? "System.Threading.Tasks.ValueTask"
+                : $"System.Threading.Tasks.ValueTask<{returnTypeName}>";
+        }
+
+        return isVoid ? "void" : returnTypeName;
+    }
+
+    /// <summary>
+    /// Generates direct handler calls for cascading messages based on the publish strategy.
+    /// </summary>
+    private static void GenerateCascadingHandlerCalls(
+        IndentedStringBuilder source,
+        List<TupleItemInfo> publishItems,
+        List<HandlerInfo> allHandlers,
+        string strategy)
+    {
+        // Check if any publish items have handlers - if not, skip generating cascade code
+        bool hasAnyHandlers = publishItems.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+        if (!hasAnyHandlers)
+            return;
+
+        // Check if we need exception aggregation (List is only created when exception occurs)
+        bool needsExceptionAggregation = strategy is "ForeachAwait" or "TaskWhenAll";
+
+        if (needsExceptionAggregation)
+        {
+            source.AppendLine("System.Collections.Generic.List<System.Exception>? exceptions = null;");
+        }
+
+        switch (strategy)
+        {
+            case "TaskWhenAll":
+                GenerateCascadingHandlerCallsTaskWhenAll(source, publishItems, allHandlers);
+                break;
+            case "FireAndForget":
+                GenerateCascadingHandlerCallsFireAndForget(source, publishItems, allHandlers);
+                break;
+            case "ForeachAwait":
+            default:
+                GenerateCascadingHandlerCallsForeachAwait(source, publishItems, allHandlers);
+                break;
+        }
+
+        if (needsExceptionAggregation)
+        {
+            source.AppendLine();
+            source.AppendLine("if (exceptions != null)");
+            source.AppendLine("    throw new System.AggregateException(exceptions);");
+        }
+    }
+
+    /// <summary>
+    /// Common iteration pattern for cascading handlers. Iterates over publish items and their handlers,
+    /// handling nullable checks and invoking the strategy-specific handler call emitter.
+    /// </summary>
+    private static void ForEachCascadingHandler(
+        IndentedStringBuilder source,
+        List<TupleItemInfo> publishItems,
+        List<HandlerInfo> allHandlers,
+        Action<IndentedStringBuilder, HandlerInfo, string, bool> emitHandlerCall)
+    {
+        foreach (var publishItem in publishItems)
+        {
+            var handlers = GetHandlersForCascadingMessage(publishItem, allHandlers);
+            if (handlers.Count == 0)
+                continue;
+
+            string access = $"result.{publishItem.Name}";
+
+            if (publishItem.IsNullable)
+            {
+                source.AppendLine($"if ({access} != null)");
+                source.AppendLine("{");
+                source.IncrementIndent();
+            }
+
+            foreach (var cascadeHandler in handlers)
+            {
+                bool isAsync = cascadeHandler.IsAsync || cascadeHandler.ReturnType.IsTuple;
+                emitHandlerCall(source, cascadeHandler, access, isAsync);
+            }
+
+            if (publishItem.IsNullable)
+            {
+                source.DecrementIndent();
+                source.AppendLine("}");
+            }
+        }
+    }
+
+    private static void GenerateCascadingHandlerCallsForeachAwait(
+        IndentedStringBuilder source,
+        List<TupleItemInfo> publishItems,
+        List<HandlerInfo> allHandlers)
+    {
+        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
+        {
+            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
+            string methodName = GetHandlerMethodName(handler);
+
+            src.AppendLine();
+            src.AppendLine("try");
+            src.AppendLine("{");
+            if (isAsync)
+            {
+                src.AppendLine($"    await {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken).ConfigureAwait(false);");
+            }
+            else
+            {
+                src.AppendLine($"    {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
+            }
+            src.AppendLine("}");
+            HandlerCodeEmitter.EmitExceptionAggregation(src);
+        });
+    }
+
+    private static void GenerateCascadingHandlerCallsTaskWhenAll(
+        IndentedStringBuilder source,
+        List<TupleItemInfo> publishItems,
+        List<HandlerInfo> allHandlers)
+    {
+        var taskVars = new List<string>();
+        int taskIndex = 0;
+
+        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
+        {
+            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
+            string methodName = GetHandlerMethodName(handler);
+
+            if (isAsync)
+            {
+                string varName = $"cascadeTask{taskIndex++}";
+                src.AppendLine($"var {varName} = {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
+                taskVars.Add(varName);
+            }
+            else
+            {
+                src.AppendLine("try");
+                src.AppendLine("{");
+                src.AppendLine($"    {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
+                src.AppendLine("}");
+                HandlerCodeEmitter.EmitExceptionAggregation(src);
+            }
+        });
+
+        // Await all async tasks with exception handling
+        foreach (var varName in taskVars)
+        {
+            source.AppendLine($"try {{ await {varName}.ConfigureAwait(false); }} catch (System.Exception ex) {{ exceptions ??= new System.Collections.Generic.List<System.Exception>(); exceptions.Add(ex); }}");
+        }
+    }
+
+    private static void GenerateCascadingHandlerCallsFireAndForget(
+        IndentedStringBuilder source,
+        List<TupleItemInfo> publishItems,
+        List<HandlerInfo> allHandlers)
+    {
+        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
+        {
+            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
+            string methodName = GetHandlerMethodName(handler);
+
+            src.AppendLine("_ = System.Threading.Tasks.Task.Run(async () =>");
+            src.AppendLine("{");
+            src.AppendLine("    try");
+            src.AppendLine("    {");
+            if (isAsync)
+            {
+                src.AppendLine($"        await {wrapperClassName}.{methodName}(mediator, {access}, System.Threading.CancellationToken.None).ConfigureAwait(false);");
+            }
+            else
+            {
+                src.AppendLine($"        {wrapperClassName}.{methodName}(mediator, {access}, System.Threading.CancellationToken.None);");
+            }
+            src.AppendLine("    }");
+            src.AppendLine("    catch");
+            src.AppendLine("    {");
+            src.AppendLine("        // Swallow exceptions - fire and forget semantics");
+            src.AppendLine("    }");
+            src.AppendLine("}, System.Threading.CancellationToken.None);");
+        });
+    }
+
+    private static List<HandlerInfo> GetHandlersForCascadingMessage(TupleItemInfo item, List<HandlerInfo> allHandlers)
+    {
+        // Strip nullable marker from type for comparison
+        string itemTypeName = item.TypeFullName.TrimEnd('?');
+
+        // Collect handlers in order: concrete type first, then interfaces, then base classes
+        var concreteHandlers = new List<HandlerInfo>();
+        var interfaceHandlers = new List<HandlerInfo>();
+        var baseClassHandlers = new List<HandlerInfo>();
+
+        foreach (var h in allHandlers)
+        {
+            // Direct type match
+            if (h.MessageType.FullName == itemTypeName || h.MessageType.QualifiedName == itemTypeName)
+            {
+                concreteHandlers.Add(h);
+                continue;
+            }
+
+            // Check if the cascaded item type implements an interface that the handler handles
+            bool isInterfaceMatch = false;
+            foreach (var interfaceType in item.Interfaces)
+            {
+                if (h.MessageType.FullName == interfaceType || h.MessageType.QualifiedName == interfaceType)
+                {
+                    interfaceHandlers.Add(h);
+                    isInterfaceMatch = true;
+                    break;
+                }
+            }
+            if (isInterfaceMatch)
+                continue;
+
+            // Check if the cascaded item type derives from a base class that the handler handles
+            foreach (var baseType in item.BaseClasses)
+            {
+                if (h.MessageType.FullName == baseType || h.MessageType.QualifiedName == baseType)
+                {
+                    baseClassHandlers.Add(h);
+                    break;
+                }
+            }
+        }
+
+        // Return handlers in order: concrete types first, then interfaces, then base classes
+        var result = new List<HandlerInfo>(concreteHandlers.Count + interfaceHandlers.Count + baseClassHandlers.Count);
+        result.AddRange(concreteHandlers);
+        result.AddRange(interfaceHandlers);
+        result.AddRange(baseClassHandlers);
+        return result;
     }
 
     private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)

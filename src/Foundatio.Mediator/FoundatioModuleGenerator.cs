@@ -49,6 +49,8 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("[ExcludeFromCodeCoverage]");
             source.AppendLine($"public static class {className}");
             source.AppendLine("{");
+            source.AppendLine($"    public static INotificationPublisher NotificationPublisher {{ get; }} = new {configuration.NotificationPublisher}Publisher();");
+            source.AppendLine();
             source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
             source.AppendLine("    {");
             source.IncrementIndent().IncrementIndent();

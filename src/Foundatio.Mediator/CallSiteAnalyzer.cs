@@ -1,4 +1,5 @@
 using Foundatio.Mediator.Models;
+using Foundatio.Mediator.Utility;
 
 namespace Foundatio.Mediator;
 
@@ -45,6 +46,7 @@ internal static class CallSiteAnalyzer
 
         string methodName = memberAccess.Name.Identifier.ValueText;
         bool isPublish = methodName.Equals("PublishAsync", StringComparison.Ordinal);
+        bool isAsyncMethod = methodName.EndsWith("Async", StringComparison.Ordinal);
 
         var firstArgument = invocation.ArgumentList.Arguments[0];
         var argumentType = semanticModel.GetTypeInfo(firstArgument.Expression);
@@ -73,14 +75,37 @@ internal static class CallSiteAnalyzer
             }
         }
 
+        // For PublishAsync, we need to know the message type's interfaces and base classes
+        // to match against handlers that handle interface or base class types
+        var messageInterfaces = new List<string>();
+        var messageBaseClasses = new List<string>();
+
+        if (isPublish && messageType is INamedTypeSymbol namedMessageType)
+        {
+            foreach (var iface in namedMessageType.AllInterfaces)
+            {
+                messageInterfaces.Add(iface.ToDisplayString());
+            }
+
+            var currentBase = namedMessageType.BaseType;
+            while (currentBase != null && currentBase.SpecialType != SpecialType.System_Object)
+            {
+                messageBaseClasses.Add(currentBase.ToDisplayString());
+                currentBase = currentBase.BaseType;
+            }
+        }
+
         return new CallSiteInfo
         {
             MethodName = methodName,
             MessageType = TypeSymbolInfo.From(messageType, semanticModel.Compilation),
             ResponseType = responseType is not null ? TypeSymbolInfo.From(responseType, semanticModel.Compilation) : TypeSymbolInfo.Void(),
+            IsAsyncMethod = isAsyncMethod,
             IsPublish = isPublish,
             Location = LocationInfo.CreateFrom(invocation, interceptableLocation)!.Value,
             UsesIRequestOverload = usesIRequestOverload,
+            MessageInterfaces = new EquatableArray<string>(messageInterfaces.ToArray()),
+            MessageBaseClasses = new EquatableArray<string>(messageBaseClasses.ToArray()),
         };
     }
 

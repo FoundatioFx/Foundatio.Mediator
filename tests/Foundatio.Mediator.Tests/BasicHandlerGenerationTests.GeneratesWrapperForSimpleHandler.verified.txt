@@ -29,6 +29,8 @@ namespace Foundatio.Mediator;
 [ExcludeFromCodeCoverage]
 public static class Tests_MediatorHandlers
 {
+    public static INotificationPublisher NotificationPublisher { get; } = new ForeachAwaitPublisher();
+
     public static void AddHandlers(this IServiceCollection services)
     {
         // Register HandlerRegistration instances keyed by message type name
@@ -253,7 +255,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Generated;
 
@@ -261,26 +262,18 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class PingHandler_Ping_Handler
 {
-    private static ILogger? _logger;
-
-    public static async System.Threading.Tasks.Task<string> HandleAsync(System.IServiceProvider serviceProvider, Ping message, System.Threading.CancellationToken cancellationToken)
+    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
     {
-        var logger = _logger ??= serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("PingHandler");
-        logger?.LogProcessingMessage("Ping");
-
+        var serviceProvider = (System.IServiceProvider)mediator;
         using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
-
-        string? handlerResult = default;
+        string? result = default;
         System.Exception? exception = null;
 
         try
         {
-            var handlerInstance = GetOrCreateHandler(serviceProvider);
-            handlerResult = await handlerInstance.HandleAsync(message, cancellationToken);
-
-            return handlerResult;
+            result = await _cachedHandler.HandleAsync(message, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -292,31 +285,43 @@ public static class PingHandler_Ping_Handler
         }
         finally
         {
-            logger?.LogCompletedMessage("Ping");
         }
+        return result;
     }
 
     public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
         var typedMessage = (Ping)message;
-        var result = await HandleAsync((System.IServiceProvider)mediator, typedMessage, cancellationToken);
+        var serviceProvider = (System.IServiceProvider)mediator;
+        using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
+        activity?.SetTag("messaging.system", "Foundatio.Mediator");
+        activity?.SetTag("messaging.message.type", "Ping");
+        string? result = default;
+        System.Exception? exception = null;
 
+        try
+        {
+            result = await _cachedHandler.HandleAsync(typedMessage, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            activity?.SetTag("exception.type", ex.GetType().FullName);
+            activity?.SetTag("exception.message", ex.Message);
+            throw;
+        }
+        finally
+        {
+        }
         if (responseType == null)
         {
             return null;
         }
-
         return result;
     }
 
     private static readonly PingHandler _cachedHandler = new();
-
-    [DebuggerStepThrough]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)
-    {
-        return _cachedHandler;
-    }
 }
 
     }

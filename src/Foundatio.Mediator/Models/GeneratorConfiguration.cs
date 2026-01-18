@@ -6,4 +6,5 @@ internal record GeneratorConfiguration(
     string DefaultMiddlewareLifetime,
     bool OpenTelemetryEnabled,
     bool ConventionalDiscoveryDisabled,
-    bool GenerationCounterEnabled);
+    bool GenerationCounterEnabled,
+    string NotificationPublisher);

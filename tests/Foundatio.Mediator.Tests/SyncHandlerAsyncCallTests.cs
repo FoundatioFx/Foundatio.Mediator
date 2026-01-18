@@ -46,10 +46,10 @@ public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTest
         // The interceptor should return ValueTask<string>, not just string
         Assert.Contains("System.Threading.Tasks.ValueTask<string>", wrapper.Source);
 
-        // The interceptor should call HandleAsync (renamed to Handle for consistency with method name) which contains logging/telemetry
-        // and wrap the result in ValueTask since HandleAsync returns string but interceptor must return ValueTask<string>
+        // The interceptor should call Handle which contains logging/telemetry
+        // and wrap the result in ValueTask since Handle returns string but interceptor must return ValueTask<string>
         // The test handler has no constructor params, so it qualifies for singleton fast path
-        Assert.Contains("return new System.Threading.Tasks.ValueTask<string>(Handle((System.IServiceProvider)mediator, typedMessage, cancellationToken));", wrapper.Source);
+        Assert.Contains("return new System.Threading.Tasks.ValueTask<string>(Handle(mediator, typedMessage, cancellationToken));", wrapper.Source);
     }
 
     [Fact]
@@ -137,8 +137,10 @@ public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTest
         // The interceptor should return ValueTask<Order>
         Assert.Contains("System.Threading.Tasks.ValueTask<Order>", wrapper.Source);
 
-        // The interceptor method should be async (to allow await on PublishAsync)
-        Assert.Contains("public static async System.Threading.Tasks.ValueTask<Order> InterceptInvokeAsync", wrapper.Source);
+        // The interceptor method should NOT be async - it returns ValueTask directly to avoid state machine overhead
+        // The DefaultHandleAsync method handles async operations internally
+        Assert.Contains("public static System.Threading.Tasks.ValueTask<Order> InterceptInvokeAsync", wrapper.Source);
+        Assert.DoesNotContain("public static async System.Threading.Tasks.ValueTask<Order> InterceptInvokeAsync", wrapper.Source);
     }
 
     [Fact]

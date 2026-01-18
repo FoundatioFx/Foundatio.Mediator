@@ -27,7 +27,7 @@ public record UpdateProduct(
 public record DeleteProduct([Required] string ProductId) : IValidatable, ICommand<Result>;
 
 // Queries
-public record GetProduct([Required] string ProductId) : IValidatable, IQuery<Result<Product?>>;
+public record GetProduct([Required] string ProductId) : IValidatable, IQuery<Result<Product>>;
 public record GetProducts() : IQuery<Result<List<Product>>>;
 
 // Events

@@ -68,15 +68,15 @@ internal static class CrossAssemblyInterceptorGenerator
             var handler = handlersByMessageType[messageTypeName];
             var callSitesForMessage = group.ToList();
 
-            // Group call sites by method name, response type, and IRequest overload usage
+            // Group call sites by method name, response type, IRequest overload usage, and whether it's async
             var callSiteGroups = callSitesForMessage
-                .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload })
+                .GroupBy(cs => new { cs.MethodName, cs.ResponseType, cs.UsesIRequestOverload, cs.IsAsyncMethod })
                 .ToList();
 
             int methodCounter = 0;
             foreach (var csGroup in callSiteGroups)
             {
-                GenerateInterceptorMethod(source, handler, csGroup.Key.MethodName, csGroup.Key.ResponseType, csGroup.Key.UsesIRequestOverload, csGroup.ToList(), messageTypeCounter, methodCounter++);
+                GenerateInterceptorMethod(source, handler, csGroup.Key.MethodName, csGroup.Key.ResponseType, csGroup.Key.UsesIRequestOverload, csGroup.Key.IsAsyncMethod, csGroup.ToList(), messageTypeCounter, methodCounter++);
                 source.AppendLine();
             }
 
@@ -95,16 +95,15 @@ internal static class CrossAssemblyInterceptorGenerator
         string methodName,
         TypeSymbolInfo responseType,
         bool usesIRequestOverload,
+        bool isAsyncMethod,
         List<CallSiteInfo> callSites,
         int messageTypeIndex,
         int methodIndex)
     {
         // Get the generated wrapper class name for this handler
         string wrapperClassName = $"global::{HandlerGenerator.GetHandlerFullName(handler)}";
-        string handlerMethodName = HandlerGenerator.GetHandlerMethodName(handler);
 
         string interceptorMethod = $"Intercept{handler.MessageType.Identifier}_{methodName}{methodIndex}";
-        bool methodIsAsync = methodName.EndsWith("Async") || handler.IsAsync;
 
         // Add InterceptsLocation attributes for each call site
         foreach (var callSite in callSites)
@@ -112,14 +111,7 @@ internal static class CrossAssemblyInterceptorGenerator
             source.AppendLine($"[InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        // Need async for:
-        // - Tuple returns (await PublishAsync for cascading messages)
-        // - Async handlers (await using for scope management)
-        bool needsAsyncModifier = handler.ReturnType.IsTuple || handler.IsAsync;
-        string asyncModifier = needsAsyncModifier ? "async " : "";
-        string returnType = methodIsAsync ? $"System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>" : responseType.UnwrappedFullName;
-        if (responseType.IsVoid)
-            returnType = methodIsAsync ? "System.Threading.Tasks.ValueTask" : "void";
+        var returnInfo = InterceptorCodeEmitter.ComputeReturnInfo(handler, responseType, isAsyncMethod);
 
         // Use IRequest<T> parameter type when the call site uses that overload
         string messageParameterType = usesIRequestOverload
@@ -127,83 +119,17 @@ internal static class CrossAssemblyInterceptorGenerator
             : "object";
         string parameters = $"this Foundatio.Mediator.IMediator mediator, {messageParameterType} message, System.Threading.CancellationToken cancellationToken = default";
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
+        source.AppendLine($"public static {returnInfo.AsyncModifier}{returnInfo.ReturnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
         source.IncrementIndent();
 
-        if (handler.IsAsync)
-        {
-            source.AppendLine("await using var scopedMediator = ScopedMediator.GetOrCreateAsyncScope(mediator);");
-        }
-        else
-        {
-            source.AppendLine("using var scopedMediator = ScopedMediator.GetOrCreateScope(mediator);");
-        }
-
         source.AppendLine($"var typedMessage = (global::{handler.MessageType.FullName})message;");
 
-        if (handler.ReturnType.IsTuple)
-        {
-            // Handle tuple return types (cascading messages)
-            string awaitKeyword = handler.IsAsync ? "await " : "";
-            source.AppendLine($"var result = {awaitKeyword}{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-            source.AppendLine();
+        // Determine which method to call based on response type
+        string targetMethod = InterceptorCodeEmitter.GetTargetMethodName(handler, responseType);
 
-            // Find the return item and publish items
-            var returnItem = handler.ReturnType.TupleItems.FirstOrDefault(i => i.TypeFullName == responseType.FullName);
-            if (returnItem == default)
-            {
-                returnItem = handler.ReturnType.TupleItems.First();
-            }
-            var publishItems = handler.ReturnType.TupleItems.Where(i => i.Name != returnItem.Name).ToList();
-
-            foreach (var publishItem in publishItems)
-            {
-                source.AppendLineIf($"if (result.{publishItem.Name} != null)", publishItem.IsNullable);
-                source.AppendIf("    ", publishItem.IsNullable).AppendLine($"await scopedMediator.PublishAsync(result.{publishItem.Name}, cancellationToken);");
-            }
-
-            if (publishItems.Count > 0)
-                source.AppendLine();
-
-            source.AppendLine($"return result.{returnItem.Name};");
-        }
-        else
-        {
-            // Simple return type
-            bool needsValueTaskWrap = methodIsAsync && !handler.IsAsync;
-
-            if (responseType.IsVoid)
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"await {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-                }
-                else
-                {
-                    source.AppendLine($"{wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-                    if (methodIsAsync)
-                    {
-                        source.AppendLine("return default;");
-                    }
-                }
-            }
-            else
-            {
-                if (handler.IsAsync)
-                {
-                    source.AppendLine($"return await {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-                }
-                else if (needsValueTaskWrap)
-                {
-                    source.AppendLine($"return new System.Threading.Tasks.ValueTask<{responseType.UnwrappedFullName}>({wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken));");
-                }
-                else
-                {
-                    source.AppendLine($"return {wrapperClassName}.{handlerMethodName}(scopedMediator.Services, typedMessage, cancellationToken);");
-                }
-            }
-        }
+        // Emit the interceptor method body
+        InterceptorCodeEmitter.EmitInterceptorMethodBody(source, handler, wrapperClassName, targetMethod, responseType, returnInfo);
 
         source.DecrementIndent();
         source.AppendLine("}");

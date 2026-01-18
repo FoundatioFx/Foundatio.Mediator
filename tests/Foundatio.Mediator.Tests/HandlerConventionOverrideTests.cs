@@ -31,11 +31,11 @@ public class HandlerConventionOverrideTests(ITestOutputHelper output) : Generato
         Assert.Contains("PingProcessor_Ping_Handler", handlerWrapper.Source);
 
         // Assert that the generated handler contains the expected method signatures
-        Assert.Contains("public static async System.Threading.Tasks.Task<string> HandleAsync", handlerWrapper.Source);
+        Assert.Contains("public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator", handlerWrapper.Source);
         Assert.Contains("public static async ValueTask<object?> UntypedHandleAsync", handlerWrapper.Source);
 
-        // Assert that the handler creation logic is present
-        Assert.Contains("GetOrCreateHandler", handlerWrapper.Source);
+        // Assert that the handler creation logic is present (uses static cached handler for singleton fast path)
+        Assert.Contains("_cachedHandler", handlerWrapper.Source);
     }
 
     [Fact]
@@ -66,11 +66,11 @@ public class HandlerConventionOverrideTests(ITestOutputHelper output) : Generato
         Assert.Contains("PingProcessor_Ping_Handler", handlerWrapper.Source);
 
         // Assert that the generated handler contains the expected method signatures
-        Assert.Contains("public static async System.Threading.Tasks.Task<string> HandleAsync", handlerWrapper.Source);
+        Assert.Contains("public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator", handlerWrapper.Source);
         Assert.Contains("public static async ValueTask<object?> UntypedHandleAsync", handlerWrapper.Source);
 
-        // Assert that the handler creation logic is present
-        Assert.Contains("GetOrCreateHandler", handlerWrapper.Source);
+        // Assert that the handler creation logic is present (uses static cached handler for singleton fast path)
+        Assert.Contains("_cachedHandler", handlerWrapper.Source);
     }
 
     [Fact]
@@ -101,11 +101,11 @@ public class HandlerConventionOverrideTests(ITestOutputHelper output) : Generato
         Assert.Contains("SomeClass_Ping_Handler", handlerWrapper.Source);
 
         // Assert that the generated handler contains the expected method signatures
-        Assert.Contains("public static async System.Threading.Tasks.Task<string> HandleAsync", handlerWrapper.Source);
+        Assert.Contains("public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator", handlerWrapper.Source);
         Assert.Contains("public static async ValueTask<object?> UntypedHandleAsync", handlerWrapper.Source);
 
-        // Assert that the handler creation logic is present
-        Assert.Contains("GetOrCreateHandler", handlerWrapper.Source);
+        // Assert that the handler creation logic is present (uses static cached handler for singleton fast path)
+        Assert.Contains("_cachedHandler", handlerWrapper.Source);
     }
 
 }

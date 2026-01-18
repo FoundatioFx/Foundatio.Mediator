@@ -2,6 +2,17 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "clean solution",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"clean"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
 			"label": "build solution",
 			"type": "shell",
 			"command": "dotnet",
@@ -15,6 +26,16 @@
 			"problemMatcher": [
 				"$msCompile"
 			]
+		},
+		{
+			"label": "rebuild solution",
+			"dependsOn": [
+				"clean solution",
+				"build solution"
+			],
+			"dependsOrder": "sequence",
+			"group": "build",
+			"problemMatcher": []
 		},
 		{
 			"label": "run tests",

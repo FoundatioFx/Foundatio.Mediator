@@ -170,12 +170,29 @@ internal static class TypeExtensions
             return EquatableArray<TupleItemInfo>.Empty;
 
         return new EquatableArray<TupleItemInfo>(named.TupleElements
-            .Select(e => new TupleItemInfo
+            .Select(e =>
             {
-                Name = e.Name ?? e.CorrespondingTupleField!.Name,
-                Field = e.CorrespondingTupleField!.Name,
-                IsNullable = e.Type.IsNullable(compilation),
-                TypeFullName = e.Type.ToDisplayString()
+                var unwrappedType = e.Type.UnwrapNullable(compilation);
+                var interfaces = unwrappedType.AllInterfaces
+                    .Select(i => i.ToDisplayString())
+                    .ToArray();
+                var baseClasses = new List<string>();
+                var baseType = unwrappedType.BaseType;
+                while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+                {
+                    baseClasses.Add(baseType.ToDisplayString());
+                    baseType = baseType.BaseType;
+                }
+
+                return new TupleItemInfo
+                {
+                    Name = e.Name ?? e.CorrespondingTupleField!.Name,
+                    Field = e.CorrespondingTupleField!.Name,
+                    IsNullable = e.Type.IsNullable(compilation),
+                    TypeFullName = e.Type.ToDisplayString(),
+                    Interfaces = new EquatableArray<string>(interfaces),
+                    BaseClasses = new EquatableArray<string>(baseClasses.ToArray())
+                };
             }).ToArray());
     }
 

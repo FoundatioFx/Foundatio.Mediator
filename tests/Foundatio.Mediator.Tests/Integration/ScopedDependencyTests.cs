@@ -102,8 +102,11 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
     }
 
     [Fact]
-    public async Task ScopedDependency_DifferentInstancesForSeparateRootInvocations()
+    public async Task ScopedDependency_SameInstanceWithinSameScope()
     {
+        // The mediator does NOT create scopes - DI scope management is the caller's responsibility.
+        // Within the same scope, scoped services return the same instance.
+
         // Arrange
         var capturedServices = new List<IScopedTestService>();
 
@@ -115,11 +118,46 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        // Act - Make two separate root invocations
+        // Act - Two invocations in the same scope
         await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
         await mediator.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
 
-        // Assert
+        // Assert - Same scope = same scoped service instance
+        Assert.Equal(2, capturedServices.Count);
+        Assert.Equal(capturedServices[0].Id, capturedServices[1].Id);
+    }
+
+    [Fact]
+    public async Task ScopedDependency_DifferentInstancesInDifferentScopes()
+    {
+        // When caller creates separate scopes, scoped services get different instances.
+        // The mediator must be registered as Scoped so each scope gets its own mediator
+        // with the scope's IServiceProvider.
+
+        // Arrange
+        var capturedServices = new List<IScopedTestService>();
+
+        var services = new ServiceCollection();
+        services.AddScoped<IScopedTestService, ScopedTestService>();
+        services.AddScoped<ServiceCapturingHandler>();
+        services.AddMediator(b => b.AddAssembly<ScopedDependencyTests>().SetMediatorLifetime(ServiceLifetime.Scoped));
+
+        await using var provider = services.BuildServiceProvider();
+
+        // Act - Two invocations in different scopes
+        await using (var scope1 = provider.CreateAsyncScope())
+        {
+            var mediator1 = scope1.ServiceProvider.GetRequiredService<IMediator>();
+            await mediator1.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
+        }
+
+        await using (var scope2 = provider.CreateAsyncScope())
+        {
+            var mediator2 = scope2.ServiceProvider.GetRequiredService<IMediator>();
+            await mediator2.InvokeAsync(new ServiceCaptureCommand(capturedServices), TestCancellationToken);
+        }
+
+        // Assert - Different scopes = different scoped service instances
         Assert.Equal(2, capturedServices.Count);
         Assert.NotEqual(capturedServices[0].Id, capturedServices[1].Id);
     }

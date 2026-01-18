@@ -46,7 +46,21 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 var generationCounterEnabled = options.GlobalOptions.TryGetValue($"build_property.{Constants.EnableGenerationCounterPropertyName}", out string? counterSwitch)
                     && counterSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, defaultMiddlewareLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled);
+                // Read notification publisher property (ForeachAwait | TaskWhenAll | FireAndForget). Default: ForeachAwait
+                // Publish interceptors are controlled by InterceptorsEnabled - if disabled, no publish interceptors are generated
+                string notificationPublisher = "ForeachAwait"; // Default to ForeachAwait for sequential publish semantics
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.NotificationPublisherPropertyName}", out string? publisherValue) && !string.IsNullOrWhiteSpace(publisherValue))
+                {
+                    var trimmed = publisherValue.Trim();
+                    if (trimmed.Equals("ForeachAwait", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Equals("TaskWhenAll", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Equals("FireAndForget", StringComparison.OrdinalIgnoreCase))
+                    {
+                        notificationPublisher = trimmed;
+                    }
+                }
+
+                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, defaultMiddlewareLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublisher);
             })
             .WithTrackingName(TrackingNames.Settings);
 
@@ -157,8 +171,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, filteredMiddleware, configuration);
         }
 
-        // Generate the InterceptsLocation attribute if we need interceptors (for local or cross-assembly handlers)
-        bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0;
+        // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)
+        bool hasPublishInterceptors = configuration.InterceptorsEnabled && callSites.Any(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter);
+        bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0 || hasPublishInterceptors;
         if (needsInterceptors)
         {
             InterceptsLocationGenerator.Execute(context, configuration);
@@ -168,6 +183,19 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         if (crossAssemblyCallSites.Count > 0)
         {
             CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlers, crossAssemblyCallSites.ToImmutableArray(), configuration);
+        }
+
+        // Combine local and cross-assembly handlers for cascading message handler lookup
+        var allHandlers = handlersWithInfo.Concat(crossAssemblyHandlers).ToList();
+
+        // Generate publish interceptors when interceptors are enabled
+        if (configuration.InterceptorsEnabled)
+        {
+            var publishCallSites = callSites.Where(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter).ToList();
+            if (publishCallSites.Count > 0)
+            {
+                PublishInterceptorGenerator.Execute(context, publishCallSites, allHandlers, configuration);
+            }
         }
 
         if (handlersWithInfo.Count == 0)
@@ -186,7 +214,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Generate shared async helpers once per assembly (used by all handlers)
         HelpersGenerator.Execute(context, configuration);
 
-        HandlerGenerator.Execute(context, handlersWithInfo, configuration);
+        HandlerGenerator.Execute(context, handlersWithInfo, allHandlers, configuration);
 
         sw.Stop();
         GeneratorDiagnostics.LogExecute(

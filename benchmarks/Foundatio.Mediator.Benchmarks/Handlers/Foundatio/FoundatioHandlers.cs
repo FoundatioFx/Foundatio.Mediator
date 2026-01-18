@@ -76,9 +76,9 @@ public class FoundatioCreateOrderHandler
 
 // Handlers for the cascaded OrderCreatedEvent
 [Handler]
-public class FoundatioFirstOrderCreatedHandler
+public static class FoundatioFirstOrderCreatedHandler
 {
-    public ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public static ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
         // First handler for order created event
         return default;
@@ -86,9 +86,9 @@ public class FoundatioFirstOrderCreatedHandler
 }
 
 [Handler]
-public class FoundatioSecondOrderCreatedHandler
+public static class FoundatioSecondOrderCreatedHandler
 {
-    public ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
+    public static ValueTask HandleAsync(OrderCreatedEvent notification, CancellationToken cancellationToken = default)
     {
         // Second handler for order created event
         return default;

@@ -19,7 +19,10 @@ public static class MediatorExtensions
             configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !a.FullName.StartsWith("System.")).ToList();
         }
 
-        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
+        // Get the notification publisher from the calling assembly (where AddMediator is called)
+        // If the calling assembly isn't a Foundatio module, fall back to the first config assembly
+        var callingAssembly = Assembly.GetCallingAssembly();
+        INotificationPublisher? publisher = GetNotificationPublisherFromAssembly(callingAssembly);
 
         foreach (var assembly in configuration.Assemblies!)
         {
@@ -32,15 +35,45 @@ public static class MediatorExtensions
                 t.IsSealed &&
                 t.Name.EndsWith("_MediatorHandlers"));
 
-            var method = moduleType?.GetMethod("AddHandlers", BindingFlags.Public | BindingFlags.Static);
+            if (moduleType == null)
+                continue;
 
-            if (method != null)
+            // If calling assembly wasn't a Foundatio module, use the first config assembly's publisher
+            if (publisher == null)
             {
-                method.Invoke(null, [services]);
+                var publisherProperty = moduleType.GetProperty("NotificationPublisher", BindingFlags.Public | BindingFlags.Static);
+                publisher = publisherProperty?.GetValue(null) as INotificationPublisher;
             }
+
+            // Call AddHandlers to register handlers
+            var method = moduleType.GetMethod("AddHandlers", BindingFlags.Public | BindingFlags.Static);
+            method?.Invoke(null, [services]);
         }
 
+        // Set the notification publisher: calling assembly > first config assembly > default
+        Mediator.NotificationPublisher = publisher ?? new ForeachAwaitPublisher();
+
+        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
+
         return services;
+    }
+
+    private static INotificationPublisher? GetNotificationPublisherFromAssembly(Assembly assembly)
+    {
+        if (!IsAssemblyMarkedWithFoundatioModule(assembly))
+            return null;
+
+        var moduleType = assembly.GetTypes().FirstOrDefault(t =>
+            t.IsClass &&
+            t.IsAbstract &&
+            t.IsSealed &&
+            t.Name.EndsWith("_MediatorHandlers"));
+
+        if (moduleType == null)
+            return null;
+
+        var publisherProperty = moduleType.GetProperty("NotificationPublisher", BindingFlags.Public | BindingFlags.Static);
+        return publisherProperty?.GetValue(null) as INotificationPublisher;
     }
 
     /// <summary>
@@ -107,47 +140,6 @@ public class MediatorConfigurationBuilder
     public MediatorConfigurationBuilder SetMediatorLifetime(ServiceLifetime lifetime)
     {
         _configuration.MediatorLifetime = lifetime;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the publisher for the mediator.
-    /// </summary>
-    /// <param name="publisher"></param>
-    /// <returns></returns>
-    public MediatorConfigurationBuilder SetPublisher(INotificationPublisher publisher)
-    {
-        _configuration.NotificationPublisher = publisher;
-        return this;
-    }
-
-    /// <summary>
-    /// Uses the ForeachAwaitPublisher for the mediator.
-    /// </summary>
-    /// <returns></returns>
-    public MediatorConfigurationBuilder UseForeachAwaitPublisher()
-    {
-        _configuration.NotificationPublisher = new ForeachAwaitPublisher();
-        return this;
-    }
-
-    /// <summary>
-    /// Uses the TaskWhenAllPublisher for the mediator.
-    /// </summary>
-    /// <returns></returns>
-    public MediatorConfigurationBuilder UseTaskWhenAllPublisher()
-    {
-        _configuration.NotificationPublisher = new TaskWhenAllPublisher();
-        return this;
-    }
-
-    /// <summary>
-    /// Uses the FireAndForgetPublisher for the mediator.
-    /// </summary>
-    /// <returns></returns>
-    public MediatorConfigurationBuilder UseFireAndForgetPublisher()
-    {
-        _configuration.NotificationPublisher = new FireAndForgetPublisher();
         return this;
     }
 

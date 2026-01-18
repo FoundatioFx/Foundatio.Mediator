@@ -8,4 +8,5 @@ internal static class Constants
     public const string DisableOpenTelemetryPropertyName = "MediatorDisableOpenTelemetry";
     public const string DisableConventionalDiscoveryPropertyName = "MediatorDisableConventionalDiscovery";
     public const string EnableGenerationCounterPropertyName = "MediatorEnableGenerationCounter";
+    public const string NotificationPublisherPropertyName = "MediatorNotificationPublisher";
 }

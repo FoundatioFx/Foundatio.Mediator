@@ -64,11 +64,11 @@ builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
 
 ### Automatic Handler Registration with MSBuild
 
-You can automatically register all handlers in your project with a specific lifetime using the `MediatorDefaultMediatorLifetime` MSBuild property:
+You can automatically register all handlers in your project with a specific lifetime using the `MediatorDefaultHandlerLifetime` MSBuild property:
 
 ```xml
 <PropertyGroup>
-    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
 </PropertyGroup>
 ```
 
@@ -93,7 +93,7 @@ You can automatically register all handlers in your project with a specific life
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
   </PropertyGroup>
 
   <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
@@ -130,7 +130,7 @@ builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
 
 ```csharp
-// Uses project-level MediatorDefaultMediatorLifetime
+// Uses project-level MediatorDefaultHandlerLifetime
 public class DefaultHandler
 {
     public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
@@ -168,7 +168,7 @@ public class ScopedHandler
 ```
 
 **Available `MediatorLifetime` values:**
-- `MediatorLifetime.Default` - Use project-level `MediatorDefaultMediatorLifetime`
+- `MediatorLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
 - `MediatorLifetime.Transient` - New instance per request
 - `MediatorLifetime.Scoped` - Same instance within a scope
 - `MediatorLifetime.Singleton` - Single instance for application lifetime

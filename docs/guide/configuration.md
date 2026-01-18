@@ -11,7 +11,7 @@ These properties control the source generator at compile time and affect code ge
 ```xml
 <PropertyGroup>
     <!-- Default lifetime for handlers that don't specify one (see per-handler lifetime below) -->
-    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
 
     <!-- Default lifetime for middleware that don't specify one (see per-middleware lifetime below) -->
     <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
@@ -29,7 +29,7 @@ These properties control the source generator at compile time and affect code ge
 
 ### Property Details
 
-**`MediatorDefaultMediatorLifetime`**
+**`MediatorDefaultHandlerLifetime`**
 
 - **Values:** `Scoped`, `Transient`, `Singleton`, `None`
 - **Default:** `None` (handlers not auto-registered)
@@ -48,7 +48,7 @@ These properties control the source generator at compile time and affect code ge
 Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
 
 ```csharp
-// Uses project-level MediatorDefaultMediatorLifetime
+// Uses project-level MediatorDefaultHandlerLifetime
 public class DefaultLifetimeHandler
 {
     public Task HandleAsync(MyMessage msg) => Task.CompletedTask;
@@ -77,7 +77,7 @@ public class FirstScopedHandler
 ```
 
 **Available `MediatorLifetime` values:**
-- `MediatorLifetime.Default` - Use project-level `MediatorDefaultMediatorLifetime`
+- `MediatorLifetime.Default` - Use project-level `MediatorDefaultHandlerLifetime`
 - `MediatorLifetime.Transient` - New instance per request
 - `MediatorLifetime.Scoped` - Same instance within a scope
 - `MediatorLifetime.Singleton` - Single instance for application lifetime
@@ -151,7 +151,7 @@ public class FirstTransientMiddleware
     <TargetFramework>net10.0</TargetFramework>
 
     <!-- Compile-time configuration -->
-    <MediatorDefaultMediatorLifetime>Scoped</MediatorDefaultMediatorLifetime>
+    <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
     <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>

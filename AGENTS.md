@@ -516,7 +516,7 @@ Handlers are NOT auto-registered in DI by default. Options:
 2. **Auto-registration via MSBuild**:
 
    ```xml
-   <MediatorDefaultMediatorLifetime>Transient|Scoped|Singleton</MediatorDefaultMediatorLifetime>
+   <MediatorDefaultHandlerLifetime>Transient|Scoped|Singleton</MediatorDefaultHandlerLifetime>
    ```
 
 ### Result Pattern
@@ -571,7 +571,7 @@ Defined in `src/Foundatio.Mediator/Foundatio.Mediator.props`:
 <MediatorDisableInterceptors>true|false</MediatorDisableInterceptors>
 
 <!-- Auto-register handlers in DI (default: None) -->
-<MediatorDefaultMediatorLifetime>None|Transient|Scoped|Singleton</MediatorDefaultMediatorLifetime>
+<MediatorDefaultHandlerLifetime>None|Transient|Scoped|Singleton</MediatorDefaultHandlerLifetime>
 
 <!-- Auto-register middleware in DI (default: None) -->
 <MediatorDefaultMiddlewareLifetime>None|Transient|Scoped|Singleton</MediatorDefaultMiddlewareLifetime>

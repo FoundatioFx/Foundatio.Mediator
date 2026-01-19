@@ -110,6 +110,47 @@ internal static class OrderHandler_CreateOrder_Handler
 
 ## Common Issues
 
+### Event Handlers Not Being Called
+
+**Symptom:** Event handlers (notification handlers) are not being invoked when events are published.
+
+**Cause:** Handler discovery is scoped to the current project and its referenced assemblies. This is by design for performance - the source generator only generates dispatch code for handlers it can see at compile time.
+
+**Key Points:**
+- Handlers are only discovered in the **current project** and **directly referenced projects**
+- If Project A publishes an event, only handlers in Project A or projects that A references will be called
+- Handlers in projects that reference Project A (downstream) will NOT be discovered
+
+**Example:**
+```
+Common.Module (defines events + cross-cutting handlers)
+    ↑
+Orders.Module (references Common, publishes OrderCreated)
+    ↑
+Web (references Orders)
+```
+
+In this structure:
+- When `Orders.Module` publishes `OrderCreated`, handlers in `Common.Module` ARE called (referenced)
+- Handlers defined in `Web` are NOT called (Web references Orders, not the other way around)
+
+**Solutions:**
+1. **Move shared event handlers to a common/lower-level module** that all publishing modules reference
+2. **Define events in the common module** so all handlers can subscribe to the same event type
+3. Use `AddAssembly<T>()` in your mediator configuration to register handlers from specific assemblies at runtime
+
+```csharp
+// In Program.cs, register assemblies containing handlers
+builder.Services.AddMediator(c =>
+{
+    c.AddAssembly<OrderCreated>();       // Common.Module (events + handlers)
+    c.AddAssembly<GetDashboardReport>(); // Reports.Module
+});
+```
+
+**Why this design?**
+The source generator analyzes handlers at compile time to generate optimized, direct dispatch code. This eliminates runtime reflection and provides maximum performance. The trade-off is that handler discovery follows project reference boundaries.
+
 ### Handler Not Found
 
 **Symptom:** `InvalidOperationException: No handler found for message type X`

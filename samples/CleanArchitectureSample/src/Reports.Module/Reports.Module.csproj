@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
+    <!-- Foundatio generator options -->
+    <MediatorDefaultHandlerLifetime>None</MediatorDefaultHandlerLifetime>
+    <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
+    <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
+    <MediatorEnableGenerationCounter>true</MediatorEnableGenerationCounter>
+    <MediatorProjectName>Reports</MediatorProjectName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="MediatorDisableInterceptors" />
+    <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
+    <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
+    <CompilerVisibleProperty Include="MediatorEnableGenerationCounter" />
+    <CompilerVisibleProperty Include="MediatorProjectName" />
+    <!-- Exclude the output of source generators from the compilation -->
+    <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
+    <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
+  </ItemGroup>
+
+  <Target Name="CleanCompilerGeneratedFiles" BeforeTargets="CoreGenerateSourceOutput;Clean">
+    <RemoveDir Directories="$(CompilerGeneratedFilesOutputPath)" />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="..\..\..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
+      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Common.Module\Common.Module.csproj" />
+    <!--
+      Note: We reference other modules only for their MESSAGE types (queries/events).
+      We do NOT reference their handlers or data access - all communication goes through the mediator.
+      This is a key Clean Architecture principle: modules communicate via messages, not direct calls.
+    -->
+    <ProjectReference Include="..\Orders.Module\Orders.Module.csproj" />
+    <ProjectReference Include="..\Products.Module\Products.Module.csproj" />
+  </ItemGroup>
+
+</Project>

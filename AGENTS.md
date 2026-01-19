@@ -73,7 +73,7 @@ samples/
 │   ├── Handlers/                      # Handler examples
 │   ├── Middleware/                    # Middleware examples
 │   └── Messages/                      # Message definitions
-└── ModularMonolithSample/             # Multi-module architecture example
+└── CleanArchitectureSample/             # Multi-module architecture example
 benchmarks/
 └── Foundatio.Mediator.Benchmarks/     # Performance benchmarks
 docs/                                  # VitePress documentation site
@@ -660,6 +660,6 @@ public class EntityHandler<T> where T : IEntity
 - [README.md](README.md) - Overview and feature list
 - [docs/](docs/) - Full documentation (VitePress)
 - [samples/ConsoleSample/](samples/ConsoleSample/) - Complete working examples
-- [samples/ModularMonolithSample/](samples/ModularMonolithSample/) - Multi-module architecture
+- [samples/CleanArchitectureSample/](samples/CleanArchitectureSample/) - Multi-module architecture
 - [tests/Foundatio.Mediator.Tests/Integration/](tests/Foundatio.Mediator.Tests/Integration/) - Real-world scenarios
 - [benchmarks/](benchmarks/) - Performance testing

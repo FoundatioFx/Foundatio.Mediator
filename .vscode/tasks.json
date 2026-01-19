@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "clean solution",
+			"label": "Clean Solution",
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
@@ -13,7 +13,7 @@
 			]
 		},
 		{
-			"label": "build solution",
+			"label": "Build Solution",
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
@@ -28,17 +28,17 @@
 			]
 		},
 		{
-			"label": "rebuild solution",
+			"label": "Rebuild Solution",
 			"dependsOn": [
-				"clean solution",
-				"build solution"
+				"Clean Solution",
+				"Build Solution"
 			],
 			"dependsOrder": "sequence",
 			"group": "build",
 			"problemMatcher": []
 		},
 		{
-			"label": "run tests",
+			"label": "Run Tests",
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
@@ -53,7 +53,7 @@
 			]
 		},
 		{
-			"label": "run comparison benchmarks",
+			"label": "Run Comparison Benchmarks",
 			"type": "shell",
 			"command": "pwsh",
 			"args": [
@@ -63,7 +63,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "run foundatio benchmarks",
+			"label": "Run Foundatio Benchmarks",
 			"type": "shell",
 			"command": "pwsh",
 			"args": [

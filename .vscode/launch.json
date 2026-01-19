@@ -5,13 +5,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-        "name": "Modular Monolith",
+        "name": "Clean Architecture Sample",
         "type": "dotnet",
         "request": "launch",
-        "projectPath": "${workspaceFolder}/samples/ModularMonolithSample/src/WebApp/WebApp.csproj",
+        "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Web/Web.csproj"
     },
     {
-        "name": "ConsoleSample",
+        "name": "Console Sample",
         "type": "dotnet",
         "request": "launch",
         "projectPath": "${workspaceFolder}/samples/ConsoleSample/ConsoleSample.csproj"

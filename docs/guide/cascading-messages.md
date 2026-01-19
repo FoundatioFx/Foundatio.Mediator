@@ -478,4 +478,24 @@ public class InventoryHandler  // Ends with 'Handler'
 }
 ```
 
+### Handler Discovery Scope
+
+::: warning Important
+Event handlers are only discovered in the **current project** and **directly referenced projects**. This is by design for performance - the source generator generates optimized dispatch code at compile time.
+:::
+
+If your event handlers aren't being called, check the project reference direction:
+
+```
+Common.Module (handlers here ARE called when Orders publishes)
+    ↑
+Orders.Module (publishes events)
+    ↑
+Web (handlers here are NOT called - wrong direction)
+```
+
+**Solution:** Place shared event handlers (like audit logging, notifications) in a common module that is referenced by all modules that publish events.
+
+See the [Troubleshooting Guide](./troubleshooting.md#event-handlers-not-being-called) for more details.
+
 Cascading messages enable powerful event-driven architectures while maintaining clean, focused handler code. Use them to decouple business logic and create reactive systems that respond to domain events naturally.

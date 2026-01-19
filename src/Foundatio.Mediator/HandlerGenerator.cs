@@ -916,8 +916,8 @@ internal static class HandlerGenerator
             return;
         }
 
-        // No explicit lifetime (None/Default) - use lazy caching
-        // No constructor dependencies - use new() with lazy initialization
+        // No explicit lifetime (None/Default) - use lazy caching only when safe
+        // No constructor dependencies - use new() with lazy initialization (safe to cache)
         if (!handler.RequiresConstructorInjection)
         {
             source.AppendLine()
@@ -932,19 +932,17 @@ internal static class HandlerGenerator
                     }
                     """);
         }
-        // Has constructor dependencies - use ActivatorUtilities with lazy caching
-        // We assume handler is NOT in DI when lifetime is not explicitly set
+        // Has constructor dependencies - create new instance every invocation
+        // Cannot cache because dependencies may be scoped services that get disposed
         else
         {
             source.AppendLine()
                   .AppendLines($$"""
-                    private static {{handler.FullName}}? _cachedHandler;
-
                     [DebuggerStepThrough]
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                     {
-                        return _cachedHandler ??= ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
+                        return ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
                     }
                     """);
         }
@@ -983,19 +981,17 @@ internal static class HandlerGenerator
                         }
                         """);
             }
-            // Has constructor dependencies - use ActivatorUtilities and cache
-            // We assume middleware is NOT in DI when lifetime is not explicitly set
+            // Has constructor dependencies - create new instance every invocation
+            // Cannot cache because dependencies may be scoped services that get disposed
             else
             {
                 source.AppendLine()
                       .AppendLines($$"""
-                        private static {{m.FullName}}? _cached{{m.Identifier}};
-
                         [DebuggerStepThrough]
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
                         {
-                            return _cached{{m.Identifier}} ??= ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
+                            return ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
                         }
                         """);
             }

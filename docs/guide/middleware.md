@@ -475,7 +475,7 @@ public class LoggingMiddleware
 
 The middleware will automatically be applied to all handlers in `Orders.Handlers` project.
 
-> **💡 Complete Example**: See the [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/ModularMonolithSample) for a working demonstration of cross-assembly middleware in a multi-module application with shared middleware in `Common.Module` being used by `Products.Module` and `Orders.Module`.
+> **💡 Complete Example**: See the [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) for a working demonstration of cross-assembly middleware in a multi-module application with shared middleware in `Common.Module` being used by `Products.Module` and `Orders.Module`.
 
 ### Setting Middleware Order
 
@@ -570,5 +570,5 @@ public void Before(object message) { }
 
 ## Next Steps
 
-- [Modular Monolith Sample](../../samples/ModularMonolithSample/) - Complete working example of cross-assembly middleware
+- [Modular Monolith Sample](../../samples/CleanArchitectureSample/) - Complete working example of cross-assembly middleware
 - [Handler Conventions](./handler-conventions) - Learn handler discovery rules

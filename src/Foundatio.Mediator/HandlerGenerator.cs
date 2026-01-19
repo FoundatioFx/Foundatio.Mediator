@@ -256,8 +256,9 @@ internal static class HandlerGenerator
     }
 
     /// <summary>
-    /// Generates HandleItem2Async, HandleItem3Async, etc. for tuple handlers.
+    /// Generates HandleItem2/HandleItem2Async, HandleItem3/HandleItem3Async, etc. for tuple handlers.
     /// Each method returns the Nth tuple item and cascades the rest.
+    /// Methods are sync if the handler is sync and there are no async cascading handlers.
     /// </summary>
     private static void GenerateHandleItemMethods(IndentedStringBuilder source, HandlerInfo handler, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
@@ -271,14 +272,6 @@ internal static class HandlerGenerator
         for (int targetIndex = 1; targetIndex < tupleItems.Length; targetIndex++)
         {
             var targetItem = tupleItems[targetIndex];
-            string methodName = GetHandlerItemMethodName(handler, targetIndex);
-            string returnTypeName = GetReturnTypeName(handler, targetIndex);
-            // Method is always async for tuple handlers
-            string methodReturnType = GetMethodSignatureReturnType(isAsync: true, isVoid: false, returnTypeName);
-
-            source.AppendLine($"public static async {methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)");
-            source.AppendLine("{");
-            source.IncrementIndent();
 
             // Get all items except the target item (those need to be cascaded)
             var itemsToCascade = tupleItems
@@ -289,6 +282,18 @@ internal static class HandlerGenerator
 
             // Check upfront if we have cascading handlers
             bool hasCascadingHandlers = itemsToCascade.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+
+            // Method is async only if handler is async or there are cascading handlers
+            bool isAsyncMethod = handler.IsAsync || hasCascadingHandlers;
+
+            string methodName = GetHandlerItemMethodName(handler, targetIndex, isAsyncMethod);
+            string returnTypeName = GetReturnTypeName(handler, targetIndex);
+            string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, isVoid: false, returnTypeName);
+            string asyncModifier = isAsyncMethod ? "async " : "";
+
+            source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)");
+            source.AppendLine("{");
+            source.IncrementIndent();
 
             // Get service provider directly from mediator - no scope creation
             source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
@@ -781,7 +786,7 @@ internal static class HandlerGenerator
             var groupCallSites = group.ToList();
 
             source.AppendLine();
-            GenerateInterceptorMethod(source, handler, key.MethodName, key.ResponseType, key.UsesIRequestOverload, key.IsAsyncMethod, groupCallSites, methodCounter++);
+            GenerateInterceptorMethod(source, handler, allHandlers, key.MethodName, key.ResponseType, key.UsesIRequestOverload, key.IsAsyncMethod, groupCallSites, methodCounter++);
         }
     }
 
@@ -790,7 +795,7 @@ internal static class HandlerGenerator
     /// For non-fast-path handlers, the interceptor simply casts the message and calls HandleAsync/HandleItemNAsync.
     /// The HandleAsync method handles scope creation, logging, middleware, and cascading internally.
     /// </summary>
-    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, string methodName, TypeSymbolInfo responseType, bool usesIRequestOverload, bool isAsyncMethod, List<CallSiteInfo> callSites, int methodIndex)
+    private static void GenerateInterceptorMethod(IndentedStringBuilder source, HandlerInfo handler, List<HandlerInfo> allHandlers, string methodName, TypeSymbolInfo responseType, bool usesIRequestOverload, bool isAsyncMethod, List<CallSiteInfo> callSites, int methodIndex)
     {
         string interceptorMethod = $"Intercept{methodName}{methodIndex}";
 
@@ -818,8 +823,8 @@ internal static class HandlerGenerator
         // Static handlers with no dependencies can be called directly (fast path)
         if (!InterceptorCodeEmitter.TryEmitStaticFastPath(source, handler, responseType, returnInfo.MethodIsAsync))
         {
-            // Standard path: call HandleAsync or HandleItemNAsync
-            string targetMethod = InterceptorCodeEmitter.GetTargetMethodName(handler, responseType);
+            // Standard path: call HandleAsync or HandleItemN/HandleItemNAsync
+            string targetMethod = InterceptorCodeEmitter.GetTargetMethodName(handler, responseType, allHandlers);
             InterceptorCodeEmitter.EmitInterceptorMethodBody(source, handler, "", targetMethod, responseType, returnInfo);
         }
 
@@ -829,16 +834,17 @@ internal static class HandlerGenerator
 
     /// <summary>
     /// Gets the method name for returning a specific tuple item (0-indexed).
-    /// Item 0 uses HandleAsync.
-    /// Items 1+ use HandleItem2Async, HandleItem3Async, etc.
+    /// Item 0 uses HandleAsync/Handle.
+    /// Items 1+ use HandleItem2Async/HandleItem2, HandleItem3Async/HandleItem3, etc.
     /// </summary>
-    public static string GetHandlerItemMethodName(HandlerInfo handler, int itemIndex)
+    public static string GetHandlerItemMethodName(HandlerInfo handler, int itemIndex, bool isAsyncMethod)
     {
         if (itemIndex == 0)
             return GetHandlerMethodName(handler);
 
         // itemIndex 1 = Item2, itemIndex 2 = Item3, etc.
-        return $"HandleItem{itemIndex + 1}Async";
+        string suffix = isAsyncMethod ? "Async" : "";
+        return $"HandleItem{itemIndex + 1}{suffix}";
     }
 
     private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null, string messageVar = "message")
@@ -1227,7 +1233,7 @@ internal static class HandlerGenerator
         });
     }
 
-    private static List<HandlerInfo> GetHandlersForCascadingMessage(TupleItemInfo item, List<HandlerInfo> allHandlers)
+    public static List<HandlerInfo> GetHandlersForCascadingMessage(TupleItemInfo item, List<HandlerInfo> allHandlers)
     {
         // Strip nullable marker from type for comparison
         string itemTypeName = item.TypeFullName.TrimEnd('?');

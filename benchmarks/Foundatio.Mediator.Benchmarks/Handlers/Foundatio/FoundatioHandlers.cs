@@ -27,7 +27,7 @@ public class FoundatioQueryHandler
 
 // Scenario 3: Event handlers (PublishAsync with multiple handlers)
 [Handler]
-public class FoundatioEventHandler
+public class FoundatioPublishHandler
 {
     public ValueTask HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
@@ -37,7 +37,7 @@ public class FoundatioEventHandler
 }
 
 [Handler]
-public class FoundatioSecondEventHandler
+public class FoundatioPublishSecondEventHandler
 {
     public ValueTask HandleAsync(UserRegisteredEvent notification, CancellationToken cancellationToken = default)
     {
@@ -65,7 +65,7 @@ public class FoundatioFullQueryHandler
 
 // Scenario 5: Cascading messages - returns tuple with result + events that auto-publish
 [Handler]
-public class FoundatioCreateOrderHandler
+public class FoundatioCascadingMessagesHandler
 {
     public ValueTask<(Order order, OrderCreatedEvent evt)> HandleAsync(CreateOrder command, CancellationToken cancellationToken = default)
     {

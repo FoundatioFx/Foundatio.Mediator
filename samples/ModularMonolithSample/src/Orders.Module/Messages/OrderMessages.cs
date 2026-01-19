@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Common.Module.Middleware;
+using Foundatio.Mediator;
 
 namespace Orders.Module.Messages;
 
@@ -26,7 +27,7 @@ public record DeleteOrder([Required] string OrderId) : IValidatable;
 
 // Queries
 public record GetOrder([Required] string OrderId) : IValidatable;
-public record GetOrders();
+public record GetOrders() : IQuery<Result<List<Order>>>;
 
 // Events
 public record OrderCreated(string OrderId, string CustomerId, decimal Amount, DateTime CreatedAt);

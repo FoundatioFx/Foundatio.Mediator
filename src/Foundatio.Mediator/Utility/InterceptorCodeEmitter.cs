@@ -228,30 +228,65 @@ internal static class InterceptorCodeEmitter
 
     /// <summary>
     /// Gets the target method name for a handler based on the response type.
-    /// For tuple handlers, returns HandleItemNAsync for the matching tuple item.
+    /// For tuple handlers, returns HandleItemN/HandleItemNAsync for the matching tuple item.
     /// </summary>
-    public static string GetTargetMethodName(HandlerInfo handler, TypeSymbolInfo responseType)
+    public static string GetTargetMethodName(HandlerInfo handler, TypeSymbolInfo responseType, List<HandlerInfo>? allHandlers = null)
     {
-        string baseMethodName = handler.IsAsync || handler.ReturnType.IsTuple ? "HandleAsync" : "Handle";
-
         if (!handler.ReturnType.IsTuple)
-            return baseMethodName;
+        {
+            return handler.IsAsync ? "HandleAsync" : "Handle";
+        }
 
         int itemIndex = FindTupleItemIndex(handler, responseType);
-        return GetHandlerItemMethodName(itemIndex >= 0 ? itemIndex : 0);
+        if (itemIndex <= 0)
+        {
+            // Item 0 (or not found): use HandleAsync/Handle based on handler
+            // The main HandleAsync method for tuples is always async because it handles cascading
+            return "HandleAsync";
+        }
+
+        // For itemIndex >= 1, check if the method needs to be async
+        bool isAsyncMethod = IsItemMethodAsync(handler, itemIndex, allHandlers);
+        return GetHandlerItemMethodName(itemIndex, isAsyncMethod);
+    }
+
+    /// <summary>
+    /// Determines if a HandleItemN method should be async.
+    /// It's async if the handler is async or if there are cascading handlers for the other tuple items.
+    /// </summary>
+    private static bool IsItemMethodAsync(HandlerInfo handler, int targetIndex, List<HandlerInfo>? allHandlers)
+    {
+        if (handler.IsAsync)
+            return true;
+
+        if (allHandlers == null || !handler.ReturnType.IsTuple)
+            return true; // Default to async if we can't determine
+
+        var tupleItems = handler.ReturnType.TupleItems;
+
+        // Get all items except the target item (those need to be cascaded)
+        var itemsToCascade = tupleItems
+            .Select((item, index) => (item, index))
+            .Where(x => x.index != targetIndex)
+            .Select(x => x.item)
+            .ToList();
+
+        // Check if any cascaded items have handlers
+        return itemsToCascade.Any(item => HandlerGenerator.GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
     }
 
     /// <summary>
     /// Gets the method name for returning a specific tuple item (0-indexed).
-    /// Item 0 uses HandleAsync, Items 1+ use HandleItem2Async, HandleItem3Async, etc.
+    /// Item 0 uses HandleAsync/Handle, Items 1+ use HandleItem2/HandleItem2Async, etc.
     /// </summary>
-    public static string GetHandlerItemMethodName(int itemIndex)
+    public static string GetHandlerItemMethodName(int itemIndex, bool isAsyncMethod)
     {
         if (itemIndex == 0)
-            return "HandleAsync";
+            return isAsyncMethod ? "HandleAsync" : "Handle";
 
         // itemIndex 1 = Item2, itemIndex 2 = Item3, etc.
-        return $"HandleItem{itemIndex + 1}Async";
+        string suffix = isAsyncMethod ? "Async" : "";
+        return $"HandleItem{itemIndex + 1}{suffix}";
     }
 }
 

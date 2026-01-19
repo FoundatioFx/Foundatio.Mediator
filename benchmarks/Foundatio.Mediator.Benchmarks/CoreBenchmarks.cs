@@ -49,8 +49,8 @@ public class CoreBenchmarks
     // Direct handler instances for baseline comparison
     private readonly FoundatioCommandHandler _directCommandHandler = new();
     private readonly FoundatioQueryHandler _directQueryHandler = new();
-    private readonly FoundatioEventHandler _directEventHandler = new();
-    private readonly FoundatioCreateOrderHandler _directCreateOrderHandler = new();
+    private readonly FoundatioPublishHandler _directEventHandler = new();
+    private readonly FoundatioCascadingMessagesHandler _directCreateOrderHandler = new();
     private FoundatioFullQueryHandler _directFullQueryHandler = null!;
 
     private readonly PingCommand _pingCommand = new("test-123");

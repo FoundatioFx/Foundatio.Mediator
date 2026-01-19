@@ -10,8 +10,8 @@ public static class SearchApi
     {
         endpoints.MapGet("/api/search", async (string? q, IMediator mediator) =>
         {
-            var ordersTask = mediator.InvokeAsync<Result<List<Order>>>(new GetOrders());
-            var productsTask = mediator.InvokeAsync<Result<List<Product>>>(new GetProducts());
+            var ordersTask = mediator.InvokeAsync(new GetOrders());
+            var productsTask = mediator.InvokeAsync(new GetProducts());
 
             await Task.WhenAll(ordersTask.AsTask(), productsTask.AsTask());
 

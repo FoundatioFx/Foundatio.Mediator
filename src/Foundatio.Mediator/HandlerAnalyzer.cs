@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
 
@@ -365,33 +364,57 @@ internal static class HandlerAnalyzer
     #region Endpoint Extraction
 
     /// <summary>
-    /// Extracts the XML documentation summary from a method symbol.
+    /// Extracts the XML documentation summary from a method symbol using syntax trivia.
+    /// Requires GenerateDocumentationFile to be enabled for the trivia to be parsed as documentation.
     /// </summary>
     private static string? ExtractXmlDocSummary(IMethodSymbol method)
     {
-        var xmlDoc = method.GetDocumentationCommentXml();
-        if (string.IsNullOrEmpty(xmlDoc))
+        var syntaxRef = method.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxRef == null)
             return null;
 
-        try
-        {
-            var doc = XDocument.Parse(xmlDoc);
-            var summary = doc.Descendants("summary").FirstOrDefault();
-            if (summary == null)
-                return null;
+        var syntax = syntaxRef.GetSyntax();
 
-            // Get text content and clean it up
-            var text = summary.Value?.Trim();
-            if (string.IsNullOrEmpty(text))
-                return null;
-
-            // Normalize whitespace
-            return System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
-        }
-        catch
+        // Check leading trivia for documentation comments
+        foreach (var trivia in syntax.GetLeadingTrivia())
         {
-            return null;
+            if (!trivia.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) &&
+                !trivia.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia))
+                continue;
+
+            if (trivia.GetStructure() is not DocumentationCommentTriviaSyntax docComment)
+                continue;
+
+            // Find the <summary> element
+            var summaryElement = docComment.Content
+                .OfType<XmlElementSyntax>()
+                .FirstOrDefault(e => e.StartTag.Name.ToString() == "summary");
+
+            if (summaryElement == null)
+                continue;
+
+            // Extract text content from the summary element
+            var textParts = new List<string>();
+            foreach (var content in summaryElement.Content)
+            {
+                if (content is XmlTextSyntax textSyntax)
+                {
+                    foreach (var token in textSyntax.TextTokens)
+                    {
+                        textParts.Add(token.ValueText);
+                    }
+                }
+            }
+
+            var text = string.Join("", textParts).Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                // Normalize whitespace
+                return System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
+            }
         }
+
+        return null;
     }
 
     /// <summary>

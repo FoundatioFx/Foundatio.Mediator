@@ -7,4 +7,7 @@ internal record GeneratorConfiguration(
     bool OpenTelemetryEnabled,
     bool ConventionalDiscoveryDisabled,
     bool GenerationCounterEnabled,
-    string NotificationPublisher);
+    string NotificationPublisher,
+    string EndpointDiscoveryMode,
+    bool EndpointRequireAuthDefault,
+    string? ProjectName);

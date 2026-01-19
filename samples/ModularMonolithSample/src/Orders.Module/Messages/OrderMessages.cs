@@ -16,23 +16,23 @@ public record CreateOrder(
 
     [Required(ErrorMessage = "Description is required")]
     [StringLength(200, MinimumLength = 5, ErrorMessage = "Description must be between 5 and 200 characters")]
-    string Description) : IValidatable;
+    string Description) : IValidatable, ICommand<Result<Order>>;
 
 public record UpdateOrder(
     [Required] string OrderId,
     decimal? Amount,
-    string? Description) : IValidatable;
+    string? Description) : IValidatable, ICommand<Result>;
 
-public record DeleteOrder([Required] string OrderId) : IValidatable;
+public record DeleteOrder([Required] string OrderId) : IValidatable, ICommand<Result>;
 
 // Queries
-public record GetOrder([Required] string OrderId) : IValidatable;
+public record GetOrder([Required] string OrderId) : IValidatable, IQuery<Result<Order>>;
 public record GetOrders() : IQuery<Result<List<Order>>>;
 
 // Events
-public record OrderCreated(string OrderId, string CustomerId, decimal Amount, DateTime CreatedAt);
-public record OrderUpdated(string OrderId, decimal Amount, DateTime UpdatedAt);
-public record OrderDeleted(string OrderId, DateTime DeletedAt);
+public record OrderCreated(string OrderId, string CustomerId, decimal Amount, DateTime CreatedAt) : INotification;
+public record OrderUpdated(string OrderId, decimal Amount, DateTime UpdatedAt) : INotification;
+public record OrderDeleted(string OrderId, DateTime DeletedAt) : INotification;
 
 // Models
 public record Order(

@@ -8,13 +8,12 @@ public static class DashboardApi
 {
     public static void MapDashboardEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/dashboard")
-            .WithTags("Dashboard");
+        var group = endpoints.MapGroup("/api/dashboard");
 
         group.MapGet("/", async (IMediator mediator) =>
         {
-            var ordersTask = mediator.InvokeAsync<Result<List<Order>>>(new GetOrders());
-            var productsTask = mediator.InvokeAsync<Result<List<Product>>>(new GetProducts());
+            var ordersTask = mediator.InvokeAsync(new GetOrders());
+            var productsTask = mediator.InvokeAsync(new GetProducts());
 
             await Task.WhenAll(ordersTask.AsTask(), productsTask.AsTask());
 
@@ -35,7 +34,7 @@ public static class DashboardApi
         group.MapPost("/quick-order", async (QuickOrderRequest request, IMediator mediator) =>
         {
             var command = new CreateOrder(request.CustomerId, request.Amount, request.Description ?? "Quick order");
-            var result = await mediator.InvokeAsync<Result<Order>>(command);
+            var result = await mediator.InvokeAsync(command);
 
             return result.IsSuccess
                 ? Results.Created($"/api/orders/{result.Value?.Id}", result.Value)
@@ -47,7 +46,7 @@ public static class DashboardApi
         group.MapPost("/quick-product", async (QuickProductRequest request, IMediator mediator) =>
         {
             var command = new CreateProduct(request.Name, request.Description ?? $"Product: {request.Name}", request.Price);
-            var result = await mediator.InvokeAsync<Result<Product>>(command);
+            var result = await mediator.InvokeAsync(command);
 
             return result.IsSuccess
                 ? Results.Created($"/api/products/{result.Value?.Id}", result.Value)

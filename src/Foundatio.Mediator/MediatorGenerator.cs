@@ -60,7 +60,28 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     }
                 }
 
-                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, defaultMiddlewareLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublisher);
+                // Read endpoint discovery mode (All | Explicit). Default: All
+                string endpointDiscoveryMode = "All";
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.EndpointDiscoveryPropertyName}", out string? discoveryMode) && !string.IsNullOrWhiteSpace(discoveryMode))
+                {
+                    var trimmed = discoveryMode.Trim();
+                    if (trimmed.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Equals("Explicit", StringComparison.OrdinalIgnoreCase))
+                    {
+                        endpointDiscoveryMode = trimmed;
+                    }
+                }
+
+                // Read endpoint require auth default. Default: false
+                var endpointRequireAuthDefault = options.GlobalOptions.TryGetValue($"build_property.{Constants.EndpointRequireAuthPropertyName}", out string? authSwitch)
+                    && authSwitch.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                // Read project name property for endpoint suffix. Default: null (uses assembly name)
+                string? projectName = null;
+                if (options.GlobalOptions.TryGetValue($"build_property.{Constants.ProjectNamePropertyName}", out string? projectNameValue) && !string.IsNullOrWhiteSpace(projectNameValue))
+                    projectName = projectNameValue.Trim();
+
+                return new GeneratorConfiguration(interceptorsEnabled, defaultHandlerLifetime, defaultMiddlewareLifetime, openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublisher, endpointDiscoveryMode, endpointRequireAuthDefault, projectName);
             })
             .WithTrackingName(TrackingNames.Settings);
 
@@ -197,6 +218,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 PublishInterceptorGenerator.Execute(context, publishCallSites, allHandlers, configuration);
             }
         }
+
+        // Generate endpoint registration for all handlers (local + cross-assembly)
+        // This must happen before the early return so WebApp can generate endpoints for handlers in referenced modules
+        EndpointGenerator.Execute(context, allHandlers, configuration, compilation);
 
         if (handlersWithInfo.Count == 0)
         {

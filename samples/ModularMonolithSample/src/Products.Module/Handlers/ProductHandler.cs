@@ -5,10 +5,14 @@ using Products.Module.Messages;
 
 namespace Products.Module.Handlers;
 
+[HandlerCategory("Products")]
 public class ProductHandler
 {
     private static readonly Dictionary<string, Product> _products = new();
 
+    /// <summary>
+    /// Creates a new product
+    /// </summary>
     public async Task<(Result<Product>, ProductCreated?)> HandleAsync(CreateProduct command)
     {
         string productId = Guid.NewGuid().ToString();
@@ -26,22 +30,31 @@ public class ProductHandler
         return (product, new ProductCreated(productId, command.Name, command.Price, DateTime.UtcNow));
     }
 
-    public async Task<Result<Product>> HandleAsync(GetProduct query)
+    /// <summary>
+    /// Gets a product by ID
+    /// </summary>
+    public Result<Product> Handle(GetProduct query)
     {
         if (!_products.TryGetValue(query.ProductId, out var product))
             return Result.NotFound($"Product {query.ProductId} not found");
 
-        await Task.CompletedTask; // Simulate async work
+        //await Task.CompletedTask; // Simulate async work
 
         return product;
     }
 
+    /// <summary>
+    /// Gets all products
+    /// </summary>
     public async Task<Result<List<Product>>> HandleAsync(GetProducts query)
     {
         await Task.CompletedTask; // Simulate async work
         return _products.Values.ToList();
     }
 
+    /// <summary>
+    /// Updates an existing product
+    /// </summary>
     public async Task<(Result<Product>, ProductUpdated?)> HandleAsync(UpdateProduct command)
     {
         if (!_products.TryGetValue(command.ProductId, out var existingProduct))
@@ -62,6 +75,9 @@ public class ProductHandler
         return (updatedProduct, new ProductUpdated(command.ProductId, updatedProduct.Name, updatedProduct.Price, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Deletes a product
+    /// </summary>
     public async Task<(Result, ProductDeleted?)> HandleAsync(DeleteProduct command)
     {
         if (!_products.Remove(command.ProductId, out _))
@@ -72,6 +88,9 @@ public class ProductHandler
         return (Result.Success(), new ProductDeleted(command.ProductId, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Handles entity actions for products
+    /// </summary>
     public async Task<Result> HandleAsync(EntityAction<Product> command, ILogger<ProductHandler> logger)
     {
         logger.LogInformation("Handling entity action {Action} for product {ProductId}: {TypeName}", command.Action, command.Entity.Id, MessageTypeKey.Get(typeof(EntityAction<Product>)));

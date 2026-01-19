@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
@@ -12,6 +14,7 @@
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
     <MediatorEnableGenerationCounter>true</MediatorEnableGenerationCounter>
+    <MediatorProjectName>Products</MediatorProjectName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +22,7 @@
     <CompilerVisibleProperty Include="MediatorDefaultHandlerLifetime" />
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
     <CompilerVisibleProperty Include="MediatorEnableGenerationCounter" />
+    <CompilerVisibleProperty Include="MediatorProjectName" />
     <!-- Exclude the output of source generators from the compilation -->
     <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
     <Content Include="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />

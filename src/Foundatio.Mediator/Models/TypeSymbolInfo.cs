@@ -79,6 +79,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsGeneric { get; init; }
     /// <summary>
+    /// Indicates if the type is a record (record class or record struct).
+    /// </summary>
+    public bool IsRecord { get; init; }
+    /// <summary>
     /// Contains information about the items in a tuple type, if applicable.
     /// </summary>
     public EquatableArray<TupleItemInfo> TupleItems { get; init; }
@@ -105,7 +109,8 @@ internal readonly record struct TypeSymbolInfo
             IsTuple = false,
             IsTypeParameter = false,
             TupleItems = EquatableArray<TupleItemInfo>.Empty,
-            IsGeneric = false
+            IsGeneric = false,
+            IsRecord = false
         };
     }
 
@@ -159,6 +164,7 @@ internal readonly record struct TypeSymbolInfo
 
         bool isGeneric = typeSymbol is INamedTypeSymbol { IsGenericType: true } nts && !nts.IsUnboundGenericType;
         bool isValueTask = typeSymbol.IsValueTask(compilation);
+        bool isRecord = unwrappedNullableType is INamedTypeSymbol { IsRecord: true };
 
         // Get the fully qualified metadata name for reliable type matching
         var qualifiedName = GetQualifiedName(unwrappedNullableType);
@@ -183,7 +189,8 @@ internal readonly record struct TypeSymbolInfo
             IsTuple = isTuple,
             IsTypeParameter = isTypeParameter,
             TupleItems = tupleItems,
-            IsGeneric = isGeneric
+            IsGeneric = isGeneric,
+            IsRecord = isRecord
         };
     }
 

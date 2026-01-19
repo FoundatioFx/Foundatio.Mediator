@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Foundatio.Mediator</InterceptorsNamespaces>
@@ -12,6 +14,7 @@
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
     <MediatorEnableGenerationCounter>true</MediatorEnableGenerationCounter>
+    <MediatorProjectName>Web</MediatorProjectName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,7 +41,7 @@
   <ItemGroup>
     <PackageReference Include="MiniValidation" Version="0.9.2" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.0.36" />
   </ItemGroup>
 
 </Project>

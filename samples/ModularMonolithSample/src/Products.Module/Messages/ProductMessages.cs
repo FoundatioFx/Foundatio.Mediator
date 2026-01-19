@@ -31,9 +31,9 @@ public record GetProduct([Required] string ProductId) : IValidatable, IQuery<Res
 public record GetProducts() : IQuery<Result<List<Product>>>;
 
 // Events
-public record ProductCreated(string ProductId, string Name, decimal Price, DateTime CreatedAt);
-public record ProductUpdated(string ProductId, string Name, decimal Price, DateTime UpdatedAt);
-public record ProductDeleted(string ProductId, DateTime DeletedAt);
+public record ProductCreated(string ProductId, string Name, decimal Price, DateTime CreatedAt) : INotification;
+public record ProductUpdated(string ProductId, string Name, decimal Price, DateTime UpdatedAt) : INotification;
+public record ProductDeleted(string ProductId, DateTime DeletedAt) : INotification;
 
 // Models
 public record Product(

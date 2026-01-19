@@ -7,5 +7,8 @@
     <CompilerVisibleProperty Include="MediatorDisableOpenTelemetry" />
     <CompilerVisibleProperty Include="MediatorDisableConventionalDiscovery" />
     <CompilerVisibleProperty Include="MediatorEnableGenerationCounter" />
+    <CompilerVisibleProperty Include="MediatorEndpointDiscovery" />
+    <CompilerVisibleProperty Include="MediatorEndpointRequireAuth" />
+    <CompilerVisibleProperty Include="MediatorProjectName" />
   </ItemGroup>
 </Project>

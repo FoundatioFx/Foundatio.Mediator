@@ -40,7 +40,6 @@ public static class SearchApi
             ));
         })
         .WithName("Search")
-        .WithTags("Search")
         .WithSummary("Search across orders and products");
     }
 }

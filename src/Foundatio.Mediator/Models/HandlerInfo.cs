@@ -46,6 +46,18 @@ internal readonly record struct HandlerInfo
     /// </summary>
     public bool HasConstructorParameters { get; init; }
 
+    /// <summary>
+    /// Endpoint metadata for generating minimal API endpoints.
+    /// Null if endpoint generation is disabled for this handler.
+    /// </summary>
+    public EndpointInfo? Endpoint { get; init; }
+
+    /// <summary>
+    /// XML documentation summary extracted from the handler method.
+    /// Used as the default endpoint summary for OpenAPI.
+    /// </summary>
+    public string? XmlDocSummary { get; init; }
+
     #region Dependency Requirements
 
     /// <summary>

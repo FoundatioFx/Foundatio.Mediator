@@ -9,4 +9,7 @@ internal static class Constants
     public const string DisableConventionalDiscoveryPropertyName = "MediatorDisableConventionalDiscovery";
     public const string EnableGenerationCounterPropertyName = "MediatorEnableGenerationCounter";
     public const string NotificationPublisherPropertyName = "MediatorNotificationPublisher";
+    public const string EndpointDiscoveryPropertyName = "MediatorEndpointDiscovery";
+    public const string EndpointRequireAuthPropertyName = "MediatorEndpointRequireAuth";
+    public const string ProjectNamePropertyName = "MediatorProjectName";
 }

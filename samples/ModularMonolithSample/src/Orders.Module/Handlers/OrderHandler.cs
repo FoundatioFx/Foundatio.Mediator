@@ -5,10 +5,14 @@ using Orders.Module.Messages;
 
 namespace Orders.Module.Handlers;
 
+[HandlerCategory("Orders")]
 public class OrderHandler
 {
     private static readonly Dictionary<string, Order> _orders = new();
 
+    /// <summary>
+    /// Creates a new order
+    /// </summary>
     public async Task<(Result<Order>, OrderCreated?)> HandleAsync(CreateOrder command)
     {
         string orderId = Guid.NewGuid().ToString();
@@ -26,6 +30,9 @@ public class OrderHandler
         return (order, new OrderCreated(orderId, command.CustomerId, command.Amount, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Gets an order by ID
+    /// </summary>
     public async Task<Result<Order>> HandleAsync(GetOrder query)
     {
         if (!_orders.TryGetValue(query.OrderId, out var order))
@@ -36,12 +43,18 @@ public class OrderHandler
         return order;
     }
 
+    /// <summary>
+    /// Gets all orders
+    /// </summary>
     public async Task<Result<List<Order>>> HandleAsync(GetOrders query)
     {
         await Task.CompletedTask; // Simulate async work
         return _orders.Values.ToList();
     }
 
+    /// <summary>
+    /// Updates an existing order
+    /// </summary>
     public async Task<(Result<Order>, OrderUpdated?)> HandleAsync(UpdateOrder command)
     {
         if (!_orders.TryGetValue(command.OrderId, out var existingOrder))
@@ -61,6 +74,9 @@ public class OrderHandler
         return (updatedOrder, new OrderUpdated(command.OrderId, updatedOrder.Amount, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Deletes an order
+    /// </summary>
     public async Task<(Result, OrderDeleted?)> HandleAsync(DeleteOrder command)
     {
         if (!_orders.Remove(command.OrderId, out _))
@@ -71,6 +87,9 @@ public class OrderHandler
         return (Result.Success(), new OrderDeleted(command.OrderId, DateTime.UtcNow));
     }
 
+    /// <summary>
+    /// Handles entity actions for orders
+    /// </summary>
     public async Task<Result> HandleAsync(EntityAction<Order> command, ILogger<OrderHandler> logger)
     {
         logger.LogInformation("Handling entity action {Action} for order {OrderId}: {TypeName}", command.Action, command.Entity.Id, MessageTypeKey.Get(typeof(EntityAction<Order>)));

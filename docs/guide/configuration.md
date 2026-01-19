@@ -32,16 +32,20 @@ These properties control the source generator at compile time and affect code ge
 **`MediatorDefaultHandlerLifetime`**
 
 - **Values:** `Scoped`, `Transient`, `Singleton`, `None`
-- **Default:** `None` (handlers not auto-registered)
-- **Effect:** Automatically registers all discovered handlers with the specified DI lifetime, unless overridden by `[Handler(Lifetime = ...)]` attribute
-- **Note:** When set to `None`, handlers are not automatically registered in DI unless they specify a lifetime via attribute
+- **Default:** `None` (handlers use internal caching)
+- **Effect:** Registers all discovered handlers with the specified DI lifetime, unless overridden by `[Handler(Lifetime = ...)]` attribute
+- **Behavior by value:**
+  - `Scoped`/`Transient`/`Singleton`: Always resolved from DI on every invocation
+  - `None`: Handlers are cached internally (no constructor deps → `new()`, with constructor deps → `ActivatorUtilities.CreateInstance`)
 
 **`MediatorDefaultMiddlewareLifetime`**
 
 - **Values:** `Scoped`, `Transient`, `Singleton`, `None`
-- **Default:** `None` (middleware not auto-registered, uses internal caching)
-- **Effect:** Automatically registers all discovered middleware with the specified DI lifetime, unless overridden by `[Middleware(Lifetime = ...)]` attribute
-- **Note:** When set to `None`, middleware instances are cached internally (effectively singleton behavior). Setting a lifetime enables proper DI lifecycle management.
+- **Default:** `None` (middleware uses internal caching)
+- **Effect:** Registers all discovered middleware with the specified DI lifetime, unless overridden by `[Middleware(Lifetime = ...)]` attribute
+- **Behavior by value:**
+  - `Scoped`/`Transient`/`Singleton`: Always resolved from DI on every invocation
+  - `None`: Middleware is cached internally (no constructor deps → `new()`, with constructor deps → `ActivatorUtilities.CreateInstance`)
 
 ### Per-Handler Lifetime Override
 

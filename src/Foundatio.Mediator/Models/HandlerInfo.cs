@@ -42,41 +42,151 @@ internal readonly record struct HandlerInfo
     public string? Lifetime { get; init; }
 
     /// <summary>
-    /// Whether this handler class has constructor parameters (indicating DI dependencies).
+    /// Whether this handler class has constructor parameters requiring DI.
     /// </summary>
     public bool HasConstructorParameters { get; init; }
 
+    #region Dependency Requirements
+
     /// <summary>
-    /// Whether this handler requires DI services beyond the message and CancellationToken.
-    /// When false, the interceptor can skip scope creation for maximum performance.
+    /// Whether the handler constructor requires dependency injection.
+    /// True when the handler class has constructor parameters.
     /// </summary>
-    public bool HasMethodDIParameters =>
+    public bool RequiresConstructorInjection => HasConstructorParameters;
+
+    /// <summary>
+    /// Whether the handler method requires dependency injection for parameters beyond message and CancellationToken.
+    /// Parameters that don't require DI: the message parameter, CancellationToken.
+    /// </summary>
+    public bool RequiresMethodInjection =>
         Parameters.Any(p => !p.IsMessageParameter && !p.Type.IsCancellationToken);
 
     /// <summary>
-    /// Whether this handler can use the zero-allocation fast path interceptor.
-    /// True when the handler is static, has no middleware, no cascading messages, and no method DI parameters.
-    /// Static handlers are guaranteed to not have scoped dependencies since they don't use DI for instantiation.
+    /// Whether this handler has no dependencies at all (no constructor or method injection required).
+    /// When true for an instance handler, the handler can be cached in a static field.
     /// </summary>
-    public bool CanUseZeroAllocFastPath =>
-        IsStatic && // Must be static for zero-alloc
-        !HasMethodDIParameters && // No DI parameters in the method
-        !Middleware.Any() && // No middleware - fast path skips middleware execution entirely
-        !ReturnType.IsTuple; // No cascading messages
+    public bool HasNoDependencies =>
+        !RequiresConstructorInjection &&
+        !RequiresMethodInjection &&
+        Middleware.All(m => m.HasNoDependencies);
 
     /// <summary>
-    /// Whether this handler can use the singleton fast path interceptor.
-    /// True when the handler has no constructor parameters, no DI method parameters, and all middleware can use fast path.
-    /// This applies to handlers that have parameterless constructors and no DI dependencies.
-    /// The handler instance is cached in a static field, and scope creation is skipped in the interceptor.
-    /// Middleware can use fast path if they are static or have no constructor/method DI parameters.
-    /// Cascading messages are allowed - they're published using the mediator without creating a scope.
+    /// Whether this handler is static with no dependencies.
+    /// When true, the handler can be called directly without any instance creation or DI resolution.
+    /// This is the most optimal path - no async state machine, no middleware, no service provider needed.
     /// </summary>
-    public bool CanUseSingletonFastPath =>
-        !IsStatic && // Instance handler (static uses zero-alloc path)
-        !HasConstructorParameters && // No constructor DI parameters
-        !HasMethodDIParameters && // No DI parameters in the method
-        Middleware.All(m => m.CanUseFastPath); // All middleware must be able to use fast path (or no middleware)
+    public bool IsStaticWithNoDependencies =>
+        IsStatic &&
+        !RequiresMethodInjection &&
+        !Middleware.Any() &&
+        !ReturnType.IsTuple;
+
+    #endregion
+
+    #region Middleware Requirements
+
+    /// <summary>
+    /// Whether this handler has any middleware attached.
+    /// </summary>
+    public bool HasMiddleware => Middleware.Any();
+
+    /// <summary>
+    /// Whether this handler has any before middleware methods.
+    /// </summary>
+    public bool HasBeforeMiddleware => Middleware.Any(m => m.BeforeMethod != null);
+
+    /// <summary>
+    /// Whether this handler has any after middleware methods.
+    /// </summary>
+    public bool HasAfterMiddleware => Middleware.Any(m => m.AfterMethod != null);
+
+    /// <summary>
+    /// Whether this handler has any finally middleware methods.
+    /// These require try/catch/finally blocks to ensure they run even on exceptions.
+    /// </summary>
+    public bool HasFinallyMiddleware => Middleware.Any(m => m.FinallyMethod != null);
+
+    /// <summary>
+    /// Whether any middleware is async.
+    /// </summary>
+    public bool HasAsyncMiddleware => Middleware.Any(m => m.IsAsync);
+
+    /// <summary>
+    /// Whether any middleware requires a HandlerExecutionInfo parameter.
+    /// When true, the generated code must construct HandlerExecutionInfo.
+    /// </summary>
+    public bool RequiresHandlerExecutionInfo => Middleware.Any(m =>
+        (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+        (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+        (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+
+    /// <summary>
+    /// Whether any middleware requires instantiation (non-static middleware).
+    /// </summary>
+    public bool RequiresMiddlewareInstances => Middleware.Any(m => !m.IsStatic);
+
+    #endregion
+
+    #region Code Generation Requirements
+
+    /// <summary>
+    /// Whether the handler returns a tuple with cascading messages.
+    /// When true, non-first tuple items need to be published after handler execution.
+    /// </summary>
+    public bool HasCascadingMessages => ReturnType.IsTuple && ReturnType.TupleItems.Length > 1;
+
+    /// <summary>
+    /// Whether a service provider is needed for handler execution.
+    /// True when handler or middleware requires DI resolution.
+    /// </summary>
+    public bool RequiresServiceProvider =>
+        RequiresMethodInjection ||
+        RequiresMiddlewareInstances ||
+        (!IsStatic && !HasNoDependencies);
+
+    /// <summary>
+    /// Whether a result variable is needed to store the handler's return value.
+    /// True when handler has a return value and there's middleware, try/catch, or cascading.
+    /// </summary>
+    public bool RequiresResultVariable =>
+        HasReturnValue && (HasMiddleware || HasFinallyMiddleware || HasCascadingMessages);
+
+    /// <summary>
+    /// Whether the generated code needs try/catch/finally blocks.
+    /// True when there's finally middleware (must run even on exceptions).
+    /// Note: OpenTelemetry also requires try/catch but that's checked at generation time with configuration.
+    /// </summary>
+    public bool RequiresTryCatch => HasFinallyMiddleware;
+
+    /// <summary>
+    /// Whether the handler can use a direct passthrough without async state machine.
+    /// True for static handlers with no dependencies, middleware, or cascading.
+    /// Note: OpenTelemetry disables this, but that's checked at generation time with configuration.
+    /// </summary>
+    public bool CanSkipAsyncStateMachine =>
+        (IsStaticWithNoDependencies || (HasNoDependencies && !HasMiddleware && !HasCascadingMessages));
+
+    #endregion
+
+    #region Handler Instantiation Strategy
+
+    /// <summary>
+    /// Whether handler instances can be cached (singleton-like behavior).
+    /// True when handler has no dependencies or explicit Singleton lifetime.
+    /// </summary>
+    public bool CanCacheHandlerInstance =>
+        HasNoDependencies ||
+        string.Equals(Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the handler must be resolved from DI on every invocation.
+    /// True for Scoped or Transient lifetime handlers.
+    /// </summary>
+    public bool RequiresDIResolutionPerInvocation =>
+        string.Equals(Lifetime, "Scoped", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Lifetime, "Transient", StringComparison.OrdinalIgnoreCase);
+
+    #endregion
 }
 
 internal readonly record struct ParameterInfo

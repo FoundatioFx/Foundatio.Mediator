@@ -148,16 +148,16 @@ internal static class InterceptorCodeEmitter
     }
 
     /// <summary>
-    /// Emits the zero-allocation fast path for static handlers.
+    /// Emits the zero-allocation fast path for static handlers with no dependencies.
     /// Returns true if fast path was emitted, false otherwise.
     /// </summary>
-    public static bool TryEmitZeroAllocFastPath(
+    public static bool TryEmitStaticFastPath(
         IndentedStringBuilder source,
         HandlerInfo handler,
         TypeSymbolInfo responseType,
         bool methodIsAsync)
     {
-        if (!handler.CanUseZeroAllocFastPath)
+        if (!handler.IsStaticWithNoDependencies)
             return false;
 
         bool hasCancellationToken = handler.Parameters.Any(p => p.Type.IsCancellationToken);

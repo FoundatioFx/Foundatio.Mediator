@@ -370,19 +370,46 @@ public class AsyncMiddleware
 }
 ```
 
-## Middleware Registration
+## Middleware Lifetime
 
-Middleware are discovered automatically, but you can control their lifetime by registering them in DI:
+### Lifetime Behavior
+
+| Lifetime | Behavior |
+|----------|----------|
+| **Scoped** | Resolved from DI on every invocation |
+| **Transient** | Resolved from DI on every invocation |
+| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
+| **None/Default** (no constructor deps) | Created once with `new()` and cached |
+| **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
+
+### Controlling Lifetime with [Middleware] Attribute
+
+Use the `[Middleware]` attribute to explicitly control lifetime:
 
 ```csharp
-// Singleton (default behavior)
-services.AddSingleton<ValidationMiddleware>();
+// Resolved from DI - DI handles singleton caching
+[Middleware(Lifetime = MediatorLifetime.Singleton)]
+public class LoggingMiddleware { /* ... */ }
 
-// Scoped (new instance per request)
-services.AddScoped<DatabaseTransactionMiddleware>();
+// Resolved from DI on every invocation
+[Middleware(Lifetime = MediatorLifetime.Scoped)]
+public class ValidationMiddleware { /* ... */ }
 
-// Transient (new instance per use)
-services.AddTransient<DisposableMiddleware>();
+// No explicit lifetime - cached in static field since no constructor deps
+public class SimpleMiddleware
+{
+    public void Before(object message) { /* ... */ }
+}
+```
+
+### Project-Level Default
+
+Set a default lifetime for all middleware:
+
+```xml
+<PropertyGroup>
+    <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
+</PropertyGroup>
 ```
 
 ## Middleware Discovery

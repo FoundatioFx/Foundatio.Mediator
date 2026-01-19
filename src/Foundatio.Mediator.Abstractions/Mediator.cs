@@ -294,31 +294,11 @@ public class Mediator : IMediator, IServiceProvider
 
     public static void ClearCache()
     {
-        _middlewareCache.Clear();
         _invokeAsyncCache.Clear();
         _invokeCache.Clear();
         _invokeAsyncWithResponseCache.Clear();
         _invokeWithResponseCache.Clear();
         _publishCache.Clear();
-    }
-
-    private static readonly ConcurrentDictionary<Type, object> _middlewareCache = new();
-
-    [DebuggerStepThrough]
-    public static T GetOrCreateMiddleware<T>(IServiceProvider serviceProvider) where T : class
-    {
-        // Check cache first - if it's there, it means it's not registered in DI
-        if (_middlewareCache.TryGetValue(typeof(T), out object? cachedInstance))
-            return (T)cachedInstance;
-
-        // Try to get from DI - if registered, always use DI (respects service lifetime)
-        var middleware = serviceProvider.GetService<T>();
-        if (middleware != null)
-            return middleware;
-
-        // Not in DI, create and cache our own instance
-        return (T)_middlewareCache.GetOrAdd(typeof(T), type =>
-            ActivatorUtilities.CreateInstance<T>(serviceProvider));
     }
 
     private delegate ValueTask InvokeAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);

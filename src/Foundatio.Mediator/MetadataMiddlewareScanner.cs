@@ -237,15 +237,31 @@ internal static class MetadataMiddlewareScanner
 
         /// <summary>
         /// Checks if any middleware method has DI parameters that would require serviceProvider.GetRequiredService.
+        /// Parameters that are NOT DI parameters: message (first param), CancellationToken, HandlerExecutionInfo, Exception,
+        /// and the return type of the Before method (which is passed to After/Finally methods).
         /// </summary>
         private bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod)
         {
-            return HasDIParameters(beforeMethod) ||
-                   HasDIParameters(afterMethod) ||
-                   HasDIParameters(finallyMethod);
+            // Get the Before method's return type (if any) to exclude from DI detection in After/Finally
+            ITypeSymbol? beforeMethodReturnType = null;
+            if (beforeMethod != null && !beforeMethod.ReturnsVoid)
+            {
+                beforeMethodReturnType = beforeMethod.ReturnType;
+                // Unwrap Task<T> or ValueTask<T> to get T
+                if (beforeMethodReturnType is INamedTypeSymbol { IsGenericType: true } taskType &&
+                    (taskType.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.Task<TResult>" ||
+                     taskType.ConstructedFrom.ToDisplayString() == "System.Threading.Tasks.ValueTask<TResult>"))
+                {
+                    beforeMethodReturnType = taskType.TypeArguments[0];
+                }
+            }
+
+            return HasDIParameters(beforeMethod, beforeMethodReturnType: null) ||
+                   HasDIParameters(afterMethod, beforeMethodReturnType) ||
+                   HasDIParameters(finallyMethod, beforeMethodReturnType);
         }
 
-        private bool HasDIParameters(IMethodSymbol? method)
+        private bool HasDIParameters(IMethodSymbol? method, ITypeSymbol? beforeMethodReturnType)
         {
             if (method == null)
                 return false;
@@ -281,6 +297,13 @@ internal static class MetadataMiddlewareScanner
 
                 // Object type with name "handlerResult" is not a DI parameter
                 if (SymbolEqualityComparer.Default.Equals(param.Type, objectType) && param.Name == "handlerResult")
+                    continue;
+
+                // Before method return type (including nullable) is not a DI parameter
+                // This handles cases like Finally(message, Stopwatch? stopwatch) where Stopwatch is from Before()
+                if (beforeMethodReturnType != null &&
+                    (SymbolEqualityComparer.Default.Equals(param.Type, beforeMethodReturnType) ||
+                     SymbolEqualityComparer.Default.Equals(unwrappedType, beforeMethodReturnType)))
                     continue;
 
                 // Any other parameter type is considered a DI parameter

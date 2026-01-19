@@ -106,6 +106,12 @@ internal static class HandlerGenerator
             GenerateGetOrCreateHandler(source, handler);
         }
 
+        // Generate middleware instantiation infrastructure
+        GenerateMiddlewareInstantiation(source, handler);
+
+        // Generate cached HandlerExecutionInfo if needed by middleware
+        GenerateHandlerExecutionInfoField(source, handler);
+
         source.DecrementIndent();
         source.AppendLine("}");
 
@@ -125,12 +131,8 @@ internal static class HandlerGenerator
         string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, handler.ReturnType.IsVoid, returnTypeName);
 
         // Check if we can generate a pass-through method without async state machine
-        // This applies when:
-        // 1. Static handler with no middleware, no OTel, no cascading (CanUseZeroAllocFastPath)
-        // 2. Singleton fast path handler with no middleware, no OTel, no cascading (CanUseSingletonFastPath + no middleware)
-        bool canUseStaticFastPath = handler.CanUseZeroAllocFastPath && !configuration.OpenTelemetryEnabled;
-        bool canUseSingletonFastPath = handler.CanUseSingletonFastPath && !handler.Middleware.Any() && !handler.ReturnType.IsTuple && !configuration.OpenTelemetryEnabled;
-        bool canSkipAsyncStateMachine = canUseStaticFastPath || canUseSingletonFastPath;
+        // This applies when handler has no dependencies, no middleware, no cascading, and no OTel
+        bool canSkipAsyncStateMachine = handler.CanSkipAsyncStateMachine && !configuration.OpenTelemetryEnabled;
 
         string asyncModifier = (isAsyncMethod && !canSkipAsyncStateMachine) ? "async " : "";
 
@@ -157,8 +159,27 @@ internal static class HandlerGenerator
             bool hasCancellationToken = handler.Parameters.Any(p => p.Type.IsCancellationToken);
             string handlerArgs = hasCancellationToken ? "message, cancellationToken" : "message";
 
-            // Determine accessor: static handlers use full type name, singleton fast path uses _cachedHandler
-            string accessor = handler.IsStatic ? handler.FullName : "_cachedHandler";
+            // Determine accessor based on handler configuration
+            string accessor;
+            if (handler.IsStatic)
+            {
+                accessor = handler.FullName;
+            }
+            else if (handler.RequiresDIResolutionPerInvocation ||
+                     string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            {
+                // Scoped/Transient/Singleton: resolve from DI
+                source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+                source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
+                accessor = "handlerInstance";
+            }
+            else
+            {
+                // No explicit DI lifetime - use lazy caching via GetOrCreateHandler
+                source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+                source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
+                accessor = "handlerInstance";
+            }
 
             if (handler.ReturnType.IsVoid)
             {
@@ -302,11 +323,18 @@ internal static class HandlerGenerator
     {
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
-        var beforeMiddleware = handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList();
-        var afterMiddleware = handler.Middleware.Where(m => m.AfterMethod != null).Reverse().Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList();
-        var finallyMiddleware = handler.Middleware.Where(m => m.FinallyMethod != null).Reverse().Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList();
+        // Build middleware lists only if handler has that type of middleware
+        var beforeMiddleware = handler.HasBeforeMiddleware
+            ? handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList()
+            : [];
+        var afterMiddleware = handler.HasAfterMiddleware
+            ? handler.Middleware.Where(m => m.AfterMethod != null).Reverse().Select(m => (Method: m.AfterMethod!.Value, Middleware: m)).ToList()
+            : [];
+        var finallyMiddleware = handler.HasFinallyMiddleware
+            ? handler.Middleware.Where(m => m.FinallyMethod != null).Reverse().Select(m => (Method: m.FinallyMethod!.Value, Middleware: m)).ToList()
+            : [];
 
-        bool shouldUseTryCatch = finallyMiddleware.Any() || configuration.OpenTelemetryEnabled;
+        bool requiresTryCatch = handler.RequiresTryCatch || configuration.OpenTelemetryEnabled;
 
         // Setup phase: OTel, handler info, middleware instances, result variables
         EmitOpenTelemetrySetup(source, handler, configuration, variables);
@@ -316,7 +344,7 @@ internal static class HandlerGenerator
         EmitHandlerResultVariable(source, handler, resultVar);
 
         // Main execution with optional try-catch-finally
-        if (shouldUseTryCatch)
+        if (requiresTryCatch)
         {
             source.AppendLine("""
                 System.Exception? exception = null;
@@ -332,7 +360,7 @@ internal static class HandlerGenerator
         EmitHandlerInvocation(source, handler, variables, resultVar, messageVar);
         EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar);
 
-        if (shouldUseTryCatch)
+        if (requiresTryCatch)
         {
             source.DecrementIndent();
             EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, variables, messageVar);
@@ -352,28 +380,60 @@ internal static class HandlerGenerator
 
     private static void EmitHandlerExecutionInfo(IndentedStringBuilder source, HandlerInfo handler, Dictionary<string, string> variables)
     {
-        bool needsHandlerInfo = handler.Middleware.Any(m =>
-            (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
-            (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
-            (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+        if (!handler.RequiresHandlerExecutionInfo)
+            return;
 
-        if (!needsHandlerInfo)
+        // Use the cached static field instead of creating new instance each time
+        source.AppendLine("var handlerExecutionInfo = GetOrCreateHandlerExecutionInfo();");
+        variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+    }
+
+    private static void GenerateHandlerExecutionInfoField(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        if (!handler.RequiresHandlerExecutionInfo)
             return;
 
         var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
         string paramTypesArray = string.IsNullOrEmpty(paramTypes) ? "System.Type.EmptyTypes" : $"new[] {{ {paramTypes} }}";
 
-        source.AppendLine($"var handlerExecutionInfo = new Foundatio.Mediator.HandlerExecutionInfo(typeof({handler.FullName}), typeof({handler.FullName}).GetMethod(\"{handler.MethodName}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {paramTypesArray}, null)!);");
-        variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
+        source.AppendLine()
+              .AppendLines($$"""
+                private static Foundatio.Mediator.HandlerExecutionInfo? _cachedHandlerExecutionInfo;
+
+                [DebuggerStepThrough]
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                private static Foundatio.Mediator.HandlerExecutionInfo GetOrCreateHandlerExecutionInfo()
+                {
+                    return _cachedHandlerExecutionInfo ??= new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!);
+                }
+                """);
     }
 
     private static void EmitMiddlewareInstances(IndentedStringBuilder source, HandlerInfo handler)
     {
+        if (!handler.RequiresMiddlewareInstances)
+            return;
+
         foreach (var m in handler.Middleware.Where(m => !m.IsStatic))
         {
-            source.AppendLine($"var {m.Identifier.ToCamelCase()} = Foundatio.Mediator.Mediator.GetOrCreateMiddleware<{m.FullName}>(serviceProvider);");
+            string varName = m.Identifier.ToCamelCase();
+
+            // Scoped/Transient/Singleton: Always resolve from DI
+            // For Singleton, the user explicitly wants DI to manage the instance
+            if (m.RequiresDIResolutionPerInvocation ||
+                string.Equals(m.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            {
+                source.AppendLine($"var {varName} = serviceProvider.GetRequiredService<{m.FullName}>();");
+            }
+            else
+            {
+                // No explicit lifetime (None/Default) - use caching
+                // No constructor deps: use new() and cache
+                // With constructor deps: use ActivatorUtilities and cache
+                source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);");
+            }
         }
-        source.AppendLineIf(handler.Middleware.Any(m => !m.IsStatic));
+        source.AppendLine();
     }
 
     private static void EmitBeforeMiddlewareResultVariables(
@@ -516,18 +576,23 @@ internal static class HandlerGenerator
         string result = handler.ReturnType.IsVoid ? "" : $"{resultVar} = ";
         string parameters = BuildParameters(source, handler.Parameters, variables, messageVar);
 
-        // Determine handler accessor
+        // Determine handler accessor - must match GenerateGetOrCreateHandler logic
         string accessor;
         if (handler.IsStatic)
         {
             accessor = handler.FullName;
         }
-        else if (handler.CanUseSingletonFastPath)
+        else if (handler.RequiresDIResolutionPerInvocation ||
+                 string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
         {
-            accessor = "_cachedHandler";
+            // Scoped/Transient/Singleton: Always resolve from DI inline (no wrapper method needed)
+            source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
+            accessor = "handlerInstance";
         }
         else
         {
+            // No explicit DI lifetime - use GetOrCreateHandler with lazy caching
+            // Both with and without constructor deps use this path for lazy initialization
             source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
             accessor = "handlerInstance";
         }
@@ -750,7 +815,8 @@ internal static class HandlerGenerator
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
         // Zero-alloc fast path for static handlers: call handler directly
-        if (!InterceptorCodeEmitter.TryEmitZeroAllocFastPath(source, handler, responseType, returnInfo.MethodIsAsync))
+        // Static handlers with no dependencies can be called directly (fast path)
+        if (!InterceptorCodeEmitter.TryEmitStaticFastPath(source, handler, responseType, returnInfo.MethodIsAsync))
         {
             // Standard path: call HandleAsync or HandleItemNAsync
             string targetMethod = InterceptorCodeEmitter.GetTargetMethodName(handler, responseType);
@@ -836,8 +902,17 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {
-        // If handler has Singleton lifetime, cache after first DI retrieval
-        if (string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+        // Scoped/Transient/Singleton: Always resolve from DI inline - no wrapper method needed
+        // The invocation code uses serviceProvider.GetRequiredService<T>() directly
+        if (handler.RequiresDIResolutionPerInvocation ||
+            string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // No explicit lifetime (None/Default) - use lazy caching
+        // No constructor dependencies - use new() with lazy initialization
+        if (!handler.RequiresConstructorInjection)
         {
             source.AppendLine()
                   .AppendLines($$"""
@@ -847,89 +922,77 @@ internal static class HandlerGenerator
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                     {
-                        return _cachedHandler ??= serviceProvider.GetRequiredService<{{handler.FullName}}>();
+                        return _cachedHandler ??= new {{handler.FullName}}();
                     }
                     """);
         }
-        // If handler has Scoped or Transient lifetime, must call DI each time
-        else if (!string.IsNullOrEmpty(handler.Lifetime))
-        {
-            source.AppendLine()
-                  .AppendLines($$"""
-                    [DebuggerStepThrough]
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
-                    {
-                        return serviceProvider.GetRequiredService<{{handler.FullName}}>();
-                    }
-                    """);
-        }
-        // For handlers that can use singleton fast path, just generate the static field
-        // The handler code uses _cachedHandler directly without calling GetOrCreateHandler
-        else if (handler.CanUseSingletonFastPath)
-        {
-            source.AppendLine()
-                  .AppendLine($"private static readonly {handler.FullName} _cachedHandler = new();");
-        }
+        // Has constructor dependencies - use ActivatorUtilities with lazy caching
+        // We assume handler is NOT in DI when lifetime is not explicitly set
         else
         {
-            // For handlers with constructor dependencies, check DI first, then fall back to ActivatorUtilities
-            // Cache whether the handler is registered in DI to avoid repeated lookups
             source.AppendLine()
                   .AppendLines($$"""
-                    private static int _isInDI = -1; // -1 = unknown, 0 = not in DI, 1 = in DI
                     private static {{handler.FullName}}? _cachedHandler;
-                    private static readonly object _handlerLock = new object();
 
                     [DebuggerStepThrough]
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                     {
-                        var isInDI = System.Threading.Volatile.Read(ref _isInDI);
-
-                        // Handler is not registered in DI
-                        if (isInDI == 0)
-                        {
-                            if (_cachedHandler != null)
-                                return _cachedHandler;
-
-                            lock (_handlerLock)
-                            {
-                                if (_cachedHandler != null)
-                                    return _cachedHandler;
-
-                                var handler = ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
-                                _cachedHandler = handler;
-                                return handler;
-                            }
-                        }
-
-                        // Handler is registered in DI - don't cache as it could be Scoped/Transient
-                        if (isInDI == 1)
-                        {
-                            return serviceProvider.GetRequiredService<{{handler.FullName}}>();
-                        }
-
-                        // First call - check if handler is in DI
-                        var handlerFromDI = serviceProvider.GetService<{{handler.FullName}}>();
-                        if (handlerFromDI != null)
-                        {
-                            System.Threading.Volatile.Write(ref _isInDI, 1);
-                            return handlerFromDI;
-                        }
-
-                        // Not in DI - use ActivatorUtilities and cache
-                        System.Threading.Volatile.Write(ref _isInDI, 0);
-                        lock (_handlerLock)
-                        {
-                            if (_cachedHandler != null)
-                                return _cachedHandler;
-
-                            var handler = ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
-                            _cachedHandler = handler;
-                            return handler;
-                        }
+                        return _cachedHandler ??= ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
                     }
                     """);
+        }
+    }
+
+    private static void GenerateMiddlewareInstantiation(IndentedStringBuilder source, HandlerInfo handler)
+    {
+        // Only generate for non-static middleware
+        var nonStaticMiddleware = handler.Middleware.Where(m => !m.IsStatic).ToList();
+        if (nonStaticMiddleware.Count == 0)
+            return;
+
+        foreach (var m in nonStaticMiddleware)
+        {
+            // Scoped/Transient/Singleton: Always resolve from DI - no caching method needed
+            // For Singleton, the user explicitly wants DI to manage the instance
+            if (m.RequiresDIResolutionPerInvocation ||
+                string.Equals(m.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // No explicit lifetime (None/Default) - generate caching method
+            // No constructor dependencies - use new() and cache
+            if (!m.RequiresConstructorInjection)
+            {
+                source.AppendLine()
+                      .AppendLines($$"""
+                        private static {{m.FullName}}? _cached{{m.Identifier}};
+
+                        [DebuggerStepThrough]
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                        private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
+                        {
+                            return _cached{{m.Identifier}} ??= new {{m.FullName}}();
+                        }
+                        """);
+            }
+            // Has constructor dependencies - use ActivatorUtilities and cache
+            // We assume middleware is NOT in DI when lifetime is not explicitly set
+            else
+            {
+                source.AppendLine()
+                      .AppendLines($$"""
+                        private static {{m.FullName}}? _cached{{m.Identifier}};
+
+                        [DebuggerStepThrough]
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                        private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
+                        {
+                            return _cached{{m.Identifier}} ??= ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
+                        }
+                        """);
+            }
         }
     }
 

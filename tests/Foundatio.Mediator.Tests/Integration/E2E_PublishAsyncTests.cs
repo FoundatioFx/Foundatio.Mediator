@@ -35,6 +35,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
         public void Reset() => _events.Clear();
     }
 
+    [Handler(Lifetime = MediatorLifetime.Singleton)]
     public class FirstConsumer(EventCollector collector, ILogger<FirstConsumer> logger)
     {
         public Task HandleAsync(IE2eEvent message, CancellationToken ct)
@@ -44,6 +45,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
         }
     }
 
+    [Handler(Lifetime = MediatorLifetime.Singleton)]
     public class SecondConsumer(EventCollector collector, ILogger<SecondConsumer> logger)
     {
         public Task HandleAsync(E2eEvent message, CancellationToken ct)
@@ -53,6 +55,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
         }
     }
 
+    [Handler(Lifetime = MediatorLifetime.Singleton)]
     public class CascadingConsumer(EventCollector collector, ILogger<CascadingConsumer> logger)
     {
         public Task<(Result, E2eEvent)> HandleAsync(E2eCommand command, CancellationToken ct)

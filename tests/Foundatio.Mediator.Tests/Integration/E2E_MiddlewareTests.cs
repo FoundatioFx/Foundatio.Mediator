@@ -7,6 +7,7 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
 {
     public record E2eCmd(string Name) : ICommand;
 
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
     public class TrackingMiddleware
     {
         public List<string> Steps { get; } = new();
@@ -40,6 +41,7 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
     public interface IValidatable { }
     public record ValidatableCommand(string Value) : IValidatable;
 
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
     public class InterfaceMiddleware
     {
         public List<string> Steps { get; } = new();
@@ -69,6 +71,7 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
     public abstract record BaseCommand(string Id);
     public record DerivedCommand(string Id, string Name) : BaseCommand(Id);
 
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
     public class BaseClassMiddleware
     {
         public List<string> Steps { get; } = new();
@@ -97,6 +100,7 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
 
     public record HandlerInfoTestCommand(string Value) : ICommand;
 
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
     public class HandlerInfoMiddleware
     {
         public List<string> CapturedInfo { get; } = new();
@@ -133,6 +137,7 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
 
     public record HandlerInfoAllPhasesCommand(string Value) : ICommand;
 
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
     public class HandlerInfoAllPhasesMiddleware
     {
         public List<string> CapturedInfo { get; } = new();

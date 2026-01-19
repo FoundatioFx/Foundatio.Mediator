@@ -47,7 +47,7 @@ public class FoundatioSecondEventHandler
 }
 
 // Scenario 4: Query handler with dependency injection
-[Handler(Lifetime = MediatorLifetime.Singleton)]
+[Handler]
 public class FoundatioFullQueryHandler
 {
     private readonly IOrderService _orderService;
@@ -113,7 +113,7 @@ public class FoundatioShortCircuitHandler
 [Middleware]
 public static class TimingMiddleware
 {
-    public static Stopwatch Before(GetFullQuery message)
+    public static Stopwatch Before(GetFullQuery message, IOrderService orderService)
     {
         return Stopwatch.StartNew();
     }
@@ -130,11 +130,11 @@ public static class TimingMiddleware
 /// This demonstrates middleware returning early (cache hit, validation success with cached result, etc.)
 /// </summary>
 [Middleware]
-public static class ShortCircuitMiddleware
+public class ShortCircuitMiddleware
 {
     private static readonly Order _cachedOrder = new(999, 49.99m, DateTime.UtcNow);
 
-    public static ValueTask<HandlerResult<Order>> BeforeAsync(GetCachedOrder message)
+    public ValueTask<HandlerResult<Order>> BeforeAsync(GetCachedOrder message)
     {
         // Always short-circuit with cached result - simulates cache hit scenario
         return ValueTask.FromResult(HandlerResult.ShortCircuit(_cachedOrder));

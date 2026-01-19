@@ -273,7 +273,8 @@ public static class PingHandler_Ping_Handler
 
         try
         {
-            result = await _cachedHandler.HandleAsync(message, cancellationToken);
+            var handlerInstance = GetOrCreateHandler(serviceProvider);
+            result = await handlerInstance.HandleAsync(message, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -301,7 +302,8 @@ public static class PingHandler_Ping_Handler
 
         try
         {
-            result = await _cachedHandler.HandleAsync(typedMessage, cancellationToken);
+            var handlerInstance = GetOrCreateHandler(serviceProvider);
+            result = await handlerInstance.HandleAsync(typedMessage, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -321,7 +323,14 @@ public static class PingHandler_Ping_Handler
         return result;
     }
 
-    private static readonly PingHandler _cachedHandler = new();
+    private static PingHandler? _cachedHandler;
+
+    [DebuggerStepThrough]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)
+    {
+        return _cachedHandler ??= new PingHandler();
+    }
 }
 
     }

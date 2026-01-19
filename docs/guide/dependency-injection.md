@@ -19,12 +19,25 @@ var app = builder.Build();
 
 ## Handler Lifetime Management
 
-### Important: Handler Instances Are Cached When Not Registered
+### Lifetime Behavior Summary
 
-If you don't explicitly register a handler in DI, the mediator will create an instance via `ActivatorUtilities.CreateInstance` and cache that instance (effectively singleton behavior). Constructor dependencies resolved in that first construction are reused for all invocations. Register handlers explicitly to control lifetime or rely on method parameter injection for per-invocation dependencies.
+| Lifetime | Behavior |
+|----------|----------|
+| **Scoped** | Resolved from DI on every invocation |
+| **Transient** | Resolved from DI on every invocation |
+| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
+| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
+| **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
+
+### Important: Default Behavior When Lifetime Not Specified
+
+If you don't explicitly set a lifetime (via `[Handler(Lifetime = ...)]` or `MediatorDefaultHandlerLifetime`), the handler instance will be cached:
+
+- **No constructor parameters**: Instantiated with `new()` and cached forever
+- **With constructor parameters**: Created via `ActivatorUtilities.CreateInstance` and cached - constructor dependencies are resolved once and reused
 
 ```csharp
-// WARNING: This handler is singleton - dependencies resolved once!
+// WARNING: This handler is cached - dependencies resolved once!
 public class OrderHandler
 {
     private readonly IOrderRepository _repository; // Resolved once, shared forever
@@ -42,25 +55,34 @@ public class OrderHandler
 }
 ```
 
-### Automatic Handler Creation
+### Explicit Lifetime Always Uses DI
 
-Resolution order:
-
-1. **Registered in DI**: DI creates according to configured lifetime.
-2. **Not registered**: Created once and cached (no DI lifetime scoping).
-
-### Explicit Handler Registration for Lifetime Control
-
-To avoid singleton issues with scoped dependencies, register handlers explicitly:
+When you explicitly set a lifetime (`Scoped`, `Transient`, or `Singleton`), the handler is **always resolved from the DI container**:
 
 ```csharp
-builder.Services.AddMediator();
+// Singleton - resolved from DI, DI handles the singleton caching
+[Handler(Lifetime = MediatorLifetime.Singleton)]
+public class CacheHandler { }
 
-// Register handlers with proper lifetimes to match their dependencies
-builder.Services.AddScoped<OrderHandler>();    // Matches DbContext scope
-builder.Services.AddTransient<EmailHandler>(); // New instance each time
-builder.Services.AddSingleton<CacheHandler>(); // Truly singleton
+// Scoped - resolved from DI on each invocation
+[Handler(Lifetime = MediatorLifetime.Scoped)]
+public class OrderHandler { }
 ```
+
+This ensures proper test isolation - each test with its own DI container gets its own handler instances.
+
+### Controlling Lifetime
+
+There are two ways to control handler lifetime:
+
+**1. Using the `[Handler]` attribute:**
+
+```csharp
+[Handler(Lifetime = MediatorLifetime.Scoped)]
+public class OrderHandler { /* ... */ }
+```
+
+**2. Using `MediatorDefaultHandlerLifetime` MSBuild property** (see below)
 
 ### Automatic Handler Registration with MSBuild
 
@@ -348,35 +370,66 @@ public class InventoryHandler
 
 ## Middleware Lifetime
 
-Middleware instances are cached and reused by default:
+Middleware lifetime follows the same rules as handler lifetime:
+
+| Lifetime | Behavior |
+|----------|----------|
+| **Scoped** | Resolved from DI on every invocation |
+| **Transient** | Resolved from DI on every invocation |
+| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
+| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
+| **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
+
+### Default Behavior (No Explicit Lifetime)
+
+When no lifetime is specified, middleware instances are cached:
 
 ```csharp
+// No explicit lifetime - cached with new() since no constructor deps
+public class SimpleMiddleware
+{
+    public void Before(object message) { /* ... */ }
+}
+
+// No explicit lifetime - cached via ActivatorUtilities since it has constructor deps
 public class LoggingMiddleware
 {
     private readonly ILogger<LoggingMiddleware> _logger;
 
     public LoggingMiddleware(ILogger<LoggingMiddleware> logger)
     {
-        _logger = logger;
+        _logger = logger; // Resolved once and cached!
     }
 
-    public static void Before(object message, ILogger<LoggingMiddleware> logger)
+    public void Before(object message)
     {
-        logger.LogInformation("Handling {MessageType}", message.GetType().Name);
+        _logger.LogInformation("Handling {MessageType}", message.GetType().Name);
     }
 }
 ```
 
-### Explicit Middleware Registration
+### Explicit Lifetime with [Middleware] Attribute
 
-Control middleware lifetime by registering in DI:
+Use the `[Middleware]` attribute to explicitly control lifetime:
 
 ```csharp
-builder.Services.AddMediator();
+// Resolved from DI on every invocation - DI handles singleton caching
+[Middleware(Lifetime = MediatorLifetime.Singleton)]
+public class LoggingMiddleware { /* ... */ }
 
-// Register middleware with specific lifetime
-builder.Services.AddScoped<ValidationMiddleware>();
-builder.Services.AddSingleton<LoggingMiddleware>();
+// Resolved from DI on every invocation
+[Middleware(Lifetime = MediatorLifetime.Scoped)]
+public class ValidationMiddleware { /* ... */ }
+```
+
+### Project-Level Default with MSBuild
+
+Set a default lifetime for all middleware using `MediatorDefaultMiddlewareLifetime`:
+
+```xml
+<PropertyGroup>
+    <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
+</PropertyGroup>
 ```
 
 ## Scoped Services Example

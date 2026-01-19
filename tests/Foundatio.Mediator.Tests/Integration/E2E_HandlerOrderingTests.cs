@@ -19,7 +19,7 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Handler with Order = 1 (should execute first)
-    [Handler(Order = 1)]
+    [Handler(Order = 1, Lifetime = MediatorLifetime.Singleton)]
     public class FirstOrderHandler(ExecutionTracker tracker, ILogger<FirstOrderHandler> logger)
     {
         public void Handle(OrderTestEvent evt)
@@ -30,7 +30,7 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Handler with Order = 2 (should execute second)
-    [Handler(Order = 2)]
+    [Handler(Order = 2, Lifetime = MediatorLifetime.Singleton)]
     public class SecondOrderHandler(ExecutionTracker tracker, ILogger<SecondOrderHandler> logger)
     {
         public void Handle(OrderTestEvent evt)
@@ -41,7 +41,7 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Handler with Order = 3 (should execute third)
-    [Handler(Order = 3)]
+    [Handler(Order = 3, Lifetime = MediatorLifetime.Singleton)]
     public class ThirdOrderHandler(ExecutionTracker tracker, ILogger<ThirdOrderHandler> logger)
     {
         public void Handle(OrderTestEvent evt)
@@ -52,6 +52,7 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     // Handler with no explicit order (should execute last, default is int.MaxValue)
+    [Handler(Lifetime = MediatorLifetime.Singleton)]
     public class DefaultOrderHandler(ExecutionTracker tracker, ILogger<DefaultOrderHandler> logger)
     {
         public void Handle(OrderTestEvent evt)

@@ -191,6 +191,7 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
     public record CascadingWithCaptureCommand(string Name, List<IScopedTestService> CapturedServices) : ICommand;
     public record EventWithCapture(List<IScopedTestService> CapturedServices) : INotification;
 
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
     public class ServiceCapturingHandler(IScopedTestService scopedService)
     {
         public async Task HandleAsync(ServiceCaptureCommand command, CancellationToken ct)
@@ -200,6 +201,7 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
         }
     }
 
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
     public class CascadingWithCaptureHandler(IScopedTestService scopedService)
     {
         public async Task<(string Result, EventWithCapture Event)> HandleAsync(CascadingWithCaptureCommand command, CancellationToken ct)
@@ -210,6 +212,7 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
         }
     }
 
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
     public class EventWithCaptureHandler(IScopedTestService scopedService)
     {
         public async Task HandleAsync(EventWithCapture @event, CancellationToken ct)

@@ -39,10 +39,40 @@ internal readonly record struct MiddlewareInfo
     public bool HasMethodDIParameters { get; init; }
 
     /// <summary>
-    /// Whether this middleware can use a fast path (no DI required).
+    /// Whether the middleware constructor requires dependency injection.
+    /// </summary>
+    public bool RequiresConstructorInjection => HasConstructorParameters;
+
+    /// <summary>
+    /// Whether any middleware method requires dependency injection for parameters.
+    /// </summary>
+    public bool RequiresMethodInjection => HasMethodDIParameters;
+
+    /// <summary>
+    /// Whether this middleware has no dependencies (no constructor or method injection required).
     /// True when the middleware is static or has no constructor parameters and no method DI parameters.
     /// </summary>
-    public bool CanUseFastPath => IsStatic || (!HasConstructorParameters && !HasMethodDIParameters);
+    public bool HasNoDependencies => IsStatic || (!RequiresConstructorInjection && !RequiresMethodInjection);
+
+    #region Middleware Instantiation Strategy
+
+    /// <summary>
+    /// Whether middleware instances can be cached (singleton-like behavior).
+    /// True when middleware has no dependencies or explicit Singleton lifetime.
+    /// </summary>
+    public bool CanCacheInstance =>
+        HasNoDependencies ||
+        string.Equals(Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the middleware must be resolved from DI on every invocation.
+    /// True for Scoped or Transient lifetime middleware.
+    /// </summary>
+    public bool RequiresDIResolutionPerInvocation =>
+        string.Equals(Lifetime, "Scoped", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Lifetime, "Transient", StringComparison.OrdinalIgnoreCase);
+
+    #endregion
 }
 
 internal readonly record struct MiddlewareMethodInfo

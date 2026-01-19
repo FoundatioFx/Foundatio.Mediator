@@ -24,6 +24,11 @@ These properties control the source generator at compile time and affect code ge
 
     <!-- Disable conventional handler discovery (default: false) -->
     <MediatorDisableConventionalDiscovery>true</MediatorDisableConventionalDiscovery>
+
+    <!-- Endpoint generation settings (see Endpoints guide for details) -->
+    <MediatorEndpointDiscovery>All</MediatorEndpointDiscovery>
+    <MediatorEndpointRequireAuth>false</MediatorEndpointRequireAuth>
+    <MediatorProjectName>MyProject</MediatorProjectName>
 </PropertyGroup>
 ```
 
@@ -146,6 +151,37 @@ public class FirstTransientMiddleware
 - **Effect:** When `true`, disables convention-based handler discovery (class names ending with `Handler` or `Consumer`). Only handlers that implement `IHandler` interface or have the `[Handler]` attribute will be discovered.
 - **Use Case:** Explicit control over which classes are treated as handlers, avoiding accidental handler discovery
 
+**`MediatorEndpointDiscovery`**
+
+- **Values:** `All`, `Explicit`
+- **Default:** `All`
+- **Effect:** Controls which handlers generate API endpoints
+  - `All`: All handlers with endpoint-compatible message types generate endpoints (use `[HandlerEndpoint(Exclude = true)]` to opt out)
+  - `Explicit`: Only handlers with `[HandlerEndpoint]` attribute generate endpoints
+- **Use Case:** Control granularity of automatic endpoint generation
+- **See:** [Endpoints Guide](/guide/endpoints) for full documentation
+
+**`MediatorEndpointRequireAuth`**
+
+- **Values:** `true`, `false`
+- **Default:** `false`
+- **Effect:** Sets the default authentication requirement for all generated endpoints
+- **Use Case:** Secure-by-default API with opt-out for public endpoints
+- **Override:** Use `[HandlerCategory(RequireAuth = false)]` or `[HandlerEndpoint(RequireAuth = false)]` to override per category or endpoint
+- **See:** [Endpoints Guide](/guide/endpoints) for full documentation
+
+**`MediatorProjectName`**
+
+- **Values:** Any valid C# identifier
+- **Default:** Assembly name (with dots/dashes replaced by underscores)
+- **Effect:** Controls the suffix used in generated endpoint extension methods and classes
+- **Example:** Setting `<MediatorProjectName>Products</MediatorProjectName>` generates:
+  - `MapProductsEndpoints()` extension method
+  - `MediatorEndpointExtensions_Products` class
+  - `MediatorEndpointResultMapper_Products` class
+- **Use Case:** Meaningful endpoint method names in modular monolith architectures
+- **See:** [Endpoints Guide](/guide/endpoints) for full documentation
+
 ### Example .csproj Configuration
 
 ```xml
@@ -154,12 +190,21 @@ public class FirstTransientMiddleware
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
 
+    <!-- Enable XML docs for endpoint summaries -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
     <!-- Compile-time configuration -->
     <MediatorDefaultHandlerLifetime>Scoped</MediatorDefaultHandlerLifetime>
     <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>true</MediatorDisableOpenTelemetry>
     <MediatorDisableConventionalDiscovery>false</MediatorDisableConventionalDiscovery>
+
+    <!-- Endpoint generation configuration -->
+    <MediatorEndpointDiscovery>All</MediatorEndpointDiscovery>
+    <MediatorEndpointRequireAuth>false</MediatorEndpointRequireAuth>
+    <MediatorProjectName>MyApp</MediatorProjectName>
   </PropertyGroup>
 
   <PackageReference Include="Foundatio.Mediator" Version="1.0.0" />

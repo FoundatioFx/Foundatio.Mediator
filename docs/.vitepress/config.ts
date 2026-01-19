@@ -45,7 +45,8 @@ export default withMermaid(defineConfig({
             { text: 'Handler Conventions', link: '/guide/handler-conventions' },
             { text: 'Dependency Injection', link: '/guide/dependency-injection' },
             { text: 'Result Types', link: '/guide/result-types' },
-            { text: 'Middleware', link: '/guide/middleware' }
+            { text: 'Middleware', link: '/guide/middleware' },
+            { text: 'Endpoints', link: '/guide/endpoints' }
           ]
         },
         {

@@ -47,6 +47,9 @@ _NCrunch_*
 # Rider
 .idea
 
+# Claude
+.claude
+
 # Generated files
 *.g.cs
 Generated/

@@ -1,133 +1,25 @@
 @baseUrl = https://localhost:58702
 
-### Health Check
-GET {{baseUrl}}/
-Accept: text/plain
-
 ###############################################################################
-# REPORTS MODULE - Dashboard & Analytics (uses seeded data)
+# CLEAN ARCHITECTURE DEMO - Key Features
 ###############################################################################
 
-### Get dashboard report - shows totals from seeded orders and products
+# 1. CROSS-MODULE QUERIES - Reports module queries other modules via mediator
+# ────────────────────────────────────────────────────────────────────────────
+
+### Dashboard report - aggregates data from Products & Orders modules
 GET {{baseUrl}}/api/reports
 Accept: application/json
 
-### Get sales report (last 30 days - covers all seeded orders)
-GET {{baseUrl}}/api/reports/get-sales-report
-Accept: application/json
-
-### Get sales report with custom date range
-GET {{baseUrl}}/api/reports/get-sales-report?startDate=2024-01-01&endDate=2026-12-31
-Accept: application/json
-
-### Get inventory report - shows low stock items (headset, docking station, chair)
-GET {{baseUrl}}/api/reports/get-inventory-report
-Accept: application/json
-
-### Search for keyboard products
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=keyboard
-Accept: application/json
-
-### Search for Alice's orders
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=alice
-Accept: application/json
-
-### Search for monitor (finds both product and Bob's order)
+### Cross-module search - searches both products and orders
 GET {{baseUrl}}/api/reports/search-catalog?searchTerm=monitor
 Accept: application/json
 
-###############################################################################
-# PRODUCTS MODULE - Using Seeded Data
-###############################################################################
 
-### Get all products (11 seeded products)
-GET {{baseUrl}}/api/products
-Accept: application/json
+# 2. DOMAIN EVENTS - Loose coupling between modules
+# ────────────────────────────────────────────────────────────────────────────
 
-### Get MacBook Pro laptop
-GET {{baseUrl}}/api/products/prod-001-laptop
-Accept: application/json
-
-### Get low-stock headset (8 units)
-GET {{baseUrl}}/api/products/prod-005-headset
-Accept: application/json
-
-### Get out-of-stock chair
-GET {{baseUrl}}/api/products/prod-010-chair
-Accept: application/json
-
-### Get discontinued keyboard
-GET {{baseUrl}}/api/products/prod-011-old-keyboard
-Accept: application/json
-
-### Update headset price
-PUT {{baseUrl}}/api/products/prod-005-headset
-Content-Type: application/json
-
-{
-  "price": 279.99
-}
-
-### Reduce docking station stock (triggers low-stock notification)
-PUT {{baseUrl}}/api/products/prod-009-docking
-Content-Type: application/json
-
-{
-  "stockQuantity": 2
-}
-
-### Create a new product
-POST {{baseUrl}}/api/products
-Content-Type: application/json
-
-{
-  "name": "Mechanical Keyboard RGB",
-  "description": "Hot-swappable mechanical keyboard with per-key RGB lighting",
-  "price": 149.99,
-  "stockQuantity": 50
-}
-
-###############################################################################
-# ORDERS MODULE - Using Seeded Data
-###############################################################################
-
-### Get all orders (7 seeded orders)
-GET {{baseUrl}}/api/orders
-Accept: application/json
-
-### Get Alice's laptop order (Delivered)
-GET {{baseUrl}}/api/orders/ord-001-alice-laptop
-Accept: application/json
-
-### Get Bob's monitor order (Shipped)
-GET {{baseUrl}}/api/orders/ord-003-bob-monitor
-Accept: application/json
-
-### Get Charlie's headset order (Processing)
-GET {{baseUrl}}/api/orders/ord-004-charlie-headset
-Accept: application/json
-
-### Get Diana's pending desk order
-GET {{baseUrl}}/api/orders/ord-006-diana-desk
-Accept: application/json
-
-### Update Diana's order to Confirmed
-PUT {{baseUrl}}/api/orders/ord-006-diana-desk
-Content-Type: application/json
-
-{
-  "status": "Confirmed"
-}
-
-### Update Charlie's webcam order to Processing
-PUT {{baseUrl}}/api/orders/ord-005-charlie-webcam
-Content-Type: application/json
-
-{
-  "status": "Processing"
-}
-
-### Create a new order for Alice
+### Create order - triggers OrderCreated event → AuditEventHandler + NotificationEventHandler
 POST {{baseUrl}}/api/orders
 Content-Type: application/json
 
@@ -137,40 +29,7 @@ Content-Type: application/json
   "description": "USB-C Docking Station"
 }
 
-### Create an order for a new customer
-POST {{baseUrl}}/api/orders
-Content-Type: application/json
-
-{
-  "customerId": "cust-eve",
-  "amount": 449.99,
-  "description": "Ergonomic Office Chair (backorder)"
-}
-
-###############################################################################
-# DEMO SCENARIOS
-###############################################################################
-
-# Scenario 1: Check inventory status
-# ─────────────────────────────────────
-# The inventory report shows 3 low-stock items:
-# - prod-005-headset: 8 units (threshold is 10)
-# - prod-009-docking: 3 units
-# - prod-010-chair: 0 units (out of stock)
-
-### Check inventory for low stock alerts
-GET {{baseUrl}}/api/reports/get-inventory-report
-Accept: application/json
-
-# Scenario 2: Process an order workflow
-# ─────────────────────────────────────
-# Diana's standing desk order is pending - let's process it
-
-### 1. Check Diana's pending order
-GET {{baseUrl}}/api/orders/ord-006-diana-desk
-Accept: application/json
-
-### 2. Confirm the order (triggers OrderUpdated event -> audit + notification)
+### Update order status - triggers OrderUpdated event
 PUT {{baseUrl}}/api/orders/ord-006-diana-desk
 Content-Type: application/json
 
@@ -178,73 +37,45 @@ Content-Type: application/json
   "status": "Confirmed"
 }
 
-### 3. Move to Processing
-PUT {{baseUrl}}/api/orders/ord-006-diana-desk
-Content-Type: application/json
-
-{
-  "status": "Processing"
-}
-
-### 4. Ship the order
-PUT {{baseUrl}}/api/orders/ord-006-diana-desk
-Content-Type: application/json
-
-{
-  "status": "Shipped"
-}
-
-### 5. Check dashboard to see updated order status distribution
-GET {{baseUrl}}/api/reports
-Accept: application/json
-
-# Scenario 3: Trigger low-stock alert
-# ─────────────────────────────────────
-# Update stock to trigger the notification system
-
-### 1. Check current stock of webcam (75 units)
-GET {{baseUrl}}/api/products/prod-006-webcam
-Accept: application/json
-
-### 2. Reduce stock below threshold (triggers ProductStockChanged event)
+### Update product stock - triggers ProductStockChanged event when below threshold (10 units)
 PUT {{baseUrl}}/api/products/prod-006-webcam
 Content-Type: application/json
 
 {
-  "stockQuantity": 4
+  "stockQuantity": 5
 }
 
-### 3. Check inventory report to see new low-stock item
-GET {{baseUrl}}/api/reports/get-inventory-report
+
+# 3. RESULT PATTERN - Rich status handling without exceptions
+# ────────────────────────────────────────────────────────────────────────────
+
+### Get existing order - returns Result<Order> with IsSuccess=true
+GET {{baseUrl}}/api/orders/ord-001-alice-laptop
 Accept: application/json
 
-# Scenario 4: Customer order history via search
-# ─────────────────────────────────────
-# Find all orders for specific customers
-
-### Alice's orders (laptop + accessories = $1,449.98)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=cust-alice
+### Get non-existent order - returns Result with NotFound status (404)
+GET {{baseUrl}}/api/orders/invalid-order-id
 Accept: application/json
 
-### Bob's orders (monitor + cables = $595.98)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=cust-bob
+### Create product - POST endpoint auto-generated from CreateProduct handler
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "name": "Mechanical Keyboard RGB",
+  "description": "Hot-swappable mechanical keyboard with RGB",
+  "price": 149.99,
+  "stockQuantity": 50
+}
+
+
+# 4. REPOSITORY PATTERN - Data access abstraction
+# ────────────────────────────────────────────────────────────────────────────
+
+### List all products (via IProductRepository)
+GET {{baseUrl}}/api/products
 Accept: application/json
 
-### Charlie's orders (headset + webcam = $479.98)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=cust-charlie
-Accept: application/json
-
-# Scenario 5: Product search
-# ─────────────────────────────────────
-
-### Find USB-C products (cables, docking station, monitor)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=usb-c
-Accept: application/json
-
-### Find wireless products (keyboard, headset)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=wireless
-Accept: application/json
-
-### Find gaming products (mouse)
-GET {{baseUrl}}/api/reports/search-catalog?searchTerm=gaming
+### Get single product (repository lookup)
+GET {{baseUrl}}/api/products/prod-001-laptop
 Accept: application/json

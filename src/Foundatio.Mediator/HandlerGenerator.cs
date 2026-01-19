@@ -932,17 +932,21 @@ internal static class HandlerGenerator
                     }
                     """);
         }
-        // Has constructor dependencies - create new instance every invocation
-        // Cannot cache because dependencies may be scoped services that get disposed
+        // Has constructor dependencies - cache the instance after first creation
+        // This is safe when lifetime is None (default) because the handler will be long-lived
+        // and dependencies are resolved once. If dependencies are scoped, user should use
+        // [Handler(Lifetime = Scoped)] or MediatorDefaultHandlerLifetime=Scoped.
         else
         {
             source.AppendLine()
                   .AppendLines($$"""
+                    private static {{handler.FullName}}? _cachedHandler;
+
                     [DebuggerStepThrough]
                     [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                     {
-                        return ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
+                        return _cachedHandler ??= ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
                     }
                     """);
         }
@@ -981,17 +985,21 @@ internal static class HandlerGenerator
                         }
                         """);
             }
-            // Has constructor dependencies - create new instance every invocation
-            // Cannot cache because dependencies may be scoped services that get disposed
+            // Has constructor dependencies - cache the instance after first creation
+            // This is safe when lifetime is None (default) because the middleware will be long-lived
+            // and dependencies are resolved once. If dependencies are scoped, user should use
+            // [Middleware(Lifetime = Scoped)] or MediatorDefaultMiddlewareLifetime=Scoped.
             else
             {
                 source.AppendLine()
                       .AppendLines($$"""
+                        private static {{m.FullName}}? _cached{{m.Identifier}};
+
                         [DebuggerStepThrough]
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
                         {
-                            return ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
+                            return _cached{{m.Identifier}} ??= ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
                         }
                         """);
             }

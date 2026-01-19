@@ -90,9 +90,14 @@ public struct HandlerResult<T>
     /// <summary>
     /// Converts to non-generic HandlerResult.
     /// </summary>
+    /// <remarks>
+    /// Explicitly casts Value to object to avoid overload resolution picking the generic
+    /// ShortCircuit&lt;T&gt; method, which would cause infinite recursion through the implicit
+    /// operator when T happens to be a type that matches the generic overload better than object.
+    /// </remarks>
     public HandlerResult ToNonGeneric() => IsShortCircuited
-        ? HandlerResult.ShortCircuit(Value)
-        : HandlerResult.Continue(Value);
+        ? HandlerResult.ShortCircuit((object?)Value)
+        : HandlerResult.Continue((object?)Value);
 
     /// <summary>
     /// Implicitly converts from generic to non-generic HandlerResult.

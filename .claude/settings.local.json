@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet-exec:*)",
+      "Bash(dotnet fsi -e \"printfn \"\"%s\"\" \\(typeof<System.Exception>.Assembly.Location\\)\")",
+      "Bash(ls:*)",
+      "Bash(dotnet clean:*)",
+      "Bash(git checkout:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\eric\\\\Projects\\\\Foundatio\\\\Foundatio.Mediator\\\\tests\\\\Foundatio.Mediator.Tests\\\\obj\")",
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(ren:*)",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\eric\\\\Projects\\\\Foundatio\\\\Foundatio.Mediator\\\\samples && ren ModularMonolithSample CleanArchitectureSample\")",
+      "Bash(cmd /c:*)",
+      "Bash(powershell -Command \"Rename-Item -Path ''C:\\\\Users\\\\eric\\\\Projects\\\\Foundatio\\\\Foundatio.Mediator\\\\samples\\\\ModularMonolithSample'' -NewName ''CleanArchitectureSample'' -Force\")",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(del \"C:\\\\Users\\\\eric\\\\Projects\\\\Foundatio\\\\Foundatio.Mediator\\\\samples\\\\CleanArchitectureSample\\\\src\\\\WebApp\\\\Handlers\\\\AuditEventHandler.cs\")",
+      "Bash(del \"C:\\\\Users\\\\eric\\\\Projects\\\\Foundatio\\\\Foundatio.Mediator\\\\samples\\\\CleanArchitectureSample\\\\src\\\\WebApp\\\\Handlers\\\\NotificationEventHandler.cs\")",
+      "Bash(xargs:*)"
+    ]
+  }
+}

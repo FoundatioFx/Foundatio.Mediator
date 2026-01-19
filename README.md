@@ -16,6 +16,7 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - 🎪 **Middleware pipeline** - Before/After/Finally hooks with state passing
 - 🎯 **Built-in Result\<T>** - Rich status handling without exceptions
 - 🔄 **Tuple returns** - Automatic cascading messages
+- 🌐 **Auto-generated endpoints** - Minimal API endpoints from handlers with zero boilerplate
 - 🔒 **Compile-time safety** - Early validation and diagnostics
 - 🧪 **Easy testing** - Plain objects, no framework coupling
 - 🐛 **Superior debugging** - Short, simple call stacks
@@ -133,6 +134,48 @@ var user = await mediator.InvokeAsync<User>(new CreateUser("John", "john@example
 await mediator.PublishAsync(new UserCreated(user.Id, user.Email));
 ```
 
+### 4. Auto-Generate API Endpoints (Optional)
+
+Foundatio Mediator can automatically generate ASP.NET Core Minimal API endpoints from your handlers:
+
+```csharp
+// Add category to group endpoints
+[HandlerCategory("Products", RoutePrefix = "/api/products")]
+public class ProductHandler
+{
+    /// <summary>
+    /// Creates a new product in the catalog.
+    /// </summary>
+    public Task<Result<Product>> HandleAsync(CreateProduct command) { /* ... */ }
+
+    /// <summary>
+    /// Gets a product by ID.
+    /// </summary>
+    public Result<Product> Handle(GetProduct query) { /* ... */ }
+}
+
+// Program.cs - map the generated endpoints
+app.MapProductsEndpoints();
+```
+
+This automatically generates:
+- `POST /api/products` → `CreateProduct` handler
+- `GET /api/products/{productId}` → `GetProduct` handler
+- HTTP method inferred from message name (`Create*` → POST, `Get*` → GET, etc.)
+- `Result<T>` status mapped to HTTP status codes
+- OpenAPI metadata from XML doc comments
+
+Configure with MSBuild properties:
+```xml
+<PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <MediatorProjectName>Products</MediatorProjectName>
+    <MediatorEndpointRequireAuth>true</MediatorEndpointRequireAuth>
+</PropertyGroup>
+```
+
+See [Endpoints Guide](https://mediator.foundatio.dev/guide/endpoints.html) for full documentation.
+
 ## 📚 Learn More
 
 **👉 [Complete Documentation](https://mediator.foundatio.dev)**
@@ -143,6 +186,7 @@ Key topics:
 - [Handler Conventions](https://mediator.foundatio.dev/guide/handler-conventions.html) - Discovery rules and patterns
 - [Middleware](https://mediator.foundatio.dev/guide/middleware.html) - Pipeline hooks and state management
 - [Result Types](https://mediator.foundatio.dev/guide/result-types.html) - Rich status handling
+- [Endpoints](https://mediator.foundatio.dev/guide/endpoints.html) - Auto-generated Minimal API endpoints
 - [Performance](https://mediator.foundatio.dev/guide/performance.html) - Benchmarks vs other libraries
 - [Configuration](https://mediator.foundatio.dev/guide/configuration.html) - MSBuild and runtime options
 

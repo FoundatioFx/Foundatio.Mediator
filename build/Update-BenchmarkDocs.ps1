@@ -240,7 +240,7 @@ Foundatio.Mediator aims to get as close to direct method call performance as pos
 
 ### Commands
 
-Fire-and-forget dispatch with no return value.
+Process a message with no return value.
 
 $(Build-Table $groups['Command'])
 

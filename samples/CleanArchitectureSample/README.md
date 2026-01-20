@@ -73,16 +73,16 @@ Dependencies point inward - domain entities have no external dependencies:
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│                        Web                                │
+│                        Web                                  │
 │  (Composition Root - wires everything together)             │
 ├─────────────────────────────────────────────────────────────┤
-│                    Handlers Layer                            │
+│                    Handlers Layer                           │
 │  OrderHandler, ProductHandler, ReportHandler                │
 ├─────────────────────────────────────────────────────────────┤
-│                  Data/Infrastructure                         │
+│                  Data/Infrastructure                        │
 │  IOrderRepository, IProductRepository, implementations      │
 ├─────────────────────────────────────────────────────────────┤
-│                     Domain Layer                             │
+│                     Domain Layer                            │
 │  Order, Product, OrderStatus, ProductStatus                 │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -163,6 +163,7 @@ Open `src/Web/Web.http` in VS Code or Rider to run sample requests.
 ### Try the API
 
 **Create a product:**
+
 ```bash
 curl -X POST https://localhost:7001/api/products \
   -H "Content-Type: application/json" \
@@ -170,6 +171,7 @@ curl -X POST https://localhost:7001/api/products \
 ```
 
 **Create an order:**
+
 ```bash
 curl -X POST https://localhost:7001/api/orders \
   -H "Content-Type: application/json" \
@@ -177,11 +179,13 @@ curl -X POST https://localhost:7001/api/orders \
 ```
 
 **Get dashboard report (aggregates from both modules):**
+
 ```bash
 curl https://localhost:7001/api/reports/dashboard
 ```
 
 **Search across modules:**
+
 ```bash
 curl "https://localhost:7001/api/reports/search?searchTerm=widget"
 ```
@@ -200,21 +204,25 @@ dbug: Sending order confirmation notification for order abc123
 ## Key Benefits
 
 ### Compile-Time Performance
+
 - Zero runtime reflection
 - Middleware woven directly into generated code
 - Same performance as hand-written code
 
 ### Type Safety
+
 - Full compile-time type checking
 - IntelliSense for all messages and handlers
 - Catch errors at build time
 
 ### Testability
+
 - Repository interfaces enable unit testing without databases
 - Handlers can be tested in isolation
 - Event handlers can be verified independently
 
 ### Loose Coupling
+
 - Modules communicate only through messages
 - Adding new event handlers requires no changes to publishing modules
 - Each module can evolve independently

@@ -7,19 +7,19 @@ Foundatio Mediator is designed to be a natural fit for Clean Architecture applic
 Clean Architecture organizes code into concentric layers where dependencies point inward—outer layers depend on inner layers, never the reverse:
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │                    Presentation Layer                        │
 │  (Controllers, APIs, UI - knows about everything below)      │
-├─────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │                   Application Layer                          │
 │  (Handlers, Use Cases - knows about Domain only)             │
-├─────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │                 Infrastructure Layer                         │
 │  (Repositories, External Services - implements interfaces)   │
-├─────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │                     Domain Layer                             │
 │  (Entities, Value Objects - no external dependencies)        │
-└─────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────┘
 ```
 
 This structure provides:

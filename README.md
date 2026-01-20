@@ -25,10 +25,10 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 
 Traditional mediator libraries force you into rigid interface contracts like `IRequestHandler<TRequest, TResponse>`. This means:
 
-- One handler class per message type
+- Lots of boilerplate
 - Fixed method signatures
 - Always async (even for simple operations)
-- Lots of boilerplate
+- One handler class per message type
 
 **Foundatio Mediator's conventions give you freedom:**
 

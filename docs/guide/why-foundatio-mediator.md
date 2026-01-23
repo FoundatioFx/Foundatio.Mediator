@@ -66,7 +66,7 @@ The difference between "magic" and "convention" is simply **familiarity**. Once 
 | Forces `IRequestHandler<TRequest, TResponse>` inheritance | Plain classes with any name ending in `Handler` |
 | One handler method per class (or awkward multiple interface inheritance) | Multiple handler methods per class, naturally grouped |
 | Fixed method signature: `Handle(TRequest, CancellationToken)` | Flexible signatures: sync/async, any parameters via DI |
-| Must return `Task<TResponse>` even for sync operations | Return `void`, `Task`, `T`, `Task<T>`, `Result<T>`, tuples |
+| Must return `Task<TResponse>` even for sync operations | Return `void`, `T`, `Task`, `Task<T>`, `ValueTask`, `ValueTask<T>`, `Result<T>`, tuples |
 | Handler classes must be registered in DI | Auto-discovered at compile time |
 | Runtime dispatch via reflection | Compile-time interceptors for near-direct call performance |
 

@@ -32,7 +32,7 @@ public class OrderHandler
         _logger = logger;
     }
 
-    [Retryable(MaxAttempts = 3, DelayMs = 100)]
+    [Retry(MaxAttempts = 3, DelayMs = 100)]
     public async Task<(Result<Order> Order, OrderCreated? Event)> HandleAsync(CreateOrder command, IDbTransaction transaction)
     {
         var tx = (FakeTransaction)transaction;
@@ -49,9 +49,10 @@ public class OrderHandler
         return (Result<Order>.Created(order, $"/orders/{orderId}"), new OrderCreated(orderId, command.CustomerId, command.Amount, order.CreatedAt));
     }
 
+    [Cached(DurationSeconds = 60)]
     public Result<Order> Handle(GetOrder query)
     {
-        _logger.LogInformation("Getting order {OrderId}", query.OrderId);
+        _logger.LogInformation("Getting order {OrderId} (cache miss - executing handler)", query.OrderId);
 
         if (!_orders.TryGetValue(query.OrderId, out var order))
         {
@@ -79,6 +80,9 @@ public class OrderHandler
 
         _orders[command.OrderId] = updatedOrder;
 
+        // Invalidate the cache for this order
+        CachingMiddleware.Invalidate(new GetOrder(command.OrderId));
+
         await Task.CompletedTask; // Simulate async operation
 
         return (updatedOrder, new OrderUpdated(command.OrderId, updatedOrder.Amount, updatedOrder.UpdatedAt.Value));
@@ -94,6 +98,9 @@ public class OrderHandler
         }
 
         _orders.Remove(command.OrderId);
+
+        // Invalidate the cache for this order
+        CachingMiddleware.Invalidate(new GetOrder(command.OrderId));
 
         await Task.CompletedTask; // Simulate async operation
 

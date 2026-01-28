@@ -254,12 +254,48 @@ public sealed class MediatorGenerator : IIncrementalGenerator
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)
     {
         var applicable = new List<MiddlewareInfo>();
+        var addedMiddlewareTypes = new HashSet<string>();
 
+        // Add middleware that matches by message type (global middleware)
+        // Skip middleware marked as ExplicitOnly - those are only added via [UseMiddleware] references
         foreach (var middleware in middlewares)
         {
+            if (middleware.ExplicitOnly)
+                continue;
+
             if (IsMiddlewareApplicableToHandler(middleware, handler))
             {
                 applicable.Add(middleware);
+                addedMiddlewareTypes.Add(middleware.FullName);
+            }
+        }
+
+        // Add handler-specific middleware from [UseMiddleware] and custom attributes
+        foreach (var reference in handler.HandlerMiddlewareReferences)
+        {
+            // Find the middleware info from the global list
+            var middlewareInfo = middlewares.FirstOrDefault(m => m.FullName == reference.MiddlewareTypeName);
+            if (middlewareInfo.FullName == null)
+                continue; // Middleware not found - could emit diagnostic here
+
+            if (addedMiddlewareTypes.Contains(middlewareInfo.FullName))
+            {
+                // Middleware already added from message type matching
+                // Update the order if the handler attribute specifies one
+                if (reference.Order != int.MaxValue)
+                {
+                    var index = applicable.FindIndex(m => m.FullName == middlewareInfo.FullName);
+                    if (index >= 0)
+                    {
+                        applicable[index] = applicable[index] with { Order = reference.Order };
+                    }
+                }
+            }
+            else
+            {
+                // Add middleware with handler-specified order
+                applicable.Add(middlewareInfo with { Order = reference.Order });
+                addedMiddlewareTypes.Add(middlewareInfo.FullName);
             }
         }
 

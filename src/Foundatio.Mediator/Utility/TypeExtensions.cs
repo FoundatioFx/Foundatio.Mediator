@@ -222,4 +222,5 @@ internal static class WellKnownTypes
     public const string HandlerExecutionDelegate = "Foundatio.Mediator.HandlerExecutionDelegate";
     public const string HandlerEndpointAttribute = "Foundatio.Mediator.HandlerEndpointAttribute";
     public const string HandlerCategoryAttribute = "Foundatio.Mediator.HandlerCategoryAttribute";
+    public const string UseMiddlewareAttribute = "Foundatio.Mediator.UseMiddlewareAttribute";
 }

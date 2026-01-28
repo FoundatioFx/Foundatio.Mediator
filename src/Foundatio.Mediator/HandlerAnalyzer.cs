@@ -219,6 +219,12 @@ internal static class HandlerAnalyzer
                 xmlDocSummary,
                 context.SemanticModel.Compilation);
 
+            // Extract handler-specific middleware references from [UseMiddleware] and custom attributes
+            var handlerMiddlewareRefs = ExtractHandlerMiddlewareReferences(
+                classSymbol,
+                handlerMethod,
+                context.SemanticModel.Compilation);
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -238,6 +244,7 @@ internal static class HandlerAnalyzer
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],
+                HandlerMiddlewareReferences = new(handlerMiddlewareRefs.ToArray()),
                 IsExplicitlyDeclared = methodIsExplicitlyDeclared,
                 Order = order,
                 Lifetime = lifetime,
@@ -877,6 +884,99 @@ internal static class HandlerAnalyzer
     }
 
     #endregion
+
+    #endregion
+
+    #region Handler Middleware Extraction
+
+    /// <summary>
+    /// Extracts middleware references from [UseMiddleware] and custom attributes deriving from UseMiddlewareAttribute.
+    /// </summary>
+    private static List<HandlerMiddlewareReference> ExtractHandlerMiddlewareReferences(
+        INamedTypeSymbol classSymbol,
+        IMethodSymbol handlerMethod,
+        Compilation compilation)
+    {
+        var references = new List<HandlerMiddlewareReference>();
+
+        var useMiddlewareAttr = compilation.GetTypeByMetadataName(WellKnownTypes.UseMiddlewareAttribute);
+        if (useMiddlewareAttr == null)
+            return references;
+
+        // Process method-level attributes first (higher priority)
+        foreach (var attr in handlerMethod.GetAttributes())
+        {
+            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: true);
+            if (middlewareRef != null)
+                references.Add(middlewareRef.Value);
+        }
+
+        // Process class-level attributes
+        foreach (var attr in classSymbol.GetAttributes())
+        {
+            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: false);
+            if (middlewareRef != null)
+                references.Add(middlewareRef.Value);
+        }
+
+        return references;
+    }
+
+    /// <summary>
+    /// Attempts to extract a middleware reference from an attribute that derives from UseMiddlewareAttribute.
+    /// </summary>
+    private static HandlerMiddlewareReference? TryGetMiddlewareReference(
+        AttributeData attr,
+        INamedTypeSymbol useMiddlewareAttr,
+        bool isMethodLevel)
+    {
+        if (attr.AttributeClass == null)
+            return null;
+
+        // Check if attribute is or derives from UseMiddlewareAttribute
+        if (!IsOrDerivesFrom(attr.AttributeClass, useMiddlewareAttr))
+            return null;
+
+        string? middlewareTypeName = null;
+        int order = int.MaxValue;
+
+        // The middleware type is always in the constructor (either directly or via base constructor)
+        if (attr.ConstructorArguments.Length > 0 &&
+            attr.ConstructorArguments[0].Value is ITypeSymbol middlewareType)
+        {
+            middlewareTypeName = middlewareType.ToDisplayString();
+        }
+
+        // Get Order from named argument
+        var orderArg = attr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
+        if (orderArg.Value.Value is int orderValue)
+            order = orderValue;
+
+        if (middlewareTypeName == null)
+            return null;
+
+        return new HandlerMiddlewareReference
+        {
+            MiddlewareTypeName = middlewareTypeName,
+            Order = order,
+            IsMethodLevel = isMethodLevel
+        };
+    }
+
+    /// <summary>
+    /// Checks if a type is or derives from a base type.
+    /// </summary>
+    private static bool IsOrDerivesFrom(INamedTypeSymbol type, INamedTypeSymbol baseType)
+    {
+        var current = type;
+        while (current != null)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, baseType))
+                return true;
+            current = current.BaseType;
+        }
+        return false;
+    }
 
     #endregion
 }

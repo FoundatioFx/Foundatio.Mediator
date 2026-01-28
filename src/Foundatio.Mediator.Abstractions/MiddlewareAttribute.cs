@@ -34,4 +34,12 @@ public sealed class MiddlewareAttribute : Attribute
     /// MediatorDefaultMiddlewareLifetime MSBuild property.
     /// </summary>
     public MediatorLifetime Lifetime { get; set; } = MediatorLifetime.Default;
+
+    /// <summary>
+    /// Gets or sets whether this middleware should only be applied when explicitly referenced
+    /// via [UseMiddleware] or a custom attribute implementing IHandlerMiddlewareAttribute.
+    /// When true, the middleware will not be automatically applied based on message type matching.
+    /// Default is false (middleware is applied globally based on message type).
+    /// </summary>
+    public bool ExplicitOnly { get; set; }
 }

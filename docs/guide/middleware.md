@@ -174,55 +174,58 @@ public async ValueTask<object?> ExecuteAsync(
 
 Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio). This example demonstrates:
 
-- **Marker interface** (`IRetryableMessage`) for compile-time filtering of which messages get retry behavior
-- **Attribute-based configuration** (`[Retryable]`) on handlers to customize retry settings
-- **`HandlerExecutionInfo`** to access handler metadata and discover attributes
+- **Custom `[Retry]` attribute** that inherits from `UseMiddlewareAttribute` to trigger the middleware
+- **`ExplicitOnly = true`** so the middleware only applies when the attribute is used
+- **`HandlerExecutionInfo`** to access handler metadata and discover attribute settings
 
 ```csharp
-using System.Collections.Concurrent;
-using System.Reflection;
-using Foundatio.Mediator;
-using Foundatio.Resilience;
-using Microsoft.Extensions.Logging;
+/// <summary>
+/// Custom attribute that triggers RetryMiddleware and configures retry settings.
+/// Inherits from UseMiddlewareAttribute - no marker interface needed!
+/// </summary>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class RetryAttribute : UseMiddlewareAttribute
+{
+    public RetryAttribute() : base(typeof(RetryMiddleware)) { }
 
-namespace ConsoleSample.Middleware;
+    public int MaxAttempts { get; set; } = 3;
+    public int DelayMs { get; set; } = 100;
+    public bool UseExponentialBackoff { get; set; } = true;
+    public bool UseJitter { get; set; } = true;
+}
+```
 
+```csharp
 /// <summary>
 /// Middleware that wraps the entire pipeline with retry logic.
-/// Only applies to messages that implement IRetryableMessage (compile-time filtering).
-/// Uses HandlerExecutionInfo to discover retry settings from [Retryable] attribute.
+/// Only applies to handlers that use the [Retry] attribute (ExplicitOnly = true).
 /// </summary>
-[Middleware(Order = 0)] // Low order = outermost wrapper
+[Middleware(Order = 0, ExplicitOnly = true)] // Low order = outermost, ExplicitOnly = only via [Retry]
 public static class RetryMiddleware
 {
-    // Default policy for handlers without [Retryable] attribute
     private static readonly IResiliencePolicy DefaultPolicy = new ResiliencePolicyBuilder()
         .WithMaxAttempts(3)
         .WithExponentialDelay(TimeSpan.FromMilliseconds(100))
         .WithJitter()
         .Build();
 
-    // Cache policies per handler method to avoid rebuilding on each invocation
     private static readonly ConcurrentDictionary<MethodInfo, IResiliencePolicy> PolicyCache = new();
 
     public static async ValueTask<object?> ExecuteAsync(
-        IRetryableMessage message,
+        object message,                      // Takes object - filtering done by [Retry] attribute
         HandlerExecutionDelegate next,
         HandlerExecutionInfo handlerInfo,
         ILogger<IMediator> logger)
     {
-        // Get or create the retry policy for this handler
         var policy = PolicyCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
         {
-            // Check method first, then class for [Retryable] attribute
-            var attr = method.GetCustomAttribute<RetryableAttribute>()
-                ?? handlerInfo.HandlerType.GetCustomAttribute<RetryableAttribute>();
+            var attr = method.GetCustomAttribute<RetryAttribute>()
+                ?? handlerInfo.HandlerType.GetCustomAttribute<RetryAttribute>();
 
             if (attr == null)
-                return DefaultPolicy; // Use defaults when no attribute
+                return DefaultPolicy;
 
-            var builder = new ResiliencePolicyBuilder()
-                .WithMaxAttempts(attr.MaxAttempts);
+            var builder = new ResiliencePolicyBuilder().WithMaxAttempts(attr.MaxAttempts);
 
             if (attr.UseExponentialBackoff)
                 builder.WithExponentialDelay(TimeSpan.FromMilliseconds(attr.DelayMs));
@@ -235,81 +238,34 @@ public static class RetryMiddleware
             return builder.Build();
         });
 
-        logger.LogDebug("RetryMiddleware: Starting execution for {MessageType}",
-            message.GetType().Name);
-
         return await policy.ExecuteAsync(async ct =>
         {
-            logger.LogDebug("RetryMiddleware: Attempt for {MessageType}",
-                message.GetType().Name);
+            logger.LogDebug("RetryMiddleware: Attempt for {MessageType}", message.GetType().Name);
             return await next();
         }, default);
     }
 }
 ```
 
-### Retryable Attribute
-
-Use the `[Retryable]` attribute on handler classes or methods to customize retry behavior:
-
-```csharp
-/// <summary>
-/// Specifies retry settings for handler methods or classes.
-/// </summary>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class RetryableAttribute : Attribute
-{
-    public int MaxAttempts { get; set; } = 3;
-    public int DelayMs { get; set; } = 100;
-    public bool UseExponentialBackoff { get; set; } = true;
-    public bool UseJitter { get; set; } = true;
-}
-```
-
-Apply to handlers:
+Apply to handlers - the `[Retry]` attribute both **triggers** the middleware AND **configures** it:
 
 ```csharp
 public class OrderHandler
 {
-    // Method-level attribute (takes precedence over class-level)
-    [Retryable(MaxAttempts = 5, DelayMs = 200)]
+    // [Retry] triggers RetryMiddleware with custom settings
+    [Retry(MaxAttempts = 5, DelayMs = 200)]
     public async Task<Result<Order>> HandleAsync(CreateOrder command)
     {
         // ... create order with up to 5 retries
     }
 
-    // No attribute - uses default policy (3 attempts)
+    // No attribute - RetryMiddleware does NOT run (ExplicitOnly = true)
     public Result<Order> Handle(GetOrder query)
     {
-        // ... get order with default retry settings
+        // ... no retry behavior
     }
 }
-
-// Class-level attribute applies to all methods without their own attribute
-[Retryable(MaxAttempts = 2, UseExponentialBackoff = false)]
-public class PaymentHandler
-{
-    public async Task<Result> HandleAsync(ProcessPayment command) { /* ... */ }
-}
 ```
-
-### Marker Interface Pattern
-
-Use marker interfaces to apply Execute middleware selectively at compile time:
-
-```csharp
-// Marker interface - determines WHICH messages get retry middleware
-public interface IRetryableMessage { }
-
-// Message that should be retried (implements marker)
-public record CreateOrder(string CustomerId, decimal Amount)
-    : IRetryableMessage;
-
-// Message that should NOT be retried (no marker)
-public record GetOrder(string OrderId);
-```
-
-The marker interface controls **which** messages get retry behavior (compile-time), while the `[Retryable]` attribute controls **how** retries work (runtime configuration).
 
 ### Key Points
 
@@ -320,7 +276,7 @@ The marker interface controls **which** messages get retry behavior (compile-tim
 - Use `HandlerExecutionInfo` to access handler type and method for reflection
 - Cache policies per handler to avoid rebuilding on each invocation
 
-> **Complete Example**: See the [ConsoleSample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/RetryMiddleware.cs) and [RetryableAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/RetryableAttribute.cs) for working implementations.
+> **Complete Example**: See the [ConsoleSample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/RetryMiddleware.cs) and [RetryAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/RetryAttribute.cs) for working implementations.
 
 ## Short-Circuiting with HandlerResult
 
@@ -473,6 +429,85 @@ public class OrderCreationMiddleware
 }
 ```
 
+## Handler-Specific Middleware
+
+Use the `[UseMiddleware]` attribute to apply middleware to specific handlers rather than globally by message type.
+
+### Basic Usage
+
+```csharp
+[UseMiddleware(typeof(StopwatchMiddleware))]
+[UseMiddleware(typeof(AuditMiddleware), Order = 10)]
+public class OrderHandler
+{
+    public Result<Order> Handle(CreateOrder command) { /* ... */ }
+}
+```
+
+### Custom Middleware Attributes
+
+Create reusable attributes by inheriting from `UseMiddlewareAttribute`:
+
+```csharp
+public class RetryAttribute : UseMiddlewareAttribute
+{
+    public RetryAttribute() : base(typeof(RetryMiddleware)) { }
+    public int MaxAttempts { get; set; } = 3;
+}
+
+public class CachedAttribute : UseMiddlewareAttribute
+{
+    public CachedAttribute() : base(typeof(CachingMiddleware)) { }
+    public int DurationSeconds { get; set; } = 300;
+}
+```
+
+Usage is clean and expressive:
+
+```csharp
+public class OrderHandler
+{
+    [Retry(MaxAttempts = 5)]
+    public async Task<Result<Order>> HandleAsync(CreateOrder command) { /* ... */ }
+
+    [Cached(DurationSeconds = 60)]
+    public Result<Order> Handle(GetOrder query) { /* ... */ }
+}
+```
+
+### ExplicitOnly Middleware
+
+Mark middleware with `ExplicitOnly = true` to prevent automatic global application. The middleware will only run when explicitly referenced via `[UseMiddleware]` or a custom attribute:
+
+```csharp
+// This middleware only runs when a handler uses [Retry] or [UseMiddleware(typeof(RetryMiddleware))]
+[Middleware(Order = 0, ExplicitOnly = true)]
+public class RetryMiddleware
+{
+    public async ValueTask<object?> ExecuteAsync(object message, HandlerExecutionDelegate next)
+    {
+        // Retry logic...
+    }
+}
+```
+
+Without `ExplicitOnly = true`, middleware that takes `object` as the message type would run for ALL handlers.
+
+### Method vs Class Level
+
+Attributes can be applied at method or class level:
+
+```csharp
+[Retry] // Applies to all handler methods in this class
+public class OrderHandler
+{
+    public Result<Order> Handle(CreateOrder command) { /* ... */ }
+
+    [Cached(DurationSeconds = 120)] // Method-level adds caching for this method only
+    public Result<Order> Handle(GetOrder query) { /* ... */ }
+}
+```
+
 ## Real-World Examples
 
 ### Comprehensive Logging Middleware
@@ -498,32 +533,104 @@ public class LoggingMiddleware
 
 ### Caching Middleware
 
+Here's a caching middleware that uses the `[Cached]` attribute pattern. The middleware:
+
+- Uses `ExplicitOnly = true` so it only applies to handlers with `[Cached]`
+- Uses the message as the cache key (records have value equality)
+- Supports configurable expiration
+
 ```csharp
-public class CachingMiddleware
+/// <summary>
+/// Custom attribute that triggers CachingMiddleware and configures cache settings.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class CachedAttribute : UseMiddlewareAttribute
 {
-    private readonly IMemoryCache _cache;
+    public CachedAttribute() : base(typeof(CachingMiddleware)) { }
 
-    public CachingMiddleware(IMemoryCache cache) => _cache = cache;
+    public int DurationSeconds { get; set; } = 300;
+    public bool SlidingExpiration { get; set; }
+}
+```
 
-    public HandlerResult Before(IQuery query)
+```csharp
+/// <summary>
+/// Middleware that caches handler responses.
+/// Only applies to handlers with [Cached] attribute (ExplicitOnly = true).
+/// Uses the message as cache key - record types work automatically (value equality).
+/// </summary>
+[Middleware(Order = 100, ExplicitOnly = true)] // High order = runs close to handler
+public static class CachingMiddleware
+{
+    private static readonly ConcurrentDictionary<object, CacheEntry> Cache = new();
+    private static readonly ConcurrentDictionary<MethodInfo, CacheSettings> SettingsCache = new();
+
+    public static async ValueTask<object?> ExecuteAsync(
+        object message,
+        HandlerExecutionDelegate next,
+        HandlerExecutionInfo handlerInfo,
+        ILogger<IMediator> logger)
     {
-        var cacheKey = $"{query.GetType().Name}:{GetQueryKey(query)}";
-
-        if (_cache.TryGetValue(cacheKey, out var cachedResult))
+        var settings = SettingsCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
         {
-            return HandlerResult.ShortCircuit(cachedResult);
+            var attr = method.GetCustomAttribute<CachedAttribute>();
+            return new CacheSettings
+            {
+                Duration = TimeSpan.FromSeconds(attr?.DurationSeconds ?? 300),
+                SlidingExpiration = attr?.SlidingExpiration ?? false
+            };
+        });
+
+        // Check cache - message is the key (records have value equality)
+        if (Cache.TryGetValue(message, out var entry) && !entry.IsExpired)
+        {
+            logger.LogDebug("CachingMiddleware: Cache HIT for {MessageType}", message.GetType().Name);
+            if (settings.SlidingExpiration)
+                entry.LastAccessed = DateTime.UtcNow;
+            return entry.Value;
         }
 
-        return HandlerResult.Continue();
+        // Cache miss - execute handler
+        logger.LogDebug("CachingMiddleware: Cache MISS for {MessageType}", message.GetType().Name);
+        var result = await next();
+
+        // Store in cache
+        Cache[message] = new CacheEntry { Value = result, Duration = settings.Duration, /* ... */ };
+        return result;
     }
 
-    public void After(IQuery query, object result)
+    /// <summary>
+    /// Invalidates the cache entry for a specific message.
+    /// </summary>
+    public static void Invalidate(object message) => Cache.TryRemove(message, out _);
+}
+```
+
+Usage:
+
+```csharp
+public class OrderHandler
+{
+    [Cached(DurationSeconds = 60)]
+    public Result<Order> Handle(GetOrder query)
     {
-        var cacheKey = $"{query.GetType().Name}:{GetQueryKey(query)}";
-        _cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
+        // Only executes on cache miss
+        return _repository.GetOrder(query.OrderId);
+    }
+
+    public async Task<Result<Order>> HandleAsync(UpdateOrder command)
+    {
+        var result = await _repository.UpdateOrder(command);
+
+        // Invalidate cache when data changes
+        CachingMiddleware.Invalidate(new GetOrder(command.OrderId));
+
+        return result;
     }
 }
 ```
+
+> **Complete Example**: See the [ConsoleSample CachingMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/CachingMiddleware.cs) and [CachedAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/CachedAttribute.cs) for working implementations.
 
 ## Async Middleware
 

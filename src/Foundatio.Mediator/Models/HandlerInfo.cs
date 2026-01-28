@@ -17,6 +17,13 @@ internal readonly record struct HandlerInfo
     public EquatableArray<ParameterInfo> Parameters { get; init; }
     public EquatableArray<CallSiteInfo> CallSites { get; init; }
     public EquatableArray<MiddlewareInfo> Middleware { get; init; }
+
+    /// <summary>
+    /// Middleware explicitly specified on this handler via [UseMiddleware] or custom attributes
+    /// implementing IHandlerMiddlewareAttribute.
+    /// </summary>
+    public EquatableArray<HandlerMiddlewareReference> HandlerMiddlewareReferences { get; init; }
+
     public bool IsGenericHandlerClass { get; init; }
     public int GenericArity { get; init; }
     public EquatableArray<string> GenericTypeParameters { get; init; }

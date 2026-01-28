@@ -24,6 +24,12 @@ internal readonly record struct MiddlewareInfo
     public bool IsExplicitlyDeclared { get; init; }
 
     /// <summary>
+    /// Whether this middleware should only be applied when explicitly referenced via [UseMiddleware].
+    /// When true, the middleware is not automatically applied based on message type matching.
+    /// </summary>
+    public bool ExplicitOnly { get; init; }
+
+    /// <summary>
     /// The DI lifetime for this middleware when explicitly set via [Middleware(Lifetime = ...)] attribute.
     /// Null means use the project-level MediatorDefaultMiddlewareLifetime setting.
     /// </summary>

@@ -177,6 +177,7 @@ internal static class MiddlewareAnalyzer
 
         int? order = null;
         string? lifetime = null;
+        bool explicitOnly = false;
 
         // First check [Middleware(order)] attribute
         var middlewareAttr = classSymbol.GetAttributes()
@@ -210,6 +211,13 @@ internal static class MiddlewareAnalyzer
                     _ => null
                 };
             }
+
+            // Check ExplicitOnly named argument
+            var explicitOnlyArg = middlewareAttr.NamedArguments.FirstOrDefault(na => na.Key == "ExplicitOnly");
+            if (explicitOnlyArg.Value.Value is bool explicitOnlyValue)
+            {
+                explicitOnly = explicitOnlyValue;
+            }
         }
 
         // Detect constructor parameters (for non-static middleware)
@@ -234,6 +242,7 @@ internal static class MiddlewareAnalyzer
             DeclaredAccessibility = classSymbol.DeclaredAccessibility,
             AssemblyName = classSymbol.ContainingAssembly.Name,
             IsExplicitlyDeclared = middlewareAttr != null,
+            ExplicitOnly = explicitOnly,
             HasConstructorParameters = hasConstructorParameters,
             HasMethodDIParameters = hasMethodDIParameters,
             Diagnostics = new(diagnostics.ToArray()),

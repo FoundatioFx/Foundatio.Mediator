@@ -19,7 +19,7 @@ public record CreateOrder(
 
     [Required(ErrorMessage = "Description is required")]
     [StringLength(200, MinimumLength = 5, ErrorMessage = "Description must be between 5 and 200 characters")]
-    string Description) : IValidatable, IRetryableMessage;
+    string Description) : IValidatable;
 public record GetOrder(string OrderId);
 public record UpdateOrder(string OrderId, decimal? Amount, string? Description);
 public record DeleteOrder(string OrderId);

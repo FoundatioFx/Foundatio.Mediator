@@ -8,13 +8,13 @@ namespace ConsoleSample.Middleware;
 
 /// <summary>
 /// Middleware that wraps the entire pipeline (Before → Handler → After → Finally) with retry logic.
-/// Only applies to messages that implement IRetryableMessage (compile-time filtering).
-/// Uses HandlerExecutionInfo to discover retry settings from [Retryable] attribute on handlers.
+/// Only applies to handlers that use the [Retry] attribute (ExplicitOnly = true).
+/// Uses HandlerExecutionInfo to discover retry settings from the [Retry] attribute.
 /// </summary>
-[Middleware(Order = 0)] // Low order = outermost wrapper
+[Middleware(Order = 0, ExplicitOnly = true)] // Low order = outermost wrapper, ExplicitOnly = only via [Retry]
 public static class RetryMiddleware
 {
-    // Default policy for handlers without [Retryable] attribute
+    // Default policy for handlers without custom settings
     private static readonly IResiliencePolicy DefaultPolicy = new ResiliencePolicyBuilder()
         .WithMaxAttempts(3)
         .WithExponentialDelay(TimeSpan.FromMilliseconds(100))
@@ -25,7 +25,7 @@ public static class RetryMiddleware
     private static readonly ConcurrentDictionary<MethodInfo, IResiliencePolicy> PolicyCache = new();
 
     public static async ValueTask<object?> ExecuteAsync(
-        IRetryableMessage message,
+        object message,
         HandlerExecutionDelegate next,
         HandlerExecutionInfo handlerInfo,
         ILogger<IMediator> logger)
@@ -33,9 +33,9 @@ public static class RetryMiddleware
         // Get or create the retry policy for this handler
         var policy = PolicyCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
         {
-            // Check method first, then class for [Retryable] attribute
-            var attr = method.GetCustomAttribute<RetryableAttribute>()
-                ?? handlerInfo.HandlerType.GetCustomAttribute<RetryableAttribute>();
+            // Check method first, then class for [Retry] attribute
+            var attr = method.GetCustomAttribute<RetryAttribute>()
+                ?? handlerInfo.HandlerType.GetCustomAttribute<RetryAttribute>();
 
             if (attr == null)
                 return DefaultPolicy; // Use defaults when no attribute

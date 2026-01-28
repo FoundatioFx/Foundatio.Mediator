@@ -369,7 +369,7 @@ See the [CleanArchitectureSample](https://github.com/FoundatioFx/Foundatio.Media
 | Tight coupling between modules | Loose coupling via messages and events |
 | Interface boilerplate for every handler | Convention-based discovery, zero interfaces |
 | Manual event publishing and subscription | Automatic cascading with tuple returns |
-| Cross-cutting concerns scattered or complex decorators | Simple middleware with Before/After/Finally |
+| Cross-cutting concerns scattered or complex decorators | Simple middleware with Before/After/Finally/Execute |
 | One handler per class limitation | Multiple handlers per class, grouped naturally |
 
 ## Next Steps

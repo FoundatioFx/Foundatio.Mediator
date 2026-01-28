@@ -245,7 +245,7 @@ var order = await mediator.InvokeAsync<Order>(new CreateOrder(...));
 
 ### Middleware Not Executing
 
-**Symptom:** Middleware `Before`/`After`/`Finally` methods not being called.
+**Symptom:** Middleware `Before`/`After`/`Finally`/`ExecuteAsync` methods not being called.
 
 **Causes:**
 1. Middleware class doesn't end in `Middleware`

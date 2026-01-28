@@ -108,7 +108,7 @@ public Result<User> Handle(GetUser query)
 
 ### 🎪 Powerful Middleware Pipeline
 
-Cross-cutting concerns made easy with Before/After/Finally hooks:
+Cross-cutting concerns made easy with Before/After/Finally/Execute hooks:
 
 ```csharp
 public class ValidationMiddleware

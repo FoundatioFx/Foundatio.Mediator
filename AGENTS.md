@@ -28,7 +28,7 @@ Foundatio.Mediator is a high-performance mediator library for .NET that achieves
 
 - **Convention-based discovery** - Handlers discovered by naming (`*Handler`, `*Consumer`) or explicit attributes
 - **Zero runtime reflection** - All dispatch resolved at compile time via source generators
-- **Middleware pipeline** - Before/After/Finally hooks with state passing
+- **Middleware pipeline** - Before/After/Finally/Execute hooks with state passing
 - **Result pattern** - Rich status handling without exceptions via `Result<T>`
 - **Cascading messages** - Tuple returns for event-driven patterns
 - **Endpoint generation** - Auto-generate minimal API endpoints from handlers
@@ -189,6 +189,7 @@ Middleware classes must end with `Middleware`. Available hook methods:
 | `Before(Async)` | Before handler | Top-to-bottom (low Order first) |
 | `After(Async)` | After successful handler | Bottom-to-top (high Order first) |
 | `Finally(Async)` | Always runs (like finally block) | Bottom-to-top |
+| `ExecuteAsync` | Wraps entire pipeline (for retry, circuit breaker) | Outermost first (low Order first) |
 
 **State passing:** Return value from `Before` is passed as a parameter to `After`/`Finally` with matching type.
 
@@ -277,7 +278,7 @@ Defined in `src/Foundatio.Mediator/Foundatio.Mediator.props`:
 The `MediatorGenerator` orchestrates the following sequence:
 
 1. **HandlerAnalyzer** - Scans for handler classes and methods
-2. **MiddlewareAnalyzer** - Finds middleware with Before/After/Finally methods
+2. **MiddlewareAnalyzer** - Finds middleware with Before/After/Finally/Execute methods
 3. **CallSiteAnalyzer** - Locates all `mediator.InvokeAsync()`/`PublishAsync()` calls
 4. **HandlerGenerator** - Emits wrapper classes with static dispatch methods
 5. **InterceptsLocationGenerator** - Emits `[InterceptsLocation]` for C# 11+ interceptors

@@ -13,7 +13,7 @@ Blazingly fast, convention-based C# mediator powered by source generators and in
 - ⚡ **Convention-based** - No interfaces or base classes required
 - 🔧 **Full DI support** - Microsoft.Extensions.DependencyInjection integration
 - 🧩 **Plain handler classes** - Drop in static or instance methods anywhere
-- 🎪 **Middleware pipeline** - Before/After/Finally hooks with state passing
+- 🎪 **Middleware pipeline** - Before/After/Finally/Execute hooks with state passing
 - 🎯 **Built-in Result\<T>** - Rich status handling without exceptions
 - 🔄 **Tuple returns** - Automatic cascading messages
 - 🌐 **Auto-generated endpoints** - Minimal API endpoints from handlers with zero boilerplate

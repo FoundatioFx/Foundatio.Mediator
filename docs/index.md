@@ -35,7 +35,7 @@ features:
     link: /guide/handler-conventions
   - icon: 🎪
     title: Middleware Pipeline
-    details: Before/After/Finally hooks with state passing and short-circuiting capabilities.
+    details: Before/After/Finally/Execute hooks with state passing and short-circuiting capabilities.
     link: /guide/middleware
   - icon: 🌐
     title: Auto-Generated Endpoints

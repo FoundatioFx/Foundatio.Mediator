@@ -257,6 +257,7 @@ All code generation decisions are driven by computed properties on `HandlerInfo`
 | `HasBeforeMiddleware`               | Any middleware has a Before method                                          |
 | `HasAfterMiddleware`                | Any middleware has an After method                                          |
 | `HasFinallyMiddleware`              | Any middleware has a Finally method (requires try/catch)                    |
+| `HasExecuteMiddleware`              | Any middleware has an ExecuteAsync method (wraps entire pipeline)           |
 | `RequiresHandlerExecutionInfo`      | Any middleware method needs HandlerExecutionInfo parameter                  |
 | `RequiresMiddlewareInstances`       | Any middleware requires instantiation (non-static)                          |
 | `HasCascadingMessages`              | Handler returns tuple with 2+ items (non-first items published)             |

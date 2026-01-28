@@ -1,8 +1,8 @@
 namespace ConsoleSample;
 
 /// <summary>
-/// Marker interface for messages that should be retried on transient failures.
-/// Messages implementing this interface will have the RetryMiddleware applied,
-/// which wraps the entire pipeline with retry logic using Foundatio Resilience.
+/// Marker interface for messages that should use retry middleware.
+/// Apply this to message types that may need automatic retry on transient failures.
+/// The retry behavior can be customized via [Retryable] attribute on the handler.
 /// </summary>
 public interface IRetryableMessage { }

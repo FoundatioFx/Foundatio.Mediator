@@ -172,9 +172,15 @@ public async ValueTask<object?> ExecuteAsync(
 
 ### Retry Middleware Example
 
-Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio):
+Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio). This example demonstrates:
+
+- **Marker interface** (`IRetryableMessage`) for compile-time filtering of which messages get retry behavior
+- **Attribute-based configuration** (`[Retryable]`) on handlers to customize retry settings
+- **`HandlerExecutionInfo`** to access handler metadata and discover attributes
 
 ```csharp
+using System.Collections.Concurrent;
+using System.Reflection;
 using Foundatio.Mediator;
 using Foundatio.Resilience;
 using Microsoft.Extensions.Logging;
@@ -183,26 +189,56 @@ namespace ConsoleSample.Middleware;
 
 /// <summary>
 /// Middleware that wraps the entire pipeline with retry logic.
-/// Only applies to messages that implement IRetryableMessage.
+/// Only applies to messages that implement IRetryableMessage (compile-time filtering).
+/// Uses HandlerExecutionInfo to discover retry settings from [Retryable] attribute.
 /// </summary>
 [Middleware(Order = 0)] // Low order = outermost wrapper
 public static class RetryMiddleware
 {
-    private static readonly IResiliencePolicy Policy = new ResiliencePolicyBuilder()
+    // Default policy for handlers without [Retryable] attribute
+    private static readonly IResiliencePolicy DefaultPolicy = new ResiliencePolicyBuilder()
         .WithMaxAttempts(3)
         .WithExponentialDelay(TimeSpan.FromMilliseconds(100))
         .WithJitter()
         .Build();
 
+    // Cache policies per handler method to avoid rebuilding on each invocation
+    private static readonly ConcurrentDictionary<MethodInfo, IResiliencePolicy> PolicyCache = new();
+
     public static async ValueTask<object?> ExecuteAsync(
         IRetryableMessage message,
         HandlerExecutionDelegate next,
+        HandlerExecutionInfo handlerInfo,
         ILogger<IMediator> logger)
     {
+        // Get or create the retry policy for this handler
+        var policy = PolicyCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
+        {
+            // Check method first, then class for [Retryable] attribute
+            var attr = method.GetCustomAttribute<RetryableAttribute>()
+                ?? handlerInfo.HandlerType.GetCustomAttribute<RetryableAttribute>();
+
+            if (attr == null)
+                return DefaultPolicy; // Use defaults when no attribute
+
+            var builder = new ResiliencePolicyBuilder()
+                .WithMaxAttempts(attr.MaxAttempts);
+
+            if (attr.UseExponentialBackoff)
+                builder.WithExponentialDelay(TimeSpan.FromMilliseconds(attr.DelayMs));
+            else
+                builder.WithLinearDelay(TimeSpan.FromMilliseconds(attr.DelayMs));
+
+            if (attr.UseJitter)
+                builder.WithJitter();
+
+            return builder.Build();
+        });
+
         logger.LogDebug("RetryMiddleware: Starting execution for {MessageType}",
             message.GetType().Name);
 
-        return await Policy.ExecuteAsync(async ct =>
+        return await policy.ExecuteAsync(async ct =>
         {
             logger.LogDebug("RetryMiddleware: Attempt for {MessageType}",
                 message.GetType().Name);
@@ -212,15 +248,60 @@ public static class RetryMiddleware
 }
 ```
 
-### Marker Interface Pattern
+### Retryable Attribute
 
-Use marker interfaces to apply Execute middleware selectively:
+Use the `[Retryable]` attribute on handler classes or methods to customize retry behavior:
 
 ```csharp
-// Marker interface
+/// <summary>
+/// Specifies retry settings for handler methods or classes.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class RetryableAttribute : Attribute
+{
+    public int MaxAttempts { get; set; } = 3;
+    public int DelayMs { get; set; } = 100;
+    public bool UseExponentialBackoff { get; set; } = true;
+    public bool UseJitter { get; set; } = true;
+}
+```
+
+Apply to handlers:
+
+```csharp
+public class OrderHandler
+{
+    // Method-level attribute (takes precedence over class-level)
+    [Retryable(MaxAttempts = 5, DelayMs = 200)]
+    public async Task<Result<Order>> HandleAsync(CreateOrder command)
+    {
+        // ... create order with up to 5 retries
+    }
+
+    // No attribute - uses default policy (3 attempts)
+    public Result<Order> Handle(GetOrder query)
+    {
+        // ... get order with default retry settings
+    }
+}
+
+// Class-level attribute applies to all methods without their own attribute
+[Retryable(MaxAttempts = 2, UseExponentialBackoff = false)]
+public class PaymentHandler
+{
+    public async Task<Result> HandleAsync(ProcessPayment command) { /* ... */ }
+}
+```
+
+### Marker Interface Pattern
+
+Use marker interfaces to apply Execute middleware selectively at compile time:
+
+```csharp
+// Marker interface - determines WHICH messages get retry middleware
 public interface IRetryableMessage { }
 
-// Message that should be retried
+// Message that should be retried (implements marker)
 public record CreateOrder(string CustomerId, decimal Amount)
     : IRetryableMessage;
 
@@ -228,14 +309,18 @@ public record CreateOrder(string CustomerId, decimal Amount)
 public record GetOrder(string OrderId);
 ```
 
+The marker interface controls **which** messages get retry behavior (compile-time), while the `[Retryable]` attribute controls **how** retries work (runtime configuration).
+
 ### Key Points
 
 - Execute middleware **only supports async** (`ExecuteAsync`) - no sync `Execute` method
 - The `next` delegate returns `object?` - cast as needed for strongly-typed results
 - Use low `Order` values (e.g., 0, 1) to wrap as outermost middleware
 - Execute middleware can access DI parameters like other middleware methods
+- Use `HandlerExecutionInfo` to access handler type and method for reflection
+- Cache policies per handler to avoid rebuilding on each invocation
 
-> **💡 Complete Example**: See the [ConsoleSample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/RetryMiddleware.cs) for a working implementation.
+> **Complete Example**: See the [ConsoleSample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/RetryMiddleware.cs) and [RetryableAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/RetryableAttribute.cs) for working implementations.
 
 ## Short-Circuiting with HandlerResult
 

@@ -42,6 +42,38 @@ $CoreResultsFile = Join-Path $BenchmarkProject 'BenchmarkDotNet.Artifacts/result
 $FoundatioResultsFile = Join-Path $BenchmarkProject 'BenchmarkDotNet.Artifacts/results/Foundatio.Mediator.Benchmarks.FoundatioBenchmarks-report.csv'
 $PerfDoc = Join-Path $RepoRoot 'docs/guide/performance.md'
 
+# Helper function to convert Mean value string to nanoseconds
+function ConvertTo-Nanoseconds {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -eq 'NA') {
+        return [double]::MaxValue
+    }
+    if ($Value -match '^([\d,.]+)\s*(ns|us|μs|ms|s)$') {
+        $num = [double]($Matches[1] -replace ',', '')
+        $unit = $Matches[2]
+        switch ($unit) {
+            'ns' { return $num }
+            'us' { return $num * 1000 }
+            'μs' { return $num * 1000 }
+            'ms' { return $num * 1000000 }
+            's'  { return $num * 1000000000 }
+            default { return $num }
+        }
+    }
+    return [double]::MaxValue
+}
+
+# Load baseline from existing CSV before running benchmarks (for comparison)
+$baseline = @{}
+if ($FoundatioOnly -and (Test-Path $FoundatioResultsFile)) {
+    Write-Host "Loading baseline from existing results..." -ForegroundColor Cyan
+    $baselineCsv = Import-Csv $FoundatioResultsFile
+    foreach ($row in $baselineCsv) {
+        $baseline[$row.Method] = $row
+    }
+    Write-Host "Loaded $($baseline.Count) baseline entries" -ForegroundColor Cyan
+}
+
 # Run benchmarks if not skipped
 if (-not $SkipBenchmarks) {
     if ($FoundatioOnly) {
@@ -115,6 +147,56 @@ if ($FoundatioOnly) {
 
     Write-Host "Found $($foundatioResults.Count) Foundatio benchmark results" -ForegroundColor Cyan
 
+    # Display comparison with baseline if available
+    if ($baseline.Count -gt 0) {
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor Yellow
+        Write-Host "  BENCHMARK COMPARISON (Before -> After)" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f "Method", "Before", "After", "Change") -ForegroundColor White
+        Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f "------", "------", "-----", "------") -ForegroundColor Gray
+
+        foreach ($row in $foundatioCsv) {
+            $method = $row.Method
+            $newMean = $row.Mean
+            $newNs = ConvertTo-Nanoseconds $newMean
+
+            if ($baseline.ContainsKey($method)) {
+                $oldMean = $baseline[$method].Mean
+                $oldNs = ConvertTo-Nanoseconds $oldMean
+
+                if ($oldNs -gt 0 -and $newNs -lt [double]::MaxValue) {
+                    $pctChange = (($newNs - $oldNs) / $oldNs) * 100
+                    $changeStr = if ($pctChange -lt 0) {
+                        "{0:N1}%" -f $pctChange
+                    } else {
+                        "+{0:N1}%" -f $pctChange
+                    }
+                    # Consider both percentage AND absolute time - sub-1ns measurements are noise
+                    $isSignificant = ($oldNs -gt 1) -and ($newNs -gt 1)
+                    $color = if (-not $isSignificant) { "Gray" }
+                             elseif ($pctChange -lt -5) { "Green" }
+                             elseif ($pctChange -gt 5) { "Red" }
+                             else { "Gray" }
+
+                    Write-Host ("{0,-20} {1,15} {2,15} " -f $method, $oldMean, $newMean) -NoNewline
+                    Write-Host ("{0,12}" -f $changeStr) -ForegroundColor $color
+                } else {
+                    Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f $method, $oldMean, $newMean, "N/A") -ForegroundColor Gray
+                }
+            } else {
+                Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f $method, "(new)", $newMean, "NEW") -ForegroundColor Cyan
+            }
+        }
+        Write-Host ""
+        Write-Host "Legend: " -NoNewline -ForegroundColor White
+        Write-Host "Green = improved (>5%), " -NoNewline -ForegroundColor Green
+        Write-Host "Red = regressed (>5%), " -NoNewline -ForegroundColor Red
+        Write-Host "Gray = within noise" -ForegroundColor Gray
+        Write-Host ""
+    }
+
     # Load existing CoreBenchmarks results
     if (Test-Path $CoreResultsFile) {
         Write-Host "Loading existing comparison benchmark results..." -ForegroundColor Cyan
@@ -150,9 +232,6 @@ $groups = @{
     'ShortCircuit' = @()
 }
 
-# Define the order of implementations
-$implOrder = @('Direct', 'MediatorNet', 'MediatR', 'Foundatio', 'Wolverine', 'MassTransit', 'ImmediateHandlers')
-
 foreach ($row in $csv) {
     $method = $row.Method
     if ($method -match 'ShortCircuit') {
@@ -170,31 +249,10 @@ foreach ($row in $csv) {
     }
 }
 
-# Helper function to parse Mean value to nanoseconds for sorting
-function Parse-MeanToNs {
-    param([string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -eq 'NA') {
-        return [double]::MaxValue
-    }
-    if ($Value -match '^([\d,.]+)\s*(ns|us|μs|ms|s)$') {
-        $num = [double]($Matches[1] -replace ',', '')
-        $unit = $Matches[2]
-        switch ($unit) {
-            'ns' { return $num }
-            'us' { return $num * 1000 }
-            'μs' { return $num * 1000 }
-            'ms' { return $num * 1000000 }
-            's'  { return $num * 1000000000 }
-            default { return $num }
-        }
-    }
-    return [double]::MaxValue
-}
-
 # Sort each group by Mean (best performance first)
 $groupKeys = @($groups.Keys)
 foreach ($key in $groupKeys) {
-    $groups[$key] = $groups[$key] | Sort-Object { Parse-MeanToNs $_.Mean }
+    $groups[$key] = $groups[$key] | Sort-Object { ConvertTo-Nanoseconds $_.Mean }
 }
 
 # Helper function to format allocated bytes with thousand separators

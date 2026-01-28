@@ -10,8 +10,9 @@ internal readonly record struct MiddlewareInfo
     public MiddlewareMethodInfo? BeforeMethod { get; init; }
     public MiddlewareMethodInfo? AfterMethod { get; init; }
     public MiddlewareMethodInfo? FinallyMethod { get; init; }
+    public MiddlewareMethodInfo? ExecuteMethod { get; init; }
     public bool IsStatic { get; init; }
-    public bool IsAsync => BeforeMethod?.IsAsync == true || AfterMethod?.IsAsync == true || FinallyMethod?.IsAsync == true;
+    public bool IsAsync => BeforeMethod?.IsAsync == true || AfterMethod?.IsAsync == true || FinallyMethod?.IsAsync == true || ExecuteMethod?.IsAsync == true;
     public int? Order { get; init; }
     public Accessibility DeclaredAccessibility { get; init; }
     public string AssemblyName { get; init; }

@@ -140,3 +140,30 @@ public class ShortCircuitMiddleware
         return ValueTask.FromResult(HandlerResult.ShortCircuit(_cachedOrder));
     }
 }
+
+// Scenario 7: Execute middleware - wraps entire handler pipeline for retry/resilience patterns
+[Handler]
+public class FoundatioExecuteMiddlewareHandler
+{
+    public ValueTask<Order> HandleAsync(GetWithExecuteMiddleware query, CancellationToken cancellationToken = default)
+    {
+        return ValueTask.FromResult(new Order(query.Id, 99.99m, DateTime.UtcNow));
+    }
+}
+
+/// <summary>
+/// Execute middleware that wraps the entire handler execution (Before → Handler → After → Finally).
+/// Used for retry, circuit breaker, timeout, and other resilience patterns.
+/// This is a minimal benchmark implementation - just passes through to measure overhead.
+/// </summary>
+[Middleware]
+public static class BenchmarkExecuteMiddleware
+{
+    public static ValueTask<object?> ExecuteAsync(
+        GetWithExecuteMiddleware message,
+        HandlerExecutionDelegate next)
+    {
+        // Minimal execute middleware - just invokes the wrapped pipeline
+        return next();
+    }
+}

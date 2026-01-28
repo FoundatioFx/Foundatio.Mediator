@@ -22,6 +22,7 @@ public class FoundatioBenchmarks
     private readonly GetCachedOrder _getCachedOrder = new(42);
     private readonly UserRegisteredEvent _userRegisteredEvent = new("User-456", "test@example.com");
     private readonly CreateOrder _createOrder = new(123, 99.99m);
+    private readonly GetWithExecuteMiddleware _getWithExecuteMiddleware = new(42);
 
     [GlobalSetup]
     public void Setup()
@@ -73,5 +74,11 @@ public class FoundatioBenchmarks
     public ValueTask<Order> ShortCircuit()
     {
         return _foundatioMediator.InvokeAsync<Order>(_getCachedOrder);
+    }
+
+    [Benchmark]
+    public ValueTask<Order> ExecuteMiddleware()
+    {
+        return _foundatioMediator.InvokeAsync<Order>(_getWithExecuteMiddleware);
     }
 }

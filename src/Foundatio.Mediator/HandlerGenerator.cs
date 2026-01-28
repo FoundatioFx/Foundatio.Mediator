@@ -328,7 +328,10 @@ internal static class HandlerGenerator
     {
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
-        // Build middleware lists only if handler has that type of middleware
+        // Build middleware lists - separate Execute middleware from Before/After/Finally
+        var executeMiddleware = handler.HasExecuteMiddleware
+            ? handler.Middleware.Where(m => m.ExecuteMethod != null).OrderBy(m => m.Order ?? 0).ToList()
+            : [];
         var beforeMiddleware = handler.HasBeforeMiddleware
             ? handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList()
             : [];
@@ -348,6 +351,152 @@ internal static class HandlerGenerator
         EmitBeforeMiddlewareResultVariables(source, beforeMiddleware, variables);
         EmitHandlerResultVariable(source, handler, resultVar);
 
+        // Check if we have Execute middleware - if so, wrap the entire pipeline
+        if (executeMiddleware.Count > 0)
+        {
+            EmitExecuteMiddlewareChain(source, handler, executeMiddleware, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex);
+        }
+        else
+        {
+            // Original code path - no Execute middleware
+            EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, requiresTryCatch);
+        }
+    }
+
+    /// <summary>
+    /// Emits the Execute middleware chain that wraps the entire pipeline.
+    /// </summary>
+    private static void EmitExecuteMiddlewareChain(
+        IndentedStringBuilder source,
+        HandlerInfo handler,
+        List<MiddlewareInfo> executeMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> afterMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> finallyMiddleware,
+        GeneratorConfiguration configuration,
+        Dictionary<string, string> variables,
+        string resultVar,
+        string messageVar,
+        int targetTupleIndex)
+    {
+        bool requiresTryCatch = handler.RequiresTryCatch || configuration.OpenTelemetryEnabled;
+
+        // Build innermost delegate containing the entire Before → Handler → After → Finally pipeline
+        source.AppendLine("Foundatio.Mediator.HandlerExecutionDelegate pipelineDelegate = async () =>");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        // Create inner variables for the pipeline scope
+        var innerVariables = new Dictionary<string, string>(variables);
+
+        // Emit result variable for inner scope
+        if (handler.HasReturnValue)
+        {
+            bool allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
+            source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} innerResult = default;");
+        }
+
+        // Emit the full pipeline inside the delegate
+        EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, innerVariables, "innerResult", messageVar, targetTupleIndex, requiresTryCatch, insideExecuteDelegate: true);
+
+        source.AppendLine(handler.HasReturnValue ? "return innerResult;" : "return null;");
+        source.DecrementIndent();
+        source.AppendLine("};");
+        source.AppendLine();
+
+        // Wrap with each Execute middleware (reverse order for proper nesting - innermost first)
+        var reversed = executeMiddleware.AsEnumerable().Reverse().ToList();
+        for (int i = 0; i < reversed.Count; i++)
+        {
+            var m = reversed[i];
+            string accessor = m.IsStatic ? m.FullName : m.Identifier.ToCamelCase();
+            string currentDelegate = i == 0 ? "pipelineDelegate" : $"wrapped{i - 1}";
+            string nextDelegate = $"wrapped{i}";
+
+            // Build parameters for Execute method
+            string parameters = BuildExecuteParameters(source, m.ExecuteMethod!.Value.Parameters, variables, messageVar, currentDelegate);
+
+            string asyncModifier = m.ExecuteMethod!.Value.IsAsync ? "await " : "";
+            source.AppendLine($"Foundatio.Mediator.HandlerExecutionDelegate {nextDelegate} = async () =>");
+            source.AppendLine("{");
+            source.AppendLine($"    return {asyncModifier}{accessor}.{m.ExecuteMethod!.Value.MethodName}({parameters});");
+            source.AppendLine("};");
+        }
+
+        // Execute the outermost delegate and cast result
+        string finalDelegate = reversed.Count > 0 ? $"wrapped{reversed.Count - 1}" : "pipelineDelegate";
+        if (handler.HasReturnValue)
+        {
+            source.AppendLine($"{resultVar} = ({handler.ReturnType.UnwrappedFullName})(await {finalDelegate}())!;");
+        }
+        else
+        {
+            source.AppendLine($"await {finalDelegate}();");
+        }
+    }
+
+    /// <summary>
+    /// Builds the parameters for an Execute middleware method call.
+    /// </summary>
+    private static string BuildExecuteParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string> variables, string messageVar, string delegateVar)
+    {
+        var parameterValues = new List<string>();
+
+        foreach (var param in parameters)
+        {
+            if (param.IsMessageParameter)
+            {
+                parameterValues.Add(messageVar);
+            }
+            else if (param.Type.FullName == WellKnownTypes.HandlerExecutionDelegate)
+            {
+                parameterValues.Add(delegateVar);
+            }
+            else if (param.Type.IsCancellationToken)
+            {
+                parameterValues.Add("cancellationToken");
+            }
+            else if (param.Type.IsHandlerExecutionInfo)
+            {
+                parameterValues.Add("handlerExecutionInfo");
+            }
+            else if (variables.TryGetValue(param.Type.QualifiedName, out string? qualifiedVariableName))
+            {
+                parameterValues.Add(qualifiedVariableName);
+            }
+            else if (variables.TryGetValue(param.Type.FullName, out string? variableName))
+            {
+                parameterValues.Add(variableName);
+            }
+            else
+            {
+                // DI parameter
+                parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+            }
+        }
+
+        return String.Join(", ", parameterValues);
+    }
+
+    /// <summary>
+    /// Emits the core pipeline code: Before middleware → Handler → After middleware, with optional try-catch-finally.
+    /// </summary>
+    /// <param name="insideExecuteDelegate">When true, we're inside an Execute middleware delegate and short-circuit
+    /// returns should return the full tuple type (not just one item) since the delegate returns object?.</param>
+    private static void EmitPipelineCode(
+        IndentedStringBuilder source,
+        HandlerInfo handler,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> afterMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> finallyMiddleware,
+        GeneratorConfiguration configuration,
+        Dictionary<string, string> variables,
+        string resultVar,
+        string messageVar,
+        int targetTupleIndex,
+        bool requiresTryCatch,
+        bool insideExecuteDelegate = false)
+    {
         // Main execution with optional try-catch-finally
         if (requiresTryCatch)
         {
@@ -361,7 +510,7 @@ internal static class HandlerGenerator
             variables["System.Exception"] = "exception";
         }
 
-        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex);
+        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex, insideExecuteDelegate);
         EmitHandlerInvocation(source, handler, variables, resultVar, messageVar);
         EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar);
 
@@ -482,7 +631,8 @@ internal static class HandlerGenerator
         HandlerInfo handler,
         Dictionary<string, string> variables,
         string messageVar,
-        int targetTupleIndex)
+        int targetTupleIndex,
+        bool insideExecuteDelegate = false)
     {
         foreach (var m in beforeMiddleware)
         {
@@ -495,7 +645,7 @@ internal static class HandlerGenerator
 
             if (m.Method.ReturnType.IsHandlerResult)
             {
-                EmitShortCircuitCheck(source, m, handler, targetTupleIndex);
+                EmitShortCircuitCheck(source, m, handler, targetTupleIndex, insideExecuteDelegate);
             }
         }
         source.AppendLineIf(beforeMiddleware.Any());
@@ -505,7 +655,8 @@ internal static class HandlerGenerator
         IndentedStringBuilder source,
         (MiddlewareMethodInfo Method, MiddlewareInfo Middleware) m,
         HandlerInfo handler,
-        int targetTupleIndex)
+        int targetTupleIndex,
+        bool insideExecuteDelegate = false)
     {
         string resultVarName = $"{m.Middleware.Identifier.ToCamelCase()}Result";
         string valueAccess = m.Method.ReturnType.IsGeneric ? $"{resultVarName}.Value" : $"{resultVarName}.Value!";
@@ -516,13 +667,16 @@ internal static class HandlerGenerator
 
         if (handler.HasReturnValue)
         {
-            if (handler.ReturnType.IsTuple)
+            if (handler.ReturnType.IsTuple && !insideExecuteDelegate)
             {
+                // When NOT inside an Execute delegate, return just the target tuple item
                 var targetItem = handler.ReturnType.TupleItems[targetTupleIndex];
                 source.AppendLine($"    return {shortCircuitValue}.{targetItem.Field};");
             }
             else
             {
+                // When inside an Execute delegate (or non-tuple), return the full value
+                // since the delegate returns object? which will be cast to the full return type
                 source.AppendLine($"    return {shortCircuitValue};");
             }
         }

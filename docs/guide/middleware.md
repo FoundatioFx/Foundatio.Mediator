@@ -38,9 +38,10 @@ Middleware classes must end with `Middleware`
 
 Valid middleware method names:
 
-- `Before` / `BeforeAsync`
-- `After` / `AfterAsync`
-- `Finally` / `FinallyAsync`
+- `Before` / `BeforeAsync` - Runs before the handler; can short-circuit execution
+- `After` / `AfterAsync` - Runs after successful handler completion
+- `Finally` / `FinallyAsync` - Always runs, even if handler fails; receives exception
+- `ExecuteAsync` - Wraps the entire pipeline (for retry, circuit breaker, etc.)
 
 ### Method Parameters
 
@@ -53,11 +54,12 @@ The following parameter types are automatically available in middleware methods 
 
 | Parameter Type | Availability | Description |
 |----------------|--------------|-------------|
-| `CancellationToken` | Before, After, Finally | The cancellation token passed to the handler |
-| `IServiceProvider` | Before, After, Finally | The service provider for the current scope |
-| `Activity?` | Before, After, Finally | The OpenTelemetry activity (when OpenTelemetry is enabled) |
+| `CancellationToken` | Before, After, Finally, Execute | The cancellation token passed to the handler |
+| `IServiceProvider` | Before, After, Finally, Execute | The service provider for the current scope |
+| `Activity?` | Before, After, Finally, Execute | The OpenTelemetry activity (when OpenTelemetry is enabled) |
 | `Exception?` | **After, Finally only** | The exception if the handler failed (always `null` in Before) |
-| `HandlerExecutionInfo` | Before, After, Finally | Metadata about the executing handler (handler type and method) |
+| `HandlerExecutionInfo` | Before, After, Finally, Execute | Metadata about the executing handler (handler type and method) |
+| `HandlerExecutionDelegate` | **ExecuteAsync only** | Delegate to invoke the wrapped pipeline |
 | Handler return type | **After, Finally only** | The result returned by the handler (e.g., `Result<T>`, custom types) |
 | Before method return type | **After, Finally only** | Values returned from the `Before` method |
 
@@ -141,6 +143,99 @@ public class ErrorHandlingMiddleware
     }
 }
 ```
+
+## Execute Middleware
+
+The `ExecuteAsync` method wraps the **entire middleware pipeline** (Before → Handler → After → Finally). This is useful for cross-cutting concerns that need to wrap the full execution, such as:
+
+- **Retry logic** - Re-execute the entire pipeline on transient failures
+- **Circuit breakers** - Fail fast when downstream systems are unavailable
+- **Timeout handling** - Cancel execution after a deadline
+
+### Execution Flow
+
+```text
+Execute[1]( Execute[2]( Before[1] → Before[2] → Handler → After[2] → After[1] → Finally[2] → Finally[1] ) )
+```
+
+On each retry, the entire inner pipeline re-executes - all Before middlewares run again, the handler runs again, and all After/Finally middlewares run again.
+
+### Execute Method Signature
+
+```csharp
+public async ValueTask<object?> ExecuteAsync(
+    TMessage message,                    // The message being handled
+    HandlerExecutionDelegate next,       // Delegate to the wrapped pipeline
+    // ... additional DI parameters
+)
+```
+
+### Retry Middleware Example
+
+Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio):
+
+```csharp
+using Foundatio.Mediator;
+using Foundatio.Resilience;
+using Microsoft.Extensions.Logging;
+
+namespace ConsoleSample.Middleware;
+
+/// <summary>
+/// Middleware that wraps the entire pipeline with retry logic.
+/// Only applies to messages that implement IRetryableMessage.
+/// </summary>
+[Middleware(Order = 0)] // Low order = outermost wrapper
+public static class RetryMiddleware
+{
+    private static readonly IResiliencePolicy Policy = new ResiliencePolicyBuilder()
+        .WithMaxAttempts(3)
+        .WithExponentialDelay(TimeSpan.FromMilliseconds(100))
+        .WithJitter()
+        .Build();
+
+    public static async ValueTask<object?> ExecuteAsync(
+        IRetryableMessage message,
+        HandlerExecutionDelegate next,
+        ILogger<IMediator> logger)
+    {
+        logger.LogDebug("RetryMiddleware: Starting execution for {MessageType}",
+            message.GetType().Name);
+
+        return await Policy.ExecuteAsync(async ct =>
+        {
+            logger.LogDebug("RetryMiddleware: Attempt for {MessageType}",
+                message.GetType().Name);
+            return await next();
+        }, default);
+    }
+}
+```
+
+### Marker Interface Pattern
+
+Use marker interfaces to apply Execute middleware selectively:
+
+```csharp
+// Marker interface
+public interface IRetryableMessage { }
+
+// Message that should be retried
+public record CreateOrder(string CustomerId, decimal Amount)
+    : IRetryableMessage;
+
+// Message that should NOT be retried (no marker)
+public record GetOrder(string OrderId);
+```
+
+### Key Points
+
+- Execute middleware **only supports async** (`ExecuteAsync`) - no sync `Execute` method
+- The `next` delegate returns `object?` - cast as needed for strongly-typed results
+- Use low `Order` values (e.g., 0, 1) to wrap as outermost middleware
+- Execute middleware can access DI parameters like other middleware methods
+
+> **💡 Complete Example**: See the [ConsoleSample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/ConsoleSample/Middleware/RetryMiddleware.cs) for a working implementation.
 
 ## Short-Circuiting with HandlerResult
 
@@ -262,6 +357,7 @@ public class LoggingMiddleware
 
 **Execution flow**:
 
+- `ExecuteAsync`: Lower order values wrap outermost (run first/last)
 - `Before`: Lower order values run first
 - `After`/`Finally`: Higher order values run first (reverse order for proper nesting)
 

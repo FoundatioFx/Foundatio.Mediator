@@ -140,6 +140,7 @@ if ($FoundatioOnly) {
             'FullQuery' { 'Foundatio_FullQuery' }
             'CascadingMessages' { 'Foundatio_CascadingMessages' }
             'ShortCircuit' { 'Foundatio_ShortCircuit' }
+            'ExecuteMiddleware' { 'Foundatio_ExecuteMiddleware' }
             default { "Foundatio_$($row.Method)" }
         }
         $foundatioResults[$methodName] = $row

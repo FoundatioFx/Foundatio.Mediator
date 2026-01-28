@@ -42,7 +42,12 @@ internal static class MiddlewareAnalyzer
             .Where(m => IsMiddlewareFinallyMethod(m, context.SemanticModel.Compilation))
             .ToList();
 
-        if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0)
+        var executeMethods = classSymbol.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => IsMiddlewareExecuteMethod(m, context.SemanticModel.Compilation))
+            .ToList();
+
+        if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0 && executeMethods.Count == 0)
             return null;
 
         var diagnostics = new List<DiagnosticInfo>();
@@ -83,11 +88,24 @@ internal static class MiddlewareAnalyzer
             });
         }
 
+        if (executeMethods.Count > 1)
+        {
+            diagnostics.Add(new DiagnosticInfo
+            {
+                Identifier = "FMED011",
+                Title = "Multiple Execute Methods in Middleware",
+                Message = $"Middleware '{classSymbol.Name}' has multiple Execute methods. Only one Execute/ExecuteAsync method is allowed per middleware class.",
+                Severity = DiagnosticSeverity.Error,
+                Location = LocationInfo.CreateFrom(classDeclaration)
+            });
+        }
+
         var beforeMethod = beforeMethods.FirstOrDefault();
         var afterMethod = afterMethods.FirstOrDefault();
         var finallyMethod = finallyMethods.FirstOrDefault();
+        var executeMethod = executeMethods.FirstOrDefault();
 
-        var allMethods = new[] { beforeMethod, afterMethod, finallyMethod }.Where(m => m != null).ToList();
+        var allMethods = new[] { beforeMethod, afterMethod, finallyMethod, executeMethod }.Where(m => m != null).ToList();
 
         // Validate mixed static and instance methods
         if (allMethods.Any() && !classSymbol.IsStatic)
@@ -132,12 +150,14 @@ internal static class MiddlewareAnalyzer
 
         ITypeSymbol? messageType = beforeMethod?.Parameters[0].Type
             ?? afterMethod?.Parameters[0].Type
-            ?? finallyMethod?.Parameters[0].Type;
+            ?? finallyMethod?.Parameters[0].Type
+            ?? executeMethod?.Parameters[0].Type;
 
         bool isStatic = classSymbol.IsStatic
                         || beforeMethod is { IsStatic: true }
                         || afterMethod is { IsStatic: true }
-                        || finallyMethod is { IsStatic: true };
+                        || finallyMethod is { IsStatic: true }
+                        || executeMethod is { IsStatic: true };
 
         if (messageType == null)
             return null;
@@ -196,8 +216,8 @@ internal static class MiddlewareAnalyzer
         bool hasConstructorParameters = !isStatic && classSymbol.InstanceConstructors
             .Any(c => c.Parameters.Length > 0);
 
-        // Detect method DI parameters - parameters that aren't message, CancellationToken, HandlerExecutionInfo, or Exception
-        bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod, context.SemanticModel.Compilation);
+        // Detect method DI parameters - parameters that aren't message, CancellationToken, HandlerExecutionInfo, Exception, or HandlerExecutionDelegate
+        bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod, executeMethod, context.SemanticModel.Compilation);
 
         return new MiddlewareInfo
         {
@@ -207,6 +227,7 @@ internal static class MiddlewareAnalyzer
             BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod, context.SemanticModel.Compilation) : null,
             AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod, context.SemanticModel.Compilation) : null,
             FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod, context.SemanticModel.Compilation) : null,
+            ExecuteMethod = executeMethod != null ? CreateMiddlewareMethodInfo(executeMethod, context.SemanticModel.Compilation) : null,
             IsStatic = isStatic,
             Order = order,
             Lifetime = lifetime,
@@ -266,6 +287,13 @@ internal static class MiddlewareAnalyzer
                !method.HasIgnoreAttribute(compilation);
     }
 
+    private static bool IsMiddlewareExecuteMethod(IMethodSymbol method, Compilation compilation)
+    {
+        return MiddlewareExecuteMethodNames.Contains(method.Name) &&
+               method.DeclaredAccessibility == Accessibility.Public &&
+               !method.HasIgnoreAttribute(compilation);
+    }
+
     /// <summary>
     /// Checks if a type is nested inside a generic containing type.
     /// Middleware classes nested in generic types would produce invalid code with unbound type parameters.
@@ -285,9 +313,9 @@ internal static class MiddlewareAnalyzer
     /// <summary>
     /// Checks if any middleware method has DI parameters that would require serviceProvider.GetRequiredService.
     /// Parameters that are NOT DI parameters: message (first param), CancellationToken, HandlerExecutionInfo, Exception,
-    /// and the return type of the Before method (which is passed to After/Finally methods).
+    /// HandlerExecutionDelegate, and the return type of the Before method (which is passed to After/Finally methods).
     /// </summary>
-    private static bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod, Compilation compilation)
+    private static bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod, IMethodSymbol? executeMethod, Compilation compilation)
     {
         // Get the Before method's return type (if any) to exclude from DI detection in After/Finally
         ITypeSymbol? beforeMethodReturnType = null;
@@ -305,7 +333,8 @@ internal static class MiddlewareAnalyzer
 
         return HasDIParameters(beforeMethod, compilation, beforeMethodReturnType: null) ||
                HasDIParameters(afterMethod, compilation, beforeMethodReturnType) ||
-               HasDIParameters(finallyMethod, compilation, beforeMethodReturnType);
+               HasDIParameters(finallyMethod, compilation, beforeMethodReturnType) ||
+               HasDIParameters(executeMethod, compilation, beforeMethodReturnType: null);
     }
 
     private static bool HasDIParameters(IMethodSymbol? method, Compilation compilation, ITypeSymbol? beforeMethodReturnType)
@@ -316,6 +345,7 @@ internal static class MiddlewareAnalyzer
         var exceptionType = compilation.GetTypeByMetadataName("System.Exception");
         var cancellationTokenType = compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
         var handlerExecutionInfoType = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+        var handlerExecutionDelegateType = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionDelegate);
         var activityType = compilation.GetTypeByMetadataName("System.Diagnostics.Activity");
         var objectType = compilation.GetSpecialType(SpecialType.System_Object);
 
@@ -331,6 +361,10 @@ internal static class MiddlewareAnalyzer
 
             // HandlerExecutionInfo is not a DI parameter
             if (SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionInfoType))
+                continue;
+
+            // HandlerExecutionDelegate is not a DI parameter (used in Execute methods)
+            if (handlerExecutionDelegateType != null && SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionDelegateType))
                 continue;
 
             // Activity (including nullable Activity?) is not a DI parameter (provided by OpenTelemetry)
@@ -380,4 +414,5 @@ internal static class MiddlewareAnalyzer
     private static readonly string[] MiddlewareBeforeMethodNames = ["Before", "BeforeAsync"];
     private static readonly string[] MiddlewareAfterMethodNames = ["After", "AfterAsync"];
     private static readonly string[] MiddlewareFinallyMethodNames = ["Finally", "FinallyAsync"];
+    private static readonly string[] MiddlewareExecuteMethodNames = ["ExecuteAsync"];
 }

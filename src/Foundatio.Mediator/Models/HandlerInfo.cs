@@ -119,6 +119,12 @@ internal readonly record struct HandlerInfo
     public bool HasFinallyMiddleware => Middleware.Any(m => m.FinallyMethod != null);
 
     /// <summary>
+    /// Whether this handler has any execute middleware methods.
+    /// Execute middleware wraps the entire pipeline (Before → Handler → After → Finally).
+    /// </summary>
+    public bool HasExecuteMiddleware => Middleware.Any(m => m.ExecuteMethod != null);
+
+    /// <summary>
     /// Whether any middleware is async.
     /// </summary>
     public bool HasAsyncMiddleware => Middleware.Any(m => m.IsAsync);
@@ -130,7 +136,8 @@ internal readonly record struct HandlerInfo
     public bool RequiresHandlerExecutionInfo => Middleware.Any(m =>
         (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
         (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
-        (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
+        (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
+        (m.ExecuteMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false));
 
     /// <summary>
     /// Whether any middleware requires instantiation (non-static middleware).

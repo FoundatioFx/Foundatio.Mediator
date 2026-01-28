@@ -26,3 +26,7 @@ public record OrderCreatedEvent(int OrderId, int CustomerId) : MediatR.INotifica
 // - MediatorNet: IPipelineBehavior returns cached value directly
 // - MassTransit: Filter returns without calling next.Send()
 public record GetCachedOrder(int Id) : MediatR.IRequest<Order>, MediatorLib.IQuery<Order>, IQuery<Order>;
+
+// Scenario 7 (Foundatio-only): Execute middleware - wraps entire handler pipeline
+// Used for retry, circuit breaker, timeout, and other resilience patterns
+public record GetWithExecuteMiddleware(int Id) : IQuery<Order>;

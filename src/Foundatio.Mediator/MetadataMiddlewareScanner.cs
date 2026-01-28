@@ -114,13 +114,19 @@ internal static class MetadataMiddlewareScanner
                 .Where(m => IsMiddlewareFinallyMethod(m))
                 .ToList();
 
-            if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0)
+            var executeMethods = classSymbol.GetMembers()
+                .OfType<IMethodSymbol>()
+                .Where(m => IsMiddlewareExecuteMethod(m))
+                .ToList();
+
+            if (beforeMethods.Count == 0 && afterMethods.Count == 0 && finallyMethods.Count == 0 && executeMethods.Count == 0)
                 return null;
 
             // For now, take the first of each type (validation can happen later)
             var beforeMethod = beforeMethods.FirstOrDefault();
             var afterMethod = afterMethods.FirstOrDefault();
             var finallyMethod = finallyMethods.FirstOrDefault();
+            var executeMethod = executeMethods.FirstOrDefault();
 
             // Get the order from the [Middleware] attribute
             int order = 0;
@@ -144,7 +150,7 @@ internal static class MetadataMiddlewareScanner
             }
 
             // Determine message type from first method found
-            IMethodSymbol? firstMethod = beforeMethod ?? afterMethod ?? finallyMethod;
+            IMethodSymbol? firstMethod = beforeMethod ?? afterMethod ?? finallyMethod ?? executeMethod;
             if (firstMethod == null || firstMethod.Parameters.Length == 0)
                 return null;
 
@@ -154,14 +160,15 @@ internal static class MetadataMiddlewareScanner
             bool isStatic = classSymbol.IsStatic ||
                             (beforeMethod?.IsStatic ?? true) &&
                             (afterMethod?.IsStatic ?? true) &&
-                            (finallyMethod?.IsStatic ?? true);
+                            (finallyMethod?.IsStatic ?? true) &&
+                            (executeMethod?.IsStatic ?? true);
 
             // Detect constructor parameters (for non-static middleware)
             bool hasConstructorParameters = !isStatic && classSymbol.InstanceConstructors
                 .Any(c => c.Parameters.Length > 0);
 
             // Detect method DI parameters
-            bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod);
+            bool hasMethodDIParameters = HasMethodDIParameters(beforeMethod, afterMethod, finallyMethod, executeMethod);
 
             return new MiddlewareInfo
             {
@@ -173,6 +180,7 @@ internal static class MetadataMiddlewareScanner
                 BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
                 AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
                 FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
+                ExecuteMethod = executeMethod != null ? CreateMiddlewareMethodInfo(executeMethod) : null,
                 DeclaredAccessibility = classSymbol.DeclaredAccessibility,
                 AssemblyName = classSymbol.ContainingAssembly.Name,
                 HasConstructorParameters = hasConstructorParameters,
@@ -210,6 +218,7 @@ internal static class MetadataMiddlewareScanner
         private static readonly string[] MiddlewareBeforeMethodNames = ["Before", "BeforeAsync"];
         private static readonly string[] MiddlewareAfterMethodNames = ["After", "AfterAsync"];
         private static readonly string[] MiddlewareFinallyMethodNames = ["Finally", "FinallyAsync"];
+        private static readonly string[] MiddlewareExecuteMethodNames = ["ExecuteAsync"];
 
         private bool IsMiddlewareBeforeMethod(IMethodSymbol method)
         {
@@ -235,12 +244,20 @@ internal static class MetadataMiddlewareScanner
                    method.Parameters.Length > 0;
         }
 
+        private bool IsMiddlewareExecuteMethod(IMethodSymbol method)
+        {
+            return MiddlewareExecuteMethodNames.Contains(method.Name) &&
+                   method.DeclaredAccessibility == Accessibility.Public &&
+                   !method.HasIgnoreAttribute(_compilation) &&
+                   method.Parameters.Length > 0;
+        }
+
         /// <summary>
         /// Checks if any middleware method has DI parameters that would require serviceProvider.GetRequiredService.
         /// Parameters that are NOT DI parameters: message (first param), CancellationToken, HandlerExecutionInfo, Exception,
-        /// and the return type of the Before method (which is passed to After/Finally methods).
+        /// HandlerExecutionDelegate, and the return type of the Before method (which is passed to After/Finally methods).
         /// </summary>
-        private bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod)
+        private bool HasMethodDIParameters(IMethodSymbol? beforeMethod, IMethodSymbol? afterMethod, IMethodSymbol? finallyMethod, IMethodSymbol? executeMethod)
         {
             // Get the Before method's return type (if any) to exclude from DI detection in After/Finally
             ITypeSymbol? beforeMethodReturnType = null;
@@ -258,7 +275,8 @@ internal static class MetadataMiddlewareScanner
 
             return HasDIParameters(beforeMethod, beforeMethodReturnType: null) ||
                    HasDIParameters(afterMethod, beforeMethodReturnType) ||
-                   HasDIParameters(finallyMethod, beforeMethodReturnType);
+                   HasDIParameters(finallyMethod, beforeMethodReturnType) ||
+                   HasDIParameters(executeMethod, beforeMethodReturnType: null);
         }
 
         private bool HasDIParameters(IMethodSymbol? method, ITypeSymbol? beforeMethodReturnType)
@@ -269,6 +287,7 @@ internal static class MetadataMiddlewareScanner
             var exceptionType = _compilation.GetTypeByMetadataName("System.Exception");
             var cancellationTokenType = _compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
             var handlerExecutionInfoType = _compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
+            var handlerExecutionDelegateType = _compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionDelegate);
             var objectType = _compilation.GetSpecialType(SpecialType.System_Object);
 
             foreach (var param in method.Parameters)
@@ -283,6 +302,10 @@ internal static class MetadataMiddlewareScanner
 
                 // HandlerExecutionInfo is not a DI parameter
                 if (SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionInfoType))
+                    continue;
+
+                // HandlerExecutionDelegate is not a DI parameter (used in Execute methods)
+                if (handlerExecutionDelegateType != null && SymbolEqualityComparer.Default.Equals(param.Type, handlerExecutionDelegateType))
                     continue;
 
                 // Exception (including nullable Exception?) is not a DI parameter

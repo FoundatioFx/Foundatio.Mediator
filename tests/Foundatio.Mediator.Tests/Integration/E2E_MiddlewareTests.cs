@@ -220,4 +220,230 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
         Assert.Equal("Static-StaticHandlerInfoCommandHandler-HandleAsync", StaticHandlerInfoMiddleware.CapturedInfo[0]);
     }
 
+    #region UseMiddleware Attribute Tests
+
+    public record UseMiddlewareTestCommand(string Value) : ICommand;
+
+    // Custom attribute with [UseMiddleware] applied to it
+    [UseMiddleware(typeof(TrackingAttributeMiddleware))]
+    public class TrackingAttribute : Attribute { }
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton, ExplicitOnly = true)]
+    public class TrackingAttributeMiddleware
+    {
+        public List<string> Steps { get; } = [];
+        public Task BeforeAsync(object m) { Steps.Add("tracking-before"); return Task.CompletedTask; }
+        public Task AfterAsync(object m) { Steps.Add("tracking-after"); return Task.CompletedTask; }
+    }
+
+    [Tracking]
+    public class UseMiddlewareTestCommandHandler
+    {
+        public Task HandleAsync(UseMiddlewareTestCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task UseMiddlewareAttribute_CustomAttribute_AppliesMiddleware()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<TrackingAttributeMiddleware>();
+        services.AddMediator(b => b.AddAssembly<UseMiddlewareTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<TrackingAttributeMiddleware>();
+
+        await mediator.InvokeAsync(new UseMiddlewareTestCommand("test"), TestCancellationToken);
+
+        Assert.Contains("tracking-before", mw.Steps);
+        Assert.Contains("tracking-after", mw.Steps);
+    }
+
+    #endregion
+
+    #region ExplicitOnly Middleware Tests
+
+    public record ExplicitOnlyTestCommand1(string Value) : ICommand;
+    public record ExplicitOnlyTestCommand2(string Value) : ICommand;
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton, ExplicitOnly = true)]
+    public class ExplicitOnlyTrackingMiddleware
+    {
+        public List<string> Steps { get; } = [];
+        public Task BeforeAsync(object m) { Steps.Add($"explicit-before:{m.GetType().Name}"); return Task.CompletedTask; }
+    }
+
+    [UseMiddleware(typeof(ExplicitOnlyTrackingMiddleware))]
+    public class ExplicitOnlyTestCommand1Handler
+    {
+        public Task HandleAsync(ExplicitOnlyTestCommand1 cmd) { return Task.CompletedTask; }
+    }
+
+    // This handler does NOT have [UseMiddleware], so ExplicitOnly middleware should NOT run
+    public class ExplicitOnlyTestCommand2Handler
+    {
+        public Task HandleAsync(ExplicitOnlyTestCommand2 cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task ExplicitOnlyMiddleware_OnlyRunsWhenExplicitlyReferenced()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ExplicitOnlyTrackingMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ExplicitOnlyTestCommand1Handler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<ExplicitOnlyTrackingMiddleware>();
+
+        // Command 1 has [UseMiddleware] - middleware should run
+        await mediator.InvokeAsync(new ExplicitOnlyTestCommand1("test1"), TestCancellationToken);
+        Assert.Contains("explicit-before:ExplicitOnlyTestCommand1", mw.Steps);
+
+        mw.Steps.Clear();
+
+        // Command 2 does NOT have [UseMiddleware] - middleware should NOT run
+        await mediator.InvokeAsync(new ExplicitOnlyTestCommand2("test2"), TestCancellationToken);
+        Assert.Empty(mw.Steps);
+    }
+
+    #endregion
+
+    #region ExecuteAsync Middleware Tests
+
+    public record ExecuteTestCommand(string Value) : ICommand<string>;
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
+    public class ExecuteTrackingMiddleware
+    {
+        public List<string> Steps { get; } = [];
+
+        public async ValueTask<object?> ExecuteAsync(ExecuteTestCommand message, HandlerExecutionDelegate next)
+        {
+            Steps.Add("execute-before");
+            var result = await next();
+            Steps.Add("execute-after");
+            return result;
+        }
+    }
+
+    public class ExecuteTestCommandHandler
+    {
+        private readonly ExecuteTrackingMiddleware _mw;
+        public ExecuteTestCommandHandler(ExecuteTrackingMiddleware mw) => _mw = mw;
+
+        public Task<string> HandleAsync(ExecuteTestCommand cmd)
+        {
+            _mw.Steps.Add("handler");
+            return Task.FromResult($"Result: {cmd.Value}");
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncMiddleware_WrapsHandler()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ExecuteTrackingMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ExecuteTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<ExecuteTrackingMiddleware>();
+
+        var result = await mediator.InvokeAsync(new ExecuteTestCommand("test"), TestCancellationToken);
+
+        Assert.Equal("Result: test", result);
+        Assert.Equal(["execute-before", "handler", "execute-after"], mw.Steps);
+    }
+
+    public record ExecuteWithInfoTestCommand(string Value) : ICommand;
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
+    public class ExecuteWithHandlerInfoMiddleware
+    {
+        public List<string> CapturedInfo { get; } = [];
+
+        public async ValueTask<object?> ExecuteAsync(
+            ExecuteWithInfoTestCommand message,
+            HandlerExecutionDelegate next,
+            HandlerExecutionInfo handlerInfo)
+        {
+            CapturedInfo.Add($"HandlerType:{handlerInfo.HandlerType.Name}");
+            CapturedInfo.Add($"MethodName:{handlerInfo.HandlerMethod.Name}");
+            return await next();
+        }
+    }
+
+    public class ExecuteWithInfoTestCommandHandler
+    {
+        public Task HandleAsync(ExecuteWithInfoTestCommand cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncMiddleware_CanAccessHandlerExecutionInfo()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ExecuteWithHandlerInfoMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ExecuteWithInfoTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<ExecuteWithHandlerInfoMiddleware>();
+
+        await mediator.InvokeAsync(new ExecuteWithInfoTestCommand("test"), TestCancellationToken);
+
+        Assert.Contains("HandlerType:ExecuteWithInfoTestCommandHandler", mw.CapturedInfo);
+        Assert.Contains("MethodName:HandleAsync", mw.CapturedInfo);
+    }
+
+    public record ExecuteExplicitTestCommand1(string Value) : ICommand;
+    public record ExecuteExplicitTestCommand2(string Value) : ICommand;
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton, ExplicitOnly = true)]
+    public class ExplicitExecuteMiddleware
+    {
+        public List<string> Steps { get; } = [];
+
+        public async ValueTask<object?> ExecuteAsync(object message, HandlerExecutionDelegate next)
+        {
+            Steps.Add($"explicit-execute:{message.GetType().Name}");
+            return await next();
+        }
+    }
+
+    [UseMiddleware(typeof(ExplicitExecuteMiddleware))]
+    public class ExecuteExplicitTestCommand1Handler
+    {
+        public Task HandleAsync(ExecuteExplicitTestCommand1 cmd) { return Task.CompletedTask; }
+    }
+
+    public class ExecuteExplicitTestCommand2Handler
+    {
+        public Task HandleAsync(ExecuteExplicitTestCommand2 cmd) { return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task ExecuteAsyncMiddleware_ExplicitOnly_OnlyRunsWhenReferenced()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ExplicitExecuteMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ExecuteExplicitTestCommand1Handler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<ExplicitExecuteMiddleware>();
+
+        // Command 1 has [UseMiddleware] - middleware should run
+        await mediator.InvokeAsync(new ExecuteExplicitTestCommand1("test1"), TestCancellationToken);
+        Assert.Contains("explicit-execute:ExecuteExplicitTestCommand1", mw.Steps);
+
+        mw.Steps.Clear();
+
+        // Command 2 does NOT have [UseMiddleware] - middleware should NOT run
+        await mediator.InvokeAsync(new ExecuteExplicitTestCommand2("test2"), TestCancellationToken);
+        Assert.Empty(mw.Steps);
+    }
+
+    #endregion
+
 }

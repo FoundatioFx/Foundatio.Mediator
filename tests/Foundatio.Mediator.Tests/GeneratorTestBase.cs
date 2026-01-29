@@ -81,6 +81,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
 
     private static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions, MetadataReference[]? additionalReferences = null)
     {
+        var runtimeDir = System.IO.Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+
         var references = new List<MetadataReference>
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
@@ -90,8 +92,28 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(System.Diagnostics.Activity).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Exception).Assembly.Location)
+            MetadataReference.CreateFromFile(typeof(Exception).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute).Assembly.Location),
         };
+
+        // Add additional runtime assemblies for proper type resolution
+        var additionalAssemblies = new[]
+        {
+            "netstandard.dll",
+            "System.Runtime.dll",
+            "System.Collections.dll",
+            "System.Threading.dll",
+            "System.Threading.Tasks.dll",
+        };
+
+        foreach (var assemblyName in additionalAssemblies)
+        {
+            var path = System.IO.Path.Combine(runtimeDir, assemblyName);
+            if (System.IO.File.Exists(path))
+            {
+                references.Add(MetadataReference.CreateFromFile(path));
+            }
+        }
 
         if (additionalReferences != null)
         {

@@ -14,10 +14,10 @@ namespace ConsoleSample;
 /// public Result&lt;Order&gt; Handle(GetOrder query) { ... }
 /// </code>
 /// </example>
+[UseMiddleware(typeof(CachingMiddleware))]
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class CachedAttribute : UseMiddlewareAttribute
+public sealed class CachedAttribute : Attribute
 {
-    public CachedAttribute() : base(typeof(CachingMiddleware)) { }
 
     /// <summary>
     /// Cache duration in seconds. Default is 300 (5 minutes).

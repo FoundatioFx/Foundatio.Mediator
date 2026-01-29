@@ -3,11 +3,11 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Specifies middleware to apply to a handler method or class.
 /// Can be applied multiple times to add multiple middleware.
-/// Derive from this class to create custom middleware attributes like [Retry], [Cached], etc.
+/// Can also be applied to custom attribute classes to create middleware attributes like [Retry], [Cached], etc.
 /// </summary>
 /// <example>
 /// <code>
-/// // Direct usage
+/// // Direct usage on handlers
 /// [UseMiddleware(typeof(StopwatchMiddleware))]
 /// [UseMiddleware(typeof(ValidationMiddleware), Order = 10)]
 /// public class OrderHandler
@@ -15,12 +15,19 @@ namespace Foundatio.Mediator;
 ///     public Result&lt;Order&gt; Handle(CreateOrder command) { ... }
 /// }
 ///
-/// // Custom attribute by inheritance
-/// public class RetryAttribute : UseMiddlewareAttribute
+/// // Custom middleware attribute
+/// // Apply [UseMiddleware] to your custom attribute class
+/// [UseMiddleware(typeof(RetryMiddleware))]
+/// [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
+/// public class RetryAttribute : Attribute
 /// {
-///     public RetryAttribute() : base(typeof(RetryMiddleware)) { }
 ///     public int MaxAttempts { get; set; } = 3;
+///     public int DelayMs { get; set; } = 100;
 /// }
+///
+/// // Usage:
+/// [Retry(MaxAttempts = 5)]
+/// public class OrderHandler { ... }
 /// </code>
 /// </example>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = true, Inherited = true)]

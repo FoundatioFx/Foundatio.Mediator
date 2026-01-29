@@ -174,20 +174,18 @@ public async ValueTask<object?> ExecuteAsync(
 
 Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio). This example demonstrates:
 
-- **Custom `[Retry]` attribute** that inherits from `UseMiddlewareAttribute` to trigger the middleware
+- **Custom `[Retry]` attribute** with `[UseMiddleware]` applied to trigger the middleware
 - **`ExplicitOnly = true`** so the middleware only applies when the attribute is used
 - **`HandlerExecutionInfo`** to access handler metadata and discover attribute settings
 
 ```csharp
 /// <summary>
 /// Custom attribute that triggers RetryMiddleware and configures retry settings.
-/// Inherits from UseMiddlewareAttribute - no marker interface needed!
 /// </summary>
+[UseMiddleware(typeof(RetryMiddleware))]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class RetryAttribute : UseMiddlewareAttribute
+public sealed class RetryAttribute : Attribute
 {
-    public RetryAttribute() : base(typeof(RetryMiddleware)) { }
-
     public int MaxAttempts { get; set; } = 3;
     public int DelayMs { get; set; } = 100;
     public bool UseExponentialBackoff { get; set; } = true;
@@ -446,18 +444,20 @@ public class OrderHandler
 
 ### Custom Middleware Attributes
 
-Create reusable attributes by inheriting from `UseMiddlewareAttribute`:
+Create reusable attributes by applying `[UseMiddleware]` to your attribute class:
 
 ```csharp
-public class RetryAttribute : UseMiddlewareAttribute
+[UseMiddleware(typeof(RetryMiddleware))]
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
+public class RetryAttribute : Attribute
 {
-    public RetryAttribute() : base(typeof(RetryMiddleware)) { }
     public int MaxAttempts { get; set; } = 3;
 }
 
-public class CachedAttribute : UseMiddlewareAttribute
+[UseMiddleware(typeof(CachingMiddleware))]
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
+public class CachedAttribute : Attribute
 {
-    public CachedAttribute() : base(typeof(CachingMiddleware)) { }
     public int DurationSeconds { get; set; } = 300;
 }
 ```
@@ -543,11 +543,10 @@ Here's a caching middleware that uses the `[Cached]` attribute pattern. The midd
 /// <summary>
 /// Custom attribute that triggers CachingMiddleware and configures cache settings.
 /// </summary>
+[UseMiddleware(typeof(CachingMiddleware))]
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class CachedAttribute : UseMiddlewareAttribute
+public sealed class CachedAttribute : Attribute
 {
-    public CachedAttribute() : base(typeof(CachingMiddleware)) { }
-
     public int DurationSeconds { get; set; } = 300;
     public bool SlidingExpiration { get; set; }
 }

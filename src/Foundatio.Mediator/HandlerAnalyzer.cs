@@ -906,7 +906,7 @@ internal static class HandlerAnalyzer
         // Process method-level attributes first (higher priority)
         foreach (var attr in handlerMethod.GetAttributes())
         {
-            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: true);
+            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: true, compilation);
             if (middlewareRef != null)
                 references.Add(middlewareRef.Value);
         }
@@ -914,7 +914,7 @@ internal static class HandlerAnalyzer
         // Process class-level attributes
         foreach (var attr in classSymbol.GetAttributes())
         {
-            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: false);
+            var middlewareRef = TryGetMiddlewareReference(attr, useMiddlewareAttr, isMethodLevel: false, compilation);
             if (middlewareRef != null)
                 references.Add(middlewareRef.Value);
         }
@@ -923,34 +923,43 @@ internal static class HandlerAnalyzer
     }
 
     /// <summary>
-    /// Attempts to extract a middleware reference from an attribute that derives from UseMiddlewareAttribute.
+    /// Attempts to extract a middleware reference from an attribute.
+    /// Supports:
+    /// 1. Direct [UseMiddleware(typeof(X))] usage on handlers
+    /// 2. Custom attributes that have [UseMiddleware(typeof(X))] applied to them
     /// </summary>
     private static HandlerMiddlewareReference? TryGetMiddlewareReference(
         AttributeData attr,
         INamedTypeSymbol useMiddlewareAttr,
-        bool isMethodLevel)
+        bool isMethodLevel,
+        Compilation compilation)
     {
         if (attr.AttributeClass == null)
-            return null;
-
-        // Check if attribute is or derives from UseMiddlewareAttribute
-        if (!IsOrDerivesFrom(attr.AttributeClass, useMiddlewareAttr))
             return null;
 
         string? middlewareTypeName = null;
         int order = int.MaxValue;
 
-        // The middleware type is always in the constructor (either directly or via base constructor)
-        if (attr.ConstructorArguments.Length > 0 &&
-            attr.ConstructorArguments[0].Value is ITypeSymbol middlewareType)
+        // Case 1: Direct [UseMiddleware(typeof(X))] usage
+        if (SymbolEqualityComparer.Default.Equals(attr.AttributeClass, useMiddlewareAttr))
         {
-            middlewareTypeName = middlewareType.ToDisplayString();
-        }
+            if (attr.ConstructorArguments.Length > 0 &&
+                attr.ConstructorArguments[0].Value is ITypeSymbol middlewareType)
+            {
+                middlewareTypeName = middlewareType.ToDisplayString();
+            }
 
-        // Get Order from named argument
-        var orderArg = attr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
-        if (orderArg.Value.Value is int orderValue)
-            order = orderValue;
+            // Get Order from named argument
+            var orderArg = attr.NamedArguments.FirstOrDefault(na => na.Key == "Order");
+            if (orderArg.Value.Value is int orderValue)
+                order = orderValue;
+        }
+        // Case 2: Custom attribute that has [UseMiddleware(typeof(X))] applied to it
+        else
+        {
+            // Check if the attribute class has [UseMiddleware] applied to it
+            middlewareTypeName = GetMiddlewareTypeFromAttribute(attr.AttributeClass, useMiddlewareAttr);
+        }
 
         if (middlewareTypeName == null)
             return null;
@@ -964,18 +973,21 @@ internal static class HandlerAnalyzer
     }
 
     /// <summary>
-    /// Checks if a type is or derives from a base type.
+    /// Extracts the middleware type from a custom attribute that has [UseMiddleware(typeof(X))] applied to it.
     /// </summary>
-    private static bool IsOrDerivesFrom(INamedTypeSymbol type, INamedTypeSymbol baseType)
+    private static string? GetMiddlewareTypeFromAttribute(INamedTypeSymbol attributeClass, INamedTypeSymbol useMiddlewareAttr)
     {
-        var current = type;
-        while (current != null)
+        foreach (var attr in attributeClass.GetAttributes())
         {
-            if (SymbolEqualityComparer.Default.Equals(current, baseType))
-                return true;
-            current = current.BaseType;
+            if (SymbolEqualityComparer.Default.Equals(attr.AttributeClass, useMiddlewareAttr) &&
+                attr.ConstructorArguments.Length > 0 &&
+                attr.ConstructorArguments[0].Value is ITypeSymbol middlewareType)
+            {
+                return middlewareType.ToDisplayString();
+            }
         }
-        return false;
+
+        return null;
     }
 
     #endregion

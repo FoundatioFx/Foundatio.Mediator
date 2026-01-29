@@ -13,11 +13,10 @@ namespace ConsoleSample;
 /// public Result&lt;Order&gt; Handle(CreateOrder command) { ... }
 /// </code>
 /// </example>
+[UseMiddleware(typeof(RetryMiddleware))]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
-public sealed class RetryAttribute : UseMiddlewareAttribute
+public sealed class RetryAttribute : Attribute
 {
-    public RetryAttribute() : base(typeof(RetryMiddleware)) { }
-
     /// <summary>
     /// Maximum number of retry attempts. Default is 3.
     /// </summary>

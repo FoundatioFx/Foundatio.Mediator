@@ -54,7 +54,7 @@ public class SampleRunner
 
             // Get order
             Console.WriteLine("🔍 Retrieving order...");
-            var getResult = _mediator.Invoke<Result<Order>>(new GetOrder(order.Id));
+            var getResult = await _mediator.InvokeAsync<Result<Order>>(new GetOrder(order.Id));
             if (getResult.IsSuccess)
             {
                 Console.WriteLine($"✅ Order found: {getResult.Value.Id} - {getResult.Value.Description}\n");

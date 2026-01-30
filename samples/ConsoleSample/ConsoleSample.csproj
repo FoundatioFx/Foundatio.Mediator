@@ -32,7 +32,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <PackageReference Include="Foundatio" Version="11.3.1" />
+    <PackageReference Include="Foundatio" Version="12.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
     <PackageReference Include="MiniValidation" Version="0.9.2" />
   </ItemGroup>

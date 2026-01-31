@@ -54,3 +54,5 @@ _NCrunch_*
 # Generated files
 *.g.cs
 Generated/
+
+nul

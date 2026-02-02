@@ -179,6 +179,22 @@ public class MyCustomProcessor
 }
 ```
 
+### Scoped Services Returning Same Instance
+
+**Symptom:** Scoped services (like `DbContext`) return the same instance across different HTTP requests or DI scopes, causing stale data, disposed context errors, or cross-request data leakage.
+
+**Cause:** The mediator is registered as singleton (default) and captures the root `IServiceProvider` at construction. All service resolution uses this root provider, making scoped services behave like singletons.
+
+**Solution:** Register the mediator as scoped:
+
+```csharp
+services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+```
+
+This ensures each DI scope gets its own mediator that resolves services from the correct scope.
+
+**See also:** [Mediator Lifetime and Scoped Services](./dependency-injection.md#mediator-lifetime-and-scoped-services)
+
 ### Multiple Handlers Found
 
 **Symptom:** `InvalidOperationException: Multiple handlers found for message type X`

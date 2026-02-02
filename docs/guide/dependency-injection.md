@@ -368,6 +368,29 @@ public class InventoryHandler
 - Easier to maintain consistency across operations
 - Proper cleanup when operation completes
 
+## Mediator Lifetime and Scoped Services
+
+> **Key Rule:** If your handlers use scoped or transient services (like `DbContext`), you must register the mediator as scoped.
+
+By default, the mediator is registered as a **singleton**, which means it captures the root `IServiceProvider` at construction time. This causes scoped services to be resolved from the root provider, effectively making them singletons.
+
+### Register Mediator as Scoped
+
+```csharp
+// Required when using scoped/transient services in handlers
+services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+```
+
+This ensures each DI scope (HTTP request, background job, test) gets its own mediator instance that resolves services from the correct scope.
+
+### When to Use Scoped Mediator
+
+| Scenario | Need Scoped Mediator? |
+| -------- | --------------------- |
+| Handlers use `DbContext` or other scoped services | **Yes** |
+| Handlers use transient services | **Yes** |
+| Handlers only use singletons or no DI | No (default is fine) |
+
 ## Middleware Lifetime
 
 Middleware lifetime follows the same rules as handler lifetime:

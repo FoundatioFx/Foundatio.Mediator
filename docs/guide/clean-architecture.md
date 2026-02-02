@@ -59,7 +59,60 @@ The result: each piece of the system can evolve independently without creating a
 
 ## The Mediator Pattern in Clean Architecture
 
-The mediator pattern is the perfect complement to Clean Architecture because it **decouples the caller from the handler**. Instead of your presentation layer knowing about services, repositories, and business logic, it simply sends messages:
+The mediator pattern is the perfect complement to Clean Architecture because it **decouples the caller from the handler**. Instead of your presentation layer knowing about services, repositories, and business logic, it simply sends messages.
+
+### Automatic Endpoint Generation
+
+With Foundatio Mediator's source generator, you can **eliminate the presentation layer boilerplate entirely**. HTTP endpoints are automatically generated from your handlers:
+
+```csharp
+[HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+public class OrderHandler
+{
+    /// <summary>
+    /// Creates a new order.
+    /// </summary>
+    public async Task<Result<Order>> HandleAsync(
+        CreateOrder command,
+        IOrderRepository repository,
+        CancellationToken ct)
+    {
+        // Business logic here
+    }
+
+    /// <summary>
+    /// Gets an order by ID.
+    /// </summary>
+    public async Task<Result<Order>> HandleAsync(
+        GetOrder query,
+        IOrderRepository repository,
+        CancellationToken ct)
+    {
+        return await repository.GetByIdAsync(query.OrderId, ct);
+    }
+}
+
+// Messages define the contract
+public record CreateOrder(string CustomerId, decimal Amount);
+public record GetOrder(string OrderId);
+```
+
+The source generator automatically creates:
+
+- `POST /api/orders` → calls `CreateOrder` handler
+- `GET /api/orders/{orderId}` → calls `GetOrder` handler
+
+**No controller classes. No endpoint registrations. No boilerplate.** Just map them in your startup:
+
+```csharp
+app.MapOrdersEndpoints();
+```
+
+The generator infers HTTP methods from message names (`Create*` → POST, `Get*` → GET), generates routes from ID properties, maps `Result<T>` to HTTP status codes, and pulls OpenAPI metadata from XML doc comments.
+
+### Manual Endpoints (When Needed)
+
+If you prefer explicit control or need custom endpoint behavior, you can still write manual endpoints:
 
 ```csharp
 // MVC Controller
@@ -304,6 +357,59 @@ public class ObservabilityMiddleware
 
 Middleware is automatically applied to all handlers—no manual registration or decorator patterns needed.
 
+### 6. Zero-Boilerplate HTTP Endpoints
+
+Traditional Clean Architecture implementations still require significant presentation layer code—controllers, endpoint registrations, parameter binding, and response mapping. Foundatio Mediator's source generator eliminates this entirely:
+
+```csharp
+// Traditional approach - lots of presentation layer code
+public class OrdersController : ControllerBase
+{
+    private readonly IMediator _mediator;
+
+    public OrdersController(IMediator mediator) => _mediator = mediator;
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateOrderRequest request)
+    {
+        var result = await _mediator.InvokeAsync<Result<Order>>(
+            new CreateOrder(request.CustomerId, request.Amount));
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Errors);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> Get(string id)
+    {
+        var result = await _mediator.InvokeAsync<Result<Order>>(new GetOrder(id));
+        return result.IsSuccess ? Ok(result.Value) : NotFound();
+    }
+
+    // ... repeat for every operation
+}
+
+// Foundatio Mediator - handlers ARE the API
+[HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+public class OrderHandler
+{
+    public async Task<Result<Order>> HandleAsync(CreateOrder cmd, IOrderRepository repo, CancellationToken ct)
+        => await repo.CreateAsync(cmd, ct);
+
+    public async Task<Result<Order>> HandleAsync(GetOrder query, IOrderRepository repo, CancellationToken ct)
+        => await repo.GetByIdAsync(query.OrderId, ct);
+}
+```
+
+**Benefits:**
+
+- **No controllers or endpoint classes** - handlers define the API surface
+- **Automatic HTTP method inference** - `Create*` → POST, `Get*` → GET, `Update*` → PUT, `Delete*` → DELETE
+- **Automatic route generation** - ID properties become route parameters
+- **Result-to-HTTP mapping** - `Result.NotFound()` → 404, `Result.Invalid()` → 422, etc.
+- **OpenAPI generation** - XML doc comments become endpoint summaries
+- **Authentication built-in** - Configure auth at category or endpoint level
+
+See [Automatic Endpoint Generation](./endpoints) for full documentation.
+
 ## Project Structure Example
 
 Here's a recommended structure for a Clean Architecture application using Foundatio Mediator:
@@ -346,9 +452,7 @@ src/
 │       └── EmailService.cs
 │
 └── Web/                            # Presentation layer
-    ├── Endpoints/
-    │   ├── OrderEndpoints.cs
-    └── Program.cs
+    └── Program.cs                  # Endpoints auto-generated from handlers
 ```
 
 ## Real-World Example
@@ -371,10 +475,13 @@ See the [CleanArchitectureSample](https://github.com/FoundatioFx/Foundatio.Media
 | Manual event publishing and subscription | Automatic cascading with tuple returns |
 | Cross-cutting concerns scattered or complex decorators | Simple middleware with Before/After/Finally/Execute |
 | One handler per class limitation | Multiple handlers per class, grouped naturally |
+| Controllers/endpoints for every operation | Auto-generated endpoints from handlers |
+| Manual HTTP status code mapping | Result types map to HTTP status automatically |
 
 ## Next Steps
 
 - [Getting Started](./getting-started) - Set up Foundatio Mediator
+- [Automatic Endpoint Generation](./endpoints) - Zero-boilerplate HTTP APIs
 - [Cascading Messages](./cascading-messages) - Domain events and event-driven architecture
 - [Middleware](./middleware) - Cross-cutting concerns
 - [CleanArchitectureSample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) - Complete working example

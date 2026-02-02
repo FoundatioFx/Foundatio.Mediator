@@ -483,7 +483,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// Add mediator - discovers handlers automatically uses scoped Mediator lifetime to be compatible with any scoped/transient services
+// Add mediator - discovers handlers automatically
+// uses scoped Mediator lifetime to be compatible with scoped/transient services
 builder.Services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 
 var app = builder.Build();

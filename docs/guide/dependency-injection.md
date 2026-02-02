@@ -17,6 +17,41 @@ builder.Services.AddMediator();
 var app = builder.Build();
 ```
 
+## Mediator Lifetime and Scoped Services
+
+> **Key Rule:** If your handlers use scoped or transient services (like `DbContext`), you must register the mediator as scoped.
+
+By default, the mediator is registered as a **singleton**, which means it captures the root `IServiceProvider` at construction time. This causes scoped services to be resolved from the root provider, effectively making them singletons.
+
+### Register Mediator as Scoped
+
+```csharp
+// Required when using scoped/transient services in handlers
+services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+```
+
+This ensures each DI scope (HTTP request, background job, test) gets its own mediator instance that resolves services from the correct scope.
+
+### When to Use Scoped Mediator
+
+| Scenario | Need Scoped Mediator? |
+| -------- | --------------------- |
+| Handlers use `DbContext` or other scoped services | **Yes** |
+| Handlers use transient services | **Yes** |
+| Handlers only use singletons or no DI | No (default is fine) |
+
+## Middleware Lifetime
+
+Middleware lifetime follows the same rules as handler lifetime:
+
+| Lifetime | Behavior |
+|----------|----------|
+| **Scoped** | Resolved from DI on every invocation |
+| **Transient** | Resolved from DI on every invocation |
+| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
+| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
+| **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
+
 ## Handler Lifetime Management
 
 ### Lifetime Behavior Summary
@@ -283,126 +318,6 @@ These services are commonly injected into handler methods:
 - Business service interfaces
 - Configuration objects
 
-## Automatic DI Scope Management
-
-Foundatio.Mediator automatically manages dependency injection scopes to ensure proper lifetime handling of scoped services like DbContext.
-
-### Root Handler Invocation Creates a Scope
-
-When you invoke a handler from a root mediator call (outside of another handler), a new DI scope is automatically created:
-
-```csharp
-// This creates a new DI scope
-var result = await mediator.InvokeAsync<Order>(new CreateOrderCommand("test@example.com"));
-
-// The scope is disposed when the operation completes
-```
-
-### Nested Operations Share the Same Scope
-
-All nested handler invocations within the same logical operation share the same DI scope:
-
-- **Cascading messages** - Events published via tuple returns use the same scope
-- **Manual handler calls** - Calling other handlers from within a handler
-- **Manual publishing** - Publishing events from within a handler
-- **Middleware operations** - All middleware in the pipeline
-
-```csharp
-public class OrderHandler
-{
-    public async Task<(Result<Order>, OrderCreated, EmailNotification)> Handle(
-        CreateOrderCommand command,
-        IOrderRepository repository,   // Scoped - same instance throughout operation
-        IMediator mediator,           // Can call other handlers in same scope
-        CancellationToken cancellationToken)
-    {
-        // This repository instance will be shared with all nested operations
-        var order = await repository.CreateAsync(command.ToOrder(), cancellationToken);
-
-        // These nested operations will use the SAME DI scope:
-        // 1. Manual handler call
-        await mediator.InvokeAsync(new UpdateInventoryCommand(order.ProductId), cancellationToken);
-
-        // 2. Manual event publishing
-        await mediator.PublishAsync(new OrderValidated(order.Id), cancellationToken);
-
-        // 3. Cascading events (via tuple return) - also use same scope
-        return (
-            Result<Order>.Created(order),
-            new OrderCreated(order.Id, order.Email),      // Uses same scope
-            new EmailNotification(order.Email, "Order")   // Uses same scope
-        );
-    }
-}
-
-public class InventoryHandler
-{
-    public async Task Handle(
-        UpdateInventoryCommand command,
-        IOrderRepository repository)  // SAME INSTANCE as in OrderHandler!
-    {
-        // This shares the DbContext/repository instance with the parent handler
-        var order = await repository.GetByIdAsync(command.OrderId);
-        // ... update inventory
-    }
-}
-```
-
-### Benefits of Shared Scope
-
-**🔄 Consistent Data Access:**
-
-- All handlers in the same operation see the same data
-- DbContext change tracking works across nested handlers
-- Transactions can span multiple handlers
-
-**⚡ Performance:**
-
-- Expensive scoped services created once per operation
-- Connection pooling is more efficient
-- Reduced service resolution overhead
-
-**🛡️ Data Integrity:**
-
-- Natural unit of work boundaries
-- Easier to maintain consistency across operations
-- Proper cleanup when operation completes
-
-## Mediator Lifetime and Scoped Services
-
-> **Key Rule:** If your handlers use scoped or transient services (like `DbContext`), you must register the mediator as scoped.
-
-By default, the mediator is registered as a **singleton**, which means it captures the root `IServiceProvider` at construction time. This causes scoped services to be resolved from the root provider, effectively making them singletons.
-
-### Register Mediator as Scoped
-
-```csharp
-// Required when using scoped/transient services in handlers
-services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
-```
-
-This ensures each DI scope (HTTP request, background job, test) gets its own mediator instance that resolves services from the correct scope.
-
-### When to Use Scoped Mediator
-
-| Scenario | Need Scoped Mediator? |
-| -------- | --------------------- |
-| Handlers use `DbContext` or other scoped services | **Yes** |
-| Handlers use transient services | **Yes** |
-| Handlers only use singletons or no DI | No (default is fine) |
-
-## Middleware Lifetime
-
-Middleware lifetime follows the same rules as handler lifetime:
-
-| Lifetime | Behavior |
-|----------|----------|
-| **Scoped** | Resolved from DI on every invocation |
-| **Transient** | Resolved from DI on every invocation |
-| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
-| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
-| **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
-
 ### Default Behavior (No Explicit Lifetime)
 
 When no lifetime is specified, middleware instances are cached:
@@ -453,60 +368,6 @@ Set a default lifetime for all middleware using `MediatorDefaultMiddlewareLifeti
 <PropertyGroup>
     <MediatorDefaultMiddlewareLifetime>Scoped</MediatorDefaultMiddlewareLifetime>
 </PropertyGroup>
-```
-
-## Scoped Services Example
-
-Here's a complete example showing scoped services in a web application:
-
-```csharp
-// Startup.cs or Program.cs
-builder.Services.AddMediator();
-builder.Services.AddScoped<IOrderRepository, OrderRepository>();
-builder.Services.AddScoped<IEmailService, EmailService>();
-
-// Handler using scoped services
-public class OrderHandler
-{
-    public async Task<Result<Order>> Handle(
-        CreateOrderCommand command,
-        IOrderRepository repository,
-        IEmailService emailService,
-        ILogger<OrderHandler> logger)
-    {
-        logger.LogInformation("Creating order for {Email}", command.Email);
-
-        var order = new Order
-        {
-            Email = command.Email,
-            Amount = command.Amount
-        };
-
-        await repository.SaveAsync(order);
-        await emailService.SendConfirmationAsync(order);
-
-        return order;
-    }
-}
-
-// Controller
-[ApiController]
-public class OrderController : ControllerBase
-{
-    private readonly IMediator _mediator;
-
-    public OrderController(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> CreateOrder(CreateOrderCommand command)
-    {
-        var result = await _mediator.Invoke(command);
-        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Errors);
-    }
-}
 ```
 
 ## Service Location Pattern
@@ -622,8 +483,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// Add mediator - discovers handlers automatically
-builder.Services.AddMediator();
+// Add mediator - discovers handlers automatically uses scoped Mediator lifetime to be compatible with any scoped/transient services
+builder.Services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 
 var app = builder.Build();
 ```

@@ -167,7 +167,7 @@ public class OrderHandler
 
 - **Any registered service** from the DI container
 - **CancellationToken** - automatically provided by the mediator
-- **Scoped services** - new instance per mediator invocation
+- **Scoped services** - resolved from the current DI scope
 - **Singleton services** - shared instance
 
 ## Return Types

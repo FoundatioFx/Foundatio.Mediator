@@ -1,4 +1,3 @@
-using Foundatio.Xunit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 

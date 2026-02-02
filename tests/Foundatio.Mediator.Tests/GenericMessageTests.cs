@@ -1,4 +1,3 @@
-using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Tests;

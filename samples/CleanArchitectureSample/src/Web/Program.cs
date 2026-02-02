@@ -1,6 +1,5 @@
 using Common.Module;
 using Common.Module.Events;
-using Common.Module.Handlers;
 using Foundatio.Mediator;
 using Orders.Module;
 using Products.Module;

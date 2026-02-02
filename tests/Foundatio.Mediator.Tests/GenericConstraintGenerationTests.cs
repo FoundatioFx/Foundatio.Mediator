@@ -1,5 +1,3 @@
-using Foundatio.Xunit;
-
 namespace Foundatio.Mediator.Tests;
 
 public class GenericConstraintGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)

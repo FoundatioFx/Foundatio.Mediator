@@ -1,6 +1,5 @@
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
-using Orders.Module.Domain;
 using Orders.Module.Messages;
 using Products.Module.Domain;
 using Products.Module.Messages;

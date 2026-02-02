@@ -1,5 +1,3 @@
-using Foundatio.Xunit;
-
 namespace Foundatio.Mediator.Tests;
 
 public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTestBase(output)

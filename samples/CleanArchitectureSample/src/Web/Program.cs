@@ -2,7 +2,9 @@ using Common.Module;
 using Common.Module.Events;
 using Foundatio.Mediator;
 using Orders.Module;
+using Orders.Module.Messages;
 using Products.Module;
+using Products.Module.Messages;
 using Reports.Module;
 using Reports.Module.Messages;
 using Scalar.AspNetCore;
@@ -14,8 +16,11 @@ builder.Services.AddOpenApi();
 // Add Foundatio.Mediator with assemblies from all modules
 builder.Services.AddMediator(c =>
 {
+    // Register the mediator as scoped to ensure correct DI scope resolution
     c.SetMediatorLifetime(ServiceLifetime.Scoped);
-    c.AddAssembly<OrderCreated>();       // Common.Module events
+    c.AddAssembly<OrderCreated>();       // Common.Module
+    c.AddAssembly<CreateOrder>();        // Orders.Module
+    c.AddAssembly<CreateProduct>();      // Products.Module
     c.AddAssembly<GetDashboardReport>(); // Reports.Module
 });
 

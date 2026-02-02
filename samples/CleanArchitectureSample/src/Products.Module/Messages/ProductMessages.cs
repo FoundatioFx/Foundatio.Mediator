@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Products.Module.Domain;
 
@@ -20,7 +19,7 @@ public record CreateProduct(
     decimal Price,
 
     [Range(0, 1000000, ErrorMessage = "Stock quantity must be between 0 and 1,000,000")]
-    int StockQuantity = 0) : IValidatable, ICommand<Result<Product>>;
+    int StockQuantity = 0) : ICommand<Result<Product>>;
 
 public record UpdateProduct(
     [Required] string ProductId,
@@ -28,10 +27,11 @@ public record UpdateProduct(
     string? Description,
     decimal? Price,
     int? StockQuantity,
-    ProductStatus? Status) : IValidatable, ICommand<Result<Product>>;
+    ProductStatus? Status) : ICommand<Result<Product>>;
 
-public record DeleteProduct([Required] string ProductId) : IValidatable, ICommand<Result>;
+public record DeleteProduct([Required] string ProductId) : ICommand<Result>;
 
 // Queries
-public record GetProduct([Required] string ProductId) : IValidatable, IQuery<Result<Product>>;
+public record GetProduct([Required] string ProductId) : IQuery<Result<Product>>;
+
 public record GetProducts() : IQuery<Result<List<Product>>>;

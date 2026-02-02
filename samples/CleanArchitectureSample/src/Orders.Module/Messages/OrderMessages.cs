@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Orders.Module.Domain;
 
@@ -17,16 +16,17 @@ public record CreateOrder(
 
     [Required(ErrorMessage = "Description is required")]
     [StringLength(200, MinimumLength = 5, ErrorMessage = "Description must be between 5 and 200 characters")]
-    string Description) : IValidatable, ICommand<Result<Order>>;
+    string Description) : ICommand<Result<Order>>;
 
 public record UpdateOrder(
     [Required] string OrderId,
     decimal? Amount,
     string? Description,
-    OrderStatus? Status) : IValidatable, ICommand<Result<Order>>;
+    OrderStatus? Status) : ICommand<Result<Order>>;
 
-public record DeleteOrder([Required] string OrderId) : IValidatable, ICommand<Result>;
+public record DeleteOrder([Required] string OrderId) : ICommand<Result>;
 
 // Queries
-public record GetOrder([Required] string OrderId) : IValidatable, IQuery<Result<Order>>;
+public record GetOrder([Required] string OrderId) : IQuery<Result<Order>>;
+
 public record GetOrders() : IQuery<Result<List<Order>>>;

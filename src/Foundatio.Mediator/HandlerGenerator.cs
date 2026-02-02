@@ -324,7 +324,7 @@ internal static class HandlerGenerator
     /// <param name="resultVar">Variable name to store the handler result.</param>
     /// <param name="messageVar">Variable name containing the typed message (default: "message").</param>
     /// <param name="targetTupleIndex">For tuple return types, the index of the tuple item this method returns (0 = Item1, 1 = Item2, etc.). -1 for non-tuple handlers.</param>
-    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0)
+    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false)
     {
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
@@ -359,7 +359,7 @@ internal static class HandlerGenerator
         else
         {
             // Original code path - no Execute middleware
-            EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, requiresTryCatch);
+            EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, requiresTryCatch, isUntypedMethod: isUntypedMethod);
         }
     }
 
@@ -396,8 +396,8 @@ internal static class HandlerGenerator
             source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} innerResult = default;");
         }
 
-        // Emit the full pipeline inside the delegate
-        EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, innerVariables, "innerResult", messageVar, targetTupleIndex, requiresTryCatch, insideExecuteDelegate: true);
+        // Emit the full pipeline inside the delegate - isUntypedMethod is false here because we're inside a delegate that returns object?
+        EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, innerVariables, "innerResult", messageVar, targetTupleIndex, requiresTryCatch, insideExecuteDelegate: true, isUntypedMethod: false);
 
         source.AppendLine(handler.HasReturnValue ? "return innerResult;" : "return null;");
         source.DecrementIndent();
@@ -483,6 +483,8 @@ internal static class HandlerGenerator
     /// </summary>
     /// <param name="insideExecuteDelegate">When true, we're inside an Execute middleware delegate and short-circuit
     /// returns should return the full tuple type (not just one item) since the delegate returns object?.</param>
+    /// <param name="isUntypedMethod">When true, we're generating UntypedHandleAsync which returns ValueTask&lt;object?&gt;,
+    /// so void handlers should return null instead of just return.</param>
     private static void EmitPipelineCode(
         IndentedStringBuilder source,
         HandlerInfo handler,
@@ -495,7 +497,8 @@ internal static class HandlerGenerator
         string messageVar,
         int targetTupleIndex,
         bool requiresTryCatch,
-        bool insideExecuteDelegate = false)
+        bool insideExecuteDelegate = false,
+        bool isUntypedMethod = false)
     {
         // Main execution with optional try-catch-finally
         if (requiresTryCatch)
@@ -510,7 +513,7 @@ internal static class HandlerGenerator
             variables["System.Exception"] = "exception";
         }
 
-        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex, insideExecuteDelegate);
+        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex, insideExecuteDelegate, isUntypedMethod);
         EmitHandlerInvocation(source, handler, variables, resultVar, messageVar);
         EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar);
 
@@ -632,7 +635,8 @@ internal static class HandlerGenerator
         Dictionary<string, string> variables,
         string messageVar,
         int targetTupleIndex,
-        bool insideExecuteDelegate = false)
+        bool insideExecuteDelegate = false,
+        bool isUntypedMethod = false)
     {
         foreach (var m in beforeMiddleware)
         {
@@ -645,7 +649,7 @@ internal static class HandlerGenerator
 
             if (m.Method.ReturnType.IsHandlerResult)
             {
-                EmitShortCircuitCheck(source, m, handler, targetTupleIndex, insideExecuteDelegate);
+                EmitShortCircuitCheck(source, m, handler, targetTupleIndex, insideExecuteDelegate, isUntypedMethod);
             }
         }
         source.AppendLineIf(beforeMiddleware.Any());
@@ -656,7 +660,8 @@ internal static class HandlerGenerator
         (MiddlewareMethodInfo Method, MiddlewareInfo Middleware) m,
         HandlerInfo handler,
         int targetTupleIndex,
-        bool insideExecuteDelegate = false)
+        bool insideExecuteDelegate = false,
+        bool isUntypedMethod = false)
     {
         string resultVarName = $"{m.Middleware.Identifier.ToCamelCase()}Result";
         string valueAccess = m.Method.ReturnType.IsGeneric ? $"{resultVarName}.Value" : $"{resultVarName}.Value!";
@@ -682,7 +687,9 @@ internal static class HandlerGenerator
         }
         else
         {
-            source.AppendLine("    return;");
+            // For void handlers: UntypedHandleAsync returns ValueTask<object?> so needs "return null"
+            // Typed HandleAsync returns ValueTask so needs just "return"
+            source.AppendLine(isUntypedMethod ? "    return null;" : "    return;");
         }
 
         source.AppendLine("}");
@@ -870,7 +877,7 @@ internal static class HandlerGenerator
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
 
         // Emit the handler invocation code - use "typedMessage" since we cast the object message above
-        EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessage");
+        EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessage", isUntypedMethod: true);
 
         // For tuple returns, use PublishCascadingMessagesAsync for runtime dispatch
         if (handler.ReturnType.IsTuple)

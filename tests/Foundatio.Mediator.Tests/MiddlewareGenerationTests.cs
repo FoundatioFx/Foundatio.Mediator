@@ -606,6 +606,75 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
     }
 
     #endregion
-}
 
+    #region Void Handler with ShortCircuit Middleware Tests
+
+    [Fact]
+    public void VoidHandler_WithShortCircuitMiddleware_GeneratesReturnNullInUntypedMethod()
+    {
+        // This test verifies the fix for a bug where void handlers with middleware that returns
+        // HandlerResult would generate "return;" instead of "return null;" in the UntypedHandleAsync
+        // method, causing a compile error since UntypedHandleAsync returns ValueTask<object?>.
+        // Using async handler to ensure UntypedHandleAsync is generated (sync handlers get UntypedHandle).
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record VoidMsg;
+
+			public class VoidMsgHandler { public async Task HandleAsync(VoidMsg m, CancellationToken ct) { await Task.CompletedTask; } }
+
+			public static class ValidationMiddleware {
+				public static HandlerResult Before(object m) {
+					return HandlerResult.Continue();
+				}
+			}
+			""";
+
+        var (compilation, diagnostics, trees) = RunGenerator(src, [new MediatorGenerator()]);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        // Verify the middleware is applied and short-circuit check is generated
+        Assert.Contains("ValidationMiddleware.Before", wrapper.Source);
+        Assert.Contains("IsShortCircuited", wrapper.Source);
+
+        // Find the UntypedHandleAsync method
+        Assert.Contains("UntypedHandleAsync", wrapper.Source);
+
+        // The critical fix: void handlers in UntypedHandleAsync should return null, not empty return
+        // The generated code must have "return null;" for the short-circuit case in UntypedHandleAsync
+        Assert.Contains("return null;", wrapper.Source);
+
+        // The typed HandleAsync should still use "return;" (no null) for void handlers
+        // Count occurrences to ensure we have both patterns
+        int returnNullCount = CountOccurrences(wrapper.Source, "return null;");
+        int returnSemicolonCount = CountOccurrences(wrapper.Source, "return;");
+
+        // Should have at least one "return null;" (from UntypedHandleAsync short-circuit + final return)
+        Assert.True(returnNullCount >= 1, $"UntypedHandleAsync should have 'return null;' for short-circuit. Found {returnNullCount} occurrences.");
+
+        // Should have at least one plain "return;" (from typed HandleAsync short-circuit)
+        Assert.True(returnSemicolonCount >= 1, $"Typed HandleAsync should have 'return;' for short-circuit. Found {returnSemicolonCount} occurrences.");
+
+        // Verify the generated code compiles without errors
+        var errors = diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error).ToList();
+        Assert.Empty(errors);
+    }
+
+    private static int CountOccurrences(string source, string pattern)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = source.IndexOf(pattern, index)) != -1)
+        {
+            count++;
+            index += pattern.Length;
+        }
+        return count;
+    }
+
+    #endregion
+}
 

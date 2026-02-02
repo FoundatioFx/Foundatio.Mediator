@@ -7,7 +7,17 @@ public static class MediatorExtensions
     /// <summary>
     /// Adds Foundatio.Mediator to the service collection.
     /// </summary>
-    /// <param name="services"></param>
+    /// <remarks>
+    /// <para>
+    /// By default, the mediator is registered as a singleton. If your handlers use scoped or transient
+    /// services (like DbContext), you should register the mediator as scoped to ensure services are
+    /// resolved from the correct DI scope:
+    /// </para>
+    /// <code>
+    /// services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+    /// </code>
+    /// </remarks>
+    /// <param name="services">The service collection to add the mediator to.</param>
     /// <param name="configuration">Optional configuration for the mediator.</param>
     /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
     public static IServiceCollection AddMediator(this IServiceCollection services, MediatorConfiguration? configuration = null)
@@ -79,9 +89,19 @@ public static class MediatorExtensions
     /// <summary>
     /// Adds Foundatio.Mediator to the service collection with a configuration builder.
     /// </summary>
-    /// <param name="services"></param>
-    /// <param name="builder"></param>
-    /// <returns></returns>
+    /// <remarks>
+    /// <para>
+    /// By default, the mediator is registered as a singleton. If your handlers use scoped or transient
+    /// services (like DbContext), you should register the mediator as scoped to ensure services are
+    /// resolved from the correct DI scope:
+    /// </para>
+    /// <code>
+    /// services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+    /// </code>
+    /// </remarks>
+    /// <param name="services">The service collection to add the mediator to.</param>
+    /// <param name="builder">A callback to configure the mediator.</param>
+    /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
     public static IServiceCollection AddMediator(this IServiceCollection services, Action<MediatorConfigurationBuilder> builder)
     {
         var configurationBuilder = new MediatorConfigurationBuilder();

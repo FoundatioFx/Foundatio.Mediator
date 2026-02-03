@@ -63,6 +63,24 @@ function ConvertTo-Nanoseconds {
     return [double]::MaxValue
 }
 
+# Helper function to convert Allocated value string to bytes
+function ConvertTo-Bytes {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -eq 'NA' -or $Value -eq '-') {
+        return $null
+    }
+    if ($Value -match '^([\d,.]+)\s*B$') {
+        return [int64]($Matches[1] -replace ',', '')
+    }
+    if ($Value -match '^([\d,.]+)\s*KB$') {
+        return [int64](([double]($Matches[1] -replace ',', '')) * 1024)
+    }
+    if ($Value -match '^([\d,.]+)\s*MB$') {
+        return [int64](([double]($Matches[1] -replace ',', '')) * 1024 * 1024)
+    }
+    return $null
+}
+
 # Load baseline from existing CSV before running benchmarks (for comparison)
 $baseline = @{}
 if ($FoundatioOnly -and (Test-Path $FoundatioResultsFile)) {
@@ -155,17 +173,19 @@ if ($FoundatioOnly) {
         Write-Host "  BENCHMARK COMPARISON (Before -> After)" -ForegroundColor Yellow
         Write-Host "========================================" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f "Method", "Before", "After", "Change") -ForegroundColor White
-        Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f "------", "------", "-----", "------") -ForegroundColor Gray
+        Write-Host ("{0,-20} {1,15} {2,15} {3,12} {4,15}" -f "Method", "Before", "After", "Change", "Alloc Change") -ForegroundColor White
+        Write-Host ("{0,-20} {1,15} {2,15} {3,12} {4,15}" -f "------", "------", "-----", "------", "------------") -ForegroundColor Gray
 
         foreach ($row in $foundatioCsv) {
             $method = $row.Method
             $newMean = $row.Mean
             $newNs = ConvertTo-Nanoseconds $newMean
+            $newAlloc = ConvertTo-Bytes $row.Allocated
 
             if ($baseline.ContainsKey($method)) {
                 $oldMean = $baseline[$method].Mean
                 $oldNs = ConvertTo-Nanoseconds $oldMean
+                $oldAlloc = ConvertTo-Bytes $baseline[$method].Allocated
 
                 if ($oldNs -gt 0 -and $newNs -lt [double]::MaxValue) {
                     $pctChange = (($newNs - $oldNs) / $oldNs) * 100
@@ -181,13 +201,37 @@ if ($FoundatioOnly) {
                              elseif ($pctChange -gt 5) { "Red" }
                              else { "Gray" }
 
+                    # Calculate allocation change
+                    $allocChangeStr = "N/A"
+                    $allocColor = "Gray"
+                    if ($null -ne $oldAlloc -and $null -ne $newAlloc) {
+                        $allocDiff = $newAlloc - $oldAlloc
+                        if ($allocDiff -eq 0) {
+                            $allocChangeStr = "0 B"
+                            $allocColor = "Gray"
+                        } elseif ($allocDiff -lt 0) {
+                            $allocChangeStr = "{0:N0} B" -f $allocDiff
+                            $allocColor = "Green"
+                        } else {
+                            $allocChangeStr = "+{0:N0} B" -f $allocDiff
+                            $allocColor = "Red"
+                        }
+                    } elseif ($null -eq $oldAlloc -and $null -ne $newAlloc) {
+                        $allocChangeStr = "+{0:N0} B" -f $newAlloc
+                        $allocColor = "Red"
+                    } elseif ($null -ne $oldAlloc -and $null -eq $newAlloc) {
+                        $allocChangeStr = "-{0:N0} B" -f $oldAlloc
+                        $allocColor = "Green"
+                    }
+
                     Write-Host ("{0,-20} {1,15} {2,15} " -f $method, $oldMean, $newMean) -NoNewline
-                    Write-Host ("{0,12}" -f $changeStr) -ForegroundColor $color
+                    Write-Host ("{0,12} " -f $changeStr) -ForegroundColor $color -NoNewline
+                    Write-Host ("{0,15}" -f $allocChangeStr) -ForegroundColor $allocColor
                 } else {
-                    Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f $method, $oldMean, $newMean, "N/A") -ForegroundColor Gray
+                    Write-Host ("{0,-20} {1,15} {2,15} {3,12} {4,15}" -f $method, $oldMean, $newMean, "N/A", "N/A") -ForegroundColor Gray
                 }
             } else {
-                Write-Host ("{0,-20} {1,15} {2,15} {3,12}" -f $method, "(new)", $newMean, "NEW") -ForegroundColor Cyan
+                Write-Host ("{0,-20} {1,15} {2,15} {3,12} {4,15}" -f $method, "(new)", $newMean, "NEW", "NEW") -ForegroundColor Cyan
             }
         }
         Write-Host ""

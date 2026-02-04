@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DashboardReport } from '$lib/types/report';
+  import { ClipboardList, Package, DollarSign, AlertTriangle } from 'lucide-svelte';
 
   type Props = {
     stats: DashboardReport;
@@ -15,10 +16,10 @@
   }
 
   const statCards = $derived([
-    { label: 'Total Orders', value: stats.totalOrders.toString(), color: 'bg-blue-500' },
-    { label: 'Total Products', value: stats.totalProducts.toString(), color: 'bg-green-500' },
-    { label: 'Total Revenue', value: formatCurrency(stats.totalRevenue), color: 'bg-purple-500' },
-    { label: 'Low Stock Items', value: stats.lowStockProductCount.toString(), color: 'bg-red-500' }
+    { label: 'Total Orders', value: stats.totalOrders.toString(), color: 'bg-blue-500', icon: ClipboardList },
+    { label: 'Total Products', value: stats.totalProducts.toString(), color: 'bg-green-500', icon: Package },
+    { label: 'Total Revenue', value: formatCurrency(stats.totalRevenue), color: 'bg-purple-500', icon: DollarSign },
+    { label: 'Low Stock Items', value: stats.lowStockProductCount.toString(), color: 'bg-red-500', icon: AlertTriangle }
   ]);
 </script>
 
@@ -28,7 +29,7 @@
       <div class="flex items-center">
         <div class="flex-shrink-0">
           <div class="w-12 h-12 rounded-lg {stat.color} flex items-center justify-center">
-            <span class="text-white text-lg font-bold">#</span>
+            <stat.icon class="w-6 h-6 text-white" />
           </div>
         </div>
         <div class="ml-4">

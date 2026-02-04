@@ -10,6 +10,7 @@ This sample demonstrates how to build a modular monolith application using Found
 - **Domain events** - Loose coupling between modules through event handlers
 - **Cross-assembly middleware** - Shared middleware across all modules
 - **Compile-time code generation** - Zero runtime overhead
+- **SvelteKit SPA Frontend** - Modern frontend with Svelte 5 and Tailwind CSS
 
 ## Project Structure
 
@@ -60,9 +61,19 @@ src/
 │   │   └── ReportMessages.cs    # Queries and DTOs
 │   └── ServiceConfiguration.cs
 │
-└── Web/                         # Composition root
-    ├── Program.cs               # Application entry point
-    └── Web.http                 # HTTP request samples
+├── Web/                         # ASP.NET Core backend (composition root)
+│   ├── Program.cs               # Application entry point
+│   └── Web.http                 # HTTP request samples
+│
+└── Web.Frontend/                # SvelteKit SPA frontend
+    ├── src/
+    │   ├── lib/
+    │   │   ├── api/             # API clients
+    │   │   ├── components/      # Svelte components
+    │   │   └── types/           # TypeScript types
+    │   └── routes/              # SvelteKit pages
+    ├── vite.config.ts           # Vite configuration with API proxy
+    └── package.json
 ```
 
 ## Clean Architecture Principles Applied
@@ -146,15 +157,39 @@ public async Task HandleAsync(OrderCreated evt, CancellationToken ct)
 
 ## Running the Sample
 
-### Build and Run
+### Prerequisites
 
-```bash
-cd samples/CleanArchitectureSample
-dotnet build
-dotnet run --project src/Web
-```
+- .NET 10 SDK
+- Node.js 20+ (for the frontend)
 
-Visit **https://localhost:7001/scalar** to explore the API documentation.
+### Quick Start
+
+The easiest way to run the sample is using Visual Studio or VS Code:
+
+1. **Install frontend dependencies** (first time only):
+
+   ```bash
+   cd samples/CleanArchitectureSample/src/Web.Frontend
+   npm install
+   ```
+
+2. **Run the Web project** - this automatically starts both backend and frontend:
+   - **Visual Studio**: Set `Web` as the startup project and press F5
+   - **VS Code**: Run the "Clean Architecture Sample" launch configuration
+   - **CLI**: `dotnet run --project samples/CleanArchitectureSample/src/Web`
+
+The application uses **SPA Proxy** to automatically:
+
+- Start the Vite dev server for the SvelteKit frontend
+- Open your browser to `https://localhost:5173`
+
+### URLs
+
+| URL                                    | Description                       |
+| -------------------------------------- | --------------------------------- |
+| `https://localhost:5173`               | SvelteKit frontend (development)  |
+| `https://localhost:58702/api/*`        | Backend API                       |
+| `https://localhost:58702/scalar/v1`    | API documentation (Scalar)        |
 
 ### Using the HTTP File
 
@@ -165,7 +200,7 @@ Open `src/Web/Web.http` in VS Code or Rider to run sample requests.
 **Create a product:**
 
 ```bash
-curl -X POST https://localhost:7001/api/products \
+curl -X POST https://localhost:58702/api/products \
   -H "Content-Type: application/json" \
   -d '{"name":"Widget","description":"A great widget","price":29.99,"stockQuantity":50}'
 ```
@@ -173,7 +208,7 @@ curl -X POST https://localhost:7001/api/products \
 **Create an order:**
 
 ```bash
-curl -X POST https://localhost:7001/api/orders \
+curl -X POST https://localhost:58702/api/orders \
   -H "Content-Type: application/json" \
   -d '{"customerId":"customer-123","amount":29.99,"description":"Widget purchase"}'
 ```
@@ -181,13 +216,13 @@ curl -X POST https://localhost:7001/api/orders \
 **Get dashboard report (aggregates from both modules):**
 
 ```bash
-curl https://localhost:7001/api/reports/dashboard
+curl https://localhost:58702/api/reports
 ```
 
 **Search across modules:**
 
 ```bash
-curl "https://localhost:7001/api/reports/search?searchTerm=widget"
+curl "https://localhost:58702/api/reports/search-catalog?searchTerm=widget"
 ```
 
 ### Watch Events in Action
@@ -200,6 +235,23 @@ info: Completed CreateOrder in OrderHandler (5ms)
 dbug: Auditing OrderCreated event for order abc123
 dbug: Sending order confirmation notification for order abc123
 ```
+
+## Frontend Architecture
+
+The SvelteKit frontend demonstrates:
+
+- **Svelte 5** with runes (`$state`, `$derived`) for reactivity
+- **Tailwind CSS** for styling
+- **TypeScript** for type safety
+- **Vite** for fast development with HMR
+- **API proxy** during development (requests to `/api/*` are proxied to the backend)
+
+### Frontend Features
+
+- Dashboard with aggregated stats from Orders and Products
+- CRUD operations for Orders and Products
+- Reports with sales, inventory, and search functionality
+- Responsive design with Tailwind CSS
 
 ## Key Benefits
 
@@ -234,7 +286,8 @@ Web
   ├── Common.Module (services, middleware)
   ├── Orders.Module (order messages, handlers)
   ├── Products.Module (product messages, handlers)
-  └── Reports.Module (report messages, handlers)
+  ├── Reports.Module (report messages, handlers)
+  └── Web.Frontend (SvelteKit SPA)
 
 Reports.Module
   ├── Common.Module

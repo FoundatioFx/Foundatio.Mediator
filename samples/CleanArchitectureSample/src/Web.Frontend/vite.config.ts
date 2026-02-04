@@ -1,4 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import fs from 'fs';
 import path from 'path';
@@ -37,7 +38,7 @@ const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_H
     env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:58702';
 
 export default defineConfig({
-    plugins: [sveltekit()],
+    plugins: [tailwindcss(), sveltekit()],
     server: {
         port: 5173,
         strictPort: true,

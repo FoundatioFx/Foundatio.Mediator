@@ -5,16 +5,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-        "name": "Clean Architecture Sample",
-        "type": "dotnet",
-        "request": "launch",
-        "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Web/Web.csproj"
+      "name": "Clean Architecture Sample",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Web/Web.csproj"
     },
     {
-        "name": "Console Sample",
-        "type": "dotnet",
-        "request": "launch",
-        "projectPath": "${workspaceFolder}/samples/ConsoleSample/ConsoleSample.csproj"
+      "name": "Console Sample",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/samples/ConsoleSample/ConsoleSample.csproj"
     }
   ]
 }

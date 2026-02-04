@@ -26,14 +26,8 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     {
         logger.LogInformation("Generating dashboard report");
 
-        // Fetch data from both modules in parallel via the mediator
-        var ordersTask = mediator.InvokeAsync(new GetOrders(), cancellationToken);
-        var productsTask = mediator.InvokeAsync(new GetProducts(), cancellationToken);
-
-        await Task.WhenAll(ordersTask.AsTask(), productsTask.AsTask());
-
-        var ordersResult = await ordersTask;
-        var productsResult = await productsTask;
+        var ordersResult = await mediator.InvokeAsync(new GetOrders(), cancellationToken);
+        var productsResult = await mediator.InvokeAsync(new GetProducts(), cancellationToken);
 
         if (!ordersResult.IsSuccess)
             return Result.Error($"Failed to fetch orders: {ordersResult.Message}");
@@ -146,14 +140,9 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
 
         logger.LogInformation("Searching catalog for: {SearchTerm}", query.SearchTerm);
 
-        // Fetch data from both modules in parallel
-        var ordersTask = mediator.InvokeAsync(new GetOrders(), cancellationToken);
-        var productsTask = mediator.InvokeAsync(new GetProducts(), cancellationToken);
-
-        await Task.WhenAll(ordersTask.AsTask(), productsTask.AsTask());
-
-        var ordersResult = await ordersTask;
-        var productsResult = await productsTask;
+        // Fetch data from both modules via the mediator
+        var ordersResult = await mediator.InvokeAsync(new GetOrders(), cancellationToken);
+        var productsResult = await mediator.InvokeAsync(new GetProducts(), cancellationToken);
 
         var searchTerm = query.SearchTerm.ToLowerInvariant();
 

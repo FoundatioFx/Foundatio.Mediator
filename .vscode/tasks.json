@@ -72,6 +72,23 @@
 				"-FoundatioOnly"
 			],
 			"problemMatcher": []
+		},
+		{
+			"label": "Run Clean Architecture Sample",
+			"type": "shell",
+			"command": "dotnet",
+			"args": ["run", "--project", "samples/CleanArchitectureSample/src/Web/Web.csproj"],
+			"isBackground": true,
+			"problemMatcher": {
+				"pattern": {
+					"regexp": "^$"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "^.*Building.*$",
+					"endsPattern": "^.*Now listening on.*$"
+				}
+			}
 		}
 	]
 }

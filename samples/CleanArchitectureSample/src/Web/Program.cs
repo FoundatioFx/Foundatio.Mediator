@@ -16,7 +16,6 @@ builder.Services.AddOpenApi();
 // Add Foundatio.Mediator with assemblies from all modules
 builder.Services.AddMediator(c =>
 {
-    // Register the mediator as scoped to ensure correct DI scope resolution
     c.SetMediatorLifetime(ServiceLifetime.Scoped);
     c.AddAssembly<OrderCreated>();       // Common.Module
     c.AddAssembly<CreateOrder>();        // Orders.Module
@@ -36,6 +35,10 @@ builder.Services.AddReportsModule();
 
 var app = builder.Build();
 
+// Serve static files from the SPA
+app.UseDefaultFiles();
+app.MapStaticAssets();
+
 app.MapOpenApi();
 app.MapScalarApiReference();
 
@@ -46,9 +49,7 @@ app.MapOrdersEndpoints();
 app.MapProductsEndpoints();
 app.MapReportsEndpoints();
 
-// Add a simple health check endpoint
-app.MapGet("/", () => "Modular Monolith Sample with Foundatio.Mediator")
-    .WithName("Home")
-    .WithSummary("Home endpoint");
+// SPA fallback - serves index.html for client-side routing
+app.MapFallbackToFile("/index.html");
 
 app.Run();

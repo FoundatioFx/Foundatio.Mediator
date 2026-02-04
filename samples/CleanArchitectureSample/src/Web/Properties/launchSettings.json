@@ -1,11 +1,13 @@
 {
+  "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
     "Web": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "scalar/v1",
+      "launchUrl": "https://localhost:5173",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES": "Microsoft.AspNetCore.SpaProxy"
       },
       "applicationUrl": "https://localhost:58702;http://localhost:58703"
     }

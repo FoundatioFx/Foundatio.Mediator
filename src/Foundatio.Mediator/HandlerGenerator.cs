@@ -175,7 +175,7 @@ internal static class HandlerGenerator
             }
             else
             {
-                // No explicit DI lifetime - use lazy caching via GetOrCreateHandler
+                // No explicit DI lifetime and default is None - use lazy caching via GetOrCreateHandler
                 source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
                 source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
                 accessor = "handlerInstance";
@@ -584,7 +584,7 @@ internal static class HandlerGenerator
             }
             else
             {
-                // No explicit lifetime (None/Default) - use caching
+                // No explicit lifetime (None/Default) and default is None - use caching
                 // No constructor deps: use new() and cache
                 // With constructor deps: use ActivatorUtilities and cache
                 source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);");
@@ -757,7 +757,7 @@ internal static class HandlerGenerator
         }
         else
         {
-            // No explicit DI lifetime - use GetOrCreateHandler with lazy caching
+            // No explicit DI lifetime and default is None - use GetOrCreateHandler with lazy caching
             // Both with and without constructor deps use this path for lazy initialization
             source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
             accessor = "handlerInstance";
@@ -1649,4 +1649,5 @@ internal static class HandlerGenerator
             }
         }
     }
+
 }

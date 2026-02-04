@@ -163,8 +163,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         foreach (var handler in filteredHandlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation);
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware });
+            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation, configuration);
+
+            // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
+            var resolvedHandlerLifetime = ResolveEffectiveLifetime(handler.Lifetime, configuration.DefaultHandlerLifetime);
+
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime });
         }
 
         // Collect call sites that need cross-assembly interceptors
@@ -251,7 +255,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             sw.ElapsedMilliseconds);
     }
 
-    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation)
+    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation, GeneratorConfiguration configuration)
     {
         var applicable = new List<MiddlewareInfo>();
         var addedMiddlewareTypes = new HashSet<string>();
@@ -265,7 +269,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
             if (IsMiddlewareApplicableToHandler(middleware, handler))
             {
-                applicable.Add(middleware);
+                // Resolve effective middleware lifetime
+                var resolvedLifetime = ResolveEffectiveLifetime(middleware.Lifetime, configuration.DefaultMiddlewareLifetime);
+                applicable.Add(middleware with { Lifetime = resolvedLifetime });
                 addedMiddlewareTypes.Add(middleware.FullName);
             }
         }
@@ -278,6 +284,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             if (middlewareInfo.FullName == null)
                 continue; // Middleware not found - could emit diagnostic here
 
+            // Resolve effective middleware lifetime
+            var resolvedLifetime = ResolveEffectiveLifetime(middlewareInfo.Lifetime, configuration.DefaultMiddlewareLifetime);
+
             if (addedMiddlewareTypes.Contains(middlewareInfo.FullName))
             {
                 // Middleware already added from message type matching
@@ -287,14 +296,14 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     var index = applicable.FindIndex(m => m.FullName == middlewareInfo.FullName);
                     if (index >= 0)
                     {
-                        applicable[index] = applicable[index] with { Order = reference.Order };
+                        applicable[index] = applicable[index] with { Order = reference.Order, Lifetime = resolvedLifetime };
                     }
                 }
             }
             else
             {
-                // Add middleware with handler-specified order
-                applicable.Add(middlewareInfo with { Order = reference.Order });
+                // Add middleware with handler-specified order and resolved lifetime
+                applicable.Add(middlewareInfo with { Order = reference.Order, Lifetime = resolvedLifetime });
                 addedMiddlewareTypes.Add(middlewareInfo.FullName);
             }
         }
@@ -322,6 +331,29 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Resolves the effective lifetime by using the explicit lifetime if set, otherwise the default.
+    /// Returns null if both are "None" (meaning no DI registration needed - use lazy caching).
+    /// </summary>
+    private static string? ResolveEffectiveLifetime(string? explicitLifetime, string defaultLifetime)
+    {
+        // If explicit lifetime is set and not "None", use it
+        if (!string.IsNullOrEmpty(explicitLifetime) &&
+            !string.Equals(explicitLifetime, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            return explicitLifetime;
+        }
+
+        // Fall back to default lifetime if it's not "None"
+        if (!string.Equals(defaultLifetime, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            return defaultLifetime;
+        }
+
+        // Both are "None" - return null to indicate no DI registration
+        return null;
     }
 }
 

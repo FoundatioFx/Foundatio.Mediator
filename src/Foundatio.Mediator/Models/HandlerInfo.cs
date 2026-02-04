@@ -65,8 +65,6 @@ internal readonly record struct HandlerInfo
     /// </summary>
     public string? XmlDocSummary { get; init; }
 
-    #region Dependency Requirements
-
     /// <summary>
     /// Whether the handler constructor requires dependency injection.
     /// True when the handler class has constructor parameters.
@@ -99,10 +97,6 @@ internal readonly record struct HandlerInfo
         !RequiresMethodInjection &&
         !Middleware.Any() &&
         !ReturnType.IsTuple;
-
-    #endregion
-
-    #region Middleware Requirements
 
     /// <summary>
     /// Whether this handler has any middleware attached.
@@ -151,10 +145,6 @@ internal readonly record struct HandlerInfo
     /// </summary>
     public bool RequiresMiddlewareInstances => Middleware.Any(m => !m.IsStatic);
 
-    #endregion
-
-    #region Code Generation Requirements
-
     /// <summary>
     /// Whether the handler returns a tuple with cascading messages.
     /// When true, non-first tuple items need to be published after handler execution.
@@ -192,18 +182,6 @@ internal readonly record struct HandlerInfo
     public bool CanSkipAsyncStateMachine =>
         (IsStaticWithNoDependencies || (HasNoDependencies && !HasMiddleware && !HasCascadingMessages));
 
-    #endregion
-
-    #region Handler Instantiation Strategy
-
-    /// <summary>
-    /// Whether handler instances can be cached (singleton-like behavior).
-    /// True when handler has no dependencies or explicit Singleton lifetime.
-    /// </summary>
-    public bool CanCacheHandlerInstance =>
-        HasNoDependencies ||
-        string.Equals(Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
     /// Whether the handler must be resolved from DI on every invocation.
     /// True for Scoped or Transient lifetime handlers.
@@ -211,8 +189,6 @@ internal readonly record struct HandlerInfo
     public bool RequiresDIResolutionPerInvocation =>
         string.Equals(Lifetime, "Scoped", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(Lifetime, "Transient", StringComparison.OrdinalIgnoreCase);
-
-    #endregion
 }
 
 internal readonly record struct ParameterInfo

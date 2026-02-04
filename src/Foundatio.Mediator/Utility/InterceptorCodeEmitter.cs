@@ -271,8 +271,8 @@ internal static class InterceptorCodeEmitter
             .Select(x => x.item)
             .ToList();
 
-        // Check if any cascaded items have handlers
-        return itemsToCascade.Any(item => HandlerGenerator.GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+        // With runtime DI lookup, always assume there might be handlers for cascaded messages
+        return itemsToCascade.Count > 0;
     }
 
     /// <summary>

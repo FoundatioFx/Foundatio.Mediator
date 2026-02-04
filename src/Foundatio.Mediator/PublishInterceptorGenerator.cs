@@ -5,8 +5,8 @@ namespace Foundatio.Mediator;
 
 /// <summary>
 /// Generates interceptor methods for PublishAsync call sites.
-/// This enables compile-time dispatch to all handlers in the correct order,
-/// eliminating runtime handler discovery via DI.
+/// Uses runtime DI discovery with caching for best performance while supporting
+/// handlers registered from any assembly.
 /// </summary>
 internal static class PublishInterceptorGenerator
 {
@@ -63,23 +63,21 @@ internal static class PublishInterceptorGenerator
             var messageType = firstCallSite.MessageType;
             var callSitesForMessage = group.ToList();
 
-            // Find all handlers applicable to this message type (including interface/base class handlers)
-            var applicableHandlers = GetApplicableHandlers(firstCallSite, allHandlers);
-
-            // Only generate interceptor if we have handlers
-            if (applicableHandlers.Count == 0)
-                continue;
-
             GeneratePublishInterceptorMethod(
                 source,
                 messageType,
                 callSitesForMessage,
-                applicableHandlers,
                 configuration,
                 messageTypeCounter++);
 
             source.AppendLine();
         }
+
+        // Generate ClearCache method for testing scenarios
+        GenerateClearCacheMethod(source, callSitesByMessageType);
+
+        // Generate shared helper methods
+        GenerateHelperMethods(source, configuration);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -87,57 +85,41 @@ internal static class PublishInterceptorGenerator
         context.AddSource(hintName, source.ToString());
     }
 
-    /// <summary>
-    /// Gets all handlers applicable to a message type, including handlers for interfaces and base classes.
-    /// Returns handlers sorted by Order (ascending), then specificity (concrete before interface/base), then by FullName.
-    /// </summary>
-    private static List<HandlerInfo> GetApplicableHandlers(CallSiteInfo callSite, List<HandlerInfo> allHandlers)
+    private static void GenerateClearCacheMethod(IndentedStringBuilder source, List<IGrouping<string, CallSiteInfo>> callSitesByMessageType)
     {
-        var messageType = callSite.MessageType;
-        var applicable = new List<(HandlerInfo Handler, int Specificity)>();
+        source.AppendLine("/// <summary>");
+        source.AppendLine("/// Clears the cached handler delegates. Call this between tests that use different service providers.");
+        source.AppendLine("/// </summary>");
+        source.AppendLine("public static void ClearCache()");
+        source.AppendLine("{");
+        source.IncrementIndent();
 
-        foreach (var handler in allHandlers)
+        int index = 0;
+        foreach (var group in callSitesByMessageType)
         {
-            // Exact type match (most specific)
-            if (handler.MessageType.FullName == messageType.FullName)
-            {
-                applicable.Add((handler, 0));
-                continue;
-            }
-
-            // Check if handler handles an interface implemented by the message type
-            if (handler.MessageType.IsInterface && callSite.MessageInterfaces.Contains(handler.MessageType.FullName))
-            {
-                applicable.Add((handler, 1));
-                continue;
-            }
-
-            // Check if handler handles a base class of the message type
-            if (callSite.MessageBaseClasses.Contains(handler.MessageType.FullName))
-            {
-                applicable.Add((handler, 2));
-                continue;
-            }
+            var messageType = group.First().MessageType;
+            source.AppendLine($"_handlers_{messageType.Identifier}_{index} = null;");
+            index++;
         }
 
-        // Sort by Order (ascending), then by specificity (concrete first), then by FullName for deterministic ordering
-        return applicable
-            .OrderBy(x => x.Handler.Order)
-            .ThenBy(x => x.Specificity)
-            .ThenBy(x => x.Handler.FullName)
-            .Select(x => x.Handler)
-            .ToList();
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
     }
 
     private static void GeneratePublishInterceptorMethod(
         IndentedStringBuilder source,
         TypeSymbolInfo messageType,
         List<CallSiteInfo> callSites,
-        List<HandlerInfo> handlers,
         GeneratorConfiguration configuration,
         int messageTypeIndex)
     {
+        string fieldName = $"_handlers_{messageType.Identifier}_{messageTypeIndex}";
         string interceptorMethod = $"InterceptPublishAsync_{messageType.Identifier}_{messageTypeIndex}";
+
+        // Generate static cache field for this message type
+        source.AppendLine($"private static global::Foundatio.Mediator.PublishAsyncDelegate[]? {fieldName};");
+        source.AppendLine();
 
         // Add InterceptsLocation attributes for each call site
         foreach (var callSite in callSites)
@@ -145,44 +127,38 @@ internal static class PublishInterceptorGenerator
             source.AppendLine($"[InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
         }
 
-        // Check if any handler has cascading messages (tuple return)
-        bool hasCascadingHandlers = handlers.Any(h => h.ReturnType.IsTuple);
-        // Check if any handler is async
-        bool hasAsyncHandlers = handlers.Any(h => h.IsAsync);
-
-        // Determine async modifier based on strategy and handler characteristics
-        // ForeachAwait: needs async if any handler is async (sync handlers don't need await)
-        // TaskWhenAll: always async for concurrent execution
-        // FireAndForget: never async - fires and returns immediately
-        bool needsAsync = configuration.NotificationPublisher switch
-        {
-            "ForeachAwait" => hasAsyncHandlers || hasCascadingHandlers,
-            "TaskWhenAll" => true,
-            "FireAndForget" => false,
-            _ => hasAsyncHandlers || hasCascadingHandlers
-        };
-
-        string asyncModifier = needsAsync ? "async " : "";
         string returnType = "System.Threading.Tasks.ValueTask";
         string parameters = "this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default";
 
-        source.AppendLine($"public static {asyncModifier}{returnType} {interceptorMethod}({parameters})");
+        source.AppendLine($"public static {returnType} {interceptorMethod}({parameters})");
         source.AppendLine("{");
         source.IncrementIndent();
 
+        // Get or initialize handlers from cache
+        source.AppendLine($"var handlers = {fieldName};");
+        source.AppendLine("if (handlers == null)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine($"handlers = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof(global::{messageType.FullName}));");
+        source.AppendLine($"{fieldName} = handlers;");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+
+        // Generate execution based on notification publisher strategy
         switch (configuration.NotificationPublisher)
         {
             case "ForeachAwait":
-                GenerateForeachAwaitBody(source, messageType, handlers, hasAsyncHandlers, hasCascadingHandlers);
+                GenerateForeachAwaitBody(source);
                 break;
             case "TaskWhenAll":
-                GenerateTaskWhenAllBody(source, messageType, handlers, hasCascadingHandlers);
+                GenerateTaskWhenAllBody(source);
                 break;
             case "FireAndForget":
-                GenerateFireAndForgetBody(source, messageType, handlers);
+                GenerateFireAndForgetBody(source);
                 break;
             default:
-                GenerateForeachAwaitBody(source, messageType, handlers, hasAsyncHandlers, hasCascadingHandlers);
+                GenerateForeachAwaitBody(source);
                 break;
         }
 
@@ -190,111 +166,180 @@ internal static class PublishInterceptorGenerator
         source.AppendLine("}");
     }
 
-    private static void GenerateForeachAwaitBody(
-        IndentedStringBuilder source,
-        TypeSymbolInfo messageType,
-        List<HandlerInfo> handlers,
-        bool hasAsyncHandlers,
-        bool hasCascadingHandlers)
+    private static void GenerateForeachAwaitBody(IndentedStringBuilder source)
     {
-        // Each handler creates its own scope internally, so no scope creation here
-        source.AppendLine($"var typedMessage = (global::{messageType.FullName})message;");
+        // Inline ForeachAwait logic - no virtual dispatch through INotificationPublisher
+        source.AppendLine("if (handlers.Length == 0) return default;");
         source.AppendLine();
-
-        // Exception aggregation
-        HandlerCodeEmitter.EmitExceptionListDeclaration(source);
+        source.AppendLine("// Sequential execution with sync fast-path");
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("var task = handlers[i](mediator, message, cancellationToken);");
+        source.AppendLine("if (!task.IsCompletedSuccessfully)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitRemainingForeachAsync(task, mediator, handlers, message, cancellationToken, i + 1);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.DecrementIndent();
+        source.AppendLine("}");
         source.AppendLine();
-
-        foreach (var handler in handlers)
-        {
-            HandlerCodeEmitter.EmitHandlerCallWithTryCatch(source, handler, "typedMessage", "cancellationToken");
-            source.AppendLine();
-        }
-
-        // Throw aggregate exception if any handlers failed
-        HandlerCodeEmitter.EmitAggregateExceptionThrow(source);
-
-        // If no async handlers, we need an explicit return for the ValueTask return type
-        if (!hasAsyncHandlers && !hasCascadingHandlers)
-        {
-            source.AppendLine();
-            source.AppendLine("return default;");
-        }
+        source.AppendLine("return default;");
     }
 
-    private static void GenerateTaskWhenAllBody(
-        IndentedStringBuilder source,
-        TypeSymbolInfo messageType,
-        List<HandlerInfo> handlers,
-        bool hasCascadingHandlers)
+    private static void GenerateTaskWhenAllBody(IndentedStringBuilder source)
     {
-        // Each handler creates its own scope internally
-        source.AppendLine($"var typedMessage = (global::{messageType.FullName})message;");
+        // Inline TaskWhenAll logic
+        source.AppendLine("if (handlers.Length == 0) return default;");
+        source.AppendLine("if (handlers.Length == 1) return handlers[0](mediator, message, cancellationToken);");
         source.AppendLine();
-
-        // Separate handlers by async/sync and start async tasks
-        var asyncHandlerVars = new List<string>();
-        var syncHandlers = new List<HandlerInfo>();
-        int asyncTaskIndex = 0;
-
-        foreach (var handler in handlers)
-        {
-            if (HandlerCodeEmitter.IsHandlerAsync(handler))
-            {
-                string varName = HandlerCodeEmitter.EmitAsyncTaskStart(
-                    source, handler, "typedMessage", "cancellationToken", asyncTaskIndex++);
-                asyncHandlerVars.Add(varName);
-            }
-            else
-            {
-                syncHandlers.Add(handler);
-            }
-        }
-
+        source.AppendLine("// Start all handlers concurrently");
+        source.AppendLine("var tasks = new System.Threading.Tasks.ValueTask[handlers.Length];");
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("tasks[i] = handlers[i](mediator, message, cancellationToken);");
+        source.DecrementIndent();
+        source.AppendLine("}");
         source.AppendLine();
-        HandlerCodeEmitter.EmitExceptionListDeclaration(source);
+        source.AppendLine("// Check if all completed synchronously");
+        source.AppendLine("for (int i = 0; i < tasks.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("if (!tasks[i].IsCompletedSuccessfully)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitAllTasksAsync(tasks);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return default;");
+    }
 
-        // Execute sync handlers first (they're quick, no need to parallelize)
-        foreach (var handler in syncHandlers)
+    private static void GenerateFireAndForgetBody(IndentedStringBuilder source)
+    {
+        // Fire and forget - queue all handlers on thread pool
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("var handler = handlers[i];");
+        source.AppendLine("_ = System.Threading.Tasks.Task.Run(async () =>");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("try");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("await handler(mediator, message, cancellationToken).ConfigureAwait(false);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine("catch { /* Fire and forget */ }");
+        source.DecrementIndent();
+        source.AppendLine("}, System.Threading.CancellationToken.None);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return default;");
+    }
+
+    private static void GenerateHelperMethods(IndentedStringBuilder source, GeneratorConfiguration configuration)
+    {
+        // Generate ForeachAwait helper if needed
+        if (configuration.NotificationPublisher == "ForeachAwait" || string.IsNullOrEmpty(configuration.NotificationPublisher))
         {
-            HandlerCodeEmitter.EmitInlineTryCatch(source, handler, "typedMessage", "cancellationToken");
-        }
-
-        if (asyncHandlerVars.Count > 0)
-        {
-            source.AppendLine();
-
-            // Check for synchronous completion of async handlers
-            var syncCheckConditions = string.Join(" && ", asyncHandlerVars.Select(v => $"{v}.IsCompletedSuccessfully"));
-            source.AppendLine($"if (!({syncCheckConditions}))");
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitRemainingForeachAsync(");
+            source.AppendLine("    System.Threading.Tasks.ValueTask current,");
+            source.AppendLine("    Foundatio.Mediator.IMediator mediator,");
+            source.AppendLine("    global::Foundatio.Mediator.PublishAsyncDelegate[] handlers,");
+            source.AppendLine("    object message,");
+            source.AppendLine("    System.Threading.CancellationToken cancellationToken,");
+            source.AppendLine("    int startIndex)");
             source.AppendLine("{");
             source.IncrementIndent();
-
-            // Await all async handlers with exception handling
-            HandlerCodeEmitter.EmitAwaitTasksWithExceptionHandling(source, asyncHandlerVars);
-
+            source.AppendLine("System.Collections.Generic.List<System.Exception>? exceptions = null;");
+            source.AppendLine();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await current.ConfigureAwait(false);");
             source.DecrementIndent();
             source.AppendLine("}");
-        }
-
-        source.AppendLine();
-        HandlerCodeEmitter.EmitAggregateExceptionThrow(source);
-    }
-
-    private static void GenerateFireAndForgetBody(
-        IndentedStringBuilder source,
-        TypeSymbolInfo messageType,
-        List<HandlerInfo> handlers)
-    {
-        source.AppendLine($"var typedMessage = (global::{messageType.FullName})message;");
-        source.AppendLine();
-
-        foreach (var handler in handlers)
-        {
-            HandlerCodeEmitter.EmitFireAndForgetHandlerCall(source, handler, "typedMessage");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("for (int i = startIndex; i < handlers.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("if (exceptions != null)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
             source.AppendLine();
         }
 
-        source.AppendLine("return default;");
+        // Generate TaskWhenAll helper if needed
+        if (configuration.NotificationPublisher == "TaskWhenAll")
+        {
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitAllTasksAsync(System.Threading.Tasks.ValueTask[] tasks)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("System.Collections.Generic.List<System.Exception>? exceptions = null;");
+            source.AppendLine();
+            source.AppendLine("for (int i = 0; i < tasks.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await tasks[i].ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("if (exceptions != null)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+        }
     }
 }

@@ -150,7 +150,8 @@ internal static class HandlerGenerator
         {
             returnItem = handler.ReturnType.TupleItems.First();
             publishItems = handler.ReturnType.TupleItems.Skip(1).ToList();
-            hasCascadingHandlers = publishItems.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+            // With runtime DI lookup, always assume there might be handlers for cascaded messages
+            hasCascadingHandlers = publishItems.Count > 0;
         }
 
         // Fast path: skip the async state machine when possible
@@ -288,8 +289,8 @@ internal static class HandlerGenerator
                 .Select(x => x.item)
                 .ToList();
 
-            // Check upfront if we have cascading handlers
-            bool hasCascadingHandlers = itemsToCascade.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
+            // With runtime DI lookup, always assume there might be handlers for cascaded messages
+            bool hasCascadingHandlers = itemsToCascade.Count > 0;
 
             // Method is async only if handler is async or there are cascading handlers
             bool isAsyncMethod = handler.IsAsync || hasCascadingHandlers;
@@ -1223,7 +1224,9 @@ internal static class HandlerGenerator
     }
 
     /// <summary>
-    /// Generates direct handler calls for cascading messages based on the publish strategy.
+    /// Generates runtime DI handler calls for cascading messages based on the publish strategy.
+    /// Uses Mediator.GetPublishHandlersForType for runtime handler discovery to support
+    /// handlers from any assembly.
     /// </summary>
     private static void GenerateCascadingHandlerCalls(
         IndentedStringBuilder source,
@@ -1231,9 +1234,8 @@ internal static class HandlerGenerator
         List<HandlerInfo> allHandlers,
         string strategy)
     {
-        // Check if any publish items have handlers - if not, skip generating cascade code
-        bool hasAnyHandlers = publishItems.Any(item => GetHandlersForCascadingMessage(item, allHandlers).Count > 0);
-        if (!hasAnyHandlers)
+        // Skip if no publish items
+        if (publishItems.Count == 0)
             return;
 
         // Check if we need exception aggregation (List is only created when exception occurs)
@@ -1247,14 +1249,14 @@ internal static class HandlerGenerator
         switch (strategy)
         {
             case "TaskWhenAll":
-                GenerateCascadingHandlerCallsTaskWhenAll(source, publishItems, allHandlers);
+                GenerateCascadingHandlerCallsTaskWhenAll(source, publishItems);
                 break;
             case "FireAndForget":
-                GenerateCascadingHandlerCallsFireAndForget(source, publishItems, allHandlers);
+                GenerateCascadingHandlerCallsFireAndForget(source, publishItems);
                 break;
             case "ForeachAwait":
             default:
-                GenerateCascadingHandlerCallsForeachAwait(source, publishItems, allHandlers);
+                GenerateCascadingHandlerCallsForeachAwait(source, publishItems);
                 break;
         }
 
@@ -1265,24 +1267,14 @@ internal static class HandlerGenerator
             source.AppendLine("    throw new System.AggregateException(exceptions);");
         }
     }
-
-    /// <summary>
-    /// Common iteration pattern for cascading handlers. Iterates over publish items and their handlers,
-    /// handling nullable checks and invoking the strategy-specific handler call emitter.
-    /// </summary>
-    private static void ForEachCascadingHandler(
+    private static void GenerateCascadingHandlerCallsForeachAwait(
         IndentedStringBuilder source,
-        List<TupleItemInfo> publishItems,
-        List<HandlerInfo> allHandlers,
-        Action<IndentedStringBuilder, HandlerInfo, string, bool> emitHandlerCall)
+        List<TupleItemInfo> publishItems)
     {
         foreach (var publishItem in publishItems)
         {
-            var handlers = GetHandlersForCascadingMessage(publishItem, allHandlers);
-            if (handlers.Count == 0)
-                continue;
-
             string access = $"result.{publishItem.Name}";
+            string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
             if (publishItem.IsNullable)
             {
@@ -1291,11 +1283,18 @@ internal static class HandlerGenerator
                 source.IncrementIndent();
             }
 
-            foreach (var cascadeHandler in handlers)
-            {
-                bool isAsync = cascadeHandler.IsAsync || cascadeHandler.ReturnType.IsTuple;
-                emitHandlerCall(source, cascadeHandler, access, isAsync);
-            }
+            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.AppendLine($"    await cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}](mediator, {access}, cancellationToken).ConfigureAwait(false);");
+            source.AppendLine("}");
+            HandlerCodeEmitter.EmitExceptionAggregation(source);
+            source.DecrementIndent();
+            source.AppendLine("}");
 
             if (publishItem.IsNullable)
             {
@@ -1305,149 +1304,90 @@ internal static class HandlerGenerator
         }
     }
 
-    private static void GenerateCascadingHandlerCallsForeachAwait(
-        IndentedStringBuilder source,
-        List<TupleItemInfo> publishItems,
-        List<HandlerInfo> allHandlers)
-    {
-        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
-        {
-            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
-            string methodName = GetHandlerMethodName(handler);
-
-            src.AppendLine();
-            src.AppendLine("try");
-            src.AppendLine("{");
-            if (isAsync)
-            {
-                src.AppendLine($"    await {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken).ConfigureAwait(false);");
-            }
-            else
-            {
-                src.AppendLine($"    {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
-            }
-            src.AppendLine("}");
-            HandlerCodeEmitter.EmitExceptionAggregation(src);
-        });
-    }
-
     private static void GenerateCascadingHandlerCallsTaskWhenAll(
         IndentedStringBuilder source,
-        List<TupleItemInfo> publishItems,
-        List<HandlerInfo> allHandlers)
+        List<TupleItemInfo> publishItems)
     {
-        var taskVars = new List<string>();
-        int taskIndex = 0;
+        // Collect all tasks across all publish items
+        source.AppendLine("var allCascadeTasks = new System.Collections.Generic.List<System.Threading.Tasks.ValueTask>();");
 
-        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
+        foreach (var publishItem in publishItems)
         {
-            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
-            string methodName = GetHandlerMethodName(handler);
+            string access = $"result.{publishItem.Name}";
+            string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
-            if (isAsync)
+            if (publishItem.IsNullable)
             {
-                string varName = $"cascadeTask{taskIndex++}";
-                src.AppendLine($"var {varName} = {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
-                taskVars.Add(varName);
+                source.AppendLine($"if ({access} != null)");
+                source.AppendLine("{");
+                source.IncrementIndent();
             }
-            else
-            {
-                src.AppendLine("try");
-                src.AppendLine("{");
-                src.AppendLine($"    {wrapperClassName}.{methodName}(mediator, {access}, cancellationToken);");
-                src.AppendLine("}");
-                HandlerCodeEmitter.EmitExceptionAggregation(src);
-            }
-        });
 
-        // Await all async tasks with exception handling
-        foreach (var varName in taskVars)
-        {
-            source.AppendLine($"try {{ await {varName}.ConfigureAwait(false); }} catch (System.Exception ex) {{ exceptions ??= new System.Collections.Generic.List<System.Exception>(); exceptions.Add(ex); }}");
+            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
+            source.AppendLine("{");
+            source.AppendLine($"    allCascadeTasks.Add(cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}](mediator, {access}, cancellationToken));");
+            source.AppendLine("}");
+
+            if (publishItem.IsNullable)
+            {
+                source.DecrementIndent();
+                source.AppendLine("}");
+            }
         }
+
+        // Await all tasks with exception handling
+        source.AppendLine();
+        source.AppendLine("foreach (var cascadeTask in allCascadeTasks)");
+        source.AppendLine("{");
+        source.AppendLine("    try { await cascadeTask.ConfigureAwait(false); } catch (System.Exception ex) { exceptions ??= new System.Collections.Generic.List<System.Exception>(); exceptions.Add(ex); }");
+        source.AppendLine("}");
     }
 
     private static void GenerateCascadingHandlerCallsFireAndForget(
         IndentedStringBuilder source,
-        List<TupleItemInfo> publishItems,
-        List<HandlerInfo> allHandlers)
+        List<TupleItemInfo> publishItems)
     {
-        ForEachCascadingHandler(source, publishItems, allHandlers, (src, handler, access, isAsync) =>
+        foreach (var publishItem in publishItems)
         {
-            string wrapperClassName = $"global::{GetHandlerFullName(handler)}";
-            string methodName = GetHandlerMethodName(handler);
+            string access = $"result.{publishItem.Name}";
+            string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
-            src.AppendLine("_ = System.Threading.Tasks.Task.Run(async () =>");
-            src.AppendLine("{");
-            src.AppendLine("    try");
-            src.AppendLine("    {");
-            if (isAsync)
+            if (publishItem.IsNullable)
             {
-                src.AppendLine($"        await {wrapperClassName}.{methodName}(mediator, {access}, System.Threading.CancellationToken.None).ConfigureAwait(false);");
-            }
-            else
-            {
-                src.AppendLine($"        {wrapperClassName}.{methodName}(mediator, {access}, System.Threading.CancellationToken.None);");
-            }
-            src.AppendLine("    }");
-            src.AppendLine("    catch");
-            src.AppendLine("    {");
-            src.AppendLine("        // Swallow exceptions - fire and forget semantics");
-            src.AppendLine("    }");
-            src.AppendLine("}, System.Threading.CancellationToken.None);");
-        });
-    }
-
-    public static List<HandlerInfo> GetHandlersForCascadingMessage(TupleItemInfo item, List<HandlerInfo> allHandlers)
-    {
-        // Strip nullable marker from type for comparison
-        string itemTypeName = item.TypeFullName.TrimEnd('?');
-
-        // Collect handlers in order: concrete type first, then interfaces, then base classes
-        var concreteHandlers = new List<HandlerInfo>();
-        var interfaceHandlers = new List<HandlerInfo>();
-        var baseClassHandlers = new List<HandlerInfo>();
-
-        foreach (var h in allHandlers)
-        {
-            // Direct type match
-            if (h.MessageType.FullName == itemTypeName || h.MessageType.QualifiedName == itemTypeName)
-            {
-                concreteHandlers.Add(h);
-                continue;
+                source.AppendLine($"if ({access} != null)");
+                source.AppendLine("{");
+                source.IncrementIndent();
             }
 
-            // Check if the cascaded item type implements an interface that the handler handles
-            bool isInterfaceMatch = false;
-            foreach (var interfaceType in item.Interfaces)
-            {
-                if (h.MessageType.FullName == interfaceType || h.MessageType.QualifiedName == interfaceType)
-                {
-                    interfaceHandlers.Add(h);
-                    isInterfaceMatch = true;
-                    break;
-                }
-            }
-            if (isInterfaceMatch)
-                continue;
+            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine($"var handler = cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}];");
+            source.AppendLine($"var msg = {access};");
+            source.AppendLine("_ = System.Threading.Tasks.Task.Run(async () =>");
+            source.AppendLine("{");
+            source.AppendLine("    try");
+            source.AppendLine("    {");
+            source.AppendLine("        await handler(mediator, msg, System.Threading.CancellationToken.None).ConfigureAwait(false);");
+            source.AppendLine("    }");
+            source.AppendLine("    catch");
+            source.AppendLine("    {");
+            source.AppendLine("        // Swallow exceptions - fire and forget semantics");
+            source.AppendLine("    }");
+            source.AppendLine("}, System.Threading.CancellationToken.None);");
+            source.DecrementIndent();
+            source.AppendLine("}");
 
-            // Check if the cascaded item type derives from a base class that the handler handles
-            foreach (var baseType in item.BaseClasses)
+            if (publishItem.IsNullable)
             {
-                if (h.MessageType.FullName == baseType || h.MessageType.QualifiedName == baseType)
-                {
-                    baseClassHandlers.Add(h);
-                    break;
-                }
+                source.DecrementIndent();
+                source.AppendLine("}");
             }
         }
-
-        // Return handlers in order: concrete types first, then interfaces, then base classes
-        var result = new List<HandlerInfo>(concreteHandlers.Count + interfaceHandlers.Count + baseClassHandlers.Count);
-        result.AddRange(concreteHandlers);
-        result.AddRange(interfaceHandlers);
-        result.AddRange(baseClassHandlers);
-        return result;
     }
 
     private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)

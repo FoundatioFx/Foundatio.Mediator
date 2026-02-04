@@ -301,6 +301,115 @@ public class Mediator : IMediator, IServiceProvider
         _publishCache.Clear();
     }
 
+    /// <summary>
+    /// Gets all publish handlers for a message type from DI. Used by generated interceptors.
+    /// This method queries DI and caches the result, returning the cached delegates on subsequent calls.
+    /// </summary>
+    /// <param name="mediator">The mediator instance (used to access DI)</param>
+    /// <param name="messageType">The message type to get handlers for</param>
+    /// <returns>Array of publish delegates for all applicable handlers</returns>
+    public static PublishAsyncDelegate[] GetPublishHandlersForType(IMediator mediator, Type messageType)
+    {
+        // Fast path - check if already cached
+        if (_publishCache.TryGetValue(messageType, out var cachedHandlers))
+            return cachedHandlers;
+
+        // Slow path - build and cache
+        return BuildPublishHandlersForType(mediator, messageType);
+    }
+
+    private static PublishAsyncDelegate[] BuildPublishHandlersForType(IMediator mediator, Type messageType)
+    {
+        // Get the underlying service provider (Mediator wraps it)
+        var serviceProvider = (mediator as Mediator)?.ServiceProvider
+            ?? (mediator as IServiceProvider)
+            ?? throw new InvalidOperationException("Mediator must implement IServiceProvider");
+
+        var allHandlers = new List<HandlerRegistration>();
+
+        // Check if service provider supports keyed services
+        if (serviceProvider is IKeyedServiceProvider)
+        {
+            // Add handlers for the exact message type
+            var exactHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(messageType));
+            allHandlers.AddRange(exactHandlers);
+
+            // Add handlers for all implemented interfaces
+            foreach (var interfaceType in messageType.GetInterfaces())
+            {
+                var interfaceHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(interfaceType));
+                allHandlers.AddRange(interfaceHandlers);
+            }
+
+            // Add handlers for all base classes
+            var currentType = messageType.BaseType;
+            while (currentType != null && currentType != typeof(object))
+            {
+                var baseHandlers = serviceProvider.GetKeyedServices<HandlerRegistration>(MessageTypeKey.Get(currentType));
+                allHandlers.AddRange(baseHandlers);
+                currentType = currentType.BaseType;
+            }
+        }
+
+        // Handle open generic handlers
+        if (messageType.IsGenericType)
+        {
+            var genericDefinition = messageType.GetGenericTypeDefinition();
+            var descriptors = serviceProvider.GetServices<OpenGenericHandlerDescriptor>();
+            foreach (var descriptor in descriptors)
+            {
+                if (descriptor.MessageTypeGenericDefinition == genericDefinition)
+                {
+                    var registration = ConstructClosedRegistrationStatic(messageType, descriptor);
+                    if (registration != null)
+                        allHandlers.Add(registration);
+                }
+            }
+        }
+
+        var handlers = allHandlers
+            .Distinct()
+            .OrderBy(h => h.Order)
+            .Select(h => h.PublishAsync)
+            .ToArray();
+
+        return _publishCache.GetOrAdd(messageType, handlers);
+    }
+
+    private static HandlerRegistration? ConstructClosedRegistrationStatic(Type closedMessageType, OpenGenericHandlerDescriptor descriptor)
+    {
+        try
+        {
+            var typeArgs = closedMessageType.GetGenericArguments();
+            var wrapperClosed = descriptor.WrapperGenericTypeDefinition.MakeGenericType(typeArgs);
+            var asyncMethod = wrapperClosed.GetMethod("UntypedHandleAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (asyncMethod == null)
+                return null;
+
+            HandleAsyncDelegate asyncDelegate = (mediator, message, ct, returnType) =>
+            {
+                object? taskObj = asyncMethod.Invoke(null, [mediator, message, ct, returnType]);
+                return taskObj is ValueTask<object?> vt ? vt : (ValueTask<object?>)taskObj!;
+            };
+
+            HandleDelegate? syncDelegate = null;
+            if (!descriptor.IsAsync)
+            {
+                var syncMethod = wrapperClosed.GetMethod("UntypedHandle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (syncMethod != null)
+                {
+                    syncDelegate = (mediator, message, ct, returnType) => syncMethod.Invoke(null, [mediator, message, ct, returnType]);
+                }
+            }
+
+            return new HandlerRegistration(MessageTypeKey.Get(closedMessageType), wrapperClosed.FullName ?? wrapperClosed.Name, asyncDelegate, syncDelegate, descriptor.IsAsync);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private delegate ValueTask InvokeAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
     private static readonly ConcurrentDictionary<Type, InvokeAsyncDelegate> _invokeAsyncCache = new();
 

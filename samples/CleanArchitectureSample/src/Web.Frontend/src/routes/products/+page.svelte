@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { productsApi } from '$lib/api';
   import { ProductList } from '$lib/components/products';
   import { Button, Spinner, Alert } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
+  import { signalr } from '$lib/stores/signalr.svelte';
   import type { Product } from '$lib/types/product';
 
   let productsPromise = $state(productsApi.list());
@@ -22,6 +24,30 @@
       toast.error((error as Error).message || 'Failed to delete product');
     }
   }
+
+  onMount(() => {
+    // Subscribe to product events for real-time updates
+    const unsubCreated = signalr.onProductCreated(() => {
+      toast.success('New product created');
+      refresh();
+    });
+
+    const unsubUpdated = signalr.onProductUpdated(() => {
+      toast.info('Product updated');
+      refresh();
+    });
+
+    const unsubDeleted = signalr.onProductDeleted(() => {
+      toast.info('Product deleted');
+      refresh();
+    });
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubDeleted();
+    };
+  });
 </script>
 
 <svelte:head>

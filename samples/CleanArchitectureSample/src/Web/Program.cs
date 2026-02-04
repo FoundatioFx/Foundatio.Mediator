@@ -8,19 +8,23 @@ using Products.Module.Messages;
 using Reports.Module;
 using Reports.Module.Messages;
 using Scalar.AspNetCore;
+using Web.Handlers;
+using Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddSignalR();
 
 // Add Foundatio.Mediator with assemblies from all modules
 builder.Services.AddMediator(c =>
 {
     c.SetMediatorLifetime(ServiceLifetime.Scoped);
-    c.AddAssembly<OrderCreated>();       // Common.Module
-    c.AddAssembly<CreateOrder>();        // Orders.Module
-    c.AddAssembly<CreateProduct>();      // Products.Module
-    c.AddAssembly<GetDashboardReport>(); // Reports.Module
+    c.AddAssembly<OrderCreated>();         // Common.Module
+    c.AddAssembly<CreateOrder>();          // Orders.Module
+    c.AddAssembly<CreateProduct>();        // Products.Module
+    c.AddAssembly<GetDashboardReport>();   // Reports.Module
+    c.AddAssembly<ClientDispatchHandler>(); // Web (for client dispatch handlers)
 });
 
 // Add module services
@@ -43,6 +47,9 @@ app.MapOpenApi();
 app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
+
+// Map SignalR hub for real-time events
+app.MapHub<EventHub>("/hubs/events");
 
 // Map module endpoints - each module exposes its own API endpoints
 app.MapOrdersEndpoints();

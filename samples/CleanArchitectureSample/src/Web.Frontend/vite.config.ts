@@ -61,6 +61,12 @@ export default defineConfig({
             '^/scalar': {
                 target,
                 secure: false
+            },
+            // Proxy SignalR hub (WebSocket support)
+            '^/hubs': {
+                target,
+                secure: false,
+                ws: true
             }
         }
     }

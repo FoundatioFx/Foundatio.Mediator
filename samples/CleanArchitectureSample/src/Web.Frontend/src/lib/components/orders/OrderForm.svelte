@@ -16,6 +16,18 @@
   let amount = $state(initialOrder?.amount ?? 0);
   let description = $state(initialOrder?.description ?? '');
   let status = $state<OrderStatus>(initialOrder?.status ?? 'Pending');
+  let submitted = $state(false);
+
+  // Validation
+  let customerIdError = $derived(
+    submitted && !initialOrder && customerId.length < 3 ? 'Customer ID must be at least 3 characters' : undefined
+  );
+  let amountError = $derived(
+    submitted && amount <= 0 ? 'Amount must be greater than 0' : undefined
+  );
+  let descriptionError = $derived(
+    submitted && description.length < 5 ? 'Description must be at least 5 characters' : undefined
+  );
 
   let isValid = $derived(
     (initialOrder || customerId.length >= 3) && amount > 0 && description.length >= 5
@@ -32,6 +44,7 @@
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
+    submitted = true;
     if (!isValid) return;
 
     if (initialOrder) {
@@ -55,6 +68,7 @@
       minlength={3}
       maxlength={50}
       required
+      error={customerIdError}
     />
   {:else}
     <div class="space-y-2">
@@ -71,6 +85,7 @@
     max={1000000}
     step={0.01}
     required
+    error={amountError}
   />
 
   <Input
@@ -80,6 +95,7 @@
     minlength={5}
     maxlength={200}
     required
+    error={descriptionError}
   />
 
   {#if initialOrder}
@@ -87,7 +103,7 @@
   {/if}
 
   <div class="flex gap-2 pt-4">
-    <Button type="submit" disabled={!isValid || loading} {loading}>
+    <Button type="submit" disabled={loading} {loading}>
       {initialOrder ? 'Update Order' : 'Create Order'}
     </Button>
     <Button type="button" variant="secondary" href="/orders">Cancel</Button>

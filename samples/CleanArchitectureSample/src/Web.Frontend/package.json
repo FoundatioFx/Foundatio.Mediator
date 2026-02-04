@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@foundatiofx/fetchclient": "^1.2.0",
+    "@microsoft/signalr": "^10.0.0",
     "bits-ui": "^1.0.0",
     "clsx": "^2.1.1",
     "lucide-svelte": "^0.468.0",

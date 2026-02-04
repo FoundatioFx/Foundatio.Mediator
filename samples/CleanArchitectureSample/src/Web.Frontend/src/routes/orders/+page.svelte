@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { ordersApi } from '$lib/api';
   import { OrderList } from '$lib/components/orders';
   import { Button, Spinner, Alert } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
+  import { signalr } from '$lib/stores/signalr.svelte';
   import type { Order } from '$lib/types/order';
 
   let ordersPromise = $state(ordersApi.list());
@@ -22,6 +24,30 @@
       toast.error((error as Error).message || 'Failed to delete order');
     }
   }
+
+  onMount(() => {
+    // Subscribe to order events for real-time updates
+    const unsubCreated = signalr.onOrderCreated(() => {
+      toast.success('New order created');
+      refresh();
+    });
+
+    const unsubUpdated = signalr.onOrderUpdated(() => {
+      toast.info('Order updated');
+      refresh();
+    });
+
+    const unsubDeleted = signalr.onOrderDeleted(() => {
+      toast.info('Order deleted');
+      refresh();
+    });
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubDeleted();
+    };
+  });
 </script>
 
 <svelte:head>

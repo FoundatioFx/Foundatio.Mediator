@@ -17,6 +17,18 @@
   let price = $state(initialProduct?.price ?? 0);
   let stockQuantity = $state(initialProduct?.stockQuantity ?? 0);
   let status = $state<ProductStatus>(initialProduct?.status ?? 'Draft');
+  let submitted = $state(false);
+
+  // Validation
+  let nameError = $derived(
+    submitted && name.length < 3 ? 'Name must be at least 3 characters' : undefined
+  );
+  let descriptionError = $derived(
+    submitted && description.length < 5 ? 'Description must be at least 5 characters' : undefined
+  );
+  let priceError = $derived(
+    submitted && price <= 0 ? 'Price must be greater than 0' : undefined
+  );
 
   let isValid = $derived(
     name.length >= 3 && description.length >= 5 && price > 0
@@ -31,6 +43,7 @@
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
+    submitted = true;
     if (!isValid) return;
 
     if (initialProduct) {
@@ -55,6 +68,7 @@
     minlength={3}
     maxlength={100}
     required
+    error={nameError}
   />
 
   <Input
@@ -64,6 +78,7 @@
     minlength={5}
     maxlength={500}
     required
+    error={descriptionError}
   />
 
   <div class="grid grid-cols-2 gap-4">
@@ -75,6 +90,7 @@
       max={1000000}
       step={0.01}
       required
+      error={priceError}
     />
 
     <Input
@@ -92,7 +108,7 @@
   {/if}
 
   <div class="flex gap-2 pt-4">
-    <Button type="submit" disabled={!isValid || loading} {loading}>
+    <Button type="submit" disabled={loading} {loading}>
       {initialProduct ? 'Update Product' : 'Create Product'}
     </Button>
     <Button type="button" variant="secondary" href="/products">Cancel</Button>

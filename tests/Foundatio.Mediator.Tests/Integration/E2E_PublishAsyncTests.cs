@@ -1,3 +1,4 @@
+using Foundatio.Mediator.Generated;
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,13 @@ namespace Foundatio.Mediator.Tests.Integration;
 public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     private readonly ITestOutputHelper _output = output;
+
+    private static void ClearAllCaches()
+    {
+        // Clear caches to ensure tests don't interfere with each other
+        Mediator.ClearCache();
+        PublishInterceptors.ClearCache();
+    }
 
     public interface IE2eEvent { }
     public record E2eEvent(string Name) : IE2eEvent;
@@ -69,6 +77,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
     [Fact]
     public async Task PublishAsync_FansOut()
     {
+        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
         services.AddSingleton<EventCollector>();
@@ -88,6 +97,7 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
     [Fact]
     public async Task CascadingPublishAsync()
     {
+        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o =>
         {

@@ -168,14 +168,22 @@ internal static class HandlerGenerator
             else if (handler.RequiresDIResolutionPerInvocation ||
                      string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
             {
-                // Scoped/Transient/Singleton: resolve from DI
+                // Scoped/Transient/Singleton: resolve from DI (requires registration)
                 source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
                 source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
                 accessor = "handlerInstance";
             }
+            else if (handler.RequiresConstructorInjection)
+            {
+                // Has constructor dependencies but no explicit DI lifetime: use ActivatorUtilities
+                // This works without explicit registration and creates a fresh instance each time
+                source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+                source.AppendLine($"var handlerInstance = ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);");
+                accessor = "handlerInstance";
+            }
             else
             {
-                // No explicit DI lifetime and default is None - use lazy caching via GetOrCreateHandler
+                // No explicit DI lifetime and no constructor deps - use lazy caching via GetOrCreateHandler
                 source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
                 source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
                 accessor = "handlerInstance";
@@ -751,14 +759,20 @@ internal static class HandlerGenerator
         else if (handler.RequiresDIResolutionPerInvocation ||
                  string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
         {
-            // Scoped/Transient/Singleton: Always resolve from DI inline (no wrapper method needed)
+            // Scoped/Transient/Singleton: resolve from DI (requires registration)
             source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
+            accessor = "handlerInstance";
+        }
+        else if (handler.RequiresConstructorInjection)
+        {
+            // Has constructor dependencies but no explicit DI lifetime: use ActivatorUtilities
+            // This works without explicit registration and creates a fresh instance each time
+            source.AppendLine($"var handlerInstance = ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);");
             accessor = "handlerInstance";
         }
         else
         {
-            // No explicit DI lifetime and default is None - use GetOrCreateHandler with lazy caching
-            // Both with and without constructor deps use this path for lazy initialization
+            // No explicit DI lifetime and no constructor deps - use GetOrCreateHandler with lazy caching
             source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
             accessor = "handlerInstance";
         }
@@ -1077,40 +1091,26 @@ internal static class HandlerGenerator
             return;
         }
 
-        // No explicit lifetime (None/Default) - use lazy caching only when safe
+        // Has constructor dependencies - must resolve from DI every time
+        // We can't safely cache handlers with DI dependencies because those dependencies
+        // might be scoped (e.g., IMediator, DbContext) and would become invalid after the scope ends
+        if (handler.RequiresConstructorInjection)
+        {
+            return;
+        }
+
         // No constructor dependencies - use new() with lazy initialization (safe to cache)
-        if (!handler.RequiresConstructorInjection)
-        {
-            source.AppendLine()
-                  .AppendLines($$"""
-                    private static {{handler.FullName}}? _cachedHandler;
+        source.AppendLine()
+              .AppendLines($$"""
+                private static {{handler.FullName}}? _cachedHandler;
 
-                    [DebuggerStepThrough]
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
-                    {
-                        return _cachedHandler ??= new {{handler.FullName}}();
-                    }
-                    """);
-        }
-        // Has constructor dependencies - cache the instance after first creation
-        // This is safe when lifetime is None (default) because the handler will be long-lived
-        // and dependencies are resolved once. If dependencies are scoped, user should use
-        // [Handler(Lifetime = Scoped)] or MediatorDefaultHandlerLifetime=Scoped.
-        else
-        {
-            source.AppendLine()
-                  .AppendLines($$"""
-                    private static {{handler.FullName}}? _cachedHandler;
-
-                    [DebuggerStepThrough]
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
-                    {
-                        return _cachedHandler ??= ActivatorUtilities.CreateInstance<{{handler.FullName}}>(serviceProvider);
-                    }
-                    """);
-        }
+                [DebuggerStepThrough]
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
+                {
+                    return _cachedHandler ??= new {{handler.FullName}}();
+                }
+                """);
     }
 
     private static void GenerateMiddlewareInstantiation(IndentedStringBuilder source, HandlerInfo handler)

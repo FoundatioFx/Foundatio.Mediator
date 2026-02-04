@@ -45,6 +45,7 @@ public class CoreBenchmarks
 
     private IHost _wolverineHost = null!;
     private IMessageBus _wolverineBus = null!;
+    private IOrderService _orderService = null!;
 
     // Direct handler instances for baseline comparison
     private readonly FoundatioCommandHandler _directCommandHandler = new();
@@ -71,7 +72,8 @@ public class CoreBenchmarks
         _foundatioMediator = _foundatioServices.GetRequiredService<Foundatio.Mediator.IMediator>();
 
         // Create direct handler with DI for FullQuery baseline
-        _directFullQueryHandler = new FoundatioFullQueryHandler(_foundatioServices.GetRequiredService<IOrderService>());
+        _orderService = _foundatioServices.GetRequiredService<IOrderService>();
+        _directFullQueryHandler = new FoundatioFullQueryHandler();
 
         // Setup Immediate Handlers
         var ihServices = new ServiceCollection();
@@ -344,7 +346,7 @@ public class CoreBenchmarks
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            return await _directFullQueryHandler.HandleAsync(_getFullQuery);
+            return await _directFullQueryHandler.HandleAsync(_getFullQuery, _orderService);
         }
         finally
         {

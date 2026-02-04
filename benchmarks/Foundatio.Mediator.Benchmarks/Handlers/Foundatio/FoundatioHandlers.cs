@@ -50,16 +50,9 @@ public class FoundatioPublishSecondEventHandler
 [Handler]
 public class FoundatioFullQueryHandler
 {
-    private readonly IOrderService _orderService;
-
-    public FoundatioFullQueryHandler(IOrderService orderService)
+    public ValueTask<Order> HandleAsync(GetFullQuery query, IOrderService orderService, CancellationToken cancellationToken = default)
     {
-        _orderService = orderService;
-    }
-
-    public ValueTask<Order> HandleAsync(GetFullQuery query, CancellationToken cancellationToken = default)
-    {
-        return _orderService.GetOrderAsync(query.Id, cancellationToken);
+        return orderService.GetOrderAsync(query.Id, cancellationToken);
     }
 }
 

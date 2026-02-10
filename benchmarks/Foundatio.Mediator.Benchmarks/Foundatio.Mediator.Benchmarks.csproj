@@ -42,7 +42,7 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageReference Include="Immediate.Handlers" Version="3.2.0" />
-    <PackageReference Include="MassTransit" Version="9.0.0" />
+    <PackageReference Include="MassTransit" Version="9.0.1" />
     <PackageReference Include="MediatR" Version="12.5.0" />
     <PackageReference Include="RhoMicro.BdnLogging" Version="1.0.3" />
     <PackageReference Include="WolverineFx" Version="5.14.0" />

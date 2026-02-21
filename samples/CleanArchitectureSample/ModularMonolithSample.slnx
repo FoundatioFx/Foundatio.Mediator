@@ -3,7 +3,8 @@
     <Project Path="src/Common.Module/Common.Module.csproj" />
     <Project Path="src/Orders.Module/Orders.Module.csproj" />
     <Project Path="src/Products.Module/Products.Module.csproj" />
-    <Project Path="src/Web/Web.csproj" />
+    <Project Path="src/Api/Api.csproj" />
     <Project Path="src/Reports.Module/Reports.Module.csproj" />
+    <Project Path="src/Web/Web.esproj" />
   </Folder>
 </Solution>

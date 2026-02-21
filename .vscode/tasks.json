@@ -77,7 +77,7 @@
 			"label": "Run Clean Architecture Sample",
 			"type": "shell",
 			"command": "dotnet",
-			"args": ["run", "--project", "samples/CleanArchitectureSample/src/Web/Web.csproj"],
+			"args": ["run", "--project", "samples/CleanArchitectureSample/src/Api/Api.csproj"],
 			"isBackground": true,
 			"problemMatcher": {
 				"pattern": {

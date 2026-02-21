@@ -14,9 +14,9 @@
     <MediatorDisableInterceptors>false</MediatorDisableInterceptors>
     <MediatorDisableOpenTelemetry>false</MediatorDisableOpenTelemetry>
     <MediatorEnableGenerationCounter>true</MediatorEnableGenerationCounter>
-    <MediatorProjectName>Web</MediatorProjectName>
+    <MediatorProjectName>Api</MediatorProjectName>
     <!-- SPA Proxy configuration -->
-    <SpaRoot>..\Web.Frontend</SpaRoot>
+    <SpaRoot>..\Web</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
     <SpaProxyServerUrl>https://localhost:5173</SpaProxyServerUrl>
   </PropertyGroup>
@@ -52,7 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Web.Frontend\Web.Frontend.esproj">
+    <ProjectReference Include="..\Web\Web.esproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>

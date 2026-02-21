@@ -8,8 +8,8 @@ using Products.Module.Messages;
 using Reports.Module;
 using Reports.Module.Messages;
 using Scalar.AspNetCore;
-using Web.Handlers;
-using Web.Hubs;
+using Api.Handlers;
+using Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,7 +24,7 @@ builder.Services.AddMediator(c =>
     c.AddAssembly<CreateOrder>();          // Orders.Module
     c.AddAssembly<CreateProduct>();        // Products.Module
     c.AddAssembly<GetDashboardReport>();   // Reports.Module
-    c.AddAssembly<ClientDispatchHandler>(); // Web (for client dispatch handlers)
+    c.AddAssembly<ClientDispatchHandler>(); // Api (for client dispatch handlers)
 });
 
 // Add module services

@@ -43,7 +43,7 @@ dotnet clean Foundatio.Mediator.slnx          # Clean (recommended before genera
 
 # Run samples
 cd samples/ConsoleSample && dotnet run
-cd samples/CleanArchitectureSample/src/Web && dotnet run
+cd samples/CleanArchitectureSample/src/Api && dotnet run
 
 # Benchmarks
 cd benchmarks/Foundatio.Mediator.Benchmarks && dotnet run -c Release -- foundatio

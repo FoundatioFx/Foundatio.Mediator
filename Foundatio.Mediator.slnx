@@ -7,10 +7,11 @@
   </Folder>
   <Folder Name="/samples/CleanArchitecture/">
     <Project Path="samples/CleanArchitectureSample/src/Orders.Module/Orders.Module.csproj" />
-    <Project Path="samples/CleanArchitectureSample/src/Web/Web.csproj" />
+    <Project Path="samples/CleanArchitectureSample/src/Api/Api.csproj" />
     <Project Path="samples/CleanArchitectureSample/src/Common.Module/Common.Module.csproj" />
     <Project Path="samples/CleanArchitectureSample/src/Products.Module/Products.Module.csproj" />
     <Project Path="samples/CleanArchitectureSample/src/Reports.Module/Reports.Module.csproj" />
+    <Project Path="samples/CleanArchitectureSample/src/Web/Web.esproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".github/copilot-instructions.md" />

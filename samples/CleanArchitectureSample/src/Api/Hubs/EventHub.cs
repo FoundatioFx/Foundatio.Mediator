@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 
-namespace Web.Hubs;
+namespace Api.Hubs;
 
 /// <summary>
 /// SignalR hub for pushing real-time events to connected clients.

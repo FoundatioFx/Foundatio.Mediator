@@ -193,7 +193,7 @@ The application uses **SPA Proxy** to automatically:
 
 ### Using the HTTP File
 
-Open `src/Web/Web.http` in VS Code or Rider to run sample requests.
+Open `src/Api/Api.http` in VS Code or Rider to run sample requests.
 
 ### Try the API
 

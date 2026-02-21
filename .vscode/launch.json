@@ -8,7 +8,7 @@
       "name": "Clean Architecture Sample",
       "type": "dotnet",
       "request": "launch",
-      "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Web/Web.csproj"
+      "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Api/Api.csproj"
     },
     {
       "name": "Console Sample",

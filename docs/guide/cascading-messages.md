@@ -491,7 +491,7 @@ Common.Module (handlers here ARE called when Orders publishes)
     ↑
 Orders.Module (publishes events)
     ↑
-Web (handlers here are NOT called - wrong direction)
+Api (handlers here are NOT called - wrong direction)
 ```
 
 **Solution:** Place shared event handlers (like audit logging, notifications) in a common module that is referenced by all modules that publish events.

@@ -61,11 +61,11 @@ src/
 │   │   └── ReportMessages.cs    # Queries and DTOs
 │   └── ServiceConfiguration.cs
 │
-├── Web/                         # ASP.NET Core backend (composition root)
+├── Api/                         # ASP.NET Core backend (composition root)
 │   ├── Program.cs               # Application entry point
-│   └── Web.http                 # HTTP request samples
+│   └── Api.http                 # HTTP request samples
 │
-└── Web.Frontend/                # SvelteKit SPA frontend
+└── Web/                         # SvelteKit SPA frontend
     ├── src/
     │   ├── lib/
     │   │   ├── api/             # API clients
@@ -169,14 +169,14 @@ The easiest way to run the sample is using Visual Studio or VS Code:
 1. **Install frontend dependencies** (first time only):
 
    ```bash
-   cd samples/CleanArchitectureSample/src/Web.Frontend
+   cd samples/CleanArchitectureSample/src/Web
    npm install
    ```
 
 2. **Run the Web project** - this automatically starts both backend and frontend:
-   - **Visual Studio**: Set `Web` as the startup project and press F5
+   - **Visual Studio**: Set `Api` as the startup project and press F5
    - **VS Code**: Run the "Clean Architecture Sample" launch configuration
-   - **CLI**: `dotnet run --project samples/CleanArchitectureSample/src/Web`
+   - **CLI**: `dotnet run --project samples/CleanArchitectureSample/src/Api`
 
 The application uses **SPA Proxy** to automatically:
 
@@ -282,12 +282,12 @@ The SvelteKit frontend demonstrates:
 ## Module Dependencies
 
 ```text
-Web
+Api
   ├── Common.Module (services, middleware)
   ├── Orders.Module (order messages, handlers)
   ├── Products.Module (product messages, handlers)
   ├── Reports.Module (report messages, handlers)
-  └── Web.Frontend (SvelteKit SPA)
+  └── Web (SvelteKit SPA)
 
 Reports.Module
   ├── Common.Module

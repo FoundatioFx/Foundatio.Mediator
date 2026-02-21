@@ -90,7 +90,8 @@ samples/
         ├── Orders.Module/                 # Order bounded context
         ├── Products.Module/               # Product bounded context
         ├── Reports.Module/                # Cross-module reporting
-        └── Web/                           # Composition root
+        ├── Api/                           # ASP.NET Core backend (composition root)
+        └── Web/                           # SvelteKit SPA frontend
 ```
 
 ## Before Making Changes
@@ -306,7 +307,7 @@ Common.Module (handlers here ARE called when Orders publishes)
     ↑
 Orders.Module (publishes OrderCreated event)
     ↑
-Web (handlers here are NOT called - wrong direction)
+Api (handlers here are NOT called - wrong direction)
 ```
 
 **Solution:** Place shared event handlers in a common module referenced by all publishing modules.

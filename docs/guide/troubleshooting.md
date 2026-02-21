@@ -127,12 +127,12 @@ Common.Module (defines events + cross-cutting handlers)
     ↑
 Orders.Module (references Common, publishes OrderCreated)
     ↑
-Web (references Orders)
+Api (references Orders)
 ```
 
 In this structure:
 - When `Orders.Module` publishes `OrderCreated`, handlers in `Common.Module` ARE called (referenced)
-- Handlers defined in `Web` are NOT called (Web references Orders, not the other way around)
+- Handlers defined in `Api` are NOT called (Api references Orders, not the other way around)
 
 **Solutions:**
 1. **Move shared event handlers to a common/lower-level module** that all publishing modules reference

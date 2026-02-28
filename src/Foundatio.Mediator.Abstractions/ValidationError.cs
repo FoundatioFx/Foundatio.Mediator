@@ -56,22 +56,22 @@ public class ValidationError
     /// <summary>
     /// Gets or sets the field or property identifier that caused the validation error.
     /// </summary>
-    public string Identifier { get; set; } = String.Empty;
+    public string Identifier { get; init; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the error message describing what went wrong.
     /// </summary>
-    public string ErrorMessage { get; set; } = String.Empty;
+    public string ErrorMessage { get; init; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the error code for categorization purposes.
     /// </summary>
-    public string ErrorCode { get; set; } = String.Empty;
+    public string ErrorCode { get; init; } = String.Empty;
 
     /// <summary>
     /// Gets or sets the severity level of the validation error.
     /// </summary>
-    public ValidationSeverity Severity { get; set; } = ValidationSeverity.Error;
+    public ValidationSeverity Severity { get; init; } = ValidationSeverity.Error;
 
     /// <summary>
     /// Returns a string representation of the validation error.

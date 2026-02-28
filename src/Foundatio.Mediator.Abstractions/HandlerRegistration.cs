@@ -1,9 +1,11 @@
+using System.ComponentModel;
+
 namespace Foundatio.Mediator;
 
 /// <summary>
 /// Registration information for a handler
 /// </summary>
-public class HandlerRegistration
+public sealed class HandlerRegistration
 {
     /// <summary>
     /// Creates a new handler registration
@@ -94,5 +96,14 @@ public class HandlerRegistration
     public string[] OrderAfter { get; }
 }
 
+/// <summary>
+/// Delegate type for asynchronous handler dispatch. Used by source-generated handler wrappers.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public delegate ValueTask<object?> HandleAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken, Type? returnType);
+
+/// <summary>
+/// Delegate type for synchronous handler dispatch. Used by source-generated handler wrappers.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public delegate object? HandleDelegate(IMediator mediator, object message, CancellationToken cancellationToken, Type? returnType);

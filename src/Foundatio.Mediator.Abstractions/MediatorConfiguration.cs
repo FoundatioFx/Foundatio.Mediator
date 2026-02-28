@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator;
 
-public class MediatorConfiguration
+public sealed class MediatorConfiguration
 {
     /// <summary>
     /// Gets or sets the list of assemblies to scan for mediator handlers.

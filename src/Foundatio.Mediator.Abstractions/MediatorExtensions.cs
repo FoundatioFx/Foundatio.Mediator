@@ -115,8 +115,17 @@ public static class MediatorExtensions
     }
 }
 
+/// <summary>
+/// Extension methods for registering individual handler registrations with the service collection.
+/// </summary>
 public static class MediatorServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers a <see cref="HandlerRegistration"/> with the service collection so the mediator can dispatch messages to it.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="registration">The handler registration to add.</param>
+    /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddHandler(this IServiceCollection services, HandlerRegistration registration)
     {
         services.AddKeyedSingleton(registration.MessageTypeName, registration);
@@ -125,7 +134,7 @@ public static class MediatorServiceCollectionExtensions
     }
 }
 
-public class MediatorConfigurationBuilder
+public sealed class MediatorConfigurationBuilder
 {
     private readonly MediatorConfiguration _configuration = new MediatorConfiguration();
 
@@ -163,5 +172,9 @@ public class MediatorConfigurationBuilder
         return this;
     }
 
+    /// <summary>
+    /// Builds the <see cref="MediatorConfiguration"/> from the current builder state.
+    /// </summary>
+    /// <returns>The constructed mediator configuration.</returns>
     public MediatorConfiguration Build() => _configuration;
 }

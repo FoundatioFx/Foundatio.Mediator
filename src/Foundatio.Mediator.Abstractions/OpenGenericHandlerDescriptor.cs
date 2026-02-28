@@ -1,9 +1,12 @@
+using System.ComponentModel;
+
 namespace Foundatio.Mediator;
 
 /// <summary>
 /// Descriptor for an open generic handler method. Used to construct concrete <see cref="HandlerRegistration"/> instances at runtime
 /// when a closed generic message type is invoked or published.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class OpenGenericHandlerDescriptor
 {
     public OpenGenericHandlerDescriptor(Type messageTypeGenericDefinition, Type wrapperGenericTypeDefinition, bool isAsync)

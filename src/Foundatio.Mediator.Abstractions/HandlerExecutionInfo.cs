@@ -4,7 +4,7 @@ namespace Foundatio.Mediator;
 /// Contains information about the handler that is currently executing.
 /// Can be added as a parameter to middleware methods to access handler metadata.
 /// </summary>
-public class HandlerExecutionInfo
+public sealed class HandlerExecutionInfo
 {
     /// <summary>
     /// Creates a new HandlerExecutionInfo instance

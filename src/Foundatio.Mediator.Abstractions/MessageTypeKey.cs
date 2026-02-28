@@ -1,9 +1,21 @@
+using System.ComponentModel;
 using System.Text;
 
 namespace Foundatio.Mediator;
 
+/// <summary>
+/// Generates stable, fully-qualified type keys for message types, including proper handling of
+/// generic type arguments. Used internally by the source-generated infrastructure.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class MessageTypeKey
 {
+    /// <summary>
+    /// Returns the stable fully-qualified key for the given <paramref name="type"/>,
+    /// resolving generic arguments recursively.
+    /// </summary>
+    /// <param name="type">The message type to generate a key for.</param>
+    /// <returns>A stable, fully-qualified type key string.</returns>
     public static string Get(Type type)
     {
         if (type == null) throw new ArgumentNullException(nameof(type));

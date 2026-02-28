@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +8,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Foundatio.Mediator;
 
-public class Mediator : IMediator, IServiceProvider
+/// <summary>
+/// Default implementation of <see cref="IMediator"/>. Dispatches messages to registered handlers
+/// using compile-time generated code for near-direct call performance.
+/// </summary>
+public sealed class Mediator : IMediator, IServiceProvider
 {
     private readonly IServiceProvider _serviceProvider;
 
@@ -22,7 +27,14 @@ public class Mediator : IMediator, IServiceProvider
         _serviceProvider = serviceProvider;
     }
 
+    /// <summary>
+    /// Gets the underlying service provider. This is an implementation detail exposed for source-generated infrastructure.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public IServiceProvider ServiceProvider => _serviceProvider;
+
+    /// <inheritdoc />
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public object? GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 
     public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
@@ -295,6 +307,10 @@ public class Mediator : IMediator, IServiceProvider
         return list;
     }
 
+    /// <summary>
+    /// Clears all cached handler delegates. Used internally for testing.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static void ClearCache()
     {
         _invokeAsyncCache.Clear();
@@ -311,6 +327,7 @@ public class Mediator : IMediator, IServiceProvider
     /// <param name="mediator">The mediator instance (used to access DI)</param>
     /// <param name="messageType">The message type to get handlers for</param>
     /// <returns>Array of publish delegates for all applicable handlers</returns>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static PublishAsyncDelegate[] GetPublishHandlersForType(IMediator mediator, Type messageType)
     {
         // Fast path - check if already cached

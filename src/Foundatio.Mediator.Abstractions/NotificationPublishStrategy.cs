@@ -3,7 +3,7 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Controls how notifications are published to multiple handlers.
 /// </summary>
-public enum NotificationPublisher
+public enum NotificationPublishStrategy
 {
     /// <summary>
     /// Handlers are invoked sequentially, awaiting each one before the next.

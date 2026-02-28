@@ -22,7 +22,7 @@ public interface IResult
     object? GetValue();
 
     /// <summary>
-    /// Gets the status of the result.
+    /// Gets the message associated with the result.
     /// </summary>
     string Message { get; }
 

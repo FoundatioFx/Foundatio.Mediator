@@ -10,7 +10,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             using System.Threading.Tasks;
             using Foundatio.Mediator;
 
-            [assembly: MediatorConfiguration(NotificationPublisher = NotificationPublisher.ForeachAwait)]
+            [assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait)]
 
             public record MyEvent;
 
@@ -49,7 +49,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             using System.Threading.Tasks;
             using Foundatio.Mediator;
 
-            [assembly: MediatorConfiguration(NotificationPublisher = NotificationPublisher.TaskWhenAll)]
+            [assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.TaskWhenAll)]
 
             public record UserRegistered(string UserId);
 
@@ -86,7 +86,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             using System.Threading.Tasks;
             using Foundatio.Mediator;
 
-            [assembly: MediatorConfiguration(NotificationPublisher = NotificationPublisher.FireAndForget)]
+            [assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.FireAndForget)]
 
             public record ItemDeleted(string ItemId);
 
@@ -137,7 +137,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             }
             """;
 
-        // No NotificationPublisher attribute set - should default to ForeachAwait
+        // No NotificationPublishStrategy attribute set - should default to ForeachAwait
         var (_, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
@@ -189,7 +189,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             using System.Threading.Tasks;
             using Foundatio.Mediator;
 
-            [assembly: MediatorConfiguration(NotificationPublisher = NotificationPublisher.ForeachAwait)]
+            [assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait)]
 
             public record OrderPlaced(string OrderId);
             public record InventoryReserved(string OrderId);
@@ -227,7 +227,7 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
             using System.Threading.Tasks;
             using Foundatio.Mediator;
 
-            [assembly: MediatorConfiguration(NotificationPublisher = NotificationPublisher.ForeachAwait)]
+            [assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait)]
 
             public record TestEvent;
 

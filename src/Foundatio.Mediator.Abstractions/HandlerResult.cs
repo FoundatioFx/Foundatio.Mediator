@@ -3,7 +3,7 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Represents the result of handler execution that can be used to control execution flow.
 /// </summary>
-public struct HandlerResult
+public readonly struct HandlerResult
 {
     private HandlerResult(object? value, bool isShortCircuited)
     {
@@ -55,7 +55,7 @@ public struct HandlerResult
 /// Represents a strongly-typed result of handler execution that can be used to control execution flow.
 /// This generic version avoids boxing for value types and provides type safety.
 /// </summary>
-public struct HandlerResult<T>
+public readonly struct HandlerResult<T>
 {
     private HandlerResult(T value, bool isShortCircuited)
     {

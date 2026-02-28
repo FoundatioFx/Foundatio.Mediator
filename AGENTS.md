@@ -204,7 +204,7 @@ public class AuthMiddleware { /* runs before LoggingMiddleware */ }
 public class AuditMiddleware { /* runs after AuthMiddleware */ }
 ```
 
-Circular dependencies emit warning `FMED011` and fall back to numeric `Order`.
+Circular dependencies emit warning `FMED012` and fall back to numeric `Order`.
 
 ```csharp
 [Middleware(Order = 10)]  // Lower Order = runs earlier in Before
@@ -258,7 +258,7 @@ using Foundatio.Mediator;
     DisableInterceptors = false,                        // Disable C# interceptors
     DisableOpenTelemetry = false,                       // Disable OpenTelemetry tracing
     HandlerDiscovery = HandlerDiscovery.All,            // All (convention + explicit) or Explicit only
-    NotificationPublisher = NotificationPublisher.ForeachAwait, // Sequential, TaskWhenAll, or FireAndForget
+    NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait, // Sequential, TaskWhenAll, or FireAndForget
     ProjectName = "MyProject",                          // Custom suffix for generated endpoint methods
     EnableGenerationCounter = false,                    // Debug: add generation timestamp comment
     EndpointDiscovery = EndpointDiscovery.All,          // None, Explicit, All

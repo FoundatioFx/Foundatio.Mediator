@@ -469,7 +469,7 @@ public class SecurityMiddleware
 - Unknown types in `OrderBefore`/`OrderAfter` are silently ignored (they may not apply to the current handler)
 
 ::: warning Circular Dependencies
-If middleware form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED011` is emitted and the cycle participants fall back to numeric `Order` sorting.
+If middleware form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED012` is emitted and the cycle participants fall back to numeric `Order` sorting.
 :::
 
 ## Message-Specific Middleware

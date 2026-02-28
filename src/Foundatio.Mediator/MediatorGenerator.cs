@@ -71,7 +71,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         bool disableOpenTelemetry = false;
         bool conventionalDiscoveryDisabled = false;
         bool generationCounterEnabled = false;
-        string notificationPublisher = "ForeachAwait";
+        string notificationPublishStrategy = "ForeachAwait";
         string? projectName = null;
 
         if (configAttr != null)
@@ -95,8 +95,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "HandlerDiscovery" when arg.Value.Value is int v:
                         conventionalDiscoveryDisabled = v == 1; // Explicit = 1
                         break;
-                    case "NotificationPublisher" when arg.Value.Value is int v:
-                        notificationPublisher = v switch { 1 => "TaskWhenAll", 2 => "FireAndForget", _ => "ForeachAwait" };
+                    case "NotificationPublishStrategy" when arg.Value.Value is int v:
+                        notificationPublishStrategy = v switch { 1 => "TaskWhenAll", 2 => "FireAndForget", _ => "ForeachAwait" };
                         break;
                     case "ProjectName" when arg.Value.Value is string s:
                         projectName = s;
@@ -112,7 +112,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var openTelemetryEnabled = !disableOpenTelemetry;
 
         return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
-            openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublisher, projectName);
+            openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
     }
 
     /// <summary>

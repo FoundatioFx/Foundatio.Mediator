@@ -174,7 +174,7 @@ internal static class MiddlewareOrderingSorter
             var participantNames = string.Join(", ", cycleParticipants.Select(p => p.Split('.').Last()));
             cycleDiagnostics.Add(new DiagnosticInfo
             {
-                Identifier = "FMED011",
+                Identifier = "FMED012",
                 Title = "Circular Ordering Dependency",
                 Message = $"Circular ordering dependency detected between: {participantNames}. Falling back to numeric Order for these items.",
                 Severity = DiagnosticSeverity.Warning,

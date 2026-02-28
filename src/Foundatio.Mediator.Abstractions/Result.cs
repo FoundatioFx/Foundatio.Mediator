@@ -102,6 +102,15 @@ public sealed class Result : IResult
     };
 
     /// <summary>
+    /// Creates an error result.
+    /// </summary>
+    /// <returns>An error result.</returns>
+    public static Result Error() => new()
+    {
+        Status = ResultStatus.Error
+    };
+
+    /// <summary>
     /// Creates an error result with a single error message.
     /// </summary>
     /// <param name="message">The error message.</param>
@@ -143,6 +152,15 @@ public sealed class Result : IResult
     {
         Status = ResultStatus.Invalid,
         ValidationErrors = [.. validationErrors]
+    };
+
+    /// <summary>
+    /// Creates a bad request result.
+    /// </summary>
+    /// <returns>A bad request result.</returns>
+    public static Result BadRequest() => new()
+    {
+        Status = ResultStatus.BadRequest
     };
 
     /// <summary>
@@ -239,12 +257,30 @@ public sealed class Result : IResult
     /// <summary>
     /// Creates a critical error result.
     /// </summary>
+    /// <returns>A critical error result.</returns>
+    public static Result CriticalError() => new()
+    {
+        Status = ResultStatus.CriticalError
+    };
+
+    /// <summary>
+    /// Creates a critical error result.
+    /// </summary>
     /// <param name="message">The message.</param>
     /// <returns>A critical error result.</returns>
     public static Result CriticalError(string message) => new()
     {
         Status = ResultStatus.CriticalError,
         Message = message
+    };
+
+    /// <summary>
+    /// Creates an unavailable result.
+    /// </summary>
+    /// <returns>An unavailable result.</returns>
+    public static Result Unavailable() => new()
+    {
+        Status = ResultStatus.Unavailable
     };
 
     /// <summary>

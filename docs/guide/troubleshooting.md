@@ -286,7 +286,8 @@ public class LoggingMiddleware
 | `FMED008` | Error | Synchronous invoke on asynchronous handler |
 | `FMED009` | Error | Synchronous invoke on handler with async middleware |
 | `FMED010` | Error | Synchronous invoke on handler with tuple return |
-| `FMED011` | Warning | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`. |
+| `FMED011` | Error | Multiple Execute methods in a middleware class. Only one Execute/ExecuteAsync method is allowed per middleware class. |
+| `FMED012` | Warning | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`. |
 
 ## Getting Help
 

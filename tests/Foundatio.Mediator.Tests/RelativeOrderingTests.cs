@@ -125,7 +125,7 @@ public class RelativeOrderingTests(ITestOutputHelper output) : GeneratorTestBase
             """;
 
         var (_, genDiags, _) = RunGenerator(src, [Gen]);
-        Assert.Contains(genDiags, d => d.Id == "FMED011" && d.Severity == DiagnosticSeverity.Warning);
+        Assert.Contains(genDiags, d => d.Id == "FMED012" && d.Severity == DiagnosticSeverity.Warning);
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class RelativeOrderingTests(ITestOutputHelper output) : GeneratorTestBase
         var (_, genDiags, trees) = RunGenerator(src, [Gen]);
 
         // Should not produce cycle or error diagnostics
-        Assert.DoesNotContain(genDiags, d => d.Id == "FMED011");
+        Assert.DoesNotContain(genDiags, d => d.Id == "FMED012");
 
         // Should still generate code
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));

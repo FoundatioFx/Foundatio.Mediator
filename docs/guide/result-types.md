@@ -49,7 +49,7 @@ Result types include several built-in status types:
 ```csharp
 public enum ResultStatus
 {
-    Ok,
+    Success,
     Created,
     NoContent,
     BadRequest,
@@ -154,7 +154,7 @@ var result = await mediator.InvokeAsync<Result<Order>>(new GetOrder("123"));
 
 var message = result.Status switch
 {
-    ResultStatus.Ok => $"Order: {result.Value.Description}",
+    ResultStatus.Success => $"Order: {result.Value.Description}",
     ResultStatus.NotFound => "Order not found",
     ResultStatus.Forbidden => "Access denied",
     _ => $"Error: {result.ErrorMessage}"
@@ -218,7 +218,7 @@ public class OrdersController : ControllerBase
 
         return result.Status switch
         {
-            ResultStatus.Ok => Ok(result.Value),
+            ResultStatus.Success => Ok(result.Value),
             ResultStatus.NotFound => NotFound(result.ErrorMessage),
             ResultStatus.Forbidden => Forbid(),
             _ => BadRequest(result.ErrorMessage)
@@ -253,7 +253,7 @@ public static class ResultExtensions
     {
         return result.Status switch
         {
-            ResultStatus.Ok => new OkObjectResult(result.Value),
+            ResultStatus.Success => new OkObjectResult(result.Value),
             ResultStatus.Created => new CreatedResult("", result.Value),
             ResultStatus.NoContent => new NoContentResult(),
             ResultStatus.NotFound => new NotFoundObjectResult(result.ErrorMessage),

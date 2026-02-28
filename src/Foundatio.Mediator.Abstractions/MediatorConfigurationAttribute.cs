@@ -52,12 +52,12 @@ public sealed class MediatorConfigurationAttribute : Attribute
 
     /// <summary>
     /// Strategy for publishing notifications to multiple handlers.
-    /// <see cref="NotificationPublisher.ForeachAwait"/> awaits each handler sequentially,
-    /// <see cref="NotificationPublisher.TaskWhenAll"/> runs them concurrently,
-    /// and <see cref="NotificationPublisher.FireAndForget"/> does not await.
-    /// Default: <see cref="NotificationPublisher.ForeachAwait"/>.
+    /// <see cref="NotificationPublishStrategy.ForeachAwait"/> awaits each handler sequentially,
+    /// <see cref="NotificationPublishStrategy.TaskWhenAll"/> runs them concurrently,
+    /// and <see cref="NotificationPublishStrategy.FireAndForget"/> does not await.
+    /// Default: <see cref="NotificationPublishStrategy.ForeachAwait"/>.
     /// </summary>
-    public NotificationPublisher NotificationPublisher { get; set; }
+    public NotificationPublishStrategy NotificationPublishStrategy { get; set; }
 
     /// <summary>
     /// Custom name used as a suffix for generated endpoint extension methods and classes

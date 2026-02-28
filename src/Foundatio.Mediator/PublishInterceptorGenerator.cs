@@ -146,7 +146,7 @@ internal static class PublishInterceptorGenerator
         source.AppendLine();
 
         // Generate execution based on notification publisher strategy
-        switch (configuration.NotificationPublisher)
+        switch (configuration.NotificationPublishStrategy)
         {
             case "ForeachAwait":
                 GenerateForeachAwaitBody(source);
@@ -247,7 +247,7 @@ internal static class PublishInterceptorGenerator
     private static void GenerateHelperMethods(IndentedStringBuilder source, GeneratorConfiguration configuration)
     {
         // Generate ForeachAwait helper if needed
-        if (configuration.NotificationPublisher == "ForeachAwait" || string.IsNullOrEmpty(configuration.NotificationPublisher))
+        if (configuration.NotificationPublishStrategy == "ForeachAwait" || string.IsNullOrEmpty(configuration.NotificationPublishStrategy))
         {
             source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitRemainingForeachAsync(");
             source.AppendLine("    System.Threading.Tasks.ValueTask current,");
@@ -305,7 +305,7 @@ internal static class PublishInterceptorGenerator
         }
 
         // Generate TaskWhenAll helper if needed
-        if (configuration.NotificationPublisher == "TaskWhenAll")
+        if (configuration.NotificationPublishStrategy == "TaskWhenAll")
         {
             source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitAllTasksAsync(System.Threading.Tasks.ValueTask[] tasks)");
             source.AppendLine("{");

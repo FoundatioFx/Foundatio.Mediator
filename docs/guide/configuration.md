@@ -135,7 +135,7 @@ public class FirstTransientMiddleware
   - `Explicit`: Only handlers that implement `IHandler` interface or have the `[Handler]` attribute will be discovered
 - **Use Case:** Explicit control over which classes are treated as handlers, avoiding accidental handler discovery
 
-**`NotificationPublisher`** (`NotificationPublisher` enum)
+**`NotificationPublishStrategy`** (`NotificationPublishStrategy` enum)
 
 - **Values:** `ForeachAwait`, `TaskWhenAll`, `FireAndForget`
 - **Default:** `ForeachAwait`

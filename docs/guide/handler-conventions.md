@@ -680,7 +680,7 @@ public class AuditHandler
 - Unknown types in `OrderBefore`/`OrderAfter` are silently ignored
 
 ::: warning Circular Dependencies
-If handlers form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED011` is emitted and the cycle participants fall back to numeric `Order` sorting.
+If handlers form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED012` is emitted and the cycle participants fall back to numeric `Order` sorting.
 :::
 
 ### Use Cases

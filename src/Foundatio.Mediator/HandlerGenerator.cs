@@ -247,7 +247,7 @@ internal static class HandlerGenerator
 
             if (hasCascadingHandlers)
             {
-                string strategy = configuration.NotificationPublisher ?? "ForeachAwait";
+                string strategy = configuration.NotificationPublishStrategy ?? "ForeachAwait";
                 GenerateCascadingHandlerCalls(source, publishItems, allHandlers, strategy);
                 source.AppendLine();
             }
@@ -275,7 +275,7 @@ internal static class HandlerGenerator
             return;
 
         var tupleItems = handler.ReturnType.TupleItems;
-        string strategy = configuration.NotificationPublisher ?? "ForeachAwait";
+        string strategy = configuration.NotificationPublishStrategy ?? "ForeachAwait";
 
         // Generate a method for each non-first tuple item (index >= 1)
         for (int targetIndex = 1; targetIndex < tupleItems.Length; targetIndex++)

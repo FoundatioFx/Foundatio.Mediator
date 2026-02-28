@@ -214,7 +214,7 @@ internal static class EndpointGenerator
             source.AppendLine($"// {category} endpoints");
 
             // Create route group for the category
-            var groupVarName = $"{ToCamelCase(category)}Group";
+            var groupVarName = $"{category.ToCamelCase()}Group";
 
             source.Append($"var {groupVarName} = {parentGroupVar}.MapGroup(\"{routePrefix}\")");
 
@@ -293,7 +293,7 @@ internal static class EndpointGenerator
             {
                 // Use kebab-case message name as the route
                 var messageName = item.Handler.MessageType.Identifier;
-                var kebabRoute = "/" + ToKebabCase(messageName);
+                var kebabRoute = "/" + messageName.ToKebabCase();
                 routeOverrides[item.UniqueKey] = kebabRoute;
             }
         }
@@ -680,52 +680,6 @@ internal static class EndpointGenerator
         // Check for OpenApiRouteHandlerBuilderExtensions
         var extensionType = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions");
         return extensionType != null;
-    }
-
-    /// <summary>
-    /// Converts PascalCase to kebab-case. Also handles underscores by replacing them with dashes.
-    /// </summary>
-    private static string ToKebabCase(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        var result = new System.Text.StringBuilder();
-        for (int i = 0; i < value.Length; i++)
-        {
-            var c = value[i];
-            if (c == '_')
-            {
-                // Replace underscore with dash, but avoid double dashes
-                if (result.Length > 0 && result[result.Length - 1] != '-')
-                    result.Append('-');
-            }
-            else if (char.IsUpper(c))
-            {
-                if (result.Length > 0 && result[result.Length - 1] != '-')
-                    result.Append('-');
-                result.Append(char.ToLowerInvariant(c));
-            }
-            else
-            {
-                result.Append(c);
-            }
-        }
-        return result.ToString();
-    }
-
-    /// <summary>
-    /// Converts PascalCase to camelCase.
-    /// </summary>
-    private static string ToCamelCase(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        if (char.IsLower(value[0]))
-            return value;
-
-        return char.ToLowerInvariant(value[0]) + value.Substring(1);
     }
 
     /// <summary>

@@ -683,7 +683,7 @@ internal static class HandlerAnalyzer
         {
             var paramInfo = new EndpointParameterInfo
             {
-                Name = ToCamelCase(prop.Name),
+                Name = prop.Name.ToCamelCase(),
                 PropertyName = prop.Name,
                 Type = TypeSymbolInfo.From(prop.Type, compilation),
                 IsOptional = prop.Type.NullableAnnotation == NullableAnnotation.Annotated ||
@@ -726,7 +726,7 @@ internal static class HandlerAnalyzer
         if (string.IsNullOrEmpty(categoryRoutePrefix))
         {
             // No category prefix - include entity name in route
-            var entityName = ToKebabCase(RemoveVerbPrefix(messageTypeName));
+            var entityName = RemoveVerbPrefix(messageTypeName).ToKebabCase();
             if (!string.IsNullOrEmpty(entityName))
             {
                 parts.Add(entityName);
@@ -762,46 +762,6 @@ internal static class HandlerAnalyzer
         }
 
         return name;
-    }
-
-    /// <summary>
-    /// Converts PascalCase to kebab-case.
-    /// </summary>
-    private static string ToKebabCase(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        var result = new System.Text.StringBuilder();
-        for (int i = 0; i < value.Length; i++)
-        {
-            var c = value[i];
-            if (char.IsUpper(c))
-            {
-                if (result.Length > 0)
-                    result.Append('-');
-                result.Append(char.ToLowerInvariant(c));
-            }
-            else
-            {
-                result.Append(c);
-            }
-        }
-        return result.ToString();
-    }
-
-    /// <summary>
-    /// Converts PascalCase to camelCase.
-    /// </summary>
-    private static string ToCamelCase(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-
-        if (char.IsLower(value[0]))
-            return value;
-
-        return char.ToLowerInvariant(value[0]) + value.Substring(1);
     }
 
     #region Event Detection

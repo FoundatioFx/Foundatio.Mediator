@@ -85,6 +85,41 @@ internal static class Helpers
         if (String.IsNullOrEmpty(name))
             return String.Empty;
 
-        return Char.ToLower(name[0]) + name.Substring(1);
+        if (Char.IsLower(name[0]))
+            return name;
+
+        return Char.ToLowerInvariant(name[0]) + name.Substring(1);
+    }
+
+    /// <summary>
+    /// Converts PascalCase to kebab-case. Also handles underscores by replacing them with dashes.
+    /// </summary>
+    public static string ToKebabCase(this string name)
+    {
+        if (String.IsNullOrEmpty(name))
+            return name;
+
+        var result = new System.Text.StringBuilder();
+        for (int i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            if (c == '_')
+            {
+                // Replace underscore with dash, but avoid double dashes
+                if (result.Length > 0 && result[result.Length - 1] != '-')
+                    result.Append('-');
+            }
+            else if (Char.IsUpper(c))
+            {
+                if (result.Length > 0 && result[result.Length - 1] != '-')
+                    result.Append('-');
+                result.Append(Char.ToLowerInvariant(c));
+            }
+            else
+            {
+                result.Append(c);
+            }
+        }
+        return result.ToString();
     }
 }

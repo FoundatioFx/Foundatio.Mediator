@@ -5,6 +5,14 @@ namespace Foundatio.Mediator;
 
 internal static class HandlerGenerator
 {
+    private static readonly DiagnosticDescriptor InternalGeneratorError = new(
+        "FMED999",
+        "Internal source generator error",
+        "Error generating wrapper for handler {0}: {1}",
+        "Generator",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
         if (handlers.Count == 0)
@@ -24,17 +32,11 @@ internal static class HandlerGenerator
             }
             catch (Exception ex)
             {
-                // Add diagnostic for debugging
-                var diagnostic = Diagnostic.Create(
-                    new DiagnosticDescriptor(
-                        "FMED999",
-                        "Internal source generator error",
-                        $"Error generating wrapper for handler {handler.FullName}: {ex.Message}\nStackTrace: {ex.StackTrace}",
-                        "Generator",
-                        DiagnosticSeverity.Error,
-                        isEnabledByDefault: true),
-                    Location.None);
-                context.ReportDiagnostic(diagnostic);
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InternalGeneratorError,
+                    Location.None,
+                    handler.FullName,
+                    $"{ex.Message}\nStackTrace: {ex.StackTrace}"));
             }
         }
     }
@@ -571,7 +573,10 @@ internal static class HandlerGenerator
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 private static Foundatio.Mediator.HandlerExecutionInfo GetOrCreateHandlerExecutionInfo()
                 {
-                    return _cachedHandlerExecutionInfo ??= new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!);
+                    if (_cachedHandlerExecutionInfo is { } cached)
+                        return cached;
+                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!);
+                    return Interlocked.CompareExchange(ref _cachedHandlerExecutionInfo, instance, null) ?? instance;
                 }
                 """);
     }
@@ -1111,7 +1116,10 @@ internal static class HandlerGenerator
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 private static {{handler.FullName}} GetOrCreateHandler(IServiceProvider serviceProvider)
                 {
-                    return _cachedHandler ??= new {{handler.FullName}}();
+                    if (_cachedHandler is { } cached)
+                        return cached;
+                    var instance = new {{handler.FullName}}();
+                    return Interlocked.CompareExchange(ref _cachedHandler, instance, null) ?? instance;
                 }
                 """);
     }
@@ -1145,7 +1153,10 @@ internal static class HandlerGenerator
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
                         {
-                            return _cached{{m.Identifier}} ??= new {{m.FullName}}();
+                            if (_cached{{m.Identifier}} is { } cached)
+                                return cached;
+                            var instance = new {{m.FullName}}();
+                            return Interlocked.CompareExchange(ref _cached{{m.Identifier}}, instance, null) ?? instance;
                         }
                         """);
             }
@@ -1163,7 +1174,10 @@ internal static class HandlerGenerator
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
                         {
-                            return _cached{{m.Identifier}} ??= ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
+                            if (_cached{{m.Identifier}} is { } cached)
+                                return cached;
+                            var instance = ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
+                            return Interlocked.CompareExchange(ref _cached{{m.Identifier}}, instance, null) ?? instance;
                         }
                         """);
             }

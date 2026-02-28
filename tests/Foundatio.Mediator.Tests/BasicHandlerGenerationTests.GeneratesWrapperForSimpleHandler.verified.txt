@@ -329,7 +329,10 @@ public static class PingHandler_Ping_Handler
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static PingHandler GetOrCreateHandler(IServiceProvider serviceProvider)
     {
-        return _cachedHandler ??= new PingHandler();
+        if (_cachedHandler is { } cached)
+            return cached;
+        var instance = new PingHandler();
+        return Interlocked.CompareExchange(ref _cachedHandler, instance, null) ?? instance;
     }
 }
 

@@ -315,6 +315,7 @@ internal static class MetadataMiddlewareScanner
             var cancellationTokenType = _compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
             var handlerExecutionInfoType = _compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
             var handlerExecutionDelegateType = _compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionDelegate);
+            var activityType = _compilation.GetTypeByMetadataName("System.Diagnostics.Activity");
             var objectType = _compilation.GetSpecialType(SpecialType.System_Object);
 
             foreach (var param in method.Parameters)
@@ -342,6 +343,11 @@ internal static class MetadataMiddlewareScanner
                 {
                     unwrappedType = nullable.TypeArguments[0];
                 }
+
+                // Activity (including nullable Activity?) is not a DI parameter (provided by OpenTelemetry)
+                if (activityType != null && SymbolEqualityComparer.Default.Equals(unwrappedType, activityType))
+                    continue;
+
                 if (exceptionType != null && IsExceptionType(unwrappedType, exceptionType))
                     continue;
 

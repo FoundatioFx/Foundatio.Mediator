@@ -13,6 +13,22 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .Select(static (compilation, _) => GetConfiguration(compilation))
             .WithTrackingName(TrackingNames.Settings);
 
+        var endpointDefaults = context.CompilationProvider
+            .Select(static (compilation, _) => GetEndpointDefaults(compilation))
+            .WithTrackingName(TrackingNames.EndpointDefaults);
+
+        var compilationInfo = context.CompilationProvider
+            .Select(static (compilation, _) => GetCompilationInfo(compilation))
+            .WithTrackingName(TrackingNames.CompilationInfo);
+
+        var crossAssemblyMiddleware = context.CompilationProvider
+            .Select(static (compilation, _) => new EquatableArray<MiddlewareInfo>(MetadataMiddlewareScanner.ScanReferencedAssemblies(compilation).ToArray()))
+            .WithTrackingName(TrackingNames.CrossAssemblyMiddleware);
+
+        var crossAssemblyHandlers = context.CompilationProvider
+            .Select(static (compilation, _) => new EquatableArray<HandlerInfo>(CrossAssemblyHandlerScanner.ScanReferencedAssemblies(compilation).ToArray()))
+            .WithTrackingName(TrackingNames.CrossAssemblyHandlers);
+
         var callSites = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (s, _) => CallSiteAnalyzer.IsMatch(s),
@@ -37,21 +53,30 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             .SelectMany(static (handlers, _) => handlers ?? [])
             .WithTrackingName(TrackingNames.Handlers);
 
-        var compilationAndData = handlers.Collect()
+        var combinedData = handlers.Collect()
             .Combine(middleware.Collect())
             .Combine(callSites.Collect())
             .Combine(generatorConfiguration)
-            .Combine(context.CompilationProvider)
+            .Combine(endpointDefaults)
+            .Combine(compilationInfo)
+            .Combine(crossAssemblyMiddleware)
+            .Combine(crossAssemblyHandlers)
             .Select(static (spc, _) => (
-                Handlers: spc.Left.Left.Left.Left,
-                Middleware: spc.Left.Left.Left.Right,
-                CallSites: spc.Left.Left.Right,
-                Configuration: spc.Left.Right,
-                Compilation: spc.Right
+                Handlers: spc.Left.Left.Left.Left.Left.Left.Left,
+                Middleware: spc.Left.Left.Left.Left.Left.Left.Right,
+                CallSites: spc.Left.Left.Left.Left.Left.Right,
+                Configuration: spc.Left.Left.Left.Left.Right,
+                EndpointDefaults: spc.Left.Left.Left.Right,
+                CompilationInfo: spc.Left.Left.Right,
+                CrossAssemblyMiddleware: spc.Left.Right,
+                CrossAssemblyHandlers: spc.Right
             ));
 
-        context.RegisterImplementationSourceOutput(compilationAndData,
-            static (spc, source) => Execute(source.Handlers, source.Middleware, source.CallSites, source.Configuration, source.Compilation, spc));
+        context.RegisterImplementationSourceOutput(combinedData,
+            static (spc, source) => Execute(
+                source.Handlers, source.Middleware, source.CallSites,
+                source.Configuration, source.EndpointDefaults, source.CompilationInfo,
+                source.CrossAssemblyMiddleware, source.CrossAssemblyHandlers, spc));
     }
 
     /// <summary>
@@ -113,6 +138,19 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
             openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
+    }
+
+    /// <summary>
+    /// Extracts compilation-level capability flags so downstream generators don't need the raw Compilation.
+    /// </summary>
+    private static CompilationInfo GetCompilationInfo(Compilation compilation)
+    {
+        return new CompilationInfo(
+            AssemblyName: compilation.AssemblyName ?? "Unknown",
+            SupportsMinimalApis: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Routing.IEndpointRouteBuilder") != null,
+            HasAsParametersAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.AsParametersAttribute") != null,
+            HasFromBodyAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.FromBodyAttribute") != null,
+            HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null);
     }
 
     /// <summary>
@@ -181,7 +219,16 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         };
     }
 
-    private static void Execute(ImmutableArray<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, ImmutableArray<CallSiteInfo> callSites, GeneratorConfiguration configuration, Compilation compilation, SourceProductionContext context)
+    private static void Execute(
+        ImmutableArray<HandlerInfo> handlers,
+        ImmutableArray<MiddlewareInfo> middleware,
+        ImmutableArray<CallSiteInfo> callSites,
+        GeneratorConfiguration configuration,
+        EndpointDefaultsInfo endpointDefaults,
+        CompilationInfo compilationInfo,
+        EquatableArray<MiddlewareInfo> crossAssemblyMiddleware,
+        EquatableArray<HandlerInfo> crossAssemblyHandlers,
+        SourceProductionContext context)
     {
         var sw = Stopwatch.StartNew();
 
@@ -195,15 +242,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             ? middleware.Where(m => m.IsExplicitlyDeclared).ToImmutableArray()
             : middleware;
 
-        // Scan referenced assemblies for cross-assembly middleware
-        var metadataMiddleware = MetadataMiddlewareScanner.ScanReferencedAssemblies(compilation);
-
         // Combine syntax-based middleware (from current assembly) with metadata-based middleware (from referenced assemblies)
         var allMiddleware = filteredMiddleware.ToList();
-        allMiddleware.AddRange(metadataMiddleware);
+        allMiddleware.AddRange(crossAssemblyMiddleware);
 
-        // Scan referenced assemblies for cross-assembly handlers
-        var crossAssemblyHandlers = CrossAssemblyHandlerScanner.ScanReferencedAssemblies(compilation);
+        var crossAssemblyHandlerList = crossAssemblyHandlers.ToList();
 
         var callSitesByMessage = callSites.ToList()
             .Where(cs => !cs.IsPublish)
@@ -212,13 +255,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         // Track which call sites are handled by cross-assembly handlers
         var crossAssemblyCallSites = new List<CallSiteInfo>();
-        var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlers.Select(h => h.MessageType.FullName));
+        var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlerList.Select(h => h.MessageType.FullName));
 
         var handlersWithInfo = new List<HandlerInfo>();
         foreach (var handler in filteredHandlers)
         {
             callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, compilation, configuration, out var orderingDiagnostics);
+            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, configuration, out var orderingDiagnostics);
 
             // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
             var resolvedHandlerLifetime = ResolveEffectiveLifetime(handler.Lifetime, configuration.DefaultHandlerLifetime);
@@ -243,12 +286,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         }
 
         // Always generate diagnostics related to call sites, including cross-assembly handler validation
-        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlers);
+        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerList);
 
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
         {
-            FoundatioModuleGenerator.Execute(context, compilation, handlersWithInfo, filteredMiddleware, configuration);
+            FoundatioModuleGenerator.Execute(context, compilationInfo.AssemblyName, handlersWithInfo, filteredMiddleware, configuration);
         }
 
         // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)
@@ -262,11 +305,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Generate cross-assembly interceptors if there are call sites to handlers in referenced assemblies
         if (crossAssemblyCallSites.Count > 0)
         {
-            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlers, crossAssemblyCallSites.ToImmutableArray(), configuration);
+            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlerList, crossAssemblyCallSites.ToImmutableArray(), configuration);
         }
 
         // Combine local and cross-assembly handlers for cascading message handler lookup
-        var allHandlers = handlersWithInfo.Concat(crossAssemblyHandlers).ToList();
+        var allHandlers = handlersWithInfo.Concat(crossAssemblyHandlerList).ToList();
 
         // Generate publish interceptors when interceptors are enabled
         if (configuration.InterceptorsEnabled)
@@ -280,18 +323,17 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         // Generate endpoint registration for all handlers (local + cross-assembly)
         // This must happen before the early return so WebApp can generate endpoints for handlers in referenced modules
-        var endpointDefaults = GetEndpointDefaults(compilation);
-        EndpointGenerator.Execute(context, allHandlers, endpointDefaults, configuration, compilation);
+        EndpointGenerator.Execute(context, allHandlers, endpointDefaults, configuration, compilationInfo);
 
         if (handlersWithInfo.Count == 0)
         {
             sw.Stop();
             GeneratorDiagnostics.LogExecute(
-                compilation.AssemblyName ?? "Unknown",
+                compilationInfo.AssemblyName,
                 handlersWithInfo.Count,
                 allMiddleware.Count,
                 callSites.Length,
-                crossAssemblyHandlers.Count,
+                crossAssemblyHandlerList.Count,
                 sw.ElapsedMilliseconds);
             return;
         }
@@ -303,15 +345,15 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         sw.Stop();
         GeneratorDiagnostics.LogExecute(
-            compilation.AssemblyName ?? "Unknown",
+            compilationInfo.AssemblyName,
             handlersWithInfo.Count,
             allMiddleware.Count,
             callSites.Length,
-            crossAssemblyHandlers.Count,
+            crossAssemblyHandlerList.Count,
             sw.ElapsedMilliseconds);
     }
 
-    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, Compilation compilation, GeneratorConfiguration configuration, out List<DiagnosticInfo> orderingDiagnostics)
+    private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, GeneratorConfiguration configuration, out List<DiagnosticInfo> orderingDiagnostics)
     {
         orderingDiagnostics = [];
         var applicable = new List<MiddlewareInfo>();

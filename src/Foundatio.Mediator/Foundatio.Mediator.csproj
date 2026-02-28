@@ -9,6 +9,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RootNamespace>Foundatio.Mediator</RootNamespace>
     <IsRoslynComponent>true</IsRoslynComponent>
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeBuildOutput>false</IncludeBuildOutput>
   </PropertyGroup>

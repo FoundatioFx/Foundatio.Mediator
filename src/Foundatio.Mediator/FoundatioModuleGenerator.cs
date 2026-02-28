@@ -10,10 +10,12 @@ internal static class FoundatioModuleGenerator
     /// This attribute is used by MetadataMiddlewareScanner to discover middleware in referenced assemblies.
     /// Also generates the AddHandlers extension method for DI registration.
     /// </summary>
-    public static void Execute(SourceProductionContext context, Compilation compilation, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration)
+    public static void Execute(SourceProductionContext context, string assemblyName, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration)
     {
-        var assemblyName = compilation.AssemblyName?.ToIdentifier() ?? Guid.NewGuid().ToString("N").Substring(0, 10);
-        var className = $"{assemblyName}_MediatorHandlers";
+        var safeAssemblyName = assemblyName.ToIdentifier();
+        if (string.IsNullOrEmpty(safeAssemblyName))
+            safeAssemblyName = Guid.NewGuid().ToString("N").Substring(0, 10);
+        var className = $"{safeAssemblyName}_MediatorHandlers";
         const string hintName = "_FoundatioModule.cs";
 
         var source = new IndentedStringBuilder();

@@ -16,10 +16,10 @@ internal static class EndpointGenerator
         List<HandlerInfo> handlers,
         EndpointDefaultsInfo endpointDefaults,
         GeneratorConfiguration configuration,
-        Compilation compilation)
+        CompilationInfo compilationInfo)
     {
         // Check if the compilation supports minimal APIs
-        if (!SupportsMinimalApis(compilation))
+        if (!compilationInfo.SupportsMinimalApis)
             return;
 
         // Filter handlers that should generate endpoints based on discovery mode
@@ -29,18 +29,8 @@ internal static class EndpointGenerator
             return;
 
         // Generate the endpoint registration code
-        var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilation);
+        var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
         context.AddSource("_MediatorEndpoints.g.cs", source);
-    }
-
-    /// <summary>
-    /// Checks if the compilation references ASP.NET Core minimal APIs.
-    /// </summary>
-    private static bool SupportsMinimalApis(Compilation compilation)
-    {
-        // Check for IEndpointRouteBuilder which is the key type for minimal APIs
-        var endpointRouteBuilder = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Routing.IEndpointRouteBuilder");
-        return endpointRouteBuilder != null;
     }
 
     /// <summary>
@@ -63,21 +53,21 @@ internal static class EndpointGenerator
     /// <summary>
     /// Generates the complete endpoint registration source code.
     /// </summary>
-    private static string GenerateEndpointCode(List<HandlerInfo> handlers, EndpointDefaultsInfo endpointDefaults, GeneratorConfiguration configuration, Compilation compilation)
+    private static string GenerateEndpointCode(List<HandlerInfo> handlers, EndpointDefaultsInfo endpointDefaults, GeneratorConfiguration configuration, CompilationInfo compilationInfo)
     {
         var source = new IndentedStringBuilder();
 
         source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.g.cs");
 
         // Check for available ASP.NET Core features
-        bool hasAsParametersAttribute = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.AsParametersAttribute") != null;
-        bool hasFromBodyAttribute = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.FromBodyAttribute") != null;
-        bool hasWithOpenApi = HasWithOpenApiExtension(compilation);
+        bool hasAsParametersAttribute = compilationInfo.HasAsParametersAttribute;
+        bool hasFromBodyAttribute = compilationInfo.HasFromBodyAttribute;
+        bool hasWithOpenApi = compilationInfo.HasWithOpenApi;
 
         // Get suffix from configuration or fall back to assembly name
         var safeSuffix = !string.IsNullOrEmpty(configuration.ProjectName)
             ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
-            : (compilation.AssemblyName ?? "Unknown").Replace(".", "_").Replace("-", "_").ToIdentifier();
+            : compilationInfo.AssemblyName.Replace(".", "_").Replace("-", "_").ToIdentifier();
 
         source.AppendLine("""
             using Microsoft.AspNetCore.Builder;
@@ -670,16 +660,6 @@ internal static class EndpointGenerator
     {
         // The route is already stored as a relative route
         return endpoint.Route;
-    }
-
-    /// <summary>
-    /// Checks if the compilation has the WithOpenApi extension method.
-    /// </summary>
-    private static bool HasWithOpenApiExtension(Compilation compilation)
-    {
-        // Check for OpenApiRouteHandlerBuilderExtensions
-        var extensionType = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions");
-        return extensionType != null;
     }
 
     /// <summary>

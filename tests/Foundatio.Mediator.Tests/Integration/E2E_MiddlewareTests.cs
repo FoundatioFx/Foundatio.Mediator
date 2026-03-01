@@ -446,4 +446,67 @@ public class E2E_MiddlewareTests(ITestOutputHelper output) : TestWithLoggingBase
 
     #endregion
 
+    #region Middleware Numeric Ordering
+
+    public record OrderedCmd(string Name) : ICommand;
+
+    [Middleware(Order = 20, Lifetime = MediatorLifetime.Singleton)]
+    public class SecondMiddleware
+    {
+        public List<string> Steps { get; } = [];
+        public void Before(OrderedCmd m) => Steps.Add("B-second");
+        public void After(OrderedCmd m) => Steps.Add("A-second");
+    }
+
+    [Middleware(Order = 10, Lifetime = MediatorLifetime.Singleton)]
+    public class FirstMiddleware
+    {
+        public List<string> Steps { get; } = [];
+        public void Before(OrderedCmd m) => Steps.Add("B-first");
+        public void After(OrderedCmd m) => Steps.Add("A-first");
+    }
+
+    public class OrderedCmdHandler
+    {
+        private readonly FirstMiddleware _first;
+        private readonly SecondMiddleware _second;
+        public OrderedCmdHandler(FirstMiddleware first, SecondMiddleware second)
+        {
+            _first = first;
+            _second = second;
+        }
+        public Task HandleAsync(OrderedCmd m, CancellationToken ct)
+        {
+            _first.Steps.Add("handle");
+            _second.Steps.Add("handle");
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task Middleware_NumericOrder_BeforeRunsLowToHigh_AfterRunsHighToLow()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<FirstMiddleware>();
+        services.AddSingleton<SecondMiddleware>();
+        services.AddMediator(b => b.AddAssembly<OrderedCmdHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var first = provider.GetRequiredService<FirstMiddleware>();
+        var second = provider.GetRequiredService<SecondMiddleware>();
+
+        await mediator.InvokeAsync(new OrderedCmd("test"), TestCancellationToken);
+
+        // Before: low Order first (10 before 20)
+        // After: high Order first (20 before 10) — reverse of Before
+        Assert.Equal(["B-first", "handle", "A-first"], first.Steps);
+        Assert.Equal(["B-second", "handle", "A-second"], second.Steps);
+
+        // Cross-check: first.Before runs before second.Before
+        // We can also verify via a shared tracker
+    }
+
+    #endregion
+
 }

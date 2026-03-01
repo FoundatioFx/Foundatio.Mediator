@@ -1,11 +1,141 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
 public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTestBase(output)
 {
     private static readonly MediatorGenerator Gen = new();
+
+    // ── Middleware diagnostics ────────────────────────────────────────────
+
+    [Fact]
+    public void FMED001_MultipleBeforeMethodsInMiddleware()
+    {
+        var src = """
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class BadMiddleware
+			{
+				public void Before(Msg m) { }
+				public void BeforeAsync(Msg m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED001" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    [Fact]
+    public void FMED002_MultipleAfterMethodsInMiddleware()
+    {
+        var src = """
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class BadMiddleware
+			{
+				public void Before(Msg m) { }
+				public void After(Msg m) { }
+				public void AfterAsync(Msg m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED002" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    [Fact]
+    public void FMED003_MultipleFinallyMethodsInMiddleware()
+    {
+        var src = """
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class BadMiddleware
+			{
+				public void Before(Msg m) { }
+				public void Finally(Msg m) { }
+				public void FinallyAsync(Msg m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED003" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    [Fact]
+    public void FMED004_MixedStaticAndInstanceMiddlewareMethods()
+    {
+        var src = """
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class BadMiddleware
+			{
+				public static void Before(Msg m) { }
+				public void After(Msg m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED004" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    [Fact]
+    public void FMED005_MiddlewareMessageTypeMismatch()
+    {
+        var src = """
+			using Foundatio.Mediator;
+
+			public record MsgA;
+			public record MsgB;
+			public class MsgAHandler { public void Handle(MsgA m) { } }
+
+			public class BadMiddleware
+			{
+				public void Before(MsgA m) { }
+				public void After(MsgB m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED005" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    [Fact]
+    public void FMED011_MultipleExecuteMethodsInMiddleware()
+    {
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class BadMiddleware
+			{
+				public Task ExecuteAsync(Msg m, HandlerExecutionDelegate next, CancellationToken ct)
+					=> next();
+				public Task ExecuteAsync(Msg m, HandlerExecutionDelegate next)
+					=> next();
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED011" && d.GetMessage().Contains("BadMiddleware"));
+    }
+
+    // ── Call-site diagnostics ──────────────────────────────────────────────
 
     [Fact]
     public void FMED007_MultipleHandlersForInvoke()
@@ -193,7 +323,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         // Local handler for the same message type
         var consumerSource = """
@@ -244,7 +374,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         // Consumer using sync Invoke on async handler
         var consumerSource = """
@@ -266,47 +396,5 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
         var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
 
         Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
-    }
-
-    private static MetadataReference CreateHandlerAssembly(string source)
-    {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
-
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-        };
-
-        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
-        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
-
-        if (File.Exists(runtimePath))
-            references.Add(MetadataReference.CreateFromFile(runtimePath));
-        if (File.Exists(netstandardPath))
-            references.Add(MetadataReference.CreateFromFile(netstandardPath));
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName: "HandlerAssembly",
-            syntaxTrees: [syntaxTree],
-            references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using var ms = new System.IO.MemoryStream();
-        var emitResult = compilation.Emit(ms);
-
-        if (!emitResult.Success)
-        {
-            var errors = string.Join("\n", emitResult.Diagnostics
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .Select(d => d.ToString()));
-            throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
-        }
-
-        ms.Seek(0, System.IO.SeekOrigin.Begin);
-        return MetadataReference.CreateFromStream(ms);
     }
 }

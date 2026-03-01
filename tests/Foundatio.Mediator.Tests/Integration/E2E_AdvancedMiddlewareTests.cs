@@ -51,6 +51,47 @@ public class E2E_AdvancedMiddlewareTests(ITestOutputHelper output) : TestWithLog
         Assert.Equal("Handler error: test", mw.CapturedException.Message);
     }
 
+    public record ThrowingAfterTestCommand(string Name) : ICommand;
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
+    public class AfterSkipTrackingMiddleware
+    {
+        public bool BeforeCalled { get; private set; }
+        public bool AfterCalled { get; private set; }
+        public bool FinallyCalled { get; private set; }
+
+        public void Before(ThrowingAfterTestCommand msg) => BeforeCalled = true;
+        public void After(ThrowingAfterTestCommand msg) => AfterCalled = true;
+        public void Finally(ThrowingAfterTestCommand msg, Exception? ex) => FinallyCalled = true;
+    }
+
+    public class ThrowingAfterTestCommandHandler
+    {
+        public Task HandleAsync(ThrowingAfterTestCommand cmd, CancellationToken ct)
+        {
+            throw new InvalidOperationException("boom");
+        }
+    }
+
+    [Fact]
+    public async Task ExceptionPropagation_AfterIsNotCalled_FinallyIsCalled()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<AfterSkipTrackingMiddleware>();
+        services.AddMediator(b => b.AddAssembly<ThrowingAfterTestCommandHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<AfterSkipTrackingMiddleware>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => mediator.InvokeAsync(new ThrowingAfterTestCommand("test"), TestCancellationToken).AsTask());
+
+        Assert.True(mw.BeforeCalled, "Before should have been called");
+        Assert.False(mw.AfterCalled, "After should NOT be called when handler throws");
+        Assert.True(mw.FinallyCalled, "Finally should always be called");
+    }
+
     #endregion
 
     #region HandlerResult.ShortCircuit

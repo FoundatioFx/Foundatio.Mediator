@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
@@ -24,7 +23,7 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
             }
             """;
 
-        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+        var middlewareCompilation = CreateAssembly(middlewareSource, "MiddlewareAssembly");
 
         // Now compile handler that should discover the middleware
         var handlerSource = """
@@ -67,7 +66,7 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
             }
             """;
 
-        var externalMiddlewareCompilation = CreateMiddlewareAssembly(externalMiddlewareSource);
+        var externalMiddlewareCompilation = CreateAssembly(externalMiddlewareSource, "MiddlewareAssembly");
 
         // Handler and local middleware in current assembly
         var handlerSource = """
@@ -120,7 +119,7 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
             }
             """;
 
-        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+        var middlewareCompilation = CreateAssembly(middlewareSource, "MiddlewareAssembly");
 
         var handlerSource = """
             using System.Threading;
@@ -166,7 +165,7 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
             }
             """;
 
-        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+        var middlewareCompilation = CreateAssembly(middlewareSource, "MiddlewareAssembly");
 
         var handlerSource = """
             using System.Threading;
@@ -217,7 +216,7 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
             }
             """;
 
-        var middlewareCompilation = CreateMiddlewareAssembly(middlewareSource);
+        var middlewareCompilation = CreateAssembly(middlewareSource, "MiddlewareAssembly");
 
         var handlerSource = """
             using System.Threading;
@@ -242,46 +241,4 @@ public class CrossAssemblyMiddlewareTests(ITestOutputHelper output) : GeneratorT
         Assert.Contains("SharedMiddleware.PublicMiddleware.After", wrapper.Source);
     }
 
-    private static MetadataReference CreateMiddlewareAssembly(string source)
-    {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
-
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // System.Private.CoreLib
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location), // System.Linq
-            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location), // Foundatio.Mediator.Abstractions
-        };
-
-        // Add reference to System.Runtime and netstandard for base types (Attribute, ValueType, etc.)
-        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
-        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
-
-        if (File.Exists(runtimePath))
-            references.Add(MetadataReference.CreateFromFile(runtimePath));
-        if (File.Exists(netstandardPath))
-            references.Add(MetadataReference.CreateFromFile(netstandardPath));
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName: "MiddlewareAssembly",
-            syntaxTrees: [syntaxTree],
-            references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using var ms = new System.IO.MemoryStream();
-        var emitResult = compilation.Emit(ms);
-
-        if (!emitResult.Success)
-        {
-            var errors = string.Join("\n", emitResult.Diagnostics
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .Select(d => d.ToString()));
-            throw new InvalidOperationException($"Failed to compile middleware assembly:\n{errors}");
-        }
-
-        ms.Seek(0, System.IO.SeekOrigin.Begin);
-        return MetadataReference.CreateFromStream(ms);
-    }
 }

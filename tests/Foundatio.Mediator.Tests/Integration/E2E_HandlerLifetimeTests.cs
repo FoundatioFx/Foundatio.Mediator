@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
-public class E2E_MediatorLifetimeTests(ITestOutputHelper output) : TestWithLoggingBase(output)
+public class E2E_HandlerLifetimeTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     private readonly ITestOutputHelper _output = output;
 

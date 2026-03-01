@@ -248,7 +248,7 @@ public class IncrementalCachingTests
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = GeneratorTestBase.CreateAssembly(handlerSource, "HandlerAssembly");
 
         // Consumer assembly that calls the handler
         var consumerSource = """
@@ -302,7 +302,7 @@ public class IncrementalCachingTests
             }
             """;
 
-        var middlewareAssembly = CreateHandlerAssembly(middlewareSource);
+        var middlewareAssembly = GeneratorTestBase.CreateAssembly(middlewareSource, "HandlerAssembly");
 
         // Consumer assembly with a handler
         var consumerSource = """
@@ -362,8 +362,8 @@ public class IncrementalCachingTests
             }
             """;
 
-        var assembly1 = CreateHandlerAssembly(handlerSource1, "Assembly1");
-        var assembly2 = CreateHandlerAssembly(handlerSource2, "Assembly2");
+        var assembly1 = GeneratorTestBase.CreateAssembly(handlerSource1, "Assembly1");
+        var assembly2 = GeneratorTestBase.CreateAssembly(handlerSource2, "Assembly2");
 
         // Consumer assembly that uses handlers from both assemblies
         var consumerSource = """
@@ -449,7 +449,7 @@ public class IncrementalCachingTests
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = GeneratorTestBase.CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -747,49 +747,7 @@ public class IncrementalCachingTests
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static MetadataReference CreateHandlerAssembly(string source, string? assemblyName = null)
-    {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
 
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Diagnostics.Stopwatch).Assembly.Location)
-        };
-
-        // Add reference to System.Runtime and netstandard for base types
-        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
-        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
-
-        if (File.Exists(runtimePath))
-            references.Add(MetadataReference.CreateFromFile(runtimePath));
-        if (File.Exists(netstandardPath))
-            references.Add(MetadataReference.CreateFromFile(netstandardPath));
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName: assemblyName ?? "HandlerAssembly",
-            syntaxTrees: [syntaxTree],
-            references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using var ms = new MemoryStream();
-        var emitResult = compilation.Emit(ms);
-
-        if (!emitResult.Success)
-        {
-            var errors = string.Join("\n", emitResult.Diagnostics
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .Select(d => d.ToString()));
-            throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
-        }
-
-        ms.Seek(0, SeekOrigin.Begin);
-        return MetadataReference.CreateFromStream(ms);
-    }
 
     #endregion
 

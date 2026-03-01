@@ -11,13 +11,18 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
 {
     protected async Task VerifyGenerated(string source, params IIncrementalGenerator[] generators)
     {
-        await VerifyGenerated(source, null, generators);
+        await VerifyGenerated(source, null, null, generators);
     }
 
     protected async Task VerifyGenerated(string source, AnalyzerConfigOptionsProvider? optionsProvider, params IIncrementalGenerator[] generators)
     {
+        await VerifyGenerated(source, optionsProvider, null, generators);
+    }
+
+    protected async Task VerifyGenerated(string source, AnalyzerConfigOptionsProvider? optionsProvider, MetadataReference[]? additionalReferences, params IIncrementalGenerator[] generators)
+    {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
-        var compilation = CreateCompilation(source, parseOptions);
+        var compilation = CreateCompilation(source, parseOptions, additionalReferences);
 
         var sourceGenerators = generators.Select(g => g.AsSourceGenerator());
         GeneratorDriver driver = CSharpGeneratorDriver.Create(sourceGenerators, additionalTexts: null,
@@ -60,7 +65,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
         IReadOnlyList<(string HintName, string Source)> GeneratedTrees)
         RunGenerator(string source, IIncrementalGenerator[] generators,
             AnalyzerConfigOptionsProvider? optionsProvider = null,
-            MetadataReference[]? additionalReferences = null)
+            MetadataReference[]? additionalReferences = null,
+            bool assertCleanCompilation = false)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
         var compilation = CreateCompilation(source, parseOptions, additionalReferences);
@@ -76,7 +82,80 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             .Select(s => (s.HintName, s.SourceText.ToString()))
             .ToList();
 
+        if (assertCleanCompilation)
+            AssertNoCompilationDiagnostics(outputCompilation);
+
         return (outputCompilation, diagnostics, trees);
+    }
+
+    /// <summary>
+    /// Asserts that the output compilation has no errors or warnings, ensuring the generated
+    /// code compiles cleanly. Filters out known acceptable diagnostics like assembly binding
+    /// redirects (CS1701/CS1702) and nullable annotation context warnings (CS8632).
+    /// </summary>
+    protected static void AssertNoCompilationDiagnostics(Compilation compilation)
+    {
+        // Known acceptable diagnostic IDs to ignore
+        HashSet<string> ignoredIds = ["CS1701", "CS1702", "CS8632"];
+
+        var problems = compilation.GetDiagnostics()
+            .Where(d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
+            .Where(d => !ignoredIds.Contains(d.Id))
+            .ToList();
+
+        if (problems.Count > 0)
+        {
+            var messages = string.Join(Environment.NewLine, problems.Select(d => $"  {d.Severity} {d.Id}: {d.GetMessage()} @ {d.Location}"));
+            Assert.Fail($"Generated code produced {problems.Count} compilation diagnostic(s):{Environment.NewLine}{messages}");
+        }
+    }
+
+    /// <summary>
+    /// Compiles source code into an in-memory assembly that can be used as
+    /// an additional reference for cross-assembly generator tests.
+    /// Use for both handler and middleware cross-assembly scenarios.
+    /// </summary>
+    internal static MetadataReference CreateAssembly(string source, string assemblyName = "TestAssembly")
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
+        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
+
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Diagnostics.Stopwatch).Assembly.Location),
+        };
+
+        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
+        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
+
+        if (File.Exists(runtimePath))
+            references.Add(MetadataReference.CreateFromFile(runtimePath));
+        if (File.Exists(netstandardPath))
+            references.Add(MetadataReference.CreateFromFile(netstandardPath));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: assemblyName,
+            syntaxTrees: [syntaxTree],
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var ms = new MemoryStream();
+        var emitResult = compilation.Emit(ms);
+
+        if (!emitResult.Success)
+        {
+            var errors = string.Join(Environment.NewLine, emitResult.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => d.ToString()));
+            throw new InvalidOperationException($"Failed to compile assembly '{assemblyName}':{Environment.NewLine}{errors}");
+        }
+
+        ms.Seek(0, SeekOrigin.Begin);
+        return MetadataReference.CreateFromStream(ms);
     }
 
     private static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions, MetadataReference[]? additionalReferences = null)
@@ -94,6 +173,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             MetadataReference.CreateFromFile(typeof(System.Diagnostics.Activity).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Exception).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(ValueTask).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(IServiceProvider).Assembly.Location),
         };
 
         // Add additional runtime assemblies for proper type resolution
@@ -104,6 +185,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             "System.Collections.dll",
             "System.Threading.dll",
             "System.Threading.Tasks.dll",
+            "System.ComponentModel.dll",
+            "System.Threading.Tasks.Extensions.dll",
         };
 
         foreach (var assemblyName in additionalAssemblies)

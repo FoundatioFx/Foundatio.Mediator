@@ -194,4 +194,110 @@ public class ConventionalDiscoveryToggleTests(ITestOutputHelper output) : Genera
         Assert.Contains(trees, t => t.HintName.Contains("Message2_Handler.g.cs"));
         Assert.Contains(trees, t => t.HintName.Contains("Message3_Handler.g.cs"));
     }
+
+    // ── Consumer convention tests ──────────────────────────────────────────
+
+    [Fact]
+    public void ConsumerSuffix_IsDiscoveredByConvention()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            public record OrderPlaced;
+
+            public class OrderPlacedConsumer
+            {
+                public void Consume(OrderPlaced msg) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.Contains(trees, t => t.HintName.Contains("OrderPlaced_Handler.g.cs"));
+    }
+
+    [Fact]
+    public void ConsumerSuffix_NotDiscoveredWhenExplicitOnly()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(HandlerDiscovery = HandlerDiscovery.Explicit)]
+
+            public record OrderPlaced;
+
+            public class OrderPlacedConsumer
+            {
+                public void Consume(OrderPlaced msg) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("OrderPlaced_Handler.g.cs"));
+    }
+
+    [Theory]
+    [InlineData("Consume")]
+    [InlineData("ConsumeAsync")]
+    [InlineData("Consumes")]
+    [InlineData("ConsumesAsync")]
+    public void ConsumerMethodNames_AreDiscovered(string methodName)
+    {
+        bool isAsync = methodName.EndsWith("Async");
+        string returnType = isAsync ? "Task" : "void";
+        string src = $$"""
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public record EventMsg;
+
+            public class EventMsgHandler
+            {
+                public {{returnType}} {{methodName}}(EventMsg msg)
+                {{(isAsync ? "=> Task.CompletedTask;" : "{ }")}}
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.Contains(trees, t => t.HintName.Contains("EventMsg_Handler.g.cs"));
+    }
+
+    // ── FoundatioIgnore attribute tests ────────────────────────────────────
+
+    [Fact]
+    public void FoundatioIgnore_OnClass_PreventsDiscovery()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            public record Msg;
+
+            [FoundatioIgnore]
+            public class MsgHandler
+            {
+                public void Handle(Msg m) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("Msg_Handler.g.cs"));
+    }
+
+    [Fact]
+    public void FoundatioIgnore_OnMethod_PreventsDiscovery()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            public record Msg;
+
+            public class MsgHandler
+            {
+                [FoundatioIgnore]
+                public void Handle(Msg m) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("Msg_Handler.g.cs"));
+    }
 }

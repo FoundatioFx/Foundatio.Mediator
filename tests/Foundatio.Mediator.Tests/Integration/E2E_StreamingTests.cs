@@ -117,4 +117,56 @@ public class E2E_StreamingTests(ITestOutputHelper output) : TestWithLoggingBase(
 
         Assert.Equal(["item-0", "item-1", "item-2"], items);
     }
+
+    // ── Streaming with middleware ──────────────────────────────────────────
+
+    public record StreamWithMiddlewareQuery(int Count);
+
+    [Middleware(Lifetime = MediatorLifetime.Singleton)]
+    public class StreamMiddleware
+    {
+        public bool BeforeCalled { get; private set; }
+        public bool AfterCalled { get; private set; }
+        public bool FinallyCalled { get; private set; }
+
+        public void Before(StreamWithMiddlewareQuery msg) => BeforeCalled = true;
+        public void After(StreamWithMiddlewareQuery msg) => AfterCalled = true;
+        public void Finally(StreamWithMiddlewareQuery msg) => FinallyCalled = true;
+    }
+
+    public class StreamWithMiddlewareHandler
+    {
+        public async IAsyncEnumerable<int> HandleAsync(
+            StreamWithMiddlewareQuery query,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            for (int i = 0; i < query.Count; i++)
+            {
+                await Task.Yield();
+                yield return i;
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StreamingHandler_WithMiddleware_MiddlewareExecutes()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<StreamMiddleware>();
+        services.AddMediator(b => b.AddAssembly<StreamWithMiddlewareHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var mw = provider.GetRequiredService<StreamMiddleware>();
+
+        var items = new List<int>();
+        await foreach (var item in mediator.Invoke<IAsyncEnumerable<int>>(new StreamWithMiddlewareQuery(3), TestCancellationToken))
+        {
+            items.Add(item);
+        }
+
+        Assert.Equal([0, 1, 2], items);
+        Assert.True(mw.BeforeCalled, "Before middleware should run for streaming handlers");
+        Assert.True(mw.FinallyCalled, "Finally middleware should run for streaming handlers");
+    }
 }

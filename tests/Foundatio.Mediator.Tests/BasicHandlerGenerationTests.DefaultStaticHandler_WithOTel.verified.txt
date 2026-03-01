@@ -38,9 +38,9 @@ public static class Tests_MediatorHandlers
         services.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Ping)),
                 "PingHandler_Ping_Handler",
-                PingHandler_Ping_Handler.UntypedHandleAsync,
-                null,
-                true,
+                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(PingHandler_Ping_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                PingHandler_Ping_Handler.UntypedHandle,
+                false,
                 2147483647));
 
     }
@@ -262,7 +262,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class PingHandler_Ping_Handler
 {
-    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
@@ -274,7 +274,7 @@ public static class PingHandler_Ping_Handler
         try
         {
             var handlerInstance = GetOrCreateHandler(serviceProvider);
-            result = await handlerInstance.HandleAsync(message, cancellationToken);
+            result = handlerInstance.Handle(message);
         }
         catch (Exception ex)
         {
@@ -290,7 +290,7 @@ public static class PingHandler_Ping_Handler
         return result;
     }
 
-    public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
+    public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
     {
         var typedMessage = (Ping)message;
         var serviceProvider = (System.IServiceProvider)mediator;
@@ -303,7 +303,7 @@ public static class PingHandler_Ping_Handler
         try
         {
             var handlerInstance = GetOrCreateHandler(serviceProvider);
-            result = await handlerInstance.HandleAsync(typedMessage, cancellationToken);
+            result = handlerInstance.Handle(typedMessage);
         }
         catch (Exception ex)
         {

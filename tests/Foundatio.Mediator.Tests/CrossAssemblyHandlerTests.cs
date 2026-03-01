@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace Foundatio.Mediator.Tests;
 
@@ -29,7 +28,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         // Consumer assembly that calls the handler
         var consumerSource = """
@@ -89,7 +88,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -143,7 +142,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -196,7 +195,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -258,7 +257,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -324,7 +323,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -380,7 +379,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -431,7 +430,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var externalAssembly = CreateHandlerAssembly(externalHandlerSource);
+        var externalAssembly = CreateAssembly(externalHandlerSource, "HandlerAssembly");
 
         // Local handler for the same message type
         var localSource = """
@@ -495,7 +494,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -549,7 +548,7 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var handlerAssembly = CreateHandlerAssembly(handlerSource);
+        var handlerAssembly = CreateAssembly(handlerSource, "HandlerAssembly");
 
         var consumerSource = """
             using System.Threading;
@@ -578,48 +577,4 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
         Assert.Null(interceptors.HintName);
     }
 
-    private static MetadataReference CreateHandlerAssembly(string source)
-    {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
-
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-        };
-
-        // Add reference to System.Runtime and netstandard for base types
-        var coreLibDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        var runtimePath = Path.Combine(coreLibDir, "System.Runtime.dll");
-        var netstandardPath = Path.Combine(coreLibDir, "netstandard.dll");
-
-        if (File.Exists(runtimePath))
-            references.Add(MetadataReference.CreateFromFile(runtimePath));
-        if (File.Exists(netstandardPath))
-            references.Add(MetadataReference.CreateFromFile(netstandardPath));
-
-        // Compile without running the generator - the cross-assembly scanner
-        // discovers handlers from the compiled types, not generated wrappers
-        var compilation = CSharpCompilation.Create(
-            assemblyName: "HandlerAssembly",
-            syntaxTrees: [syntaxTree],
-            references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        using var ms = new System.IO.MemoryStream();
-        var emitResult = compilation.Emit(ms);
-
-        if (!emitResult.Success)
-        {
-            var errors = string.Join("\n", emitResult.Diagnostics
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .Select(d => d.ToString()));
-            throw new InvalidOperationException($"Failed to compile handler assembly:\n{errors}");
-        }
-
-        ms.Seek(0, System.IO.SeekOrigin.Begin);
-        return MetadataReference.CreateFromStream(ms);
-    }
 }

@@ -385,19 +385,6 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
 
         var (compilation, diagnostics, trees) = RunGenerator(src, [new MediatorGenerator()]);
 
-        // Debug: Check the assembly reference path
-        var mediatorAssemblyPath = typeof(IMediator).Assembly.Location;
-        var middlewareAttrType = typeof(MiddlewareAttribute);
-        var props = middlewareAttrType.GetProperties().Select(p => p.Name).ToList();
-        var explicitOnlyProp = middlewareAttrType.GetProperty("ExplicitOnly");
-
-        // Output debug diagnostics
-        var debugDiags = diagnostics.Where(d => d.Id.Contains("DEBUG")).ToList();
-        if (debugDiags.Any())
-        {
-            throw new Exception($"Assembly: {mediatorAssemblyPath}\nProps: [{string.Join(", ", props)}]\nExplicitOnly: {explicitOnlyProp?.Name ?? "null"}\n\nDEBUG DIAGNOSTICS:\n{string.Join("\n", debugDiags.Select(d => d.GetMessage()))}");
-        }
-
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
 
         // ExplicitOnly middleware should NOT be applied

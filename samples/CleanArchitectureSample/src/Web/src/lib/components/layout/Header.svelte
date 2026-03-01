@@ -5,28 +5,28 @@
 
 <header class="bg-white shadow-sm border-b border-gray-200">
   <div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex h-16 justify-between items-center">
+    <div class="flex h-12 justify-between items-center">
       <div class="flex items-center">
         <a href="/" class="text-xl font-bold text-gray-900">
           Clean Architecture
         </a>
       </div>
 
-      <nav class="hidden md:flex space-x-8">
+      <nav class="hidden md:flex items-stretch space-x-8 self-stretch -mb-px">
         <!-- Public nav links - always visible -->
         <a
           href="/"
-          class="text-sm font-medium transition-colors {$page.url.pathname === '/'
-            ? 'text-blue-600'
-            : 'text-gray-500 hover:text-gray-900'}"
+          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname === '/'
+            ? 'border-blue-500 text-blue-600'
+            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
         >
           Dashboard
         </a>
         <a
           href="/products"
-          class="text-sm font-medium transition-colors {$page.url.pathname.startsWith('/products')
-            ? 'text-blue-600'
-            : 'text-gray-500 hover:text-gray-900'}"
+          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/products')
+            ? 'border-blue-500 text-blue-600'
+            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
         >
           Products
         </a>
@@ -35,17 +35,17 @@
         {#if auth.isAuthenticated}
           <a
             href="/orders"
-            class="text-sm font-medium transition-colors {$page.url.pathname.startsWith('/orders')
-              ? 'text-blue-600'
-              : 'text-gray-500 hover:text-gray-900'}"
+            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/orders')
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
           >
             Orders
           </a>
           <a
             href="/reports"
-            class="text-sm font-medium transition-colors {$page.url.pathname.startsWith('/reports')
-              ? 'text-blue-600'
-              : 'text-gray-500 hover:text-gray-900'}"
+            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/reports')
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
           >
             Reports
           </a>
@@ -55,7 +55,7 @@
           href="/scalar/v1"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-1"
+          class="inline-flex items-center gap-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-900 transition-colors"
         >
           API Docs
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -80,12 +80,14 @@
           </button>
         </div>
       {:else}
-        <a
-          href="/login"
-          class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          Sign in
-        </a>
+        <div class="flex items-center">
+          <a
+            href="/login"
+            class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            Sign in
+          </a>
+        </div>
       {/if}
     </div>
   </div>

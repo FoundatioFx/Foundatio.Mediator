@@ -1,26 +1,42 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using Foundatio.Mediator;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Middleware;
 
 /// <summary>
-/// Execute middleware that caches handler results keyed by message value.
+/// Execute middleware that caches handler results using .NET's <see cref="IMemoryCache"/>.
 /// Only applies to handlers decorated with <see cref="CachedAttribute"/> (ExplicitOnly = true).
-/// Because C# records use value equality, identical query messages produce cache hits automatically.
+/// Because C# records use value equality, identical query messages produce the same cache key automatically.
 /// </summary>
 [Middleware(Order = 100, ExplicitOnly = true)]
-public static class CachingMiddleware
+public class CachingMiddleware
 {
-    private static readonly ConcurrentDictionary<object, CacheEntry> Cache = new();
     private static readonly ConcurrentDictionary<MethodInfo, CacheSettings> SettingsCache = new();
+    private static CachingMiddleware? _instance;
 
-    public static async ValueTask<object?> ExecuteAsync(
+    /// <summary>Tracks active cache keys so <see cref="Clear"/> can remove them all.</summary>
+    private readonly ConcurrentDictionary<string, byte> _keys = new();
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<IMediator> _logger;
+
+    public CachingMiddleware(IMemoryCache cache, ILogger<IMediator> logger)
+    {
+        _cache = cache;
+        _logger = logger;
+        _instance = this;
+    }
+
+    /// <summary>Derives a stable string cache key from a message using its type and value-based hash code.</summary>
+    private static string GetCacheKey(object message)
+        => $"mediator:{message.GetType().FullName}:{message.GetHashCode()}";
+
+    public async ValueTask<object?> ExecuteAsync(
         object message,
         HandlerExecutionDelegate next,
-        HandlerExecutionInfo handlerInfo,
-        ILogger<IMediator> logger)
+        HandlerExecutionInfo handlerInfo)
     {
         var settings = SettingsCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
         {
@@ -32,64 +48,48 @@ public static class CachingMiddleware
             };
         });
 
-        // Check for a valid cached entry
-        if (Cache.TryGetValue(message, out var entry))
-        {
-            if (!entry.IsExpired)
-            {
-                logger.LogDebug("CachingMiddleware: Cache HIT for {MessageType}", message.GetType().Name);
-                if (settings.SlidingExpiration)
-                    entry.LastAccessed = DateTime.UtcNow;
-                return entry.Value;
-            }
+        var cacheKey = GetCacheKey(message);
 
-            Cache.TryRemove(message, out _);
-            logger.LogDebug("CachingMiddleware: Cache EXPIRED for {MessageType}", message.GetType().Name);
+        if (_cache.TryGetValue(cacheKey, out var cached))
+        {
+            _logger.LogDebug("CachingMiddleware: Cache HIT for {MessageType}", message.GetType().Name);
+            return cached;
         }
 
         // Cache miss — execute the full pipeline
-        logger.LogDebug("CachingMiddleware: Cache MISS for {MessageType}, executing handler", message.GetType().Name);
+        _logger.LogDebug("CachingMiddleware: Cache MISS for {MessageType}, executing handler", message.GetType().Name);
         var result = await next();
 
-        Cache[message] = new CacheEntry
-        {
-            Value = result,
-            CreatedAt = DateTime.UtcNow,
-            LastAccessed = DateTime.UtcNow,
-            Duration = settings.Duration,
-            SlidingExpiration = settings.SlidingExpiration
-        };
+        var options = new MemoryCacheEntryOptions()
+            .RegisterPostEvictionCallback((key, _, _, _) => _keys.TryRemove((string)key, out _));
 
-        if (Cache.Count > 1000)
-            CleanupExpiredEntries();
+        if (settings.SlidingExpiration)
+            options.SetSlidingExpiration(settings.Duration);
+        else
+            options.SetAbsoluteExpiration(settings.Duration);
+
+        _cache.Set(cacheKey, result, options);
+        _keys.TryAdd(cacheKey, 0);
 
         return result;
     }
 
     /// <summary>Removes a specific message's cached result.</summary>
-    public static void Invalidate(object message) => Cache.TryRemove(message, out _);
-
-    /// <summary>Clears the entire cache.</summary>
-    public static void Clear() => Cache.Clear();
-
-    private static void CleanupExpiredEntries()
+    public static void Invalidate(object message)
     {
-        var expiredKeys = Cache.Where(kvp => kvp.Value.IsExpired).Select(kvp => kvp.Key).ToList();
-        foreach (var key in expiredKeys)
-            Cache.TryRemove(key, out _);
+        if (_instance is not { } instance) return;
+        var key = GetCacheKey(message);
+        instance._cache.Remove(key);
+        instance._keys.TryRemove(key, out _);
     }
 
-    private sealed class CacheEntry
+    /// <summary>Clears all mediator-cached entries.</summary>
+    public static void Clear()
     {
-        public object? Value { get; init; }
-        public DateTime CreatedAt { get; init; }
-        public DateTime LastAccessed { get; set; }
-        public TimeSpan Duration { get; init; }
-        public bool SlidingExpiration { get; init; }
-
-        public bool IsExpired => SlidingExpiration
-            ? DateTime.UtcNow - LastAccessed > Duration
-            : DateTime.UtcNow - CreatedAt > Duration;
+        if (_instance is not { } instance) return;
+        foreach (var key in instance._keys.Keys)
+            instance._cache.Remove(key);
+        instance._keys.Clear();
     }
 
     private sealed class CacheSettings

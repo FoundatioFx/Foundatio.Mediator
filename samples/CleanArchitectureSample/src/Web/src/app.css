@@ -3,6 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Prevent layout shift when scrollbar appears/disappears between pages */
+html {
+  scrollbar-gutter: stable;
+}
+
 :root {
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
@@ -82,4 +87,18 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Row highlight animation for real-time SignalR updates */
+@keyframes row-flash {
+  from {
+    background-color: rgb(254 249 195);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.row-highlight {
+  animation: row-flash 2s ease-out forwards;
 }

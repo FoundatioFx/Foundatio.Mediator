@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import { ordersApi } from '$lib/api';
   import { OrderList } from '$lib/components/orders';
   import { AuthGuard } from '$lib/components/layout';
@@ -8,10 +9,55 @@
   import { signalr } from '$lib/stores/signalr.svelte';
   import type { Order } from '$lib/types/order';
 
-  let ordersPromise = $state(ordersApi.list());
+  let orders = $state<Order[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  let highlightedIds = $state(new Set<string>());
+  let highlightTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  function refresh() {
-    ordersPromise = ordersApi.list();
+  function highlightItem(id: string) {
+    const existing = highlightTimers.get(id);
+    if (existing) clearTimeout(existing);
+
+    highlightedIds = new Set([...highlightedIds, id]);
+
+    highlightTimers.set(
+      id,
+      setTimeout(() => {
+        const next = new Set(highlightedIds);
+        next.delete(id);
+        highlightedIds = next;
+        highlightTimers.delete(id);
+      }, 2500)
+    );
+  }
+
+  async function loadOrders() {
+    try {
+      const result = await ordersApi.list();
+      if (result.data) {
+        orders = result.data;
+        error = null;
+      } else {
+        error = 'Failed to load orders';
+      }
+    } catch (e) {
+      error = (e as Error).message || 'Failed to load orders';
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function refresh() {
+    try {
+      const result = await ordersApi.list();
+      if (result.data) {
+        orders = result.data;
+        error = null;
+      }
+    } catch {
+      // Keep showing current data on background refresh failure
+    }
   }
 
   async function handleDelete(order: Order) {
@@ -20,33 +66,43 @@
     try {
       await ordersApi.delete(order.id);
       toast.success('Order deleted successfully');
-      refresh();
-    } catch (error) {
-      toast.error((error as Error).message || 'Failed to delete order');
+      orders = orders.filter((o) => o.id !== order.id);
+    } catch (e) {
+      toast.error((e as Error).message || 'Failed to delete order');
     }
   }
 
+  // Reload orders whenever the user navigates to this page (including back from edit/create)
+  // Reload on SPA navigations back to this page
+  afterNavigate((nav) => {
+    if (nav.from) loadOrders();
+  });
+
   onMount(() => {
-    // Subscribe to order events for real-time updates
-    const unsubCreated = signalr.onOrderCreated(() => {
+    // Initial data load — afterNavigate may miss the first render when
+    // the layout delays mounting children (e.g. auth check)
+    loadOrders();
+
+    const unsubCreated = signalr.onOrderCreated((event) => {
       toast.success('New order created');
-      refresh();
+      refresh().then(() => highlightItem(event.orderId));
     });
 
-    const unsubUpdated = signalr.onOrderUpdated(() => {
+    const unsubUpdated = signalr.onOrderUpdated((event) => {
       toast.info('Order updated');
-      refresh();
+      refresh().then(() => highlightItem(event.orderId));
     });
 
-    const unsubDeleted = signalr.onOrderDeleted(() => {
+    const unsubDeleted = signalr.onOrderDeleted((event) => {
       toast.info('Order deleted');
-      refresh();
+      orders = orders.filter((o) => o.id !== event.orderId);
     });
 
     return () => {
       unsubCreated();
       unsubUpdated();
       unsubDeleted();
+      highlightTimers.forEach((timer) => clearTimeout(timer));
     };
   });
 </script>
@@ -65,18 +121,14 @@
     </div>
   </div>
 
-  {#await ordersPromise}
+  {#if loading}
     <div class="flex justify-center py-12">
       <Spinner size="lg" />
     </div>
-  {:then result}
-    {#if result.data}
-      <OrderList orders={result.data} ondelete={handleDelete} />
-    {:else}
-      <Alert type="error" message="Failed to load orders" />
-    {/if}
-  {:catch error}
-    <Alert type="error" message={error.message || 'Failed to load orders'} />
-  {/await}
+  {:else if error}
+    <Alert type="error" message={error} />
+  {:else}
+    <OrderList {orders} ondelete={handleDelete} {highlightedIds} />
+  {/if}
 </div>
 </AuthGuard>

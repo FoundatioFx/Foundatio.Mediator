@@ -6,9 +6,10 @@
   type Props = {
     orders: Order[];
     ondelete?: (order: Order) => void;
+    highlightedIds?: Set<string>;
   };
 
-  let { orders, ondelete }: Props = $props();
+  let { orders, ondelete, highlightedIds = new Set() }: Props = $props();
 
   function formatCurrency(value: number): string {
     return new Intl.NumberFormat('en-US', {
@@ -55,8 +56,8 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-200 bg-white">
-        {#each orders as order}
-          <tr class="hover:bg-gray-50">
+        {#each orders as order (order.id)}
+          <tr class="hover:bg-gray-50 transition-colors duration-200" class:row-highlight={highlightedIds.has(order.id)}>
             <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
               {order.id}
             </td>

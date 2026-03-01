@@ -6,9 +6,10 @@
   type Props = {
     products: Product[];
     ondelete?: (product: Product) => void;
+    highlightedIds?: Set<string>;
   };
 
-  let { products, ondelete }: Props = $props();
+  let { products, ondelete, highlightedIds = new Set() }: Props = $props();
 
   function formatCurrency(value: number): string {
     return new Intl.NumberFormat('en-US', {
@@ -53,8 +54,8 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-200 bg-white">
-        {#each products as product}
-          <tr class="hover:bg-gray-50">
+        {#each products as product (product.id)}
+          <tr class="hover:bg-gray-50 transition-colors duration-200" class:row-highlight={highlightedIds.has(product.id)}>
             <td class="py-4 pl-4 pr-3">
               <div class="flex flex-col">
                 <span class="text-sm font-medium text-gray-900">{product.name}</span>

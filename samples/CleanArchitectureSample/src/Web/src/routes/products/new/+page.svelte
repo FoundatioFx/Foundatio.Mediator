@@ -5,14 +5,15 @@
   import { AuthGuard } from '$lib/components/layout';
   import { Card } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
-  import type { CreateProductRequest } from '$lib/types/product';
+  import type { CreateProductRequest, UpdateProductRequest } from '$lib/types/product';
 
   let loading = $state(false);
 
-  async function handleSubmit(data: CreateProductRequest) {
+  async function handleSubmit(data: CreateProductRequest | UpdateProductRequest) {
+    const createData = data as CreateProductRequest;
     loading = true;
     try {
-      await productsApi.create(data);
+      await productsApi.create(createData);
       toast.success('Product created successfully');
       goto('/products');
     } catch (error) {

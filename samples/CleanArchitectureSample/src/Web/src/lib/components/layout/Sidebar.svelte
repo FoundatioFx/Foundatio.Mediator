@@ -5,6 +5,8 @@
   const publicItems = [
     { href: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
     { href: '/products', label: 'Products', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+    { href: '/reports/search', label: 'Search Catalog', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
+    { href: '/events', label: 'Live Events', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
   ];
 
   const adminItems = [
@@ -18,9 +20,9 @@
   }
 </script>
 
-<aside class="hidden lg:flex lg:flex-shrink-0">
+<aside class="hidden lg:flex lg:shrink-0">
   <div class="flex flex-col w-64">
-    <div class="flex flex-col flex-grow bg-white border-r border-gray-200 pt-5 pb-4 overflow-y-auto">
+    <div class="flex flex-col grow bg-white border-r border-gray-200 pt-5 pb-4 overflow-y-auto">
       <nav class="mt-5 flex-1 px-2 space-y-1">
         {#each publicItems as item}
           <a
@@ -30,7 +32,7 @@
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
           >
             <svg
-              class="mr-3 h-5 w-5 flex-shrink-0 {isActive(item.href, $page.url.pathname)
+              class="mr-3 h-5 w-5 shrink-0 {isActive(item.href, $page.url.pathname)
                 ? 'text-blue-600'
                 : 'text-gray-400 group-hover:text-gray-500'}"
               fill="none"
@@ -54,7 +56,7 @@
                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
             >
               <svg
-                class="mr-3 h-5 w-5 flex-shrink-0 {isActive(item.href, $page.url.pathname)
+                class="mr-3 h-5 w-5 shrink-0 {isActive(item.href, $page.url.pathname)
                   ? 'text-blue-600'
                   : 'text-gray-400 group-hover:text-gray-500'}"
                 fill="none"
@@ -68,20 +70,6 @@
           {/each}
         {/if}
       </nav>
-
-      <div class="px-2 space-y-1">
-        <div class="border-t border-gray-200 pt-4">
-          <a
-            href="/reports/search"
-            class="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-          >
-            <svg class="mr-3 h-5 w-5 flex-shrink-0 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            Search Catalog
-          </a>
-        </div>
-      </div>
     </div>
   </div>
 </aside>

@@ -35,6 +35,9 @@ public class ProductHandler(IProductRepository repository)
 
         await repository.AddAsync(product, cancellationToken);
 
+        // Invalidate cached queries so the next list/get call returns fresh data
+        CachingMiddleware.Invalidate(new GetProducts());
+
         // Return the product and an event that will be automatically published
         // Other modules can subscribe to ProductCreated without this module knowing about them
         return (product, new ProductCreated(product.Id, command.Name, command.Price, DateTime.UtcNow));
@@ -91,6 +94,11 @@ public class ProductHandler(IProductRepository repository)
 
         await repository.UpdateAsync(updatedProduct, cancellationToken);
 
+        // Invalidate cached queries so the next list/get call returns fresh data
+        CachingMiddleware.Invalidate(new GetProducts());
+        CachingMiddleware.Invalidate(new GetProduct(command.ProductId));
+        CachingMiddleware.Invalidate(new GetProductCatalog());
+
         // Return both events - ProductUpdated always, ProductStockChanged only if stock changed
         var updatedEvent = new ProductUpdated(command.ProductId, updatedProduct.Name, updatedProduct.Price, updatedProduct.Status.ToString(), DateTime.UtcNow);
         var stockEvent = stockChanged
@@ -109,6 +117,11 @@ public class ProductHandler(IProductRepository repository)
 
         if (!deleted)
             return (Result.NotFound($"Product {command.ProductId} not found"), null);
+
+        // Invalidate cached queries so the next list/get call returns fresh data
+        CachingMiddleware.Invalidate(new GetProducts());
+        CachingMiddleware.Invalidate(new GetProduct(command.ProductId));
+        CachingMiddleware.Invalidate(new GetProductCatalog());
 
         return (Result.Success(), new ProductDeleted(command.ProductId, DateTime.UtcNow));
     }

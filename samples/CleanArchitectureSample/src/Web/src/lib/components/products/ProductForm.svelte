@@ -10,14 +10,19 @@
 
   let { product, onsubmit, loading = false }: Props = $props();
 
-  // Initialize form state - captures initial values intentionally
-  const initialProduct = product;
-  let name = $state(initialProduct?.name ?? '');
-  let description = $state(initialProduct?.description ?? '');
-  let price = $state(initialProduct?.price ?? 0);
-  let stockQuantity = $state(initialProduct?.stockQuantity ?? 0);
-  let status = $state<ProductStatus>(initialProduct?.status ?? 'Draft');
+  // svelte-ignore state_referenced_locally
+  let name = $state(product?.name ?? '');
+  // svelte-ignore state_referenced_locally
+  let description = $state(product?.description ?? '');
+  // svelte-ignore state_referenced_locally
+  let price = $state(product?.price ?? 0);
+  // svelte-ignore state_referenced_locally
+  let stockQuantity = $state(product?.stockQuantity ?? 0);
+  // svelte-ignore state_referenced_locally
+  let status = $state<ProductStatus>(product?.status ?? 'Draft');
   let submitted = $state(false);
+  // svelte-ignore state_referenced_locally
+  let isEdit = !!product;
 
   // Validation
   let nameError = $derived(
@@ -27,12 +32,17 @@
     submitted && description.length < 5 ? 'Description must be at least 5 characters' : undefined
   );
   let priceError = $derived(
-    submitted && price <= 0 ? 'Price must be greater than 0' : undefined
+    submitted && toNumber(price) <= 0 ? 'Price must be greater than 0' : undefined
   );
 
   let isValid = $derived(
-    name.length >= 3 && description.length >= 5 && price > 0
+    name.length >= 3 && description.length >= 5 && toNumber(price) > 0
   );
+
+  // HTML number inputs may return strings; coerce to number for safe comparison/serialization
+  function toNumber(v: string | number): number {
+    return typeof v === 'string' ? Number(v) : v;
+  }
 
   const statusOptions: { value: ProductStatus; label: string }[] = [
     { value: 'Draft', label: 'Draft' },
@@ -46,16 +56,10 @@
     submitted = true;
     if (!isValid) return;
 
-    if (initialProduct) {
-      const updates: UpdateProductRequest = {};
-      if (name !== initialProduct.name) updates.name = name;
-      if (description !== initialProduct.description) updates.description = description;
-      if (price !== initialProduct.price) updates.price = price;
-      if (stockQuantity !== initialProduct.stockQuantity) updates.stockQuantity = stockQuantity;
-      if (status !== initialProduct.status) updates.status = status;
-      await onsubmit(updates);
+    if (isEdit) {
+      await onsubmit({ name, description, price: toNumber(price), stockQuantity: toNumber(stockQuantity), status });
     } else {
-      await onsubmit({ name, description, price, stockQuantity });
+      await onsubmit({ name, description, price: toNumber(price), stockQuantity: toNumber(stockQuantity) });
     }
   }
 </script>
@@ -103,13 +107,13 @@
     />
   </div>
 
-  {#if initialProduct}
+  {#if isEdit}
     <Select label="Status" bind:value={status} options={statusOptions} />
   {/if}
 
   <div class="flex gap-2 pt-4">
     <Button type="submit" disabled={loading} {loading}>
-      {initialProduct ? 'Update Product' : 'Create Product'}
+      {isEdit ? 'Update Product' : 'Create Product'}
     </Button>
     <Button type="button" variant="secondary" href="/products">Cancel</Button>
   </div>

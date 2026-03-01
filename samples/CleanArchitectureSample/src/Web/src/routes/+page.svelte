@@ -1,13 +1,58 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { reportsApi } from '$lib/api';
   import { DashboardStats, RecentOrdersWidget, TopProductsWidget } from '$lib/components/reports';
   import { Button, Spinner, Alert } from '$lib/components/ui';
+  import { signalr } from '$lib/stores/signalr.svelte';
+  import type { DashboardReport } from '$lib/types/report';
 
-  let dashboardPromise = $state(reportsApi.dashboard());
+  let dashboard = $state<DashboardReport | null>(null);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
 
-  function refresh() {
-    dashboardPromise = reportsApi.dashboard();
+  async function loadDashboard() {
+    try {
+      const result = await reportsApi.dashboard();
+      if (result.data) {
+        dashboard = result.data;
+        error = null;
+      } else {
+        error = 'Failed to load dashboard data';
+      }
+    } catch (e) {
+      error = (e as Error).message || 'Failed to load dashboard';
+    } finally {
+      loading = false;
+    }
   }
+
+  async function refresh() {
+    try {
+      const result = await reportsApi.dashboard();
+      if (result.data) {
+        dashboard = result.data;
+        error = null;
+      }
+    } catch {
+      // Keep showing current data on background refresh failure
+    }
+  }
+
+  onMount(() => {
+    loadDashboard();
+
+    // Refresh dashboard stats when any entity changes
+    const unsubs = [
+      signalr.onOrderCreated(() => refresh()),
+      signalr.onOrderUpdated(() => refresh()),
+      signalr.onOrderDeleted(() => refresh()),
+      signalr.onProductCreated(() => refresh()),
+      signalr.onProductUpdated(() => refresh()),
+      signalr.onProductDeleted(() => refresh())
+    ];
+
+    return () => unsubs.forEach((unsub) => unsub());
+  });
 </script>
 
 <svelte:head>
@@ -20,22 +65,18 @@
     <Button variant="secondary" onclick={refresh}>Refresh</Button>
   </div>
 
-  {#await dashboardPromise}
+  {#if loading}
     <div class="flex justify-center py-12">
       <Spinner size="lg" />
     </div>
-  {:then result}
-    {#if result.data}
-      <DashboardStats stats={result.data} />
+  {:else if error}
+    <Alert type="error" message={error} />
+  {:else if dashboard}
+    <DashboardStats stats={dashboard} />
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RecentOrdersWidget orders={result.data.recentOrders} />
-        <TopProductsWidget products={result.data.topProducts} />
-      </div>
-    {:else}
-      <Alert type="error" message="Failed to load dashboard data" />
-    {/if}
-  {:catch error}
-    <Alert type="error" message={error.message || 'Failed to load dashboard'} />
-  {/await}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <RecentOrdersWidget orders={dashboard.recentOrders} />
+      <TopProductsWidget products={dashboard.topProducts} />
+    </div>
+  {/if}
 </div>

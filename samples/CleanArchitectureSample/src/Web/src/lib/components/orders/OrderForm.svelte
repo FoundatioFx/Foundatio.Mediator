@@ -10,28 +10,37 @@
 
   let { order, onsubmit, loading = false }: Props = $props();
 
-  // Initialize form state - captures initial values intentionally
-  const initialOrder = order;
-  let customerId = $state(initialOrder?.customerId ?? '');
-  let amount = $state(initialOrder?.amount ?? 0);
-  let description = $state(initialOrder?.description ?? '');
-  let status = $state<OrderStatus>(initialOrder?.status ?? 'Pending');
+  // svelte-ignore state_referenced_locally
+  let customerId = $state(order?.customerId ?? '');
+  // svelte-ignore state_referenced_locally
+  let amount = $state(order?.amount ?? 0);
+  // svelte-ignore state_referenced_locally
+  let description = $state(order?.description ?? '');
+  // svelte-ignore state_referenced_locally
+  let status = $state<OrderStatus>(order?.status ?? 'Pending');
   let submitted = $state(false);
+  // svelte-ignore state_referenced_locally
+  let isEdit = !!order;
 
   // Validation
   let customerIdError = $derived(
-    submitted && !initialOrder && customerId.length < 3 ? 'Customer ID must be at least 3 characters' : undefined
+    submitted && !isEdit && customerId.length < 3 ? 'Customer ID must be at least 3 characters' : undefined
   );
   let amountError = $derived(
-    submitted && amount <= 0 ? 'Amount must be greater than 0' : undefined
+    submitted && toNumber(amount) <= 0 ? 'Amount must be greater than 0' : undefined
   );
   let descriptionError = $derived(
     submitted && description.length < 5 ? 'Description must be at least 5 characters' : undefined
   );
 
   let isValid = $derived(
-    (initialOrder || customerId.length >= 3) && amount > 0 && description.length >= 5
+    (isEdit || customerId.length >= 3) && toNumber(amount) > 0 && description.length >= 5
   );
+
+  // HTML number inputs may return strings; coerce to number for safe comparison/serialization
+  function toNumber(v: string | number): number {
+    return typeof v === 'string' ? Number(v) : v;
+  }
 
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: 'Pending', label: 'Pending' },
@@ -47,20 +56,16 @@
     submitted = true;
     if (!isValid) return;
 
-    if (initialOrder) {
-      const updates: UpdateOrderRequest = {};
-      if (amount !== initialOrder.amount) updates.amount = amount;
-      if (description !== initialOrder.description) updates.description = description;
-      if (status !== initialOrder.status) updates.status = status;
-      await onsubmit(updates);
+    if (isEdit) {
+      await onsubmit({ amount: toNumber(amount), description, status });
     } else {
-      await onsubmit({ customerId, amount, description });
+      await onsubmit({ customerId, amount: toNumber(amount), description });
     }
   }
 </script>
 
 <form onsubmit={handleSubmit} class="space-y-4">
-  {#if !initialOrder}
+  {#if !isEdit}
     <Input
       label="Customer ID"
       bind:value={customerId}
@@ -73,7 +78,7 @@
   {:else}
     <div class="space-y-2">
       <span class="text-sm font-medium leading-none">Customer ID</span>
-      <p class="text-sm text-muted-foreground">{initialOrder.customerId}</p>
+      <p class="text-sm text-muted-foreground">{order?.customerId}</p>
     </div>
   {/if}
 
@@ -98,13 +103,13 @@
     error={descriptionError}
   />
 
-  {#if initialOrder}
+  {#if isEdit}
     <Select label="Status" bind:value={status} options={statusOptions} />
   {/if}
 
   <div class="flex gap-2 pt-4">
     <Button type="submit" disabled={loading} {loading}>
-      {initialOrder ? 'Update Order' : 'Create Order'}
+      {isEdit ? 'Update Order' : 'Create Order'}
     </Button>
     <Button type="button" variant="secondary" href="/orders">Cancel</Button>
   </div>

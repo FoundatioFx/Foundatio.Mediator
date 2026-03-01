@@ -1,4 +1,3 @@
-using Common.Module.Middleware;
 using Common.Module.Services;
 using Foundatio.Resilience;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,8 +8,8 @@ public static class ServiceConfiguration
 {
     public static IServiceCollection AddCommonModule(this IServiceCollection services)
     {
-        // Register middleware (used by the mediator pipeline)
-        services.AddSingleton<ObservabilityMiddleware>();
+        // Register .NET MemoryCache for the caching middleware
+        services.AddMemoryCache();
 
         // Register retry policies used by [Retry(PolicyName = "...")] middleware
         services.AddSingleton<IResiliencePolicyProvider>(

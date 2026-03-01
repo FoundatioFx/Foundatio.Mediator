@@ -4,5 +4,6 @@ using Foundatio.Mediator;
     EnableGenerationCounter = true,
     EndpointDiscovery = EndpointDiscovery.All,
     EndpointRequireAuth = true,
+    MiddlewareLifetime = MediatorLifetime.Singleton,
     ProjectName = "Api"
 )]

@@ -11,18 +11,26 @@ namespace ConsoleSample.Middleware;
 /// Uses the message as the cache key (message type must implement value equality - records work automatically).
 /// </summary>
 [Middleware(Order = 100, ExplicitOnly = true)] // High order = runs close to handler (innermost)
-public static class CachingMiddleware
+public class CachingMiddleware
 {
     private static readonly ConcurrentDictionary<object, CacheEntry> Cache = new();
 
     // Cache settings per handler method
     private static readonly ConcurrentDictionary<MethodInfo, CacheSettings> SettingsCache = new();
+    private static CachingMiddleware? _instance;
 
-    public static async ValueTask<object?> ExecuteAsync(
+    private readonly ILogger<IMediator> _logger;
+
+    public CachingMiddleware(ILogger<IMediator> logger)
+    {
+        _logger = logger;
+        _instance = this;
+    }
+
+    public async ValueTask<object?> ExecuteAsync(
         object message,
         HandlerExecutionDelegate next,
-        HandlerExecutionInfo handlerInfo,
-        ILogger<IMediator> logger)
+        HandlerExecutionInfo handlerInfo)
     {
         // Get cache settings for this handler
         var settings = SettingsCache.GetOrAdd(handlerInfo.HandlerMethod, method =>
@@ -40,7 +48,7 @@ public static class CachingMiddleware
         {
             if (!entry.IsExpired)
             {
-                logger.LogDebug("CachingMiddleware: Cache HIT for {MessageType}", message.GetType().Name);
+                _logger.LogDebug("CachingMiddleware: Cache HIT for {MessageType}", message.GetType().Name);
 
                 // Update access time for sliding expiration
                 if (settings.SlidingExpiration)
@@ -53,11 +61,11 @@ public static class CachingMiddleware
 
             // Entry expired, remove it
             Cache.TryRemove(message, out _);
-            logger.LogDebug("CachingMiddleware: Cache EXPIRED for {MessageType}", message.GetType().Name);
+            _logger.LogDebug("CachingMiddleware: Cache EXPIRED for {MessageType}", message.GetType().Name);
         }
 
         // Cache miss - execute handler
-        logger.LogDebug("CachingMiddleware: Cache MISS for {MessageType}, executing handler", message.GetType().Name);
+        _logger.LogDebug("CachingMiddleware: Cache MISS for {MessageType}, executing handler", message.GetType().Name);
         var result = await next();
 
         // Store in cache

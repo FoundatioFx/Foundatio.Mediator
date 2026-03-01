@@ -39,6 +39,15 @@ public sealed class Result : IResult
     /// <returns>null for non-generic Result.</returns>
     public object? GetValue() => null;
 
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        if (!String.IsNullOrEmpty(Message))
+            return $"Result {{ Status = {Status}, Message = {Message} }}";
+
+        return $"Result {{ Status = {Status} }}";
+    }
+
     /// <summary>
     /// Converts this Result to a Result&lt;T&gt; with the same status and properties but with default value.
     /// </summary>

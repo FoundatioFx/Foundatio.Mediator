@@ -88,12 +88,12 @@ public sealed class HandlerRegistration
     /// <summary>
     /// Fully qualified type names of handlers that this handler must execute before during PublishAsync.
     /// </summary>
-    public string[] OrderBefore { get; }
+    public IReadOnlyList<string> OrderBefore { get; }
 
     /// <summary>
     /// Fully qualified type names of handlers that this handler must execute after during PublishAsync.
     /// </summary>
-    public string[] OrderAfter { get; }
+    public IReadOnlyList<string> OrderAfter { get; }
 }
 
 /// <summary>

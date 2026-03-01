@@ -22,11 +22,15 @@ public static class MediatorExtensions
     /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
     public static IServiceCollection AddMediator(this IServiceCollection services, MediatorConfiguration? configuration = null)
     {
+        // Guard against duplicate registration
+        if (services.Any(sd => sd.ServiceType == typeof(IMediator)))
+            return services;
+
         configuration ??= new MediatorConfiguration();
 
         if (configuration.Assemblies == null)
         {
-            configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !a.FullName.StartsWith("System.")).ToList();
+            configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
         }
 
         // Get the notification publisher from the calling assembly (where AddMediator is called)

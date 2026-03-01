@@ -34,12 +34,6 @@ public sealed class HandlerCategoryAttribute : Attribute
     public bool RequireAuth { get; set; }
 
     /// <summary>
-    /// Gets or sets whether RequireAuth was explicitly set.
-    /// This is used internally to determine if the value should override defaults.
-    /// </summary>
-    internal bool RequireAuthSet { get; set; }
-
-    /// <summary>
     /// Gets or sets the default required roles for all endpoints in this category.
     /// Individual endpoints can override this setting using <see cref="HandlerEndpointAttribute.Roles"/>.
     /// </summary>

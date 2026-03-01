@@ -132,6 +132,8 @@ internal static class MetadataMiddlewareScanner
             int order = 0;
             string[] orderBefore = [];
             string[] orderAfter = [];
+            bool explicitOnly = false;
+            string? lifetime = null;
             var middlewareAttr = classSymbol.GetAttributes()
                 .FirstOrDefault(attr => SymbolEqualityComparer.Default.Equals(attr.AttributeClass, _middlewareAttribute));
 
@@ -148,6 +150,25 @@ internal static class MetadataMiddlewareScanner
                     var orderArg = middlewareAttr.NamedArguments.FirstOrDefault(kvp => kvp.Key == "Order");
                     if (orderArg.Value.Value is int namedOrder)
                         order = namedOrder;
+                }
+
+                // Check ExplicitOnly named argument
+                var explicitOnlyArg = middlewareAttr.NamedArguments.FirstOrDefault(kvp => kvp.Key == "ExplicitOnly");
+                if (explicitOnlyArg.Value.Value is bool explicitOnlyValue)
+                    explicitOnly = explicitOnlyValue;
+
+                // Check Lifetime named argument
+                // MediatorLifetime enum: Default=0, Transient=1, Scoped=2, Singleton=3
+                var lifetimeArg = middlewareAttr.NamedArguments.FirstOrDefault(kvp => kvp.Key == "Lifetime");
+                if (lifetimeArg.Value.Value is int lifetimeValue && lifetimeValue > 0)
+                {
+                    lifetime = lifetimeValue switch
+                    {
+                        1 => "Transient",
+                        2 => "Scoped",
+                        3 => "Singleton",
+                        _ => null
+                    };
                 }
 
                 // Extract OrderBefore and OrderAfter
@@ -185,12 +206,15 @@ internal static class MetadataMiddlewareScanner
                 Order = order,
                 OrderBefore = new(orderBefore),
                 OrderAfter = new(orderAfter),
+                Lifetime = lifetime,
                 BeforeMethod = beforeMethod != null ? CreateMiddlewareMethodInfo(beforeMethod) : null,
                 AfterMethod = afterMethod != null ? CreateMiddlewareMethodInfo(afterMethod) : null,
                 FinallyMethod = finallyMethod != null ? CreateMiddlewareMethodInfo(finallyMethod) : null,
                 ExecuteMethod = executeMethod != null ? CreateMiddlewareMethodInfo(executeMethod) : null,
                 DeclaredAccessibility = classSymbol.DeclaredAccessibility,
                 AssemblyName = classSymbol.ContainingAssembly.Name,
+                IsExplicitlyDeclared = middlewareAttr != null,
+                ExplicitOnly = explicitOnly,
                 HasConstructorParameters = hasConstructorParameters,
                 HasMethodDIParameters = hasMethodDIParameters,
                 Diagnostics = new EquatableArray<DiagnosticInfo>([]) // No diagnostics for metadata-based

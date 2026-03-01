@@ -3,7 +3,7 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Represents a validation error with details about what went wrong.
 /// </summary>
-public class ValidationError
+public sealed class ValidationError
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="ValidationError"/> class.

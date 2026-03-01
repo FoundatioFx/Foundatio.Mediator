@@ -19,7 +19,7 @@ public sealed class Mediator : IMediator, IServiceProvider
     /// <summary>
     /// The notification publisher used by all Mediator instances. Set from MediatorConfiguration NotificationPublisher setting.
     /// </summary>
-    public static INotificationPublisher NotificationPublisher { get; set; } = new ForeachAwaitPublisher();
+    public static INotificationPublisher NotificationPublisher { get; internal set; } = new ForeachAwaitPublisher();
 
     [DebuggerStepThrough]
     public Mediator(IServiceProvider serviceProvider)
@@ -177,7 +177,7 @@ public sealed class Mediator : IMediator, IServiceProvider
                 throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(mt)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(mt)}. Use Publish for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(mt)}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList.First();
             if (handler.IsAsync)
@@ -218,7 +218,7 @@ public sealed class Mediator : IMediator, IServiceProvider
                 throw new InvalidOperationException($"No handler found for message type {MessageTypeKey.Get(key.MessageType)}");
 
             if (handlersList.Count > 1)
-                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(key.MessageType)}. Use Publish for multiple handlers.");
+                throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(key.MessageType)}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList.First();
             if (handler.IsAsync)
@@ -427,7 +427,11 @@ public sealed class Mediator : IMediator, IServiceProvider
 
             return new HandlerRegistration(MessageTypeKey.Get(closedMessageType), wrapperClosed.FullName ?? wrapperClosed.Name, asyncDelegate, syncDelegate, descriptor.IsAsync);
         }
-        catch
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
         {
             return null;
         }
@@ -476,7 +480,11 @@ public sealed class Mediator : IMediator, IServiceProvider
 
             return new HandlerRegistration(MessageTypeKey.Get(closedMessageType), wrapperClosed.FullName ?? wrapperClosed.Name, asyncDelegate, syncDelegate, descriptor.IsAsync);
         }
-        catch
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
         {
             return null;
         }

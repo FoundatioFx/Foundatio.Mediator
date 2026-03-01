@@ -107,6 +107,18 @@ public sealed class Result<T> : IResult
     /// <returns>The result value as an object.</returns>
     public object? GetValue() => Value;
 
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        if (IsSuccess && Value is not null)
+            return $"Result<{typeof(T).Name}> {{ Status = {Status}, Value = {Value} }}";
+
+        if (!String.IsNullOrEmpty(Message))
+            return $"Result<{typeof(T).Name}> {{ Status = {Status}, Message = {Message} }}";
+
+        return $"Result<{typeof(T).Name}> {{ Status = {Status} }}";
+    }
+
     /// <summary>
     /// Creates a successful result with a value.
     /// </summary>

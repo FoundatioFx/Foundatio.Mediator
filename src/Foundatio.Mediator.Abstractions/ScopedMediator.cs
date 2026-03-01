@@ -140,14 +140,14 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
     public void Dispose()
     {
         int remaining = System.Threading.Interlocked.Decrement(ref _refCount);
-        if (remaining == 0 && _ownsScope)
+        if (remaining <= 0 && _ownsScope)
             _scope?.Dispose();
     }
 
     public ValueTask DisposeAsync()
     {
         int remaining = System.Threading.Interlocked.Decrement(ref _refCount);
-        if (remaining == 0 && _ownsScope && _scope is not null)
+        if (remaining <= 0 && _ownsScope && _scope is not null)
         {
             if (_scope is IAsyncDisposable asyncDisposable)
                 return asyncDisposable.DisposeAsync();

@@ -65,12 +65,6 @@ public sealed class HandlerEndpointAttribute : Attribute
     public bool RequireAuth { get; set; }
 
     /// <summary>
-    /// Gets or sets whether RequireAuth was explicitly set.
-    /// This is used internally to determine if the value should override defaults.
-    /// </summary>
-    internal bool RequireAuthSet { get; set; }
-
-    /// <summary>
     /// Gets or sets the required roles for this endpoint.
     /// Multiple roles are treated as "any of" (user must have at least one).
     /// </summary>

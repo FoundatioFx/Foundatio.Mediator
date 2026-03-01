@@ -78,10 +78,36 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
         }
     }
 
+    // Handlers that capture scoped service IDs to verify same-scope sharing
+    public record RootCaptureCommand(List<Guid> CapturedServiceIds) : ICommand;
+    public record NestedCaptureCommand(List<Guid> CapturedServiceIds) : ICommand;
+
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
+    public class RootCaptureCommandHandler(IScopedTestService scopedService, IMediator mediator)
+    {
+        public async Task HandleAsync(RootCaptureCommand command, CancellationToken ct)
+        {
+            command.CapturedServiceIds.Add(scopedService.Id);
+            await mediator.InvokeAsync(new NestedCaptureCommand(command.CapturedServiceIds), ct);
+        }
+    }
+
+    [Handler(Lifetime = MediatorLifetime.Scoped)]
+    public class NestedCaptureCommandHandler(IScopedTestService scopedService)
+    {
+        public Task HandleAsync(NestedCaptureCommand command, CancellationToken ct)
+        {
+            command.CapturedServiceIds.Add(scopedService.Id);
+            return Task.CompletedTask;
+        }
+    }
+
     [Fact]
     public async Task ScopedDependency_SharedWithinSingleRootHandlerInvocation()
     {
         // Arrange
+        var capturedIds = new List<Guid>();
+
         var services = new ServiceCollection();
         services.AddScoped<IScopedTestService, ScopedTestService>();
         services.AddMediator(b => b.AddAssembly<ScopedDependencyTests>());
@@ -89,16 +115,12 @@ public class ScopedDependencyTests(ITestOutputHelper output) : TestWithLoggingBa
         using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
-        // Act
-        await mediator.InvokeAsync(new RootCommand("Test1"), TestCancellationToken);
+        // Act - root handler invokes nested handler within the same scope
+        await mediator.InvokeAsync(new RootCaptureCommand(capturedIds), TestCancellationToken);
 
-        // Assert - Get all recorded activities from any scoped service instances
-        using var scope = provider.CreateScope();
-        var testService = scope.ServiceProvider.GetRequiredService<IScopedTestService>();
-
-        // Since we can't directly access the scoped service that was used in the handler,
-        // we need to verify through a different approach. Let's create a handler that
-        // stores the service instance for verification.
+        // Assert - both handlers should receive the same scoped service instance
+        Assert.Equal(2, capturedIds.Count);
+        Assert.Equal(capturedIds[0], capturedIds[1]);
     }
 
     [Fact]

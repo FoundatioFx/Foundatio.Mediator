@@ -50,9 +50,7 @@ public class LoggingIntegrationTests(ITestOutputHelper output) : TestWithLogging
         }
         else
         {
-            _output.WriteLine("Debug logging may not be properly configured, but handler execution succeeded");
-            // As long as the handler worked, the test passes - logging is a secondary concern
-            Assert.True(true);
+            Assert.Skip("Debug logging middleware is not configured in this test environment; handler execution succeeded");
         }
     }
 

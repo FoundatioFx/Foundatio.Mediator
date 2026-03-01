@@ -13,7 +13,10 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     {
         var aspNetCorePath = GetAspNetCoreAssemblyPath();
         if (aspNetCorePath == null)
-            return [];
+        {
+            Assert.Skip("ASP.NET Core shared framework not found; endpoint generation tests require the ASP.NET Core SDK");
+            return []; // unreachable but satisfies compiler
+        }
 
         var assemblies = new[]
         {
@@ -34,6 +37,12 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             var path = Path.Combine(aspNetCorePath, assembly);
             if (File.Exists(path))
                 refs.Add(MetadataReference.CreateFromFile(path));
+        }
+
+        if (refs.Count == 0)
+        {
+            Assert.Skip("No ASP.NET Core assemblies found in the shared framework directory");
+            return []; // unreachable but satisfies compiler
         }
 
         return refs.ToArray();
@@ -78,10 +87,6 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             """;
 
         var refs = GetAspNetCoreReferences();
-        if (refs.Length == 0)
-        {
-            return;
-        }
 
         var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;

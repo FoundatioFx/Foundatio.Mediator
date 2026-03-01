@@ -283,7 +283,7 @@ public static class EchoHandler_Echo_Handler
         return result;
     }
 
-    [System.Runtime.CompilerServices.InterceptsLocation(1, "ccn5fJOrSNWr7cgkwvKFtYQBAAA=")] // (18,31)
+    [System.Runtime.CompilerServices.InterceptsLocation(1, "<data>")] // (18,31)
     public static System.Threading.Tasks.ValueTask<string> InterceptInvokeAsync0(this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default)
     {
         var typedMessage = (Echo)message;

@@ -65,8 +65,8 @@ public static class MediatorExtensions
             method?.Invoke(null, [services]);
         }
 
-        // Set the notification publisher: calling assembly > first config assembly > default
-        Mediator.NotificationPublisher = publisher ?? new ForeachAwaitPublisher();
+        // Register the notification publisher: calling assembly > first config assembly > default
+        services.TryAddSingleton<INotificationPublisher>(publisher ?? new ForeachAwaitPublisher());
 
         services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
 

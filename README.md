@@ -272,4 +272,4 @@ Other mediator and messaging libraries for .NET:
 
 ## 📄 License
 
-MIT License
+Apache-2.0 License

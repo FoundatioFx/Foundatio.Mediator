@@ -8,7 +8,7 @@ namespace Foundatio.Mediator;
 /// without using AsyncLocal, providing better performance.
 /// Uses reference counting to avoid allocations when passed to nested handlers.
 /// </summary>
-public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, IAsyncDisposable
+public sealed class ScopedMediator : IMediator, IServiceProvider, IServiceProviderAccessor, IDisposable, IAsyncDisposable
 {
     private readonly IMediator _rootMediator;
     private readonly IServiceProvider _scopedServiceProvider;
@@ -28,13 +28,11 @@ public sealed class ScopedMediator : IMediator, IServiceProvider, IDisposable, I
         _refCount = 1;
     }
 
-    /// <summary>
-    /// Gets the scoped service provider. Also available via IServiceProvider.GetService.
-    /// </summary>
-    public IServiceProvider Services => _scopedServiceProvider;
+    /// <inheritdoc />
+    object? IServiceProvider.GetService(Type serviceType) => _scopedServiceProvider.GetService(serviceType);
 
     /// <inheritdoc />
-    public object? GetService(Type serviceType) => _scopedServiceProvider.GetService(serviceType);
+    IServiceProvider IServiceProviderAccessor.ServiceProvider => _scopedServiceProvider;
 
     /// <summary>
     /// Adds a reference to this scoped mediator. Call Release() when done.

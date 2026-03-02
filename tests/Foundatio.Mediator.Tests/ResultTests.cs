@@ -211,12 +211,12 @@ public class ResultTests
     }
 
     [Fact]
-    public void ResultT_ImplicitConversion_ToValue_ReturnsValue()
+    public void ResultT_ImplicitConversion_ToNullableValue_ReturnsValue()
     {
         const string value = "Test value";
         var result = Result<string>.Success(value);
 
-        string extractedValue = result;
+        string? extractedValue = result;
 
         Assert.Equal(value, extractedValue);
     }

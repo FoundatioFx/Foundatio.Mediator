@@ -20,10 +20,12 @@ public sealed class Result<T> : IResult
     };
 
     /// <summary>
-    /// Implicit conversion from Result&lt;T&gt; to T.
+    /// Implicit conversion from Result&lt;T&gt; to T?. Returns the value which may be default/null for non-success results.
+    /// For reference types, this produces a nullable warning if assigned to a non-nullable variable,
+    /// encouraging callers to check <see cref="IsSuccess"/> first.
     /// </summary>
     /// <param name="result">The result to convert.</param>
-    public static implicit operator T(Result<T> result) => result.Value;
+    public static implicit operator T?(Result<T> result) => result.Value;
 
     /// <summary>
     /// Implicit conversion from Result to Result&lt;T&gt;.

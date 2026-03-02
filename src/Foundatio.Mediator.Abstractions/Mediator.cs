@@ -12,30 +12,23 @@ namespace Foundatio.Mediator;
 /// Default implementation of <see cref="IMediator"/>. Dispatches messages to registered handlers
 /// using compile-time generated code for near-direct call performance.
 /// </summary>
-public sealed class Mediator : IMediator, IServiceProvider
+public sealed class Mediator : IMediator, IServiceProvider, IServiceProviderAccessor
 {
     private readonly IServiceProvider _serviceProvider;
-
-    /// <summary>
-    /// The notification publisher used by all Mediator instances. Set from MediatorConfiguration NotificationPublisher setting.
-    /// </summary>
-    public static INotificationPublisher NotificationPublisher { get; internal set; } = new ForeachAwaitPublisher();
+    private readonly INotificationPublisher _notificationPublisher;
 
     [DebuggerStepThrough]
-    public Mediator(IServiceProvider serviceProvider)
+    public Mediator(IServiceProvider serviceProvider, INotificationPublisher notificationPublisher)
     {
         _serviceProvider = serviceProvider;
+        _notificationPublisher = notificationPublisher;
     }
 
-    /// <summary>
-    /// Gets the underlying service provider. This is an implementation detail exposed for source-generated infrastructure.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public IServiceProvider ServiceProvider => _serviceProvider;
+    /// <inheritdoc />
+    object? IServiceProvider.GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 
     /// <inheritdoc />
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public object? GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
+    IServiceProvider IServiceProviderAccessor.ServiceProvider => _serviceProvider;
 
     public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
     {
@@ -76,7 +69,7 @@ public sealed class Mediator : IMediator, IServiceProvider
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
         var handlers = GetAllApplicableHandlers(message);
-        return NotificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
+        return _notificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
     }
 
     /// <summary>
@@ -123,7 +116,7 @@ public sealed class Mediator : IMediator, IServiceProvider
     internal ValueTask PublishAsyncWithMediator(IMediator mediator, object message, CancellationToken cancellationToken)
     {
         var handlers = GetAllApplicableHandlers(message);
-        return NotificationPublisher.PublishAsync(mediator, handlers, message, cancellationToken);
+        return _notificationPublisher.PublishAsync(mediator, handlers, message, cancellationToken);
     }
 
     public void ShowRegisteredHandlers()
@@ -340,8 +333,8 @@ public sealed class Mediator : IMediator, IServiceProvider
 
     private static PublishAsyncDelegate[] BuildPublishHandlersForType(IMediator mediator, Type messageType)
     {
-        // Get the underlying service provider (Mediator wraps it)
-        var serviceProvider = (mediator as Mediator)?.ServiceProvider
+        // Get the underlying service provider (supports IKeyedServiceProvider)
+        var serviceProvider = (mediator as IServiceProviderAccessor)?.ServiceProvider
             ?? (mediator as IServiceProvider)
             ?? throw new InvalidOperationException("Mediator must implement IServiceProvider");
 

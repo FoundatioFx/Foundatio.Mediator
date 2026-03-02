@@ -25,8 +25,8 @@ public static class ValidationMiddleware
         if (MiniValidator.TryValidate(message, out var errors))
             return HandlerResult.Continue();
 
-        var validationErrors = errors.Select(kvp => new ValidationError(kvp.Key, String.Join(", ", kvp.Value))).ToArray();
+        var validationErrors = errors.Select(kvp => ValidationError.Create(kvp.Key, String.Join(", ", kvp.Value))).ToArray();
 
-        return Result.Invalid(validationErrors);
+        return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
     }
 }

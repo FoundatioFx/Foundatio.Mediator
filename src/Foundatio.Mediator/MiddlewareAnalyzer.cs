@@ -306,6 +306,7 @@ internal static class MiddlewareAnalyzer
     private static bool IsMiddlewareBeforeMethod(IMethodSymbol method, Compilation compilation)
     {
         return MiddlewareBeforeMethodNames.Contains(method.Name) &&
+               method.Parameters.Length > 0 &&
                method.DeclaredAccessibility == Accessibility.Public &&
                !method.HasIgnoreAttribute(compilation);
     }
@@ -313,6 +314,7 @@ internal static class MiddlewareAnalyzer
     private static bool IsMiddlewareAfterMethod(IMethodSymbol method, Compilation compilation)
     {
         return MiddlewareAfterMethodNames.Contains(method.Name) &&
+               method.Parameters.Length > 0 &&
                method.DeclaredAccessibility == Accessibility.Public &&
                !method.HasIgnoreAttribute(compilation);
     }
@@ -320,6 +322,7 @@ internal static class MiddlewareAnalyzer
     private static bool IsMiddlewareFinallyMethod(IMethodSymbol method, Compilation compilation)
     {
         return MiddlewareFinallyMethodNames.Contains(method.Name) &&
+               method.Parameters.Length > 0 &&
                method.DeclaredAccessibility == Accessibility.Public &&
                !method.HasIgnoreAttribute(compilation);
     }
@@ -327,6 +330,7 @@ internal static class MiddlewareAnalyzer
     private static bool IsMiddlewareExecuteMethod(IMethodSymbol method, Compilation compilation)
     {
         return MiddlewareExecuteMethodNames.Contains(method.Name) &&
+               method.Parameters.Length > 0 &&
                method.DeclaredAccessibility == Accessibility.Public &&
                !method.HasIgnoreAttribute(compilation);
     }

@@ -326,7 +326,7 @@ public class ValidationMiddleware
     public HandlerResult Before(object message)
     {
         if (!MiniValidator.TryValidate(message, out var errors))
-            return Result.Invalid(errors);
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
 
         return HandlerResult.Continue();
     }

@@ -140,7 +140,7 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     public async Task<Result<CatalogSearchResult>> HandleAsync(SearchCatalog query, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query.SearchTerm))
-            return Result.Invalid(new ValidationError("SearchTerm", "Search term is required"));
+            return Result.Invalid(ValidationError.Create("SearchTerm", "Search term is required"));
 
         logger.LogInformation("Searching catalog for: {SearchTerm}", query.SearchTerm);
 

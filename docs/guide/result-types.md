@@ -185,10 +185,10 @@ public Result<User> Handle(CreateUser command)
     var errors = new List<ValidationError>();
 
     if (string.IsNullOrEmpty(command.Name))
-        errors.Add(new ValidationError("Name", "Name is required"));
+        errors.Add(ValidationError.Create("Name", "Name is required"));
 
     if (command.Age < 0)
-        errors.Add(new ValidationError("Age", "Age must be positive"));
+        errors.Add(ValidationError.Create("Age", "Age must be positive"));
 
     if (errors.Any())
         return Result.Invalid(errors);

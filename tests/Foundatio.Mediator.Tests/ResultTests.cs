@@ -56,7 +56,7 @@ public class ResultTests
             ResultStatus.Conflict => Result.Conflict(),
             ResultStatus.CriticalError => Result.CriticalError("Critical"),
             ResultStatus.Unavailable => Result.Unavailable("Unavailable"),
-            ResultStatus.Invalid => Result.Invalid(new ValidationError("Field", "Error")),
+            ResultStatus.Invalid => Result.Invalid(ValidationError.Create("Field", "Error")),
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
 
@@ -92,7 +92,7 @@ public class ResultTests
             ResultStatus.Conflict => Result<string>.Conflict(),
             ResultStatus.CriticalError => Result<string>.CriticalError("Critical"),
             ResultStatus.Unavailable => Result<string>.Unavailable("Unavailable"),
-            ResultStatus.Invalid => Result<string>.Invalid(new ValidationError("Field", "Error")),
+            ResultStatus.Invalid => Result<string>.Invalid(ValidationError.Create("Field", "Error")),
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
 
@@ -103,7 +103,7 @@ public class ResultTests
     [Fact]
     public void Result_Invalid_WithSingleValidationError_CreatesInvalidResult()
     {
-        var validationError = new ValidationError("Name", "Name is required");
+        var validationError = ValidationError.Create("Name", "Name is required");
         var result = Result.Invalid(validationError);
 
         Assert.False(result.IsSuccess);
@@ -119,8 +119,8 @@ public class ResultTests
     {
         var validationErrors = new[]
         {
-            new ValidationError("Name", "Name is required"),
-            new ValidationError("Email", "Email is invalid")
+            ValidationError.Create("Name", "Name is required"),
+            ValidationError.Create("Email", "Email is invalid")
         };
         var result = Result.Invalid(validationErrors);
 
@@ -137,9 +137,9 @@ public class ResultTests
     {
         var validationErrors = new List<ValidationError>
         {
-            new("Name", "Name is required"),
-            new("Email", "Email is invalid"),
-            new("Age", "Age must be positive")
+            ValidationError.Create("Name", "Name is required"),
+            ValidationError.Create("Email", "Email is invalid"),
+            ValidationError.Create("Age", "Age must be positive")
         };
         var result = Result.Invalid(validationErrors);
 
@@ -240,7 +240,7 @@ public class ResultTests
     [Fact]
     public void ResultT_ImplicitConversion_FromResult_WithValidationErrors_PreservesProperties()
     {
-        var validationError = new ValidationError("Field", "Error message");
+        var validationError = ValidationError.Create("Field", "Error message");
         var originalResult = Result.Invalid(validationError);
 
         Result<string> convertedResult = originalResult;
@@ -288,7 +288,7 @@ public class ResultTests
     [Fact]
     public void ResultT_Invalid_WithSingleValidationError_CreatesInvalidResult()
     {
-        var validationError = new ValidationError("Name", "Name is required");
+        var validationError = ValidationError.Create("Name", "Name is required");
         var result = Result<string>.Invalid(validationError);
 
         Assert.False(result.IsSuccess);
@@ -305,8 +305,8 @@ public class ResultTests
     {
         var validationErrors = new[]
         {
-            new ValidationError("Name", "Name is required"),
-            new ValidationError("Email", "Email is invalid")
+            ValidationError.Create("Name", "Name is required"),
+            ValidationError.Create("Email", "Email is invalid")
         };
         var result = Result<string>.Invalid(validationErrors);
 
@@ -324,9 +324,9 @@ public class ResultTests
     {
         var validationErrors = new List<ValidationError>
         {
-            new("Name", "Name is required"),
-            new("Email", "Email is invalid"),
-            new("Age", "Age must be positive")
+            ValidationError.Create("Name", "Name is required"),
+            ValidationError.Create("Email", "Email is invalid"),
+            ValidationError.Create("Age", "Age must be positive")
         };
         var result = Result<string>.Invalid(validationErrors);
 
@@ -388,12 +388,12 @@ public class ResultTests
     }
 
     [Fact]
-    public void ValidationError_Constructor_SetsPropertiesCorrectly()
+    public void ValidationError_Create_WithIdentifierAndMessage_SetsPropertiesCorrectly()
     {
         const string identifier = "Email";
         const string errorMessage = "Email is required";
 
-        var validationError = new ValidationError(identifier, errorMessage);
+        var validationError = ValidationError.Create(identifier, errorMessage);
 
         Assert.Equal(identifier, validationError.Identifier);
         Assert.Equal(errorMessage, validationError.ErrorMessage);
@@ -402,11 +402,11 @@ public class ResultTests
     }
 
     [Fact]
-    public void ValidationError_ConstructorWithErrorMessageOnly_SetsPropertiesCorrectly()
+    public void ValidationError_Create_WithErrorMessageOnly_SetsPropertiesCorrectly()
     {
         const string errorMessage = "An error occurred";
 
-        var validationError = new ValidationError(errorMessage);
+        var validationError = ValidationError.Create(errorMessage);
 
         Assert.Equal(string.Empty, validationError.Identifier);
         Assert.Equal(errorMessage, validationError.ErrorMessage);
@@ -415,14 +415,14 @@ public class ResultTests
     }
 
     [Fact]
-    public void ValidationError_ConstructorWithFullDetails_SetsPropertiesCorrectly()
+    public void ValidationError_Create_WithFullDetails_SetsPropertiesCorrectly()
     {
         const string identifier = "Email";
         const string errorMessage = "Email is required";
         const string errorCode = "REQUIRED_FIELD";
         const ValidationSeverity severity = ValidationSeverity.Warning;
 
-        var validationError = new ValidationError(identifier, errorMessage, errorCode, severity);
+        var validationError = ValidationError.Create(identifier, errorMessage) with { ErrorCode = errorCode, Severity = severity };
 
         Assert.Equal(identifier, validationError.Identifier);
         Assert.Equal(errorMessage, validationError.ErrorMessage);
@@ -444,7 +444,7 @@ public class ResultTests
     [Fact]
     public void ValidationError_ToString_WithIdentifier_ReturnsFormattedString()
     {
-        var validationError = new ValidationError("Name", "Name is required");
+        var validationError = ValidationError.Create("Name", "Name is required");
         var toString = validationError.ToString();
 
         Assert.Equal("Name: Name is required", toString);
@@ -453,7 +453,7 @@ public class ResultTests
     [Fact]
     public void ValidationError_ToString_WithoutIdentifier_ReturnsErrorMessage()
     {
-        var validationError = new ValidationError("An error occurred");
+        var validationError = ValidationError.Create("An error occurred");
         var toString = validationError.ToString();
 
         Assert.Equal("An error occurred", toString);
@@ -462,9 +462,32 @@ public class ResultTests
     [Fact]
     public void ValidationError_NullParameters_HandledCorrectly()
     {
-        var validationError = new ValidationError(null!, null!);
+        var validationError = ValidationError.Create(null!, null!);
 
         Assert.Equal(string.Empty, validationError.Identifier);
         Assert.Equal(string.Empty, validationError.ErrorMessage);
+    }
+
+    [Fact]
+    public void ValidationError_WithExpression_CreatesModifiedCopy()
+    {
+        var original = ValidationError.Create("Name", "Name is required");
+        var modified = original with { Severity = ValidationSeverity.Warning };
+
+        Assert.Equal("Name", modified.Identifier);
+        Assert.Equal("Name is required", modified.ErrorMessage);
+        Assert.Equal(ValidationSeverity.Warning, modified.Severity);
+        Assert.Equal(ValidationSeverity.Error, original.Severity);
+    }
+
+    [Fact]
+    public void ValidationError_RecordEquality_WorksCorrectly()
+    {
+        var error1 = ValidationError.Create("Name", "Name is required");
+        var error2 = ValidationError.Create("Name", "Name is required");
+        var error3 = ValidationError.Create("Email", "Email is invalid");
+
+        Assert.Equal(error1, error2);
+        Assert.NotEqual(error1, error3);
     }
 }

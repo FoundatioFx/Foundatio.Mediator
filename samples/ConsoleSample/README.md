@@ -72,7 +72,7 @@ public class OrderHandler
     {
         // Validation
         if (string.IsNullOrWhiteSpace(command.CustomerId))
-            return Result<Order>.Invalid(new ValidationError("CustomerId", "Customer ID is required"));
+            return Result<Order>.Invalid(ValidationError.Create("CustomerId", "Customer ID is required"));
 
         // Business logic
         var order = new Order(/* ... */);
@@ -115,7 +115,7 @@ public static class ValidationMiddleware
         if (!MiniValidator.TryValidate(message, out var errors))
         {
             var validationErrors = errors.Select(kvp =>
-                new ValidationError(kvp.Key, string.Join(", ", kvp.Value)))
+                ValidationError.Create(kvp.Key, string.Join(", ", kvp.Value)))
                 .ToArray();
 
             return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));

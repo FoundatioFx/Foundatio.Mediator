@@ -15,12 +15,10 @@ public static class ValidationMiddleware
         if (!MiniValidator.TryValidate(message, out var errors))
         {
             var validationErrors = errors.Select(kvp =>
-                new ValidationError(kvp.Key, string.Join(", ", kvp.Value)))
+                ValidationError.Create(kvp.Key, string.Join(", ", kvp.Value)))
                 .ToArray();
 
-            // short-circuit with validation errors
-            // result is implicitly converted to a short-circuited HandlerResult
-            return Result.Invalid(validationErrors);
+            return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
         }
 
         // continue

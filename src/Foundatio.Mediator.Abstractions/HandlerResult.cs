@@ -43,12 +43,6 @@ public readonly struct HandlerResult
     /// <returns>A strongly-typed handler result that short-circuits execution.</returns>
     public static HandlerResult<T> ShortCircuit<T>(T value) => HandlerResult<T>.ShortCircuit(value);
 
-    /// <summary>
-    /// Implicitly converts any value to a short-circuited HandlerResult.
-    /// </summary>
-    /// <param name="value">The value to short-circuit with.</param>
-    /// <returns>A short-circuited HandlerResult containing the value.</returns>
-    public static implicit operator HandlerResult(Result value) => ShortCircuit(value);
 }
 
 /// <summary>

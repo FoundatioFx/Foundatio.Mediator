@@ -116,7 +116,7 @@ public class ValidationMiddleware
     public HandlerResult Before(object message)
     {
         if (!IsValid(message))
-            return Result.Invalid("Validation failed"); // Short-circuit
+            return HandlerResult.ShortCircuit(Result.Invalid("Validation failed"));
 
         return HandlerResult.Continue();
     }

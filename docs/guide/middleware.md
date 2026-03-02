@@ -305,7 +305,7 @@ public class ValidationMiddleware
     public HandlerResult Before(object message)
     {
         if (!IsValid(message))
-            return Result.Invalid("Validation failed"); // Short-circuit
+            return HandlerResult.ShortCircuit(Result.Invalid("Validation failed"));
 
         return HandlerResult.Continue();
     }
@@ -791,7 +791,7 @@ public class EverythingMiddleware { }
 
 ```csharp
 // ✅ Validation in Before (can short-circuit)
-public HandlerResult Before(object message) => ValidateMessage(message);
+public HandlerResult Before(object message) => HandlerResult.ShortCircuit(ValidateMessage(message));
 
 // ✅ Logging in Finally (always runs)
 public void Finally(object message, Exception? ex) => LogResult(message, ex);

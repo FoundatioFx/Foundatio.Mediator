@@ -7,6 +7,14 @@ namespace Foundatio.Mediator;
 [Generator]
 public sealed class MediatorGenerator : IIncrementalGenerator
 {
+    private static readonly DiagnosticDescriptor InternalGeneratorError = new(
+        "FMED998",
+        "Internal source generator error",
+        "Foundatio.Mediator generator failed: {0}",
+        "Generator",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var generatorConfiguration = context.CompilationProvider
@@ -239,106 +247,124 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         EquatableArray<HandlerInfo> crossAssemblyHandlers,
         SourceProductionContext context)
     {
-        var sw = Stopwatch.StartNew();
-
-        // Filter out conventionally-discovered handlers when conventional discovery is disabled
-        var filteredHandlers = configuration.ConventionalDiscoveryDisabled
-            ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
-            : handlers;
-
-        // Filter out conventionally-discovered middleware when conventional discovery is disabled
-        var filteredMiddleware = configuration.ConventionalDiscoveryDisabled
-            ? middleware.Where(m => m.IsExplicitlyDeclared).ToImmutableArray()
-            : middleware;
-
-        // Combine syntax-based middleware (from current assembly) with metadata-based middleware (from referenced assemblies)
-        var allMiddleware = filteredMiddleware.ToList();
-        allMiddleware.AddRange(crossAssemblyMiddleware);
-
-        var crossAssemblyHandlerList = crossAssemblyHandlers.ToList();
-
-        var callSitesByMessage = callSites.ToList()
-            .Where(cs => !cs.IsPublish)
-            .GroupBy(cs => cs.MessageType)
-            .ToDictionary(g => g.Key, g => g.ToArray());
-
-        // Track which call sites are handled by cross-assembly handlers
-        var crossAssemblyCallSites = new List<CallSiteInfo>();
-        var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlerList.Select(h => h.MessageType.FullName));
-
-        var handlersWithInfo = new List<HandlerInfo>();
-        foreach (var handler in filteredHandlers)
+        try
         {
-            callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
-            var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, configuration, out var orderingDiagnostics);
+            var sw = Stopwatch.StartNew();
 
-            // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
-            var resolvedHandlerLifetime = ResolveEffectiveLifetime(handler.Lifetime, configuration.DefaultHandlerLifetime);
+            // Filter out conventionally-discovered handlers when conventional discovery is disabled
+            var filteredHandlers = configuration.ConventionalDiscoveryDisabled
+                ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
+                : handlers;
 
-            // Merge assembly-level authorization defaults into handler authorization info
-            var mergedAuth = MergeAuthorizationDefaults(handler.Authorization, endpointDefaults);
+            // Filter out conventionally-discovered middleware when conventional discovery is disabled
+            var filteredMiddleware = configuration.ConventionalDiscoveryDisabled
+                ? middleware.Where(m => m.IsExplicitlyDeclared).ToImmutableArray()
+                : middleware;
 
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()), Authorization = mergedAuth });
-        }
+            // Combine syntax-based middleware (from current assembly) with metadata-based middleware (from referenced assemblies)
+            var allMiddleware = filteredMiddleware.ToList();
+            allMiddleware.AddRange(crossAssemblyMiddleware);
 
-        // Collect call sites that need cross-assembly interceptors
-        foreach (var callSite in callSites)
-        {
-            if (callSite.IsPublish)
-                continue;
+            var crossAssemblyHandlerList = crossAssemblyHandlers.ToList();
 
-            // Check if this message type has a handler in a referenced assembly but NOT in the current assembly
-            bool hasLocalHandler = filteredHandlers.Any(h => h.MessageType.FullName == callSite.MessageType.FullName);
-            bool hasCrossAssemblyHandler = crossAssemblyHandlerMessageTypes.Contains(callSite.MessageType.FullName);
+            var callSitesByMessage = callSites.ToList()
+                .Where(cs => !cs.IsPublish)
+                .GroupBy(cs => cs.MessageType)
+                .ToDictionary(g => g.Key, g => g.ToArray());
 
-            if (!hasLocalHandler && hasCrossAssemblyHandler)
+            // Track which call sites are handled by cross-assembly handlers
+            var crossAssemblyCallSites = new List<CallSiteInfo>();
+            var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlerList.Select(h => h.MessageType.FullName));
+
+            var handlersWithInfo = new List<HandlerInfo>();
+            foreach (var handler in filteredHandlers)
             {
-                crossAssemblyCallSites.Add(callSite);
+                callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
+                var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, configuration, out var orderingDiagnostics);
+
+                // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
+                var resolvedHandlerLifetime = ResolveEffectiveLifetime(handler.Lifetime, configuration.DefaultHandlerLifetime);
+
+                // Merge assembly-level authorization defaults into handler authorization info
+                var mergedAuth = MergeAuthorizationDefaults(handler.Authorization, endpointDefaults);
+
+                handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()), Authorization = mergedAuth });
             }
-        }
 
-        // Always generate diagnostics related to call sites, including cross-assembly handler validation
-        HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerList);
-
-        // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
-        if (handlersWithInfo.Count > 0 || middleware.Length > 0)
-        {
-            FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration);
-        }
-
-        // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)
-        bool hasPublishInterceptors = configuration.InterceptorsEnabled && callSites.Any(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter);
-        bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0 || hasPublishInterceptors;
-        if (needsInterceptors)
-        {
-            InterceptsLocationGenerator.Execute(context, configuration);
-        }
-
-        // Generate cross-assembly interceptors if there are call sites to handlers in referenced assemblies
-        if (crossAssemblyCallSites.Count > 0)
-        {
-            CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlerList, crossAssemblyCallSites.ToImmutableArray(), configuration);
-        }
-
-        // Combine local and cross-assembly handlers for cascading message handler lookup
-        var allHandlers = handlersWithInfo.Concat(crossAssemblyHandlerList).ToList();
-
-        // Generate publish interceptors when interceptors are enabled
-        if (configuration.InterceptorsEnabled)
-        {
-            var publishCallSites = callSites.Where(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter).ToList();
-            if (publishCallSites.Count > 0)
+            // Collect call sites that need cross-assembly interceptors
+            foreach (var callSite in callSites)
             {
-                PublishInterceptorGenerator.Execute(context, publishCallSites, allHandlers, configuration);
+                if (callSite.IsPublish)
+                    continue;
+
+                // Check if this message type has a handler in a referenced assembly but NOT in the current assembly
+                bool hasLocalHandler = filteredHandlers.Any(h => h.MessageType.FullName == callSite.MessageType.FullName);
+                bool hasCrossAssemblyHandler = crossAssemblyHandlerMessageTypes.Contains(callSite.MessageType.FullName);
+
+                if (!hasLocalHandler && hasCrossAssemblyHandler)
+                {
+                    crossAssemblyCallSites.Add(callSite);
+                }
             }
-        }
 
-        // Generate endpoint registration for all handlers (local + cross-assembly)
-        // This must happen before the early return so WebApp can generate endpoints for handlers in referenced modules
-        EndpointGenerator.Execute(context, allHandlers, endpointDefaults, configuration, compilationInfo);
+            // Always generate diagnostics related to call sites, including cross-assembly handler validation
+            HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerList);
 
-        if (handlersWithInfo.Count == 0)
-        {
+            // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
+            if (handlersWithInfo.Count > 0 || middleware.Length > 0)
+            {
+                FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration);
+            }
+
+            // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)
+            bool hasPublishInterceptors = configuration.InterceptorsEnabled && callSites.Any(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter);
+            bool needsInterceptors = handlersWithInfo.Count > 0 || crossAssemblyCallSites.Count > 0 || hasPublishInterceptors;
+            if (needsInterceptors)
+            {
+                InterceptsLocationGenerator.Execute(context, configuration);
+            }
+
+            // Generate cross-assembly interceptors if there are call sites to handlers in referenced assemblies
+            if (crossAssemblyCallSites.Count > 0)
+            {
+                CrossAssemblyInterceptorGenerator.Execute(context, crossAssemblyHandlerList, crossAssemblyCallSites.ToImmutableArray(), configuration);
+            }
+
+            // Combine local and cross-assembly handlers for cascading message handler lookup
+            var allHandlers = handlersWithInfo.Concat(crossAssemblyHandlerList).ToList();
+
+            // Generate publish interceptors when interceptors are enabled
+            if (configuration.InterceptorsEnabled)
+            {
+                var publishCallSites = callSites.Where(cs => cs.IsPublish && !cs.MessageType.IsTypeParameter).ToList();
+                if (publishCallSites.Count > 0)
+                {
+                    PublishInterceptorGenerator.Execute(context, publishCallSites, allHandlers, configuration);
+                }
+            }
+
+            // Generate endpoint registration for all handlers (local + cross-assembly)
+            // This must happen before the early return so WebApp can generate endpoints for handlers in referenced modules
+            EndpointGenerator.Execute(context, allHandlers, endpointDefaults, configuration, compilationInfo);
+
+            if (handlersWithInfo.Count == 0)
+            {
+                sw.Stop();
+                GeneratorDiagnostics.LogExecute(
+                    compilationInfo.AssemblyName,
+                    handlersWithInfo.Count,
+                    allMiddleware.Count,
+                    callSites.Length,
+                    crossAssemblyHandlerList.Count,
+                    sw.ElapsedMilliseconds);
+                return;
+            }
+
+            // Generate shared async helpers once per assembly (used by all handlers)
+            HelpersGenerator.Execute(context, configuration);
+
+            HandlerGenerator.Execute(context, handlersWithInfo, allHandlers, configuration);
+
             sw.Stop();
             GeneratorDiagnostics.LogExecute(
                 compilationInfo.AssemblyName,
@@ -347,22 +373,14 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 callSites.Length,
                 crossAssemblyHandlerList.Count,
                 sw.ElapsedMilliseconds);
-            return;
         }
-
-        // Generate shared async helpers once per assembly (used by all handlers)
-        HelpersGenerator.Execute(context, configuration);
-
-        HandlerGenerator.Execute(context, handlersWithInfo, allHandlers, configuration);
-
-        sw.Stop();
-        GeneratorDiagnostics.LogExecute(
-            compilationInfo.AssemblyName,
-            handlersWithInfo.Count,
-            allMiddleware.Count,
-            callSites.Length,
-            crossAssemblyHandlerList.Count,
-            sw.ElapsedMilliseconds);
+        catch (Exception ex)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                InternalGeneratorError,
+                Location.None,
+                ex.ToString()));
+        }
     }
 
     private static EquatableArray<MiddlewareInfo> GetApplicableMiddlewares(ImmutableArray<MiddlewareInfo> middlewares, HandlerInfo handler, GeneratorConfiguration configuration, out List<DiagnosticInfo> orderingDiagnostics)

@@ -3,75 +3,44 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Represents a validation error with details about what went wrong.
 /// </summary>
-public sealed class ValidationError
+public sealed record ValidationError
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationError"/> class.
-    /// </summary>
-    public ValidationError()
-    {
-        ErrorMessage = String.Empty;
-        Identifier = String.Empty;
-        ErrorCode = String.Empty;
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationError"/> class with an error message.
-    /// </summary>
-    /// <param name="errorMessage">The error message.</param>
-    public ValidationError(string errorMessage)
-    {
-        ErrorMessage = errorMessage ?? String.Empty;
-        Identifier = String.Empty;
-        ErrorCode = String.Empty;
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationError"/> class with an identifier and error message.
-    /// </summary>
-    /// <param name="identifier">The field or property identifier that caused the validation error.</param>
-    /// <param name="errorMessage">The error message.</param>
-    public ValidationError(string identifier, string errorMessage)
-    {
-        Identifier = identifier ?? String.Empty;
-        ErrorMessage = errorMessage ?? String.Empty;
-        ErrorCode = String.Empty;
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationError"/> class with full details.
-    /// </summary>
-    /// <param name="identifier">The field or property identifier that caused the validation error.</param>
-    /// <param name="errorMessage">The error message.</param>
-    /// <param name="errorCode">The error code for categorization.</param>
-    /// <param name="severity">The severity level of the validation error.</param>
-    public ValidationError(string identifier, string errorMessage, string errorCode, ValidationSeverity severity)
-    {
-        Identifier = identifier ?? String.Empty;
-        ErrorMessage = errorMessage ?? String.Empty;
-        ErrorCode = errorCode ?? String.Empty;
-        Severity = severity;
-    }
-
-    /// <summary>
-    /// Gets or sets the field or property identifier that caused the validation error.
+    /// Gets the field or property identifier that caused the validation error.
     /// </summary>
     public string Identifier { get; init; } = String.Empty;
 
     /// <summary>
-    /// Gets or sets the error message describing what went wrong.
+    /// Gets the error message describing what went wrong.
     /// </summary>
     public string ErrorMessage { get; init; } = String.Empty;
 
     /// <summary>
-    /// Gets or sets the error code for categorization purposes.
+    /// Gets the error code for categorization purposes.
     /// </summary>
     public string ErrorCode { get; init; } = String.Empty;
 
     /// <summary>
-    /// Gets or sets the severity level of the validation error.
+    /// Gets the severity level of the validation error.
     /// </summary>
     public ValidationSeverity Severity { get; init; } = ValidationSeverity.Error;
+
+    /// <summary>
+    /// Creates a validation error with an error message.
+    /// </summary>
+    /// <param name="errorMessage">The error message.</param>
+    /// <returns>A new validation error.</returns>
+    public static ValidationError Create(string errorMessage)
+        => new() { ErrorMessage = errorMessage ?? String.Empty };
+
+    /// <summary>
+    /// Creates a validation error with an identifier and error message.
+    /// </summary>
+    /// <param name="identifier">The field or property identifier that caused the validation error.</param>
+    /// <param name="errorMessage">The error message.</param>
+    /// <returns>A new validation error.</returns>
+    public static ValidationError Create(string identifier, string errorMessage)
+        => new() { Identifier = identifier ?? String.Empty, ErrorMessage = errorMessage ?? String.Empty };
 
     /// <summary>
     /// Returns a string representation of the validation error.

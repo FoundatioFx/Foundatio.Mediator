@@ -26,7 +26,7 @@ public sealed class MiddlewareAttribute : Attribute
     /// Gets or sets the order in which this middleware should execute.
     /// Lower values execute first in Before methods, last in After/Finally methods.
     /// </summary>
-    public int Order { get; set; }
+    public int Order { get; set; } = int.MaxValue;
 
     /// <summary>
     /// Gets or sets the types that this middleware must execute before.

@@ -127,7 +127,7 @@ public static class MediatorEndpointExtensions_Tests
         // GET /widget/{id} - GetWidget
         defaultGroup.MapGet("/widget/{id}", (string id, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
         {
-            var message = new GetWidget(id);
+            var message = new GetWidget(Id: id);
             var result = global::Foundatio.Mediator.Generated.WidgetHandler_GetWidget_Handler.Handle(mediator, message, cancellationToken);
             return Microsoft.AspNetCore.Http.Results.Ok(result);
         })

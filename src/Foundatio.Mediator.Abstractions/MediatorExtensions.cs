@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator;
 
@@ -19,18 +20,18 @@ public static class MediatorExtensions
     /// </code>
     /// </remarks>
     /// <param name="services">The service collection to add the mediator to.</param>
-    /// <param name="configuration">Optional configuration for the mediator.</param>
+    /// <param name="options">Optional configuration options for the mediator.</param>
     /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
-    public static IServiceCollection AddMediator(this IServiceCollection services, MediatorConfiguration? configuration = null)
+    public static IServiceCollection AddMediator(this IServiceCollection services, MediatorOptions? options = null)
     {
         if (services.Any(sd => sd.ServiceType == typeof(IMediator)))
             return services;
 
-        configuration ??= new MediatorConfiguration();
+        options ??= new MediatorOptions();
 
-        if (configuration.Assemblies == null)
+        if (options.Assemblies == null)
         {
-            configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
+            options.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
         }
 
         var registry = new HandlerRegistry();
@@ -38,12 +39,12 @@ public static class MediatorExtensions
         var callingAssembly = Assembly.GetCallingAssembly();
         INotificationPublisher? publisher = GetNotificationPublisherFromAssembly(callingAssembly);
 
-        foreach (var assembly in configuration.Assemblies!)
+        foreach (var assembly in options.Assemblies!)
         {
             if (!IsAssemblyMarkedWithFoundatioModule(assembly))
                 continue;
 
-            var moduleType = assembly.GetTypes().FirstOrDefault(t =>
+            var moduleType = GetLoadableTypes(assembly).FirstOrDefault(t =>
                 t.IsClass &&
                 t.IsAbstract &&
                 t.IsSealed &&
@@ -65,9 +66,15 @@ public static class MediatorExtensions
         registry.Freeze();
         services.AddSingleton(registry);
 
-        services.TryAddSingleton<INotificationPublisher>(publisher ?? new ForeachAwaitPublisher());
+        services.TryAddSingleton<INotificationPublisher>(sp =>
+        {
+            if (publisher is FireAndForgetPublisher)
+                return new FireAndForgetPublisher(sp.GetService<ILogger<FireAndForgetPublisher>>());
 
-        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
+            return publisher ?? new ForeachAwaitPublisher();
+        });
+
+        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), options.MediatorLifetime));
 
         services.TryAddSingleton<IHandlerAuthorizationService, DefaultHandlerAuthorizationService>();
         services.TryAddSingleton<IAuthorizationContextProvider, DefaultAuthorizationContextProvider>();
@@ -75,12 +82,22 @@ public static class MediatorExtensions
         return services;
     }
 
+    /// <summary>
+    /// Adds Foundatio.Mediator to the service collection with a configuration builder.
+    /// </summary>
+    public static IServiceCollection AddMediator(this IServiceCollection services, Action<MediatorOptionsBuilder> builder)
+    {
+        var optionsBuilder = new MediatorOptionsBuilder();
+        builder(optionsBuilder);
+        return services.AddMediator(optionsBuilder.Build());
+    }
+
     private static INotificationPublisher? GetNotificationPublisherFromAssembly(Assembly assembly)
     {
         if (!IsAssemblyMarkedWithFoundatioModule(assembly))
             return null;
 
-        var moduleType = assembly.GetTypes().FirstOrDefault(t =>
+        var moduleType = GetLoadableTypes(assembly).FirstOrDefault(t =>
             t.IsClass &&
             t.IsAbstract &&
             t.IsSealed &&
@@ -93,14 +110,16 @@ public static class MediatorExtensions
         return publisherProperty?.GetValue(null) as INotificationPublisher;
     }
 
-    /// <summary>
-    /// Adds Foundatio.Mediator to the service collection with a configuration builder.
-    /// </summary>
-    public static IServiceCollection AddMediator(this IServiceCollection services, Action<MediatorConfigurationBuilder> builder)
+    private static Type[] GetLoadableTypes(Assembly assembly)
     {
-        var configurationBuilder = new MediatorConfigurationBuilder();
-        builder(configurationBuilder);
-        return services.AddMediator(configurationBuilder.Build());
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(t => t != null).ToArray()!;
+        }
     }
 
     private static bool IsAssemblyMarkedWithFoundatioModule(Assembly assembly)
@@ -109,24 +128,27 @@ public static class MediatorExtensions
     }
 }
 
-public sealed class MediatorConfigurationBuilder
+/// <summary>
+/// Builder for configuring <see cref="MediatorOptions"/>.
+/// </summary>
+public sealed class MediatorOptionsBuilder
 {
-    private readonly MediatorConfiguration _configuration = new MediatorConfiguration();
+    private readonly MediatorOptions _options = new MediatorOptions();
 
     /// <summary>
     /// Adds the specified assemblies to the mediator configuration.
     /// </summary>
-    public MediatorConfigurationBuilder AddAssembly(params Assembly[] assemblies)
+    public MediatorOptionsBuilder AddAssembly(params Assembly[] assemblies)
     {
-        _configuration.Assemblies ??= new List<Assembly>();
-        _configuration.Assemblies.AddRange(assemblies);
+        _options.Assemblies ??= new List<Assembly>();
+        _options.Assemblies.AddRange(assemblies);
         return this;
     }
 
     /// <summary>
     /// Adds the assembly containing the specified type to the mediator configuration.
     /// </summary>
-    public MediatorConfigurationBuilder AddAssembly<T>()
+    public MediatorOptionsBuilder AddAssembly<T>()
     {
         var assembly = typeof(T).Assembly;
         return AddAssembly(assembly);
@@ -135,14 +157,15 @@ public sealed class MediatorConfigurationBuilder
     /// <summary>
     /// Sets the lifetime of the mediator.
     /// </summary>
-    public MediatorConfigurationBuilder SetMediatorLifetime(ServiceLifetime lifetime)
+    public MediatorOptionsBuilder SetMediatorLifetime(ServiceLifetime lifetime)
     {
-        _configuration.MediatorLifetime = lifetime;
+        _options.MediatorLifetime = lifetime;
         return this;
     }
 
     /// <summary>
-    /// Builds the <see cref="MediatorConfiguration"/>.
+    /// Builds the <see cref="MediatorOptions"/>.
     /// </summary>
-    public MediatorConfiguration Build() => _configuration;
+    public MediatorOptions Build() => _options;
 }
+

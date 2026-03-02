@@ -129,7 +129,7 @@ internal static class MetadataMiddlewareScanner
             var executeMethod = executeMethods.FirstOrDefault();
 
             // Get the order from the [Middleware] attribute
-            int order = 0;
+            int? order = null;
             string[] orderBefore = [];
             string[] orderAfter = [];
             bool explicitOnly = false;

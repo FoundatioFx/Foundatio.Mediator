@@ -490,4 +490,66 @@ public class ResultTests
         Assert.Equal(error1, error2);
         Assert.NotEqual(error1, error3);
     }
+
+    [Fact]
+    public void Result_File_WithStream_CreatesSuccessfulFileResult()
+    {
+        using var stream = new MemoryStream([1, 2, 3]);
+        var result = Result.File(stream, "text/csv", "report.csv");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Same(stream, result.Value.Stream);
+        Assert.Equal("text/csv", result.Value.ContentType);
+        Assert.Equal("report.csv", result.Value.FileName);
+    }
+
+    [Fact]
+    public void Result_File_WithStream_NoFileName_SetsFileNameToNull()
+    {
+        using var stream = new MemoryStream([4, 5, 6]);
+        var result = Result.File(stream, "application/pdf");
+
+        Assert.True(result.IsSuccess);
+        Assert.Same(stream, result.Value.Stream);
+        Assert.Equal("application/pdf", result.Value.ContentType);
+        Assert.Null(result.Value.FileName);
+    }
+
+    [Fact]
+    public void Result_File_WithBytes_CreatesSuccessfulFileResult()
+    {
+        byte[] bytes = [10, 20, 30];
+        var result = Result.File(bytes, "application/octet-stream", "data.bin");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal("application/octet-stream", result.Value.ContentType);
+        Assert.Equal("data.bin", result.Value.FileName);
+
+        using var reader = new MemoryStream();
+        result.Value.Stream.CopyTo(reader);
+        Assert.Equal(bytes, reader.ToArray());
+    }
+
+    [Fact]
+    public void Result_File_WithBytes_NoFileName_SetsFileNameToNull()
+    {
+        byte[] bytes = [7, 8, 9];
+        var result = Result.File(bytes, "image/png");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("image/png", result.Value.ContentType);
+        Assert.Null(result.Value.FileName);
+    }
+
+    [Fact]
+    public void FileResult_DefaultValues_AreCorrect()
+    {
+        var fileResult = new FileResult();
+
+        Assert.Same(Stream.Null, fileResult.Stream);
+        Assert.Equal("application/octet-stream", fileResult.ContentType);
+        Assert.Null(fileResult.FileName);
+    }
 }

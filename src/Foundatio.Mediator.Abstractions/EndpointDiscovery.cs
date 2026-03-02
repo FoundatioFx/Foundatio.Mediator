@@ -8,15 +8,15 @@ public enum EndpointDiscovery
     /// <summary>
     /// No endpoints are generated.
     /// </summary>
-    None,
+    None = 0,
 
     /// <summary>
     /// Only handlers explicitly marked with <see cref="HandlerEndpointAttribute"/> generate endpoints.
     /// </summary>
-    Explicit,
+    Explicit = 1,
 
     /// <summary>
     /// All discovered handlers generate endpoints unless explicitly excluded.
     /// </summary>
-    All
+    All = 2
 }

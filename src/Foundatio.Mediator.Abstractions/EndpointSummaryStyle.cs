@@ -8,10 +8,10 @@ public enum EndpointSummaryStyle
     /// <summary>
     /// Uses the exact message type name as-is (e.g., "GetProduct").
     /// </summary>
-    Exact,
+    Exact = 0,
 
     /// <summary>
     /// Splits the PascalCase message type name into space-separated words (e.g., "Get Product").
     /// </summary>
-    Spaced
+    Spaced = 1
 }

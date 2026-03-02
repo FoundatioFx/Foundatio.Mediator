@@ -262,15 +262,14 @@ builder.Services.AddMediator(cfg => cfg
     .UseForeachAwaitPublisher());
 ```
 
-## Mediator Configuration Options
+## Mediator Configuration
 
-### MediatorConfiguration Class
+### MediatorOptions Class
 
 ```csharp
-public class MediatorConfiguration {
+public class MediatorOptions {
     public List<Assembly>? Assemblies { get; set; }
-    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Scoped;
-    public INotificationPublisher NotificationPublisher { get; set; } = new ForeachAwaitPublisher();
+    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Singleton;
 }
 ```
 

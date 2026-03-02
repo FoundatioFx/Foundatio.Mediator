@@ -43,8 +43,9 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Gets an order by ID
+    /// Gets an order by ID (anonymous - allows dashboard and public access)
     /// </summary>
+    [HandlerAllowAnonymous]
     public async Task<Result<Order>> HandleAsync(GetOrder query, CancellationToken cancellationToken)
     {
         var order = await repository.GetByIdAsync(query.OrderId, cancellationToken);
@@ -56,8 +57,9 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Gets all orders
+    /// Gets all orders (anonymous - allows dashboard and public access)
     /// </summary>
+    [HandlerAllowAnonymous]
     public async Task<Result<List<Order>>> HandleAsync(GetOrders query, CancellationToken cancellationToken)
     {
         var orders = await repository.GetAllAsync(cancellationToken);

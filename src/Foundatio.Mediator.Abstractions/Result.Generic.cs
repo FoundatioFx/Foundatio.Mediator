@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Foundatio.Mediator;
 
@@ -20,11 +21,12 @@ public sealed class Result<T> : IResult
     };
 
     /// <summary>
-    /// Implicit conversion from Result&lt;T&gt; to T?. Returns the value which may be default/null for non-success results.
-    /// For reference types, this produces a nullable warning if assigned to a non-nullable variable,
-    /// encouraging callers to check <see cref="IsSuccess"/> first.
+    /// Implicit conversion from Result&lt;T&gt; to T?. Returns <c>default(T)</c> for non-success results.
+    /// <para><b>Warning:</b> Always check <see cref="IsSuccess"/> before using the converted value,
+    /// as this operator silently returns <c>default</c> for failed results.</para>
     /// </summary>
     /// <param name="result">The result to convert.</param>
+    [return: MaybeNull]
     public static implicit operator T?(Result<T> result) => result.Value;
 
     /// <summary>
@@ -48,8 +50,8 @@ public sealed class Result<T> : IResult
     /// <param name="result">The result to convert.</param>
     public static implicit operator Result(Result<T> result)
     {
-        if (result == null)
-            return null!;
+        if (result is null)
+            throw new ArgumentNullException(nameof(result));
 
         return new Result
         {

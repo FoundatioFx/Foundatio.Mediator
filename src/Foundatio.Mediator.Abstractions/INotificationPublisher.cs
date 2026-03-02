@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Foundatio.Mediator;
 
 /// <summary>
@@ -130,6 +132,17 @@ public sealed class TaskWhenAllPublisher : INotificationPublisher
 /// </summary>
 public sealed class FireAndForgetPublisher : INotificationPublisher
 {
+    private readonly ILogger<FireAndForgetPublisher>? _logger;
+
+    /// <summary>
+    /// Creates a new <see cref="FireAndForgetPublisher"/> instance.
+    /// </summary>
+    /// <param name="logger">Optional logger for recording handler exceptions. When resolved from DI, this is injected automatically.</param>
+    public FireAndForgetPublisher(ILogger<FireAndForgetPublisher>? logger = null)
+    {
+        _logger = logger;
+    }
+
     public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
         for (int i = 0; i < handlers.Length; i++)
@@ -141,9 +154,9 @@ public sealed class FireAndForgetPublisher : INotificationPublisher
                 {
                     await handler(mediator, message, cancellationToken).ConfigureAwait(false);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Swallow exceptions - fire and forget semantics
+                    _logger?.LogError(ex, "Fire-and-forget handler failed for message type {MessageType}", message.GetType().Name);
                 }
             }, CancellationToken.None);
         }

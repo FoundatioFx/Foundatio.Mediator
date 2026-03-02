@@ -547,7 +547,7 @@ internal static class EndpointGenerator
             if (allParams.Count > 0)
             {
                 source.Append($"var message = new {messageType}(");
-                source.Append(string.Join(", ", allParams.Select(p => p.Name)));
+                source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName}: {p.Name}")));
                 source.AppendLine(");");
             }
             else

@@ -18,7 +18,7 @@ public sealed class AuthorizationRequirements
     /// <param name="roles">Role names required (any-of semantics). Empty if no role requirement.</param>
     /// <param name="policies">Policy names required (all must be satisfied). Empty if no policy requirement.</param>
     /// <param name="allowAnonymous">Whether anonymous access is explicitly allowed, overriding any other requirements.</param>
-    public AuthorizationRequirements(bool required, string[] roles, string[] policies, bool allowAnonymous)
+    public AuthorizationRequirements(bool required, IReadOnlyList<string> roles, IReadOnlyList<string> policies, bool allowAnonymous)
     {
         Required = required;
         Roles = roles ?? Array.Empty<string>();
@@ -36,12 +36,12 @@ public sealed class AuthorizationRequirements
     /// Role names required for this handler. Multiple roles use "any of" semantics
     /// (the user must have at least one of the specified roles).
     /// </summary>
-    public string[] Roles { get; }
+    public IReadOnlyList<string> Roles { get; }
 
     /// <summary>
     /// Authorization policy names required for this handler. All policies must be satisfied.
     /// </summary>
-    public string[] Policies { get; }
+    public IReadOnlyList<string> Policies { get; }
 
     /// <summary>
     /// Whether anonymous access is explicitly allowed, overriding any other authorization requirements.

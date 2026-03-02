@@ -41,7 +41,7 @@ public sealed class DefaultHandlerAuthorizationService : IHandlerAuthorizationSe
             return new ValueTask<AuthorizationResult>(AuthorizationResult.Unauthorized());
 
         // Check roles (any-of semantics)
-        if (requirements.Roles.Length > 0)
+        if (requirements.Roles.Count > 0)
         {
             bool hasRole = false;
             foreach (var role in requirements.Roles)
@@ -62,7 +62,7 @@ public sealed class DefaultHandlerAuthorizationService : IHandlerAuthorizationSe
         }
 
         // Warn about policies (not enforced by default implementation)
-        if (requirements.Policies.Length > 0 && !_policyWarningLogged)
+        if (requirements.Policies.Count > 0 && !_policyWarningLogged)
         {
             _policyWarningLogged = true;
             _logger.LogWarning(

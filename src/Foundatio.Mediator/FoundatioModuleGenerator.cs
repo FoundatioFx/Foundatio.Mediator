@@ -54,7 +54,7 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("{");
             source.AppendLine($"    public static INotificationPublisher NotificationPublisher {{ get; }} = new {configuration.NotificationPublishStrategy}Publisher();");
             source.AppendLine();
-            source.AppendLine("    public static void AddHandlers(this IServiceCollection services)");
+            source.AppendLine("    public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)");
             source.AppendLine("    {");
             source.IncrementIndent().IncrementIndent();
 
@@ -124,11 +124,11 @@ internal static class FoundatioModuleGenerator
 
                         }
 
-                        source.AppendLine($"services.AddSingleton(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
+                        source.AppendLine($"registry.AddOpenGenericHandler(new OpenGenericHandlerDescriptor({msgTypeOf}, {wrapperTypeOf}, {handler.IsAsync.ToString().ToLower()}));");
                     }
                     else
                     {
-                        source.AppendLine($"services.AddHandler(new HandlerRegistration(");
+                        source.AppendLine($"registry.AddHandler(new HandlerRegistration(");
                         source.AppendLine($"        MessageTypeKey.Get(typeof({handler.MessageType.FullName})),");
                         source.AppendLine($"        \"{handlerClassName}\",");
 

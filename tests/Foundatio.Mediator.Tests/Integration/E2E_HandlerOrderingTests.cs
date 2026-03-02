@@ -1,4 +1,3 @@
-using Foundatio.Mediator.Generated;
 using Foundatio.Mediator.Tests.Fixtures;
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,13 +8,6 @@ namespace Foundatio.Mediator.Tests.Integration;
 public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     private readonly ITestOutputHelper _output = output;
-
-    private static void ClearAllCaches()
-    {
-        // Clear caches to ensure tests don't interfere with each other
-        Mediator.ClearCache();
-        PublishInterceptors.ClearCache();
-    }
 
     public record OrderTestEvent(string Name);
 
@@ -66,7 +58,6 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     [Fact]
     public async Task PublishAsync_ExecutesHandlersInOrder()
     {
-        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
         services.AddSingleton<EventTracker>();
@@ -89,7 +80,6 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     [Fact]
     public async Task PublishAsync_HandlersWithoutOrder_ExecuteLast()
     {
-        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
         services.AddSingleton<EventTracker>();
@@ -123,7 +113,6 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     [Fact]
     public async Task PublishAsync_NamedPropertyOrder_RespectsOrder()
     {
-        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
         services.AddSingleton<EventTracker>();
@@ -159,7 +148,6 @@ public class E2E_HandlerOrderingTests(ITestOutputHelper output) : TestWithLoggin
     [Fact]
     public async Task PublishAsync_ConstructorArgOrder_RespectsOrder()
     {
-        ClearAllCaches();
         var services = new ServiceCollection();
         services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
         services.AddSingleton<EventTracker>();

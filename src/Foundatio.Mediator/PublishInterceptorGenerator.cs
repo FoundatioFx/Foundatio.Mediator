@@ -5,8 +5,6 @@ namespace Foundatio.Mediator;
 
 /// <summary>
 /// Generates interceptor methods for PublishAsync call sites.
-/// Uses runtime DI discovery with caching for best performance while supporting
-/// handlers registered from any assembly.
 /// </summary>
 internal static class PublishInterceptorGenerator
 {
@@ -16,14 +14,12 @@ internal static class PublishInterceptorGenerator
         List<HandlerInfo> allHandlers,
         GeneratorConfiguration configuration)
     {
-        // Publish interceptors are controlled by InterceptorsEnabled
         if (!configuration.InterceptorsEnabled)
             return;
 
         if (publishCallSites.Count == 0)
             return;
 
-        // Group call sites by message type
         var callSitesByMessageType = publishCallSites
             .GroupBy(cs => cs.MessageType.FullName)
             .ToList();
@@ -73,38 +69,12 @@ internal static class PublishInterceptorGenerator
             source.AppendLine();
         }
 
-        // Generate ClearCache method for testing scenarios
-        GenerateClearCacheMethod(source, callSitesByMessageType);
-
-        // Generate shared helper methods
         GenerateHelperMethods(source, configuration);
 
         source.DecrementIndent();
         source.AppendLine("}");
 
         context.AddSource(hintName, source.ToString());
-    }
-
-    private static void GenerateClearCacheMethod(IndentedStringBuilder source, List<IGrouping<string, CallSiteInfo>> callSitesByMessageType)
-    {
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Clears the cached handler delegates. Call this between tests that use different service providers.");
-        source.AppendLine("/// </summary>");
-        source.AppendLine("public static void ClearCache()");
-        source.AppendLine("{");
-        source.IncrementIndent();
-
-        int index = 0;
-        foreach (var group in callSitesByMessageType)
-        {
-            var messageType = group.First().MessageType;
-            source.AppendLine($"_handlers_{messageType.Identifier}_{index} = null;");
-            index++;
-        }
-
-        source.DecrementIndent();
-        source.AppendLine("}");
-        source.AppendLine();
     }
 
     private static void GeneratePublishInterceptorMethod(
@@ -114,14 +84,8 @@ internal static class PublishInterceptorGenerator
         GeneratorConfiguration configuration,
         int messageTypeIndex)
     {
-        string fieldName = $"_handlers_{messageType.Identifier}_{messageTypeIndex}";
         string interceptorMethod = $"InterceptPublishAsync_{messageType.Identifier}_{messageTypeIndex}";
 
-        // Generate static cache field for this message type
-        source.AppendLine($"private static global::Foundatio.Mediator.PublishAsyncDelegate[]? {fieldName};");
-        source.AppendLine();
-
-        // Add InterceptsLocation attributes for each call site
         foreach (var callSite in callSites)
         {
             source.AppendLine($"[InterceptsLocation({callSite.Location.Version}, \"{callSite.Location.Data}\")] // {callSite.Location.DisplayLocation}");
@@ -134,18 +98,10 @@ internal static class PublishInterceptorGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Get or initialize handlers from cache
-        source.AppendLine($"var handlers = {fieldName};");
-        source.AppendLine("if (handlers == null)");
-        source.AppendLine("{");
-        source.IncrementIndent();
-        source.AppendLine($"handlers = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof(global::{messageType.FullName}));");
-        source.AppendLine($"{fieldName} = handlers;");
-        source.DecrementIndent();
-        source.AppendLine("}");
+        source.AppendLine($"var registry = ((global::Foundatio.Mediator.Mediator)mediator).Registry;");
+        source.AppendLine($"var handlers = registry.GetPublishHandlersForType(typeof(global::{messageType.FullName}));");
         source.AppendLine();
 
-        // Generate execution based on notification publisher strategy
         switch (configuration.NotificationPublishStrategy)
         {
             case "ForeachAwait":
@@ -168,10 +124,8 @@ internal static class PublishInterceptorGenerator
 
     private static void GenerateForeachAwaitBody(IndentedStringBuilder source)
     {
-        // Inline ForeachAwait logic - no virtual dispatch through INotificationPublisher
         source.AppendLine("if (handlers.Length == 0) return default;");
         source.AppendLine();
-        source.AppendLine("// Sequential execution with sync fast-path");
         source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
         source.AppendLine("{");
         source.IncrementIndent();
@@ -190,7 +144,6 @@ internal static class PublishInterceptorGenerator
 
     private static void GenerateTaskWhenAllBody(IndentedStringBuilder source)
     {
-        // Inline TaskWhenAll logic
         source.AppendLine("if (handlers.Length == 0) return default;");
         source.AppendLine("if (handlers.Length == 1) return handlers[0](mediator, message, cancellationToken);");
         source.AppendLine();
@@ -221,7 +174,6 @@ internal static class PublishInterceptorGenerator
 
     private static void GenerateFireAndForgetBody(IndentedStringBuilder source)
     {
-        // Fire and forget - queue all handlers on thread pool
         source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
         source.AppendLine("{");
         source.IncrementIndent();
@@ -246,7 +198,6 @@ internal static class PublishInterceptorGenerator
 
     private static void GenerateHelperMethods(IndentedStringBuilder source, GeneratorConfiguration configuration)
     {
-        // Generate ForeachAwait helper if needed
         if (configuration.NotificationPublishStrategy == "ForeachAwait" || string.IsNullOrEmpty(configuration.NotificationPublishStrategy))
         {
             source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitRemainingForeachAsync(");
@@ -304,7 +255,6 @@ internal static class PublishInterceptorGenerator
             source.AppendLine();
         }
 
-        // Generate TaskWhenAll helper if needed
         if (configuration.NotificationPublishStrategy == "TaskWhenAll")
         {
             source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitAllTasksAsync(System.Threading.Tasks.ValueTask[] tasks)");

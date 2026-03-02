@@ -31,11 +31,11 @@ public static class Tests_MediatorHandlers
 {
     public static INotificationPublisher NotificationPublisher { get; } = new ForeachAwaitPublisher();
 
-    public static void AddHandlers(this IServiceCollection services)
+    public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)
     {
         // Register HandlerRegistration instances keyed by message type name
 
-        services.AddHandler(new HandlerRegistration(
+        registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Ping)),
                 "PingHandler_Ping_Handler",
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(PingHandler_Ping_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),

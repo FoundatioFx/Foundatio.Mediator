@@ -1,5 +1,4 @@
 using Foundatio.Mediator.Tests.Fixtures;
-using Foundatio.Mediator.Generated;
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,12 +12,6 @@ namespace Foundatio.Mediator.Tests.Integration;
 /// </summary>
 public class E2E_NotificationStrategyTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
-    private static void ClearAllCaches()
-    {
-        Mediator.ClearCache();
-        PublishInterceptors.ClearCache();
-    }
-
     #region ForeachAwait - All Handlers Run
 
     public record StrategyTestEvent(string Name);
@@ -49,8 +42,6 @@ public class E2E_NotificationStrategyTests(ITestOutputHelper output) : TestWithL
     [Fact]
     public async Task ForeachAwait_AllHandlersRun_EvenWhenOneThrows()
     {
-        ClearAllCaches();
-
         var services = new ServiceCollection();
         services.AddSingleton<EventTracker>();
         services.AddMediator(b => b.AddAssembly<StrategyTestEvent>());
@@ -111,8 +102,6 @@ public class E2E_NotificationStrategyTests(ITestOutputHelper output) : TestWithL
     [Fact]
     public async Task ForeachAwait_AggregatesMultipleExceptions()
     {
-        ClearAllCaches();
-
         var services = new ServiceCollection();
         services.AddSingleton<EventTracker>();
         services.AddMediator(b => b.AddAssembly<MultiErrorEvent>());
@@ -154,8 +143,6 @@ public class E2E_NotificationStrategyTests(ITestOutputHelper output) : TestWithL
     [Fact]
     public async Task ForeachAwait_NoException_WhenAllHandlersSucceed()
     {
-        ClearAllCaches();
-
         var services = new ServiceCollection();
         services.AddSingleton<EventTracker>();
         services.AddMediator(b => b.AddAssembly<SuccessEvent>());

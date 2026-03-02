@@ -53,11 +53,17 @@ Generated/
 
 ### Viewing All Registered Handlers
 
-The easiest way to see which handlers are registered at runtime is to use the `ShowRegisteredHandlers()` method:
+The easiest way to see which handlers are registered at runtime is to use the `HandlerRegistry`:
 
 ```csharp
-var mediator = serviceProvider.GetRequiredService<IMediator>();
-((Mediator)mediator).ShowRegisteredHandlers();
+var registry = serviceProvider.GetRequiredService<HandlerRegistry>();
+registry.ShowRegisteredHandlers(logger);
+
+// You can also inspect registrations directly:
+foreach (var reg in registry.Registrations)
+{
+    Console.WriteLine($"{reg.MessageTypeName} -> {reg.HandlerClassName}");
+}
 ```
 
 This logs all registered handlers to your configured logger:
@@ -163,7 +169,7 @@ The source generator analyzes handlers at compile time to generate optimized, di
 5. Handler is nested inside a generic class (not supported)
 
 **Debugging:**
-Use [`ShowRegisteredHandlers()`](#viewing-all-registered-handlers) to see which handlers are currently registered at runtime.
+Use the [`HandlerRegistry`](#viewing-all-registered-handlers) to see which handlers are currently registered at runtime.
 
 **Solutions:**
 ```csharp

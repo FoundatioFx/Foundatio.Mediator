@@ -23,7 +23,6 @@ public static class MediatorExtensions
     /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
     public static IServiceCollection AddMediator(this IServiceCollection services, MediatorConfiguration? configuration = null)
     {
-        // Guard against duplicate registration
         if (services.Any(sd => sd.ServiceType == typeof(IMediator)))
             return services;
 
@@ -34,8 +33,8 @@ public static class MediatorExtensions
             configuration.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
         }
 
-        // Get the notification publisher from the calling assembly (where AddMediator is called)
-        // If the calling assembly isn't a Foundatio module, fall back to the first config assembly
+        var registry = new HandlerRegistry();
+
         var callingAssembly = Assembly.GetCallingAssembly();
         INotificationPublisher? publisher = GetNotificationPublisherFromAssembly(callingAssembly);
 
@@ -53,24 +52,23 @@ public static class MediatorExtensions
             if (moduleType == null)
                 continue;
 
-            // If calling assembly wasn't a Foundatio module, use the first config assembly's publisher
             if (publisher == null)
             {
                 var publisherProperty = moduleType.GetProperty("NotificationPublisher", BindingFlags.Public | BindingFlags.Static);
                 publisher = publisherProperty?.GetValue(null) as INotificationPublisher;
             }
 
-            // Call AddHandlers to register handlers
             var method = moduleType.GetMethod("AddHandlers", BindingFlags.Public | BindingFlags.Static);
-            method?.Invoke(null, [services]);
+            method?.Invoke(null, [services, registry]);
         }
 
-        // Register the notification publisher: calling assembly > first config assembly > default
+        registry.Freeze();
+        services.AddSingleton(registry);
+
         services.TryAddSingleton<INotificationPublisher>(publisher ?? new ForeachAwaitPublisher());
 
         services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
 
-        // Register authorization services with TryAdd so generated code or user registrations take precedence
         services.TryAddSingleton<IHandlerAuthorizationService, DefaultHandlerAuthorizationService>();
         services.TryAddSingleton<IAuthorizationContextProvider, DefaultAuthorizationContextProvider>();
 
@@ -98,19 +96,6 @@ public static class MediatorExtensions
     /// <summary>
     /// Adds Foundatio.Mediator to the service collection with a configuration builder.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// By default, the mediator is registered as a singleton. If your handlers use scoped or transient
-    /// services (like DbContext), you should register the mediator as scoped to ensure services are
-    /// resolved from the correct DI scope:
-    /// </para>
-    /// <code>
-    /// services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
-    /// </code>
-    /// </remarks>
-    /// <param name="services">The service collection to add the mediator to.</param>
-    /// <param name="builder">A callback to configure the mediator.</param>
-    /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
     public static IServiceCollection AddMediator(this IServiceCollection services, Action<MediatorConfigurationBuilder> builder)
     {
         var configurationBuilder = new MediatorConfigurationBuilder();
@@ -124,25 +109,6 @@ public static class MediatorExtensions
     }
 }
 
-/// <summary>
-/// Extension methods for registering individual handler registrations with the service collection.
-/// </summary>
-public static class MediatorServiceCollectionExtensions
-{
-    /// <summary>
-    /// Registers a <see cref="HandlerRegistration"/> with the service collection so the mediator can dispatch messages to it.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="registration">The handler registration to add.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddHandler(this IServiceCollection services, HandlerRegistration registration)
-    {
-        services.AddKeyedSingleton(registration.MessageTypeName, registration);
-        services.AddSingleton(registration);
-        return services;
-    }
-}
-
 public sealed class MediatorConfigurationBuilder
 {
     private readonly MediatorConfiguration _configuration = new MediatorConfiguration();
@@ -150,8 +116,6 @@ public sealed class MediatorConfigurationBuilder
     /// <summary>
     /// Adds the specified assemblies to the mediator configuration.
     /// </summary>
-    /// <param name="assemblies"></param>
-    /// <returns></returns>
     public MediatorConfigurationBuilder AddAssembly(params Assembly[] assemblies)
     {
         _configuration.Assemblies ??= new List<Assembly>();
@@ -162,8 +126,6 @@ public sealed class MediatorConfigurationBuilder
     /// <summary>
     /// Adds the assembly containing the specified type to the mediator configuration.
     /// </summary>
-    /// <typeparam name="T">The type whose assembly should be added.</typeparam>
-    /// <returns></returns>
     public MediatorConfigurationBuilder AddAssembly<T>()
     {
         var assembly = typeof(T).Assembly;
@@ -173,8 +135,6 @@ public sealed class MediatorConfigurationBuilder
     /// <summary>
     /// Sets the lifetime of the mediator.
     /// </summary>
-    /// <param name="lifetime"></param>
-    /// <returns></returns>
     public MediatorConfigurationBuilder SetMediatorLifetime(ServiceLifetime lifetime)
     {
         _configuration.MediatorLifetime = lifetime;
@@ -182,8 +142,7 @@ public sealed class MediatorConfigurationBuilder
     }
 
     /// <summary>
-    /// Builds the <see cref="MediatorConfiguration"/> from the current builder state.
+    /// Builds the <see cref="MediatorConfiguration"/>.
     /// </summary>
-    /// <returns>The constructed mediator configuration.</returns>
     public MediatorConfiguration Build() => _configuration;
 }

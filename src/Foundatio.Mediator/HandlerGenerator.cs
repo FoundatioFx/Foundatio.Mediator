@@ -1299,7 +1299,7 @@ internal static class HandlerGenerator
 
     /// <summary>
     /// Generates runtime DI handler calls for cascading messages based on the publish strategy.
-    /// Uses Mediator.GetPublishHandlersForType for runtime handler discovery to support
+    /// Uses HandlerRegistry.GetPublishHandlersForType for runtime handler discovery to support
     /// handlers from any assembly.
     /// </summary>
     private static void GenerateCascadingHandlerCalls(
@@ -1357,8 +1357,7 @@ internal static class HandlerGenerator
                 source.IncrementIndent();
             }
 
-            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
-            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.IncrementIndent();
@@ -1397,8 +1396,7 @@ internal static class HandlerGenerator
                 source.IncrementIndent();
             }
 
-            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
-            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.AppendLine($"    allCascadeTasks.Add(cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}](mediator, {access}, cancellationToken));");
@@ -1435,8 +1433,7 @@ internal static class HandlerGenerator
                 source.IncrementIndent();
             }
 
-            // Use runtime DI lookup for handlers (no global:: prefix to handle C# keyword aliases like 'string')
-            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = global::Foundatio.Mediator.Mediator.GetPublishHandlersForType(mediator, typeof({typeFullName}));");
+            source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.IncrementIndent();

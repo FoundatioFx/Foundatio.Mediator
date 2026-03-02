@@ -32,9 +32,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         Assert.NotNull(publishInterceptor.Source);
         Assert.Contains("InterceptPublishAsync_MyEvent_", publishInterceptor.Source);
         Assert.Contains("InterceptsLocation", publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_MyEvent_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
         // Should have exception aggregation
         Assert.Contains("AggregateException", publishInterceptor.Source);
         // Should pass mediator to handlers
@@ -70,9 +69,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         var publishInterceptor = trees.FirstOrDefault(t => t.HintName == "_PublishInterceptors.g.cs");
         Assert.NotNull(publishInterceptor.Source);
         Assert.Contains("InterceptPublishAsync_UserRegistered_", publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_UserRegistered_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
         // TaskWhenAll should have task array and sync completion check
         Assert.Contains("var tasks = new", publishInterceptor.Source);
         Assert.Contains("IsCompletedSuccessfully", publishInterceptor.Source);
@@ -107,9 +105,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         var publishInterceptor = trees.FirstOrDefault(t => t.HintName == "_PublishInterceptors.g.cs");
         Assert.NotNull(publishInterceptor.Source);
         Assert.Contains("InterceptPublishAsync_ItemDeleted_", publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_ItemDeleted_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
         // FireAndForget should use Task.Run
         Assert.Contains("Task.Run", publishInterceptor.Source);
         // And swallow exceptions
@@ -144,9 +141,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         var publishInterceptor = trees.FirstOrDefault(t => t.HintName == "_PublishInterceptors.g.cs");
         // Should generate publish interceptor with default ForeachAwait strategy
         Assert.NotNull(publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_TestEvent_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
         Assert.Contains("AggregateException", publishInterceptor.Source);
     }
 
@@ -247,9 +243,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
         var publishInterceptor = trees.FirstOrDefault(t => t.HintName == "_PublishInterceptors.g.cs");
         Assert.NotNull(publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_TestEvent_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
     }
 
     [Fact]
@@ -280,9 +275,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         // Default configuration produces ForeachAwait behavior
         var publishInterceptor = trees.FirstOrDefault(t => t.HintName == "_PublishInterceptors.g.cs");
         Assert.NotNull(publishInterceptor.Source);
-        // Uses runtime DI lookup with caching
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
-        Assert.Contains("_handlers_TestEvent_", publishInterceptor.Source);
+        Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
         Assert.Contains("AggregateException", publishInterceptor.Source);
     }
 }

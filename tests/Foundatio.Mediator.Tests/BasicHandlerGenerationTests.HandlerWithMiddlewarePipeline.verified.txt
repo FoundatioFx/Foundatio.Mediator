@@ -31,11 +31,11 @@ public static class Tests_MediatorHandlers
 {
     public static INotificationPublisher NotificationPublisher { get; } = new ForeachAwaitPublisher();
 
-    public static void AddHandlers(this IServiceCollection services)
+    public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)
     {
         // Register HandlerRegistration instances keyed by message type name
 
-        services.AddHandler(new HandlerRegistration(
+        registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(ProcessOrder)),
                 "ProcessOrderHandler_ProcessOrder_Handler",
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),

@@ -31,12 +31,12 @@ public static class Tests_MediatorHandlers
 {
     public static INotificationPublisher NotificationPublisher { get; } = new ForeachAwaitPublisher();
 
-    public static void AddHandlers(this IServiceCollection services)
+    public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)
     {
         // Register HandlerRegistration instances keyed by message type name
 
         services.TryAddScoped<GetUserHandler>();
-        services.AddHandler(new HandlerRegistration(
+        registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(GetUser)),
                 "GetUserHandler_GetUser_Handler",
                 GetUserHandler_GetUser_Handler.UntypedHandleAsync,

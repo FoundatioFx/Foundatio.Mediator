@@ -37,5 +37,31 @@ public class DualHandler<T1,T2>
         Assert.True(t1Constraint > classLine);
         Assert.True(t2Constraint > t1Constraint);
     }
+
+    [Fact]
+    public void GenericArity_GreaterThan10_GeneratesCorrectCommas()
+    {
+        // Build an open generic handler with 11 type parameters to exercise the fallback branch
+        const string source = @"using System.Threading; using System.Threading.Tasks; using Foundatio.Mediator;
+
+public record BigCommand<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11>(T1 First);
+
+public class BigHandler<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11>
+{
+    public Task HandleAsync(BigCommand<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11> cmd, CancellationToken ct)
+        => Task.CompletedTask;
+}";
+
+        var (_, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
+        Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
+
+        var module = trees.First(t => t.HintName == "_FoundatioModule.cs");
+
+        // Arity 11 = 10 commas inside angle brackets: <,,,,,,,,,,>
+        string expected = "<,,,,,,,,,,>";
+        Assert.Contains(expected, module.Source);
+        // Make sure the old buggy fallback "<>)" is NOT present
+        Assert.DoesNotContain("<>)", module.Source);
+    }
 }
 

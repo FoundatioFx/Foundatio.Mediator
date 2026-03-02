@@ -11,7 +11,7 @@ public sealed class Result : IResult
     /// <summary>
     /// Gets the status of the result.
     /// </summary>
-    public ResultStatus Status { get; init; } = ResultStatus.Success;
+    public ResultStatus Status { get; internal init; } = ResultStatus.Success;
 
     /// <summary>
     /// Gets a value indicating whether the result represents a successful operation.
@@ -21,17 +21,17 @@ public sealed class Result : IResult
     /// <summary>
     /// Gets the message associated with the result, which can be a success message or an error message.
     /// </summary>
-    public string Message { get; init; } = String.Empty;
+    public string Message { get; internal init; } = String.Empty;
 
     /// <summary>
     /// Gets the location of a newly created resource (for Created status).
     /// </summary>
-    public string Location { get; init; } = String.Empty;
+    public string Location { get; internal init; } = String.Empty;
 
     /// <summary>
     /// Gets the collection of validation errors.
     /// </summary>
-    public IEnumerable<ValidationError> ValidationErrors { get; init; } = [];
+    public IEnumerable<ValidationError> ValidationErrors { get; internal init; } = [];
 
     /// <summary>
     /// Gets the result value as an object (null for non-generic Result).

@@ -354,7 +354,7 @@ public class ResultTests
     public void ResultT_Constructor_WithValue_CreatesSuccessResult()
     {
         const int value = 123;
-        var result = new Result<int> { Value = value };
+        var result = Result<int>.Success(value);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ResultStatus.Success, result.Status);

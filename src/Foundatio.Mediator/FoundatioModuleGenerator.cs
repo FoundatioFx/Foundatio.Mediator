@@ -109,7 +109,7 @@ internal static class FoundatioModuleGenerator
                             8 => "<,,,,,,,>",
                             9 => "<,,,,,,,,>",
                             10 => "<,,,,,,,,,>",
-                            _ => "<>)" // fallback
+                            _ => $"<{new string(',', handler.GenericArity - 1)}>" // fallback
                         };
 
                         string wrapperTypeOf = $"typeof({handlerClassName}{genericArity})";

@@ -76,12 +76,12 @@ public sealed class Result<T> : IResult
     /// <summary>
     /// Gets the result value.
     /// </summary>
-    public T Value { get; init; } = default!;
+    public T Value { get; internal init; } = default!;
 
     /// <summary>
     /// Gets the status of the result.
     /// </summary>
-    public ResultStatus Status { get; init; } = ResultStatus.Success;
+    public ResultStatus Status { get; internal init; } = ResultStatus.Success;
 
     /// <summary>
     /// Gets a value indicating whether the result represents a successful operation.
@@ -91,17 +91,17 @@ public sealed class Result<T> : IResult
     /// <summary>
     /// Gets the message associated with the result.
     /// </summary>
-    public string Message { get; init; } = String.Empty;
+    public string Message { get; internal init; } = String.Empty;
 
     /// <summary>
     /// Gets the location of a newly created resource (for Created status).
     /// </summary>
-    public string Location { get; init; } = String.Empty;
+    public string Location { get; internal init; } = String.Empty;
 
     /// <summary>
     /// Gets the collection of validation errors.
     /// </summary>
-    public IEnumerable<ValidationError> ValidationErrors { get; init; } = [];
+    public IEnumerable<ValidationError> ValidationErrors { get; internal init; } = [];
 
     /// <summary>
     /// Gets the result value as an object.

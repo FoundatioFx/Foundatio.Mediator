@@ -21,7 +21,7 @@ public interface INotificationPublisher
 /// Publisher that invokes each handler sequentially.
 /// All handlers execute even if one throws; an AggregateException with all exceptions is thrown after all complete.
 /// </summary>
-public class ForeachAwaitPublisher : INotificationPublisher
+public sealed class ForeachAwaitPublisher : INotificationPublisher
 {
     public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
@@ -78,7 +78,7 @@ public class ForeachAwaitPublisher : INotificationPublisher
 /// Publisher that invokes all handlers concurrently and waits for all to complete.
 /// All handlers execute even if one throws; an AggregateException with all exceptions is thrown after all complete.
 /// </summary>
-public class TaskWhenAllPublisher : INotificationPublisher
+public sealed class TaskWhenAllPublisher : INotificationPublisher
 {
     public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {
@@ -128,7 +128,7 @@ public class TaskWhenAllPublisher : INotificationPublisher
 /// Publisher that fires all handlers in parallel without waiting for completion.
 /// Use with caution - exceptions will not propagate and handlers may outlive the request.
 /// </summary>
-public class FireAndForgetPublisher : INotificationPublisher
+public sealed class FireAndForgetPublisher : INotificationPublisher
 {
     public ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken)
     {

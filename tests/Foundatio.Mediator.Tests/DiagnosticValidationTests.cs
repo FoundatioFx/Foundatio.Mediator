@@ -397,4 +397,27 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 
         Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
     }
+
+    [Fact]
+    public void FMED013_UseMiddleware_WithUnknownType_EmitsWarning()
+    {
+        // MissingMw is a real type that compiles but is NOT discovered as middleware
+        // because it doesn't follow naming conventions and has no [Middleware] attribute.
+        var src = """
+			using Foundatio.Mediator;
+
+			public record Msg;
+
+			[UseMiddleware(typeof(MissingMw))]
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			public class MissingMw
+			{
+				public static void Before(object m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED013" && d.GetMessage().Contains("MissingMw"));
+    }
 }

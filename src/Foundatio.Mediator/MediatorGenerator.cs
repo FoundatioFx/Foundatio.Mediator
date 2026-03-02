@@ -393,7 +393,16 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             // Find the middleware info from the global list
             var middlewareInfo = middlewares.FirstOrDefault(m => m.FullName == reference.MiddlewareTypeName);
             if (middlewareInfo.FullName == null)
-                continue; // Middleware not found - could emit diagnostic here
+            {
+                orderingDiagnostics.Add(new DiagnosticInfo
+                {
+                    Identifier = "FMED013",
+                    Title = "Unknown middleware type",
+                    Message = $"Middleware type '{reference.MiddlewareTypeName}' referenced by [UseMiddleware] on handler '{handler.FullName}' was not found. Ensure the type exists and ends with 'Middleware'.",
+                    Severity = DiagnosticSeverity.Warning
+                });
+                continue;
+            }
 
             // Resolve effective middleware lifetime
             var resolvedLifetime = ResolveEffectiveLifetime(middlewareInfo.Lifetime, configuration.DefaultMiddlewareLifetime);

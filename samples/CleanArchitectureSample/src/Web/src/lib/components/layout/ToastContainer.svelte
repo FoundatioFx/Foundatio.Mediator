@@ -4,9 +4,9 @@
 </script>
 
 {#if toast.toasts.length > 0}
-  <div class="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm">
+  <div class="fixed bottom-4 right-4 z-50 space-y-2 min-w-72 max-w-md">
     {#each toast.toasts as t (t.id)}
-      <Alert type={t.type} message={t.message} dismissible ondismiss={() => toast.remove(t.id)} />
+      <Alert type={t.type} message={t.message} dismissible ondismiss={() => toast.remove(t.id)} class="shadow-lg" />
     {/each}
   </div>
 {/if}

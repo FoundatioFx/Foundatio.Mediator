@@ -9,4 +9,5 @@ internal readonly record struct CompilationInfo(
     bool SupportsMinimalApis,
     bool HasAsParametersAttribute,
     bool HasFromBodyAttribute,
-    bool HasWithOpenApi);
+    bool HasWithOpenApi,
+    bool IsAspNetCore);

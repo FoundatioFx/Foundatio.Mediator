@@ -12,11 +12,17 @@ internal readonly record struct HandlerInfo
     public EquatableArray<string> MessageBaseClasses { get; init; }
     public bool HasReturnValue => !ReturnType.IsVoid;
     public TypeSymbolInfo ReturnType { get; init; }
-    public bool IsAsync => ReturnType.IsTask || ReturnType.IsTuple || Middleware.Any(m => m.IsAsync);
+    public bool IsAsync => ReturnType.IsTask || ReturnType.IsTuple || Middleware.Any(m => m.IsAsync) || Authorization.ShouldEnforce;
     public bool IsStatic { get; init; }
     public EquatableArray<ParameterInfo> Parameters { get; init; }
     public EquatableArray<CallSiteInfo> CallSites { get; init; }
     public EquatableArray<MiddlewareInfo> Middleware { get; init; }
+
+    /// <summary>
+    /// Authorization metadata for this handler, resolved from [HandlerAuthorize], [HandlerAllowAnonymous],
+    /// [AllowAnonymous], and assembly-level defaults.
+    /// </summary>
+    public AuthorizationInfo Authorization { get; init; }
 
     /// <summary>
     /// Diagnostics related to ordering (e.g., circular dependency warnings).
@@ -146,10 +152,15 @@ internal readonly record struct HandlerInfo
     public bool HasAsyncMiddleware => Middleware.Any(m => m.IsAsync);
 
     /// <summary>
-    /// Whether any middleware requires a HandlerExecutionInfo parameter.
+    /// Whether this handler requires authorization checks in generated code.
+    /// </summary>
+    public bool RequiresAuthorization => Authorization.ShouldEnforce;
+
+    /// <summary>
+    /// Whether any middleware requires a HandlerExecutionInfo parameter, or authorization needs it.
     /// When true, the generated code must construct HandlerExecutionInfo.
     /// </summary>
-    public bool RequiresHandlerExecutionInfo => Middleware.Any(m =>
+    public bool RequiresHandlerExecutionInfo => Authorization.ShouldEnforce || Middleware.Any(m =>
         (m.BeforeMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
         (m.AfterMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
         (m.FinallyMethod?.Parameters.Any(p => p.Type.IsHandlerExecutionInfo) ?? false) ||
@@ -168,11 +179,12 @@ internal readonly record struct HandlerInfo
 
     /// <summary>
     /// Whether a service provider is needed for handler execution.
-    /// True when handler or middleware requires DI resolution.
+    /// True when handler or middleware requires DI resolution, or authorization checks are needed.
     /// </summary>
     public bool RequiresServiceProvider =>
         RequiresMethodInjection ||
         RequiresMiddlewareInstances ||
+        RequiresAuthorization ||
         (!IsStatic && !HasNoDependencies);
 
     /// <summary>
@@ -191,10 +203,11 @@ internal readonly record struct HandlerInfo
 
     /// <summary>
     /// Whether the handler can use a direct passthrough without async state machine.
-    /// True for static handlers with no dependencies, middleware, or cascading.
+    /// True for static handlers with no dependencies, middleware, cascading, or authorization.
     /// Note: OpenTelemetry disables this, but that's checked at generation time with configuration.
     /// </summary>
     public bool CanSkipAsyncStateMachine =>
+        !RequiresAuthorization &&
         (IsStaticWithNoDependencies || (HasNoDependencies && !HasMiddleware && !HasCascadingMessages));
 
     /// <summary>

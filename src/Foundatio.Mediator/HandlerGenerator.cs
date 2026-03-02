@@ -359,6 +359,7 @@ internal static class HandlerGenerator
         // Setup phase: OTel, handler info, middleware instances, result variables
         EmitOpenTelemetrySetup(source, handler, configuration, variables);
         EmitHandlerExecutionInfo(source, handler, variables);
+        EmitAuthorizationCheck(source, handler, configuration, variables, resultVar);
         EmitMiddlewareInstances(source, handler);
         EmitBeforeMiddlewareResultVariables(source, beforeMiddleware, variables);
         EmitHandlerResultVariable(source, handler, resultVar);
@@ -557,6 +558,45 @@ internal static class HandlerGenerator
         variables[WellKnownTypes.HandlerExecutionInfo] = "handlerExecutionInfo";
     }
 
+    /// <summary>
+    /// Emits authorization check code when the handler has authorization requirements.
+    /// For Result-returning handlers, returns Result.Unauthorized()/Result.Forbidden().
+    /// For non-Result handlers, throws UnauthorizedAccessException.
+    /// </summary>
+    private static void EmitAuthorizationCheck(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, Dictionary<string, string> variables, string resultVar)
+    {
+        if (!configuration.AuthorizationEnabled || !handler.RequiresAuthorization)
+            return;
+
+        source.AppendLine();
+        source.AppendLine("// Authorization check");
+        source.AppendLine("var authContextProvider = serviceProvider.GetRequiredService<Foundatio.Mediator.IAuthorizationContextProvider>();");
+        source.AppendLine("var authService = serviceProvider.GetRequiredService<Foundatio.Mediator.IHandlerAuthorizationService>();");
+        source.AppendLine("var principal = authContextProvider.GetCurrentPrincipal();");
+        source.AppendLine("var authResult = await authService.AuthorizeAsync(principal, handlerExecutionInfo.Authorization, cancellationToken).ConfigureAwait(false);");
+        source.AppendLine("if (!authResult.Succeeded)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        if (handler.ReturnType.IsResult)
+        {
+            // Result<T> or Result — return appropriate Result status
+            source.AppendLine("if (authResult.IsForbidden)");
+            source.AppendLine("    return Foundatio.Mediator.Result.Forbidden(authResult.FailureReason ?? \"Access denied.\");");
+            source.AppendLine("else");
+            source.AppendLine("    return Foundatio.Mediator.Result.Unauthorized(authResult.FailureReason ?? \"Authentication required.\");");
+        }
+        else
+        {
+            // Non-Result handler — throw UnauthorizedAccessException
+            source.AppendLine("throw new System.UnauthorizedAccessException(authResult.FailureReason ?? \"Authorization failed.\");");
+        }
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+    }
+
     private static void GenerateHandlerExecutionInfoField(IndentedStringBuilder source, HandlerInfo handler)
     {
         if (!handler.RequiresHandlerExecutionInfo)
@@ -564,6 +604,24 @@ internal static class HandlerGenerator
 
         var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
         string paramTypesArray = string.IsNullOrEmpty(paramTypes) ? "System.Type.EmptyTypes" : $"new[] {{ {paramTypes} }}";
+
+        // Build AuthorizationRequirements constructor if handler has auth requirements
+        string authArg;
+        if (handler.RequiresAuthorization)
+        {
+            var auth = handler.Authorization;
+            var rolesArray = auth.Roles.Any()
+                ? $"new string[] {{ {string.Join(", ", auth.Roles.Select(r => $"\"{r}\""))} }}"
+                : "System.Array.Empty<string>()";
+            var policiesArray = auth.Policies.Any()
+                ? $"new string[] {{ {string.Join(", ", auth.Policies.Select(p => $"\"{p}\""))} }}"
+                : "System.Array.Empty<string>()";
+            authArg = $", new Foundatio.Mediator.AuthorizationRequirements({auth.Required.ToString().ToLower()}, {rolesArray}, {policiesArray}, {auth.AllowAnonymous.ToString().ToLower()})";
+        }
+        else
+        {
+            authArg = "";
+        }
 
         source.AppendLine()
               .AppendLines($$"""
@@ -575,7 +633,7 @@ internal static class HandlerGenerator
                 {
                     if (_cachedHandlerExecutionInfo is { } cached)
                         return cached;
-                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!);
+                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!{{authArg}});
                     return Interlocked.CompareExchange(ref _cachedHandlerExecutionInfo, instance, null) ?? instance;
                 }
                 """);

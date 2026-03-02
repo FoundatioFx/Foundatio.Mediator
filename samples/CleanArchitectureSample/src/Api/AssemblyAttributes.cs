@@ -3,7 +3,7 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(
     EnableGenerationCounter = true,
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRequireAuth = true,
+    AuthorizationRequired = true,
     MiddlewareLifetime = MediatorLifetime.Singleton,
     ProjectName = "Api"
 )]

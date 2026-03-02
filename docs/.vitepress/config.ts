@@ -46,6 +46,7 @@ export default withMermaid(defineConfig({
             { text: 'Dependency Injection', link: '/guide/dependency-injection' },
             { text: 'Result Types', link: '/guide/result-types' },
             { text: 'Middleware', link: '/guide/middleware' },
+            { text: 'Authorization', link: '/guide/authorization' },
             { text: 'Endpoints', link: '/guide/endpoints' },
             { text: 'Clean Architecture', link: '/guide/clean-architecture' }
           ]

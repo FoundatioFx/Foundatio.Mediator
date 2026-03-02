@@ -16,10 +16,17 @@
   let { type = 'info', title, message, dismissible = false, ondismiss, class: className }: Props = $props();
 
   const variants: Record<AlertType, string> = {
-    success: 'border-green-500/50 text-green-600 [&>svg]:text-green-600',
-    error: 'border-destructive/50 text-destructive [&>svg]:text-destructive',
-    warning: 'border-yellow-500/50 text-yellow-600 [&>svg]:text-yellow-600',
-    info: 'border-primary/50 text-primary [&>svg]:text-primary'
+    success: 'border-green-500/50 bg-green-50 text-green-800',
+    error: 'border-destructive/50 bg-red-50 text-red-800',
+    warning: 'border-yellow-500/50 bg-yellow-50 text-yellow-800',
+    info: 'border-primary/50 bg-blue-50 text-blue-800'
+  };
+
+  const iconVariants: Record<AlertType, string> = {
+    success: 'text-green-600',
+    error: 'text-destructive',
+    warning: 'text-yellow-600',
+    info: 'text-primary'
   };
 
   const icons: Record<AlertType, typeof CircleCheck> = {
@@ -34,23 +41,23 @@
 
 <div
   class={cn(
-    'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4',
+    'flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-sm',
     variants[type],
     className
   )}
   role="alert"
 >
-  <Icon class="h-4 w-4" />
-  <div class="pl-7">
+  <Icon class={cn('mt-0.5 h-4 w-4 shrink-0', iconVariants[type])} />
+  <div class="min-w-0 flex-1">
     {#if title}
       <h5 class="mb-1 font-medium leading-none tracking-tight">{title}</h5>
     {/if}
-    <div class="text-sm [&_p]:leading-relaxed">{message}</div>
+    <div class="text-sm leading-snug [&_p]:leading-relaxed">{message}</div>
   </div>
   {#if dismissible && ondismiss}
     <button
       type="button"
-      class="absolute right-2 top-2 rounded-md p-1 opacity-70 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
+      class="shrink-0 rounded-md p-0.5 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
       onclick={ondismiss}
     >
       <X class="h-4 w-4" />

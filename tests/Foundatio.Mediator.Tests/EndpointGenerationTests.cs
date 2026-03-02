@@ -150,7 +150,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetThing(string Id);
 
-            [HandlerCategory("Things", Filters = new[] { typeof(CategoryFilter) })]
+            [HandlerCategory("Things", EndpointFilters = [typeof(CategoryFilter)])]
             public class ThingHandler
             {
                 public string Handle(GetThing query) => "thing";
@@ -185,7 +185,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public class FooHandler
             {
-                [HandlerEndpoint(Filters = new[] { typeof(AuditFilter) })]
+                [HandlerEndpoint(EndpointFilters = [typeof(AuditFilter)])]
                 public string Handle(CreateFoo command) => "created";
             }
             """;
@@ -365,10 +365,10 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record CreateBar(string Name);
 
-            [HandlerCategory("Bars", Filters = new[] { typeof(CategoryLevelFilter) })]
+            [HandlerCategory("Bars", EndpointFilters = [typeof(CategoryLevelFilter)])]
             public class BarHandler
             {
-                [HandlerEndpoint(Filters = new[] { typeof(EndpointLevelFilter) })]
+                [HandlerEndpoint(EndpointFilters = [typeof(EndpointLevelFilter)])]
                 public string Handle(CreateBar command) => "bar";
             }
             """;
@@ -397,7 +397,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             [assembly: MediatorConfiguration(
                 EndpointRoutePrefix = "/api",
                 EndpointDiscovery = EndpointDiscovery.All,
-                EndpointRequireAuth = true
+                AuthorizationRequired = true
             )]
 
             public record GetItem(string Id);
@@ -459,7 +459,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             [assembly: MediatorConfiguration(
                 EndpointRoutePrefix = "/api",
                 EndpointDiscovery = EndpointDiscovery.All,
-                EndpointRequireAuth = true
+                AuthorizationRequired = true
             )]
 
             public record GetPublicInfo();
@@ -497,7 +497,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             [assembly: MediatorConfiguration(
                 EndpointRoutePrefix = "/api",
                 EndpointDiscovery = EndpointDiscovery.All,
-                EndpointRequireAuth = true
+                AuthorizationRequired = true
             )]
 
             public record GetHealth();
@@ -535,8 +535,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             [assembly: MediatorConfiguration(
                 EndpointRoutePrefix = "/api",
                 EndpointDiscovery = EndpointDiscovery.All,
-                EndpointRequireAuth = true,
-                EndpointRoles = new[] { "Admin" }
+                AuthorizationRequired = true,
+                AuthorizationRoles = ["Admin"]
             )]
 
             public record GetSecret();

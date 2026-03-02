@@ -4,7 +4,7 @@ namespace Foundatio.Mediator;
 /// Marks a handler method for endpoint generation and allows customizing the generated endpoint.
 /// When applied to a class, the settings apply to all handler methods in that class unless overridden.
 /// </summary>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
 public sealed class HandlerEndpointAttribute : Attribute
 {
     /// <summary>
@@ -59,32 +59,9 @@ public sealed class HandlerEndpointAttribute : Attribute
     public bool Exclude { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this endpoint requires authentication.
-    /// When null, uses the category's RequireAuth setting, then the global <see cref="MediatorConfigurationAttribute.EndpointRequireAuth"/> setting.
-    /// </summary>
-    public bool RequireAuth { get; set; }
-
-    /// <summary>
-    /// Gets or sets the required roles for this endpoint.
-    /// Multiple roles are treated as "any of" (user must have at least one).
-    /// </summary>
-    public string[]? Roles { get; set; }
-
-    /// <summary>
-    /// Gets or sets the required authorization policy for this endpoint.
-    /// </summary>
-    public string? Policy { get; set; }
-
-    /// <summary>
-    /// Gets or sets multiple required authorization policies for this endpoint.
-    /// All policies must be satisfied.
-    /// </summary>
-    public string[]? Policies { get; set; }
-
-    /// <summary>
     /// Gets or sets the endpoint filter types for this endpoint.
     /// Each type must implement <c>Microsoft.AspNetCore.Http.IEndpointFilter</c>.
     /// These filters are additive to any global or category-level filters.
     /// </summary>
-    public Type[]? Filters { get; set; }
+    public Type[]? EndpointFilters { get; set; }
 }

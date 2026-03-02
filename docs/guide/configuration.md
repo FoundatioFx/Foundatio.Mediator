@@ -126,6 +126,12 @@ public class FirstTransientMiddleware
 - **Effect:** When `true`, disables OpenTelemetry integration code generation
 - **Use Case:** Reduce generated code size when telemetry is not needed
 
+**`DisableAuthorization`** (`bool`)
+
+- **Default:** `false`
+- **Effect:** When `true`, disables all generated authorization checks in handler code and prevents registration of authorization-related services (`IHttpContextAccessor`, `HttpContextAuthorizationContextProvider`, `IAuthorizationContextProvider`). `[HandlerAuthorize]` attributes are ignored for inline mediator call auth checks. Endpoint-level `.RequireAuthorization()` is **not** affected.
+- **Use Case:** Projects that don't need mediator-level authorization, or projects that want to avoid `IHttpContextAccessor` being automatically registered
+
 **`HandlerDiscovery`** (`HandlerDiscovery` enum)
 
 - **Values:** `All`, `Explicit`
@@ -180,12 +186,12 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 - **Default:** `"/api"`
 - **Effect:** Sets a global route prefix that all category groups nest under. Categories auto-derive their route from their name (e.g., `[HandlerCategory("Products")]` → `/products`), composing with the global prefix to produce `/api/products`.
 
-**`EndpointRequireAuth`** (`bool`)
+**`AuthorizationRequired`** (`bool`)
 
 - **Default:** `false`
-- **Effect:** Sets the default authentication requirement for all generated endpoints
-- **Use Case:** Secure-by-default API with opt-out for public endpoints
-- **Override:** Use `[HandlerCategory(RequireAuth = false)]` or `[HandlerEndpoint(RequireAuth = false)]` to override per category or endpoint
+- **Effect:** Sets the default authorization requirement for all handlers (both endpoints and direct mediator calls)
+- **Use Case:** Secure-by-default API with opt-out for public handlers
+- **Override:** Use `[HandlerAllowAnonymous]` on a handler class or method to opt out, or `[HandlerAuthorize]` to opt in specific handlers when this is `false`
 
 **`EndpointFilters`** (`Type[]?`)
 
@@ -193,11 +199,11 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 - **Effect:** Applies endpoint filters to the root MapGroup, affecting all generated endpoints
 - **Example:** `EndpointFilters = new[] { typeof(LoggingFilter), typeof(ValidationFilter) }`
 
-**`EndpointPolicy`** / **`EndpointRoles`**
+**`AuthorizationPolicies`** / **`AuthorizationRoles`**
 
-- **Values:** String / String array
+- **Values:** String array / String array
 - **Default:** None
-- **Effect:** Sets authorization policy and roles on the root group
+- **Effect:** Sets default authorization policies and roles for all handlers globally
 
 ### Example Configuration
 

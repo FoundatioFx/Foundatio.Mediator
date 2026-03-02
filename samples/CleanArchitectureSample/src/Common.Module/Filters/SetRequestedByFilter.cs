@@ -7,7 +7,7 @@ namespace Common.Module.Filters;
 /// incoming message from the authenticated user's identity.
 ///
 /// Because all generated endpoints require authentication (via
-/// <c>[assembly: MediatorConfiguration(EndpointRequireAuth = true)]</c>), the user is always
+/// <c>[assembly: MediatorConfiguration(AuthorizationRequired = true)]</c>), the user is always
 /// authenticated by the time this filter runs.
 ///
 /// This demonstrates how Foundatio.Mediator's endpoint filter support lets you enrich
@@ -16,9 +16,9 @@ namespace Common.Module.Filters;
 ///
 /// Wire this filter at any level of the three-tier hierarchy:
 /// <list type="bullet">
-///   <item><description>Global: <c>[assembly: MediatorConfiguration(EndpointFilters = new[] { typeof(SetRequestedByFilter) })]</c></description></item>
-///   <item><description>Category: <c>[HandlerCategory("Orders", Filters = new[] { typeof(SetRequestedByFilter) })]</c></description></item>
-///   <item><description>Endpoint: <c>[HandlerEndpoint(Filters = new[] { typeof(SetRequestedByFilter) })]</c></description></item>
+///   <item><description>Global: <c>[assembly: MediatorConfiguration(EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
+///   <item><description>Category: <c>[HandlerCategory("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
+///   <item><description>Endpoint: <c>[HandlerEndpoint(EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
 /// </list>
 /// </summary>
 public class SetRequestedByFilter : IEndpointFilter

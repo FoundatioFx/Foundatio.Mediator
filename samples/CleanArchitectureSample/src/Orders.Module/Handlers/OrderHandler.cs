@@ -15,13 +15,14 @@ namespace Orders.Module.Handlers;
 /// Following Clean Architecture, this handler orchestrates use cases
 /// and delegates persistence to the IOrderRepository abstraction.
 /// </summary>
-[HandlerCategory("Orders", Filters = new[] { typeof(SetRequestedByFilter) })]
+[HandlerCategory("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]
 public class OrderHandler(IOrderRepository repository)
 {
     /// <summary>
-    /// Creates a new order (retries on transient failure)
+    /// Creates a new order (retries on transient failure, requires User or Admin role)
     /// </summary>
     [Retry]
+    [HandlerAuthorize(Roles = ["User", "Admin"])]
     public async Task<(Result<Order>, OrderCreated?)> HandleAsync(CreateOrder command, ILogger<OrderHandler> logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Creating order requested by {RequestedBy}", command.RequestedBy ?? "unknown");
@@ -64,9 +65,10 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Updates an existing order (retries with aggressive policy)
+    /// Updates an existing order (retries with aggressive policy, requires User or Admin role)
     /// </summary>
     [Retry(PolicyName = "aggressive")]
+    [HandlerAuthorize(Roles = ["User", "Admin"])]
     public async Task<(Result<Order>, OrderUpdated?)> HandleAsync(UpdateOrder command, CancellationToken cancellationToken)
     {
         var existingOrder = await repository.GetByIdAsync(command.OrderId, cancellationToken);
@@ -88,8 +90,9 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Deletes an order
+    /// Deletes an order (requires Admin role)
     /// </summary>
+    [HandlerAuthorize(Roles = ["Admin"])]
     public async Task<(Result, OrderDeleted?)> HandleAsync(DeleteOrder command, CancellationToken cancellationToken)
     {
         var deleted = await repository.DeleteAsync(command.OrderId, cancellationToken);

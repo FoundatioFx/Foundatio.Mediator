@@ -43,6 +43,16 @@ public sealed class MediatorConfigurationAttribute : Attribute
     public bool DisableOpenTelemetry { get; set; }
 
     /// <summary>
+    /// Disables automatic authorization checks in generated handler code and prevents
+    /// registration of authorization services (<see cref="IHandlerAuthorizationService"/>,
+    /// <see cref="IAuthorizationContextProvider"/>, and <c>IHttpContextAccessor</c>).
+    /// When <c>true</c>, <c>[HandlerAuthorize]</c> attributes are ignored for inline mediator
+    /// call auth checks. Endpoint-level <c>.RequireAuthorization()</c> is not affected.
+    /// Default: <c>false</c>.
+    /// </summary>
+    public bool DisableAuthorization { get; set; }
+
+    /// <summary>
     /// Controls how handlers are discovered. <see cref="HandlerDiscovery.All"/> finds handlers
     /// by naming convention (<c>*Handler</c>, <c>*Consumer</c>) and by explicit attributes/interfaces.
     /// <see cref="HandlerDiscovery.Explicit"/> requires <c>[Handler]</c> or <c>IHandler</c>.
@@ -100,25 +110,27 @@ public sealed class MediatorConfigurationAttribute : Attribute
     public Type[]? EndpointFilters { get; set; }
 
     /// <summary>
-    /// Requires authentication on all generated endpoints. Individual endpoints
-    /// can opt out with <c>[AllowAnonymous]</c> on the handler or method.
+    /// Requires authorization on all handlers and generated endpoints. Individual handlers
+    /// can opt out with <c>[HandlerAllowAnonymous]</c> or <c>[AllowAnonymous]</c> on the handler or method.
+    /// When true, both generated endpoint auth (<c>.RequireAuthorization()</c>) and direct mediator
+    /// call auth checks are enabled for all handlers in the assembly.
     /// Default: <c>false</c>.
     /// </summary>
-    public bool EndpointRequireAuth { get; set; }
+    public bool AuthorizationRequired { get; set; }
 
     /// <summary>
-    /// Authorization policy name applied to all generated endpoints.
-    /// Can be overridden per-category or per-endpoint.
-    /// Default: <c>null</c> (no policy).
+    /// Authorization policy names applied to all handlers and generated endpoints.
+    /// Can be overridden per-handler via <c>[HandlerAuthorize(Policies = ["..."])]</c>.
+    /// Default: <c>null</c> (no policies).
     /// </summary>
-    public string? EndpointPolicy { get; set; }
+    public string[]? AuthorizationPolicies { get; set; }
 
     /// <summary>
-    /// Role names required for all generated endpoints.
-    /// Can be overridden per-category or per-endpoint.
+    /// Role names required for all handlers and generated endpoints.
+    /// Can be overridden per-handler via <c>[HandlerAuthorize(Roles = ...)]</c>.
     /// Default: <c>null</c> (no role requirement).
     /// </summary>
-    public string[]? EndpointRoles { get; set; }
+    public string[]? AuthorizationRoles { get; set; }
 
     /// <summary>
     /// Controls how the endpoint summary is generated from the message type name.

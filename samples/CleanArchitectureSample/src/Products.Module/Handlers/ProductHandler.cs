@@ -2,7 +2,6 @@ using Common.Module;
 using Common.Module.Events;
 using Common.Module.Middleware;
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using Products.Module.Data;
 using Products.Module.Domain;
@@ -19,9 +18,10 @@ namespace Products.Module.Handlers;
 public class ProductHandler(IProductRepository repository)
 {
     /// <summary>
-    /// Creates a new product (retries with custom inline settings)
+    /// Creates a new product (requires Admin or Manager role, retries with custom inline settings)
     /// </summary>
     [Retry(MaxAttempts = 5, DelayMs = 200)]
+    [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<(Result<Product>, ProductCreated?)> HandleAsync(CreateProduct command, CancellationToken cancellationToken)
     {
         var product = new Product(
@@ -46,7 +46,7 @@ public class ProductHandler(IProductRepository repository)
     /// <summary>
     /// Gets a product by ID (anonymous - public catalog, cached 30s)
     /// </summary>
-    [AllowAnonymous]
+    [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
     public async Task<Result<Product>> HandleAsync(GetProduct query, CancellationToken cancellationToken)
     {
@@ -61,7 +61,7 @@ public class ProductHandler(IProductRepository repository)
     /// <summary>
     /// Gets all products (anonymous - public catalog, cached 30s)
     /// </summary>
-    [AllowAnonymous]
+    [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
     public async Task<Result<List<Product>>> HandleAsync(GetProducts query, CancellationToken cancellationToken)
     {
@@ -70,8 +70,9 @@ public class ProductHandler(IProductRepository repository)
     }
 
     /// <summary>
-    /// Updates an existing product
+    /// Updates an existing product (requires Admin or Manager role)
     /// </summary>
+    [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<(Result<Product>, ProductUpdated?, ProductStockChanged?)> HandleAsync(UpdateProduct command, CancellationToken cancellationToken)
     {
         var existingProduct = await repository.GetByIdAsync(command.ProductId, cancellationToken);
@@ -109,8 +110,9 @@ public class ProductHandler(IProductRepository repository)
     }
 
     /// <summary>
-    /// Deletes a product
+    /// Deletes a product (requires Admin role)
     /// </summary>
+    [HandlerAuthorize(Roles = ["Admin"])]
     public async Task<(Result, ProductDeleted?)> HandleAsync(DeleteProduct command, CancellationToken cancellationToken)
     {
         var deleted = await repository.DeleteAsync(command.ProductId, cancellationToken);
@@ -131,7 +133,7 @@ public class ProductHandler(IProductRepository repository)
     /// Simulates an expensive computation (500ms delay) that is cached for 60 seconds.
     /// First call is slow; subsequent calls return instantly from cache.
     /// </summary>
-    [AllowAnonymous]
+    [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 60)]
     public async Task<Result<ProductCatalogSummary>> HandleAsync(
         GetProductCatalog query, ILogger<ProductHandler> logger, CancellationToken cancellationToken)

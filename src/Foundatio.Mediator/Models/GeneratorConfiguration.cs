@@ -5,6 +5,7 @@ internal record GeneratorConfiguration(
     string DefaultHandlerLifetime,
     string DefaultMiddlewareLifetime,
     bool OpenTelemetryEnabled,
+    bool AuthorizationEnabled,
     bool ConventionalDiscoveryDisabled,
     bool GenerationCounterEnabled,
     string NotificationPublishStrategy,

@@ -1,18 +1,17 @@
 using Common.Module.Messages;
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.Authorization;
 
 namespace Common.Module.Handlers;
 
 /// <summary>
-/// A public health check endpoint that demonstrates using <c>[AllowAnonymous]</c>
-/// to opt a handler out of the global <c>RequireAuth = true</c> setting.
+/// A public health check endpoint that demonstrates using <c>[HandlerAllowAnonymous]</c>
+/// to opt a handler out of the global <c>AuthorizationRequired = true</c> setting.
 ///
-/// Even though all generated endpoints require authentication by default, this
+/// Even though all handlers require authorization by default, this
 /// handler is accessible without logging in — useful for load balancers, uptime
 /// monitors, and readiness probes.
 /// </summary>
-[AllowAnonymous]
+[HandlerAllowAnonymous]
 [HandlerCategory("Health")]
 public class HealthHandler
 {

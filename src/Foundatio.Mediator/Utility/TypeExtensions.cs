@@ -242,4 +242,6 @@ internal static class WellKnownTypes
     public const string UseMiddlewareAttribute = "Foundatio.Mediator.UseMiddlewareAttribute";
     public const string MediatorConfigurationAttribute = "Foundatio.Mediator.MediatorConfigurationAttribute";
     public const string AllowAnonymousAttribute = "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute";
+    public const string HandlerAuthorizeAttribute = "Foundatio.Mediator.HandlerAuthorizeAttribute";
+    public const string HandlerAllowAnonymousAttribute = "Foundatio.Mediator.HandlerAllowAnonymousAttribute";
 }

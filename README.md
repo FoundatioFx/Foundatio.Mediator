@@ -169,7 +169,7 @@ Configure with an assembly attribute:
 ```csharp
 [assembly: MediatorConfiguration(
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRequireAuth = true,
+    AuthorizationRequired = true,
     ProjectName = "Products"
 )]
 ```

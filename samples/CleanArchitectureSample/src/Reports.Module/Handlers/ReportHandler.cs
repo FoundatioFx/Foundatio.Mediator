@@ -1,5 +1,4 @@
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using Orders.Module.Messages;
 using Products.Module.Domain;
@@ -23,7 +22,7 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     /// <summary>
     /// Generates a dashboard report combining data from Orders and Products modules (anonymous - public landing page)
     /// </summary>
-    [AllowAnonymous]
+    [HandlerAllowAnonymous]
     public async Task<Result<DashboardReport>> HandleAsync(GetDashboardReport query, CancellationToken cancellationToken)
     {
         logger.LogInformation("Generating dashboard report");
@@ -65,8 +64,9 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     }
 
     /// <summary>
-    /// Generates a sales report for a date range
+    /// Generates a sales report for a date range (requires Admin or Manager role)
     /// </summary>
+    [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<Result<SalesReport>> HandleAsync(GetSalesReport query, CancellationToken cancellationToken)
     {
         var startDate = query.StartDate ?? DateTime.UtcNow.AddDays(-30);
@@ -102,8 +102,9 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     }
 
     /// <summary>
-    /// Generates an inventory report from the Products module
+    /// Generates an inventory report from the Products module (requires Admin or Manager role)
     /// </summary>
+    [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<Result<InventoryReport>> HandleAsync(GetInventoryReport query, CancellationToken cancellationToken)
     {
         logger.LogInformation("Generating inventory report");
@@ -135,7 +136,7 @@ public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
     /// <summary>
     /// Searches across both Orders and Products modules (anonymous - public search)
     /// </summary>
-    [AllowAnonymous]
+    [HandlerAllowAnonymous]
     public async Task<Result<CatalogSearchResult>> HandleAsync(SearchCatalog query, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query.SearchTerm))

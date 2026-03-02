@@ -202,9 +202,6 @@ public class ProductHandler { ... }
 Properties:
 - `Name` (constructor) - Category name for OpenAPI tags
 - `RoutePrefix` - Base route for all handlers in this class
-- `RequireAuth` - Default auth requirement for handlers in this category
-- `Roles` - Default required roles
-- `Policy` - Default authorization policy
 
 ### `[HandlerEndpoint]`
 
@@ -233,44 +230,89 @@ Properties:
 - `Description` - OpenAPI description
 - `Tags` - Override category tags
 - `Exclude` - Exclude from endpoint generation
-- `RequireAuth` - Require authentication
-- `Roles` - Required roles
-- `Policy` - Authorization policy name
-- `Policies` - Multiple authorization policies
+- `EndpointFilters` - Endpoint filter types
 
 ## Authentication & Authorization
 
+Foundatio.Mediator provides unified authorization that works for **both** HTTP endpoints and direct `mediator.InvokeAsync()` calls. Authorization is configured via `[HandlerAuthorize]` and `[HandlerAllowAnonymous]` attributes, or globally via the assembly attribute.
+
+### Handler-Level Authorization
+
+Use `[HandlerAuthorize]` on a handler class or method to require authorization:
+
+```csharp
+[HandlerAuthorize]
+public class SecureHandler
+{
+    public Task<Result<Secret>> HandleAsync(GetSecret query) { ... }
+}
+
+// With roles and policies
+[HandlerAuthorize(Roles = "Admin,Manager", Policies = ["CanEditProducts"])]
+public class AdminHandler
+{
+    public Task<Result> HandleAsync(DeleteProduct command) { ... }
+}
+```
+
+For Result-returning handlers, unauthorized requests receive `Result.Unauthorized()` or `Result.Forbidden()`. For non-Result handlers, an `UnauthorizedAccessException` is thrown.
+
 ### Global Default
 
-Set a default auth requirement for all endpoints using the assembly attribute:
+Set a default auth requirement for all handlers using the assembly attribute:
 
 ```csharp
 [assembly: MediatorConfiguration(
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRequireAuth = true
+    AuthorizationRequired = true
 )]
 ```
+
+### Opting Out
+
+Use `[HandlerAllowAnonymous]` to bypass authorization on specific handlers when global auth is enabled:
+
+```csharp
+[HandlerAllowAnonymous]
+public class PublicHandler
+{
+    public Task<Result<Status>> HandleAsync(HealthCheck query) { ... }
+}
+```
+
+ASP.NET Core's `[AllowAnonymous]` attribute is also recognized.
 
 ### Category Level
 
 Override at the category level:
 
 ```csharp
-[HandlerCategory("Admin", RoutePrefix = "/api/admin", RequireAuth = true, Policy = "AdminOnly")]
+[HandlerCategory("Admin", RoutePrefix = "/api/admin")]
+[HandlerAuthorize(Policies = ["AdminOnly"])]
 public class AdminHandler { ... }
 
-[HandlerCategory("Public", RoutePrefix = "/api/public", RequireAuth = false)]
+[HandlerCategory("Public", RoutePrefix = "/api/public")]
+[HandlerAllowAnonymous]
 public class PublicHandler { ... }
 ```
 
 ### Endpoint Level
 
-Override for specific endpoints:
+Use `[HandlerAuthorize]` on individual handler methods for endpoint-specific authorization:
 
 ```csharp
-[HandlerEndpoint(RequireAuth = true, Roles = new[] { "Admin", "Manager" })]
+[HandlerAuthorize(Roles = "Admin,Manager")]
 public Task<Result> HandleAsync(DeleteProduct command) { ... }
 ```
+
+### Custom Authorization Services
+
+The authorization system is extensible via two interfaces:
+
+- **`IAuthorizationContextProvider`** — Provides the `ClaimsPrincipal` for the current request. In ASP.NET Core apps, this is auto-registered to read from `HttpContext.User`.
+- **`IHandlerAuthorizationService`** — Performs the authorization check. The default implementation checks roles and policies against the principal's claims.
+
+You can replace either service via DI to customize behavior.
 
 ## Discovery Modes
 

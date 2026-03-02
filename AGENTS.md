@@ -257,14 +257,15 @@ using Foundatio.Mediator;
     MiddlewareLifetime = MediatorLifetime.Scoped,      // Default middleware DI lifetime
     DisableInterceptors = false,                        // Disable C# interceptors
     DisableOpenTelemetry = false,                       // Disable OpenTelemetry tracing
+    DisableAuthorization = false,                       // Disable inline auth checks and auth service DI
     HandlerDiscovery = HandlerDiscovery.All,            // All (convention + explicit) or Explicit only
     NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait, // Sequential, TaskWhenAll, or FireAndForget
     ProjectName = "MyProject",                          // Custom suffix for generated endpoint methods
     EnableGenerationCounter = false,                    // Debug: add generation timestamp comment
     EndpointDiscovery = EndpointDiscovery.All,          // None, Explicit, All
     EndpointRoutePrefix = "/api",                       // Global route prefix for all endpoints (default: "/api")
-    EndpointRequireAuth = false,                        // Require auth for all endpoints
-    EndpointFilters = new[] { typeof(MyFilter) }        // Global endpoint filters
+    AuthorizationRequired = false,                         // Require auth for all handlers and endpoints
+    EndpointFilters = [typeof(MyFilter)]                // Global endpoint filters
 )]
 ```
 

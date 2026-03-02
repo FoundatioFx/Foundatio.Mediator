@@ -16,6 +16,7 @@ using Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
 
@@ -128,7 +129,7 @@ app.MapGet("/api/auth/me", (HttpContext http) =>
 app.MapHub<EventHub>("/hubs/events");
 
 // Map module endpoints - each module exposes its own API endpoints
-// All generated endpoints now require authentication via [assembly: MediatorConfiguration(EndpointRequireAuth = true)]
+// All generated endpoints now require authentication via [assembly: MediatorConfiguration(AuthorizationRequired = true)]
 // Handlers marked with [AllowAnonymous] (e.g., HealthHandler) opt out of auth
 app.MapCommonEndpoints();
 app.MapOrdersEndpoints();

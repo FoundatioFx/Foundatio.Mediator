@@ -3,6 +3,8 @@ using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
 using Orders.Module.Messages;
 
+// PaymentHandler uses [HandlerAuthorize] for role-based auth
+
 namespace Orders.Module.Handlers;
 
 /// <summary>
@@ -16,8 +18,10 @@ public class PaymentHandler
 
     /// <summary>
     /// Processes a payment, randomly throwing transient errors to demonstrate retry.
+    /// Requires User or Admin role.
     /// </summary>
     [Retry(MaxAttempts = 5, DelayMs = 100)]
+    [HandlerAuthorize(Roles = ["User", "Admin"])]
     public Task<Result<string>> HandleAsync(
         ProcessPayment command,
         ILogger<PaymentHandler> logger,

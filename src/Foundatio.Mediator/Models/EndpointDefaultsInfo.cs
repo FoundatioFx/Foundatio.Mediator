@@ -23,17 +23,20 @@ internal readonly record struct EndpointDefaultsInfo
     public EquatableArray<string> Filters { get; init; }
 
     /// <summary>
-    /// Whether all endpoints require authentication by default.
+    /// Whether all handlers and endpoints require authentication by default.
+    /// Populated from the renamed <c>AuthorizationRequired</c> property on <c>[assembly: MediatorConfiguration]</c>.
     /// </summary>
     public bool RequireAuth { get; init; }
 
     /// <summary>
-    /// The default authorization policy for all endpoints.
+    /// The default authorization policies for all handlers and endpoints.
+    /// Populated from <c>AuthorizationPolicies</c> on <c>[assembly: MediatorConfiguration]</c>.
     /// </summary>
-    public string? Policy { get; init; }
+    public EquatableArray<string> Policies { get; init; }
 
     /// <summary>
-    /// The default required roles for all endpoints.
+    /// The default required roles for all handlers and endpoints.
+    /// Populated from the renamed <c>AuthorizationRoles</c> property on <c>[assembly: MediatorConfiguration]</c>.
     /// </summary>
     public EquatableArray<string> Roles { get; init; }
 
@@ -54,7 +57,7 @@ internal readonly record struct EndpointDefaultsInfo
         RoutePrefix = "/api",
         Filters = EquatableArray<string>.Empty,
         RequireAuth = false,
-        Policy = null,
+        Policies = EquatableArray<string>.Empty,
         Roles = EquatableArray<string>.Empty,
         SummaryStyle = "Exact",
         IsConfigured = false

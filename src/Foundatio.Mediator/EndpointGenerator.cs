@@ -134,8 +134,11 @@ internal static class EndpointGenerator
             // Apply global auth
             if (endpointDefaults.RequireAuth)
             {
-                if (!string.IsNullOrEmpty(endpointDefaults.Policy))
-                    source.Append($".RequireAuthorization(\"{endpointDefaults.Policy}\")");
+                if (endpointDefaults.Policies.Any())
+                {
+                    foreach (var p in endpointDefaults.Policies)
+                        source.Append($".RequireAuthorization(\"{p}\")");
+                }
                 else if (endpointDefaults.Roles.Any())
                 {
                     var rolesStr = string.Join("\", \"", endpointDefaults.Roles);
@@ -164,8 +167,11 @@ internal static class EndpointGenerator
 
             if (endpointDefaults.RequireAuth)
             {
-                if (!string.IsNullOrEmpty(endpointDefaults.Policy))
-                    source.Append($".RequireAuthorization(\"{endpointDefaults.Policy}\")");
+                if (endpointDefaults.Policies.Any())
+                {
+                    foreach (var p in endpointDefaults.Policies)
+                        source.Append($".RequireAuthorization(\"{p}\")");
+                }
                 else if (endpointDefaults.Roles.Any())
                 {
                     var rolesStr = string.Join("\", \"", endpointDefaults.Roles);

@@ -215,6 +215,9 @@ internal static class HandlerAnalyzer
             // Extract XML documentation summary
             var xmlDocSummary = ExtractXmlDocSummary(handlerMethod);
 
+            // Extract authorization metadata from [HandlerAuthorize], [HandlerAllowAnonymous], [AllowAnonymous]
+            var authorizationInfo = ExtractAuthorizationInfo(classSymbol, handlerMethod, context.SemanticModel.Compilation);
+
             // Extract endpoint metadata
             var endpointInfo = ExtractEndpointInfo(
                 classSymbol,
@@ -222,7 +225,8 @@ internal static class HandlerAnalyzer
                 messageType as INamedTypeSymbol,
                 xmlDocSummary,
                 context.SemanticModel.Compilation,
-                handlerMethod.ReturnType);
+                handlerMethod.ReturnType,
+                authorizationInfo);
 
             // Extract handler-specific middleware references from [UseMiddleware] and custom attributes
             var handlerMiddlewareRefs = ExtractHandlerMiddlewareReferences(
@@ -256,6 +260,7 @@ internal static class HandlerAnalyzer
                 OrderAfter = new(orderAfter),
                 Lifetime = lifetime,
                 HasConstructorParameters = hasConstructorParameters,
+                Authorization = authorizationInfo,
                 Endpoint = endpointInfo,
                 XmlDocSummary = xmlDocSummary,
             });
@@ -462,7 +467,8 @@ internal static class HandlerAnalyzer
         INamedTypeSymbol? messageType,
         string? xmlDocSummary,
         Compilation compilation,
-        ITypeSymbol returnType)
+        ITypeSymbol returnType,
+        AuthorizationInfo authorizationInfo)
     {
         if (messageType == null)
             return null;
@@ -496,9 +502,6 @@ internal static class HandlerAnalyzer
         // Extract category info
         string? categoryName = null;
         string? categoryRoutePrefix = null;
-        bool? categoryRequireAuth = null;
-        string[]? categoryRoles = null;
-        string? categoryPolicy = null;
 
         if (categoryAttr != null)
         {
@@ -512,9 +515,6 @@ internal static class HandlerAnalyzer
             {
                 categoryRoutePrefix = "/" + categoryName!.ToLowerInvariant();
             }
-            categoryRequireAuth = GetBoolProperty(categoryAttr, "RequireAuth");
-            categoryRoles = GetStringArrayProperty(categoryAttr, "Roles");
-            categoryPolicy = GetStringProperty(categoryAttr, "Policy");
         }
 
         // Extract endpoint info (method takes precedence over class)
@@ -541,41 +541,17 @@ internal static class HandlerAnalyzer
         var tags = GetStringArrayProperty(methodEndpointAttr, "Tags") ??
                    GetStringArrayProperty(classEndpointAttr, "Tags");
 
-        // Check for [AllowAnonymous] on method or class
-        var allowAnonymous = handlerMethod.GetAttributes()
-            .Any(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.AllowAnonymousAttribute)
-            || classSymbol.GetAttributes()
-            .Any(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.AllowAnonymousAttribute);
-
-        // Auth configuration (method -> class -> category)
-        var requireAuth = GetBoolProperty(methodEndpointAttr, "RequireAuth") ??
-                          GetBoolProperty(classEndpointAttr, "RequireAuth") ??
-                          categoryRequireAuth ??
-                          false;
-
-        var roles = GetStringArrayProperty(methodEndpointAttr, "Roles") ??
-                    GetStringArrayProperty(classEndpointAttr, "Roles") ??
-                    categoryRoles ??
-                    [];
-
-        var policy = GetStringProperty(methodEndpointAttr, "Policy") ??
-                     GetStringProperty(classEndpointAttr, "Policy") ??
-                     categoryPolicy;
-
-        var policies = GetStringArrayProperty(methodEndpointAttr, "Policies") ??
-                       GetStringArrayProperty(classEndpointAttr, "Policies") ??
-                       [];
-
-        // Combine single policy with policies array
-        var allPolicies = policy != null
-            ? policies.Prepend(policy).Distinct().ToArray()
-            : policies;
+        // Auth derived from unified AuthorizationInfo (populated from [HandlerAuthorize], [HandlerAllowAnonymous], assembly defaults)
+        var allowAnonymous = authorizationInfo.AllowAnonymous;
+        var requireAuth = authorizationInfo.Required;
+        var roles = authorizationInfo.Roles.ToArray();
+        var allPolicies = authorizationInfo.Policies.ToArray();
 
         // Extract endpoint filters (method -> class -> merge; category is separate)
-        var methodFilters = GetTypeArrayProperty(methodEndpointAttr, "Filters");
-        var classFilters = GetTypeArrayProperty(classEndpointAttr, "Filters");
+        var methodFilters = GetTypeArrayProperty(methodEndpointAttr, "EndpointFilters");
+        var classFilters = GetTypeArrayProperty(classEndpointAttr, "EndpointFilters");
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
-        var categoryFilters = GetTypeArrayProperty(categoryAttr, "Filters") ?? [];
+        var categoryFilters = GetTypeArrayProperty(categoryAttr, "EndpointFilters") ?? [];
 
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
@@ -615,6 +591,64 @@ internal static class HandlerAnalyzer
             Filters = new(endpointFilters),
             CategoryFilters = new(categoryFilters),
             ProducesType = producesType,
+        };
+    }
+
+    /// <summary>
+    /// Extracts authorization metadata from [HandlerAuthorize], [HandlerAllowAnonymous], [AllowAnonymous] attributes.
+    /// Cascading order: method → class → assembly-level defaults (assembly defaults are applied later by MediatorGenerator).
+    /// </summary>
+    private static AuthorizationInfo ExtractAuthorizationInfo(
+        INamedTypeSymbol classSymbol,
+        IMethodSymbol handlerMethod,
+        Compilation compilation)
+    {
+        // Check for [HandlerAuthorize] on method then class
+        var methodAuthAttr = handlerMethod.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAuthorizeAttribute);
+        var classAuthAttr = classSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAuthorizeAttribute);
+
+        // The presence of [HandlerAuthorize] on either method or class means auth is required
+        bool hasHandlerAuthorize = methodAuthAttr != null || classAuthAttr != null;
+
+        // Check for [HandlerAllowAnonymous] or [AllowAnonymous] on method or class
+        bool allowAnonymous = handlerMethod.GetAttributes()
+            .Any(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAllowAnonymousAttribute
+                    || a.AttributeClass?.ToDisplayString() == WellKnownTypes.AllowAnonymousAttribute)
+            || classSymbol.GetAttributes()
+            .Any(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAllowAnonymousAttribute
+                    || a.AttributeClass?.ToDisplayString() == WellKnownTypes.AllowAnonymousAttribute);
+
+        if (!hasHandlerAuthorize)
+        {
+            // No [HandlerAuthorize] found — return default (Required=false).
+            // Assembly-level AuthorizationRequired will be merged later in MediatorGenerator.
+            return new AuthorizationInfo
+            {
+                Required = false,
+                AllowAnonymous = allowAnonymous,
+                Roles = EquatableArray<string>.Empty,
+                Policies = EquatableArray<string>.Empty,
+            };
+        }
+
+        // Extract roles: method takes precedence over class
+        var roles = GetStringArrayProperty(methodAuthAttr, "Roles") ??
+                    GetStringArrayProperty(classAuthAttr, "Roles") ??
+                    [];
+
+        // Extract policies: method takes precedence over class
+        var allPolicies = GetStringArrayProperty(methodAuthAttr, "Policies") ??
+                          GetStringArrayProperty(classAuthAttr, "Policies") ??
+                          [];
+
+        return new AuthorizationInfo
+        {
+            Required = true,
+            AllowAnonymous = allowAnonymous,
+            Roles = new(roles),
+            Policies = new(allPolicies),
         };
     }
 

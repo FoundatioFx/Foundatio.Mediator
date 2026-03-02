@@ -94,6 +94,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         string handlerLifetime = "None";
         string middlewareLifetime = "None";
         bool disableOpenTelemetry = false;
+        bool disableAuthorization = false;
         bool conventionalDiscoveryDisabled = false;
         bool generationCounterEnabled = false;
         string notificationPublishStrategy = "ForeachAwait";
@@ -117,6 +118,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "DisableOpenTelemetry" when arg.Value.Value is bool b:
                         disableOpenTelemetry = b;
                         break;
+                    case "DisableAuthorization" when arg.Value.Value is bool b:
+                        disableAuthorization = b;
+                        break;
                     case "HandlerDiscovery" when arg.Value.Value is int v:
                         conventionalDiscoveryDisabled = v == 1; // Explicit = 1
                         break;
@@ -135,9 +139,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
         var interceptorsEnabled = !disableInterceptors && isCSharpSufficient;
         var openTelemetryEnabled = !disableOpenTelemetry;
+        var authorizationEnabled = !disableAuthorization;
 
         return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
-            openTelemetryEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
+            openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
     }
 
     /// <summary>
@@ -150,7 +155,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             SupportsMinimalApis: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Routing.IEndpointRouteBuilder") != null,
             HasAsParametersAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.AsParametersAttribute") != null,
             HasFromBodyAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.FromBodyAttribute") != null,
-            HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null);
+            HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null,
+            IsAspNetCore: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IHttpContextAccessor") != null);
     }
 
     /// <summary>
@@ -168,7 +174,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         string? routePrefix = "/api";
         var filters = Array.Empty<string>();
         bool requireAuth = false;
-        string? policy = null;
+        var policies = Array.Empty<string>();
         var roles = Array.Empty<string>();
         string summaryStyle = "Exact";
 
@@ -188,13 +194,16 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                         .Select(v => ((INamedTypeSymbol)v.Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
                         .ToArray();
                     break;
-                case "EndpointRequireAuth" when arg.Value.Value is bool b:
-                    requireAuth = b;
+                case "AuthorizationRequired" when arg.Value.Value is bool:
+                    requireAuth = (bool)arg.Value.Value!;
                     break;
-                case "EndpointPolicy" when arg.Value.Value is string s:
-                    policy = s;
+                case "AuthorizationPolicies" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                    policies = arg.Value.Values
+                        .Where(v => v.Value is string)
+                        .Select(v => (string)v.Value!)
+                        .ToArray();
                     break;
-                case "EndpointRoles" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                case "AuthorizationRoles" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
                     roles = arg.Value.Values
                         .Where(v => v.Value is string)
                         .Select(v => (string)v.Value!)
@@ -212,7 +221,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             RoutePrefix = routePrefix,
             Filters = new(filters),
             RequireAuth = requireAuth,
-            Policy = policy,
+            Policies = new(policies),
             Roles = new(roles),
             SummaryStyle = summaryStyle,
             IsConfigured = true
@@ -266,7 +275,10 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
             var resolvedHandlerLifetime = ResolveEffectiveLifetime(handler.Lifetime, configuration.DefaultHandlerLifetime);
 
-            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()) });
+            // Merge assembly-level authorization defaults into handler authorization info
+            var mergedAuth = MergeAuthorizationDefaults(handler.Authorization, endpointDefaults);
+
+            handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()), Authorization = mergedAuth });
         }
 
         // Collect call sites that need cross-assembly interceptors
@@ -291,7 +303,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
         if (handlersWithInfo.Count > 0 || middleware.Length > 0)
         {
-            FoundatioModuleGenerator.Execute(context, compilationInfo.AssemblyName, handlersWithInfo, filteredMiddleware, configuration);
+            FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration);
         }
 
         // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)
@@ -453,6 +465,35 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Merges assembly-level authorization defaults into a handler's authorization info.
+    /// Handler-level [HandlerAuthorize] takes precedence. If the handler doesn't have explicit auth,
+    /// assembly-level AuthorizationRequired/AuthorizationPolicies/AuthorizationRoles are applied.
+    /// </summary>
+    private static AuthorizationInfo MergeAuthorizationDefaults(AuthorizationInfo handlerAuth, EndpointDefaultsInfo defaults)
+    {
+        // If the handler already has [HandlerAuthorize] or [HandlerAllowAnonymous], keep as-is
+        if (handlerAuth.Required || handlerAuth.AllowAnonymous)
+            return handlerAuth;
+
+        // Apply assembly-level defaults if configured
+        if (!defaults.RequireAuth)
+            return handlerAuth;
+
+        var roles = defaults.Roles.Any() ? defaults.Roles : handlerAuth.Roles;
+        var policies = defaults.Policies.Any()
+            ? defaults.Policies
+            : handlerAuth.Policies;
+
+        return new AuthorizationInfo
+        {
+            Required = true,
+            AllowAnonymous = handlerAuth.AllowAnonymous,
+            Roles = roles,
+            Policies = policies,
+        };
     }
 
     /// <summary>

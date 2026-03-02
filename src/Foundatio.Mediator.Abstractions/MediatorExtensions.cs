@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Foundatio.Mediator;
 
@@ -68,6 +69,10 @@ public static class MediatorExtensions
         Mediator.NotificationPublisher = publisher ?? new ForeachAwaitPublisher();
 
         services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), configuration.MediatorLifetime));
+
+        // Register authorization services with TryAdd so generated code or user registrations take precedence
+        services.TryAddSingleton<IHandlerAuthorizationService, DefaultHandlerAuthorizationService>();
+        services.TryAddSingleton<IAuthorizationContextProvider, DefaultAuthorizationContextProvider>();
 
         return services;
     }

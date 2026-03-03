@@ -276,10 +276,12 @@ builder.Services.AddMediator(cfg => cfg
 
 ```csharp
 public class MediatorOptions {
-    public List<Assembly>? Assemblies { get; set; }
-    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Singleton;
+    public List<Assembly> Assemblies { get; set; } = [];
+    public ServiceLifetime? MediatorLifetime { get; set; } // null = auto-detect
 }
 ```
+
+When `MediatorLifetime` is `null` (the default), the mediator is registered as **Scoped** in ASP.NET Core apps and **Singleton** otherwise. Set it explicitly to override auto-detection.
 
 ### Notification Publishers
 

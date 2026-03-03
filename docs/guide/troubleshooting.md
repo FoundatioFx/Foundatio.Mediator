@@ -189,11 +189,17 @@ public class MyCustomProcessor
 
 **Symptom:** Scoped services (like `DbContext`) return the same instance across different HTTP requests or DI scopes, causing stale data, disposed context errors, or cross-request data leakage.
 
-**Cause:** The mediator is registered as singleton (default) and captures the root `IServiceProvider` at construction. All service resolution uses this root provider, making scoped services behave like singletons.
+**Cause:** The mediator is registered as Singleton and captures the root `IServiceProvider` at construction. All service resolution uses this root provider, making scoped services behave like singletons.
 
-**Solution:** Register the mediator as scoped:
+> **Note:** This should not happen with the default configuration, because ASP.NET Core apps auto-detect as Scoped. This issue only occurs if you explicitly forced `ServiceLifetime.Singleton`.
+
+**Solution:** Remove the explicit Singleton override, or switch to Scoped:
 
 ```csharp
+// Let auto-detection pick the right lifetime (Scoped for ASP.NET Core)
+services.AddMediator();
+
+// Or explicitly set Scoped
 services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 ```
 

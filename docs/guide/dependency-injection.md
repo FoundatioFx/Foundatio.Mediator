@@ -19,26 +19,33 @@ var app = builder.Build();
 
 ## Mediator Lifetime and Scoped Services
 
-> **Key Rule:** If your handlers use scoped or transient services (like `DbContext`), you must register the mediator as scoped.
+The mediator lifetime is **auto-detected** by default:
 
-By default, the mediator is registered as a **singleton**, which means it captures the root `IServiceProvider` at construction time. This causes scoped services to be resolved from the root provider, effectively making them singletons.
+- **ASP.NET Core apps** → registered as **Scoped** (one instance per HTTP request)
+- **Console / worker apps** → registered as **Singleton**
 
-### Register Mediator as Scoped
+This means `services.AddMediator()` does the right thing automatically — scoped services like `DbContext` are resolved from the correct per-request scope in web apps without any extra configuration.
+
+### Overriding the Default
+
+You can explicitly set the lifetime if needed:
 
 ```csharp
-// Required when using scoped/transient services in handlers
+// Force singleton (e.g., console app where all services are singleton)
+services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Singleton));
+
+// Force scoped (e.g., worker service with scoped DbContext)
 services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 ```
 
-This ensures each DI scope (HTTP request, background job, test) gets its own mediator instance that resolves services from the correct scope.
+### When to Override
 
-### When to Use Scoped Mediator
-
-| Scenario | Need Scoped Mediator? |
+| Scenario | Override needed? |
 | -------- | --------------------- |
-| Handlers use `DbContext` or other scoped services | **Yes** |
-| Handlers use transient services | **Yes** |
-| Handlers only use singletons or no DI | No (default is fine) |
+| ASP.NET Core with `DbContext` or scoped services | No (auto-detected as Scoped) |
+| Console app with only singletons | No (auto-detected as Singleton) |
+| Worker service with scoped services | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
+| Console app that needs Scoped | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
 
 ## Middleware Lifetime
 

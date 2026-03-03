@@ -15,6 +15,9 @@ public sealed class MediatorOptions
 
     /// <summary>
     /// Gets or sets the lifetime of the mediator.
+    /// When <c>null</c> (the default), the lifetime is auto-detected:
+    /// <see cref="ServiceLifetime.Scoped"/> for ASP.NET Core applications,
+    /// <see cref="ServiceLifetime.Singleton"/> otherwise.
     /// </summary>
-    public ServiceLifetime MediatorLifetime { get; set; } = ServiceLifetime.Singleton;
+    public ServiceLifetime? MediatorLifetime { get; set; }
 }

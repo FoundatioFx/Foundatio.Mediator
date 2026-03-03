@@ -11,12 +11,16 @@ public static class MediatorExtensions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// By default, the mediator is registered as a singleton. If your handlers use scoped or transient
-    /// services (like DbContext), you should register the mediator as scoped to ensure services are
-    /// resolved from the correct DI scope:
+    /// By default, the mediator lifetime is auto-detected: <b>Scoped</b> in ASP.NET Core applications
+    /// (where <c>IWebHostEnvironment</c> is registered) and <b>Singleton</b> otherwise.
+    /// This ensures scoped services like <c>DbContext</c> are resolved from the correct DI scope
+    /// in web applications without any extra configuration.
+    /// </para>
+    /// <para>
+    /// You can override this by setting the lifetime explicitly:
     /// </para>
     /// <code>
-    /// services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
+    /// services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Singleton));
     /// </code>
     /// </remarks>
     /// <param name="services">The service collection to add the mediator to.</param>
@@ -70,7 +74,8 @@ public static class MediatorExtensions
         var resolvedStrategy = strategy ?? NotificationPublishStrategy.ForeachAwait;
         services.TryAddSingleton<INotificationPublisher>(sp => CreatePublisher(resolvedStrategy, sp));
 
-        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), options.MediatorLifetime));
+        var lifetime = options.MediatorLifetime ?? DetectDefaultLifetime(services);
+        services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), lifetime));
 
         services.TryAddSingleton<IHandlerAuthorizationService, DefaultHandlerAuthorizationService>();
         services.TryAddSingleton<IAuthorizationContextProvider, DefaultAuthorizationContextProvider>();
@@ -114,6 +119,23 @@ public static class MediatorExtensions
             NotificationPublishStrategy.FireAndForget => new FireAndForgetPublisher(sp.GetService<ILogger<FireAndForgetPublisher>>()),
             _ => new ForeachAwaitPublisher()
         };
+    }
+
+    /// <summary>
+    /// Auto-detects the appropriate mediator lifetime based on the hosting environment.
+    /// Returns Scoped for ASP.NET Core applications (IWebHostEnvironment is registered),
+    /// Singleton otherwise.
+    /// </summary>
+    private static ServiceLifetime DetectDefaultLifetime(IServiceCollection services)
+    {
+        // IWebHostEnvironment is always registered by WebApplicationBuilder / WebHost.
+        // Its presence reliably indicates an ASP.NET Core web application where the
+        // mediator should be Scoped so that scoped services (DbContext, etc.) are
+        // resolved from the correct per-request scope.
+        bool isWebApp = services.Any(sd =>
+            sd.ServiceType.FullName == "Microsoft.AspNetCore.Hosting.IWebHostEnvironment");
+
+        return isWebApp ? ServiceLifetime.Scoped : ServiceLifetime.Singleton;
     }
 
     private static Type[] GetLoadableTypes(Assembly assembly)

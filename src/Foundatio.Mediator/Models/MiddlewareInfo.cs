@@ -80,15 +80,23 @@ internal readonly record struct MiddlewareInfo
     /// </summary>
     public bool CanCacheInstance =>
         HasNoDependencies ||
-        string.Equals(Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase);
+        string.Equals(Lifetime, WellKnownTypes.LifetimeSingleton, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether the middleware must be resolved from DI on every invocation.
     /// True for Scoped or Transient lifetime middleware.
     /// </summary>
     public bool RequiresDIResolutionPerInvocation =>
-        string.Equals(Lifetime, "Scoped", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(Lifetime, "Transient", StringComparison.OrdinalIgnoreCase);
+        string.Equals(Lifetime, WellKnownTypes.LifetimeScoped, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Lifetime, WellKnownTypes.LifetimeTransient, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the middleware has any explicit DI lifetime (Scoped, Transient, or Singleton).
+    /// When true, the middleware must be resolved from the DI container rather than cached by generated code.
+    /// </summary>
+    public bool HasExplicitLifetime =>
+        RequiresDIResolutionPerInvocation ||
+        string.Equals(Lifetime, WellKnownTypes.LifetimeSingleton, StringComparison.OrdinalIgnoreCase);
 
     #endregion
 }

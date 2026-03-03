@@ -244,4 +244,12 @@ internal static class WellKnownTypes
     public const string AllowAnonymousAttribute = "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute";
     public const string HandlerAuthorizeAttribute = "Foundatio.Mediator.HandlerAuthorizeAttribute";
     public const string HandlerAllowAnonymousAttribute = "Foundatio.Mediator.HandlerAllowAnonymousAttribute";
+    public const string IHandler = "Foundatio.Mediator.IHandler";
+    public const string GeneratedNamespace = "Foundatio.Mediator.Generated";
+
+    // Lifetime string constants (matching MediatorLifetime enum names)
+    public const string LifetimeNone = "None";
+    public const string LifetimeTransient = "Transient";
+    public const string LifetimeScoped = "Scoped";
+    public const string LifetimeSingleton = "Singleton";
 }

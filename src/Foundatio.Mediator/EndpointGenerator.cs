@@ -28,6 +28,9 @@ internal static class EndpointGenerator
         if (endpointHandlers.Count == 0)
             return;
 
+        // Validate endpoint configurations and emit diagnostics
+        ValidateEndpoints(context, endpointHandlers);
+
         // Generate the endpoint registration code
         var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
         context.AddSource("_MediatorEndpoints.g.cs", source);
@@ -48,6 +51,40 @@ internal static class EndpointGenerator
                 .ToList(),
             _ => [] // "None" mode - no endpoints generated
         };
+    }
+
+    /// <summary>
+    /// Validates endpoint configurations and emits diagnostics for common issues.
+    /// </summary>
+    private static void ValidateEndpoints(SourceProductionContext context, List<HandlerInfo> handlers)
+    {
+        foreach (var handler in handlers)
+        {
+            var endpoint = handler.Endpoint!.Value;
+
+            // Check for GET/DELETE endpoints where the message type cannot be constructed
+            if (endpoint.HttpMethod is "GET" or "DELETE"
+                && !endpoint.BindFromBody
+                && !endpoint.SupportsAsParameters
+                && !endpoint.HasParameterlessConstructor
+                && endpoint.RouteParameters.Length == 0
+                && endpoint.QueryParameters.Length == 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(
+                        "FMED014",
+                        "Endpoint message type requires a parameterless constructor",
+                        "Message type '{0}' used for {1} endpoint '{2}' has no public parameterless constructor and no route/query parameters. " +
+                        "The generated code will fail to compile. Add a parameterless constructor, use a record with default parameter values, or add properties to bind from the route/query string.",
+                        "Foundatio.Mediator",
+                        DiagnosticSeverity.Warning,
+                        isEnabledByDefault: true),
+                    Location.None,
+                    handler.MessageType.FullName,
+                    endpoint.HttpMethod,
+                    endpoint.Route));
+            }
+        }
     }
 
     /// <summary>

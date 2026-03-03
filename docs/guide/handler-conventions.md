@@ -252,7 +252,7 @@ public class UserHandler
 }
 ```
 
-**Note:** Handlers are singleton by default. Constructor dependencies are resolved once and shared across all invocations.
+**Note:** Handlers are internally cached by default (not registered with DI). Constructor dependencies are resolved once and shared across all invocations.
 
 ### Open Generic Handlers
 
@@ -316,7 +316,7 @@ public class OrderHandler
 
 ## Handler Lifetime Management
 
-### Default Behavior (Singleton)
+### Default Behavior (Internally Cached)
 
 ```csharp
 public class UserHandler
@@ -325,7 +325,7 @@ public class UserHandler
 
     public UserHandler(ILogger<UserHandler> logger)
     {
-        _logger = logger; // Singleton dependency - OK
+        _logger = logger; // Cached dependency - OK
     }
 
     public User Handle(GetUser query, DbContext context) // ✅ Per-request dependency

@@ -17,13 +17,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var generatorConfiguration = context.CompilationProvider
-            .Select(static (compilation, _) => GetConfiguration(compilation))
+        var configAndEndpoints = context.CompilationProvider
+            .Select(static (compilation, _) => GetConfigurationAndEndpointDefaults(compilation))
             .WithTrackingName(TrackingNames.Settings);
 
-        var endpointDefaults = context.CompilationProvider
-            .Select(static (compilation, _) => GetEndpointDefaults(compilation))
-            .WithTrackingName(TrackingNames.EndpointDefaults);
+        var generatorConfiguration = configAndEndpoints.Select(static (pair, _) => pair.Configuration);
+        var endpointDefaults = configAndEndpoints.Select(static (pair, _) => pair.EndpointDefaults);
 
         var compilationInfo = context.CompilationProvider
             .Select(static (compilation, _) => GetCompilationInfo(compilation))
@@ -88,19 +87,19 @@ public sealed class MediatorGenerator : IIncrementalGenerator
     }
 
     /// <summary>
-    /// Reads [assembly: MediatorConfiguration] and returns parsed generator configuration.
+    /// Reads [assembly: MediatorConfiguration] and returns both parsed generator configuration and endpoint defaults in a single pass.
     /// </summary>
-    private static GeneratorConfiguration GetConfiguration(Compilation compilation)
+    private static (GeneratorConfiguration Configuration, EndpointDefaultsInfo EndpointDefaults) GetConfigurationAndEndpointDefaults(Compilation compilation)
     {
         var isCSharpSufficient = compilation is CSharpCompilation { LanguageVersion: LanguageVersion.Default or >= LanguageVersion.CSharp11 };
 
         var configAttr = compilation.Assembly.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.MediatorConfigurationAttribute);
 
-        // Defaults
+        // Generator configuration defaults
         bool disableInterceptors = false;
-        string handlerLifetime = "None";
-        string middlewareLifetime = "None";
+        string handlerLifetime = WellKnownTypes.LifetimeNone;
+        string middlewareLifetime = WellKnownTypes.LifetimeNone;
         bool disableOpenTelemetry = false;
         bool disableAuthorization = false;
         bool conventionalDiscoveryDisabled = false;
@@ -108,20 +107,33 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         string notificationPublishStrategy = "ForeachAwait";
         string? projectName = null;
 
+        // Endpoint defaults
+        string discovery = "None";
+        string? routePrefix = "/api";
+        var filters = Array.Empty<string>();
+        bool requireAuth = false;
+        var policies = Array.Empty<string>();
+        var roles = Array.Empty<string>();
+        string summaryStyle = "Exact";
+        bool endpointConfigured = false;
+
         if (configAttr != null)
         {
+            endpointConfigured = true;
+
             foreach (var arg in configAttr.NamedArguments)
             {
                 switch (arg.Key)
                 {
+                    // Generator configuration
                     case "DisableInterceptors" when arg.Value.Value is bool b:
                         disableInterceptors = b;
                         break;
                     case "HandlerLifetime" when arg.Value.Value is int v:
-                        handlerLifetime = v switch { 1 => "Transient", 2 => "Scoped", 3 => "Singleton", _ => "None" };
+                        handlerLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, _ => WellKnownTypes.LifetimeNone };
                         break;
                     case "MiddlewareLifetime" when arg.Value.Value is int v:
-                        middlewareLifetime = v switch { 1 => "Transient", 2 => "Scoped", 3 => "Singleton", _ => "None" };
+                        middlewareLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, _ => WellKnownTypes.LifetimeNone };
                         break;
                     case "DisableOpenTelemetry" when arg.Value.Value is bool b:
                         disableOpenTelemetry = b;
@@ -141,6 +153,38 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "EnableGenerationCounter" when arg.Value.Value is bool b:
                         generationCounterEnabled = b;
                         break;
+
+                    // Endpoint defaults
+                    case "EndpointDiscovery" when arg.Value.Value is int v:
+                        discovery = v switch { 1 => "Explicit", 2 => "All", _ => "None" };
+                        break;
+                    case "EndpointRoutePrefix" when arg.Value.Value is string s:
+                        routePrefix = s;
+                        break;
+                    case "EndpointFilters" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                        filters = arg.Value.Values
+                            .Where(v => v.Value is INamedTypeSymbol)
+                            .Select(v => ((INamedTypeSymbol)v.Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                            .ToArray();
+                        break;
+                    case "AuthorizationRequired" when arg.Value.Value is bool:
+                        requireAuth = (bool)arg.Value.Value!;
+                        break;
+                    case "AuthorizationPolicies" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                        policies = arg.Value.Values
+                            .Where(v => v.Value is string)
+                            .Select(v => (string)v.Value!)
+                            .ToArray();
+                        break;
+                    case "AuthorizationRoles" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                        roles = arg.Value.Values
+                            .Where(v => v.Value is string)
+                            .Select(v => (string)v.Value!)
+                            .ToArray();
+                        break;
+                    case "EndpointSummaryStyle" when arg.Value.Value is int v:
+                        summaryStyle = v switch { 1 => "Spaced", _ => "Exact" };
+                        break;
                 }
             }
         }
@@ -149,8 +193,22 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var openTelemetryEnabled = !disableOpenTelemetry;
         var authorizationEnabled = !disableAuthorization;
 
-        return new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
+        var configuration = new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
             openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
+
+        var endpointDefaults = new EndpointDefaultsInfo
+        {
+            Discovery = discovery,
+            RoutePrefix = routePrefix,
+            Filters = new(filters),
+            RequireAuth = requireAuth,
+            Policies = new(policies),
+            Roles = new(roles),
+            SummaryStyle = summaryStyle,
+            IsConfigured = endpointConfigured
+        };
+
+        return (configuration, endpointDefaults);
     }
 
     /// <summary>
@@ -165,75 +223,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             HasFromBodyAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.FromBodyAttribute") != null,
             HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null,
             IsAspNetCore: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IHttpContextAccessor") != null);
-    }
-
-    /// <summary>
-    /// Reads endpoint defaults from [assembly: MediatorConfiguration].
-    /// </summary>
-    private static EndpointDefaultsInfo GetEndpointDefaults(Compilation compilation)
-    {
-        var configAttr = compilation.Assembly.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.MediatorConfigurationAttribute);
-
-        if (configAttr == null)
-            return EndpointDefaultsInfo.Default;
-
-        string discovery = "None";
-        string? routePrefix = "/api";
-        var filters = Array.Empty<string>();
-        bool requireAuth = false;
-        var policies = Array.Empty<string>();
-        var roles = Array.Empty<string>();
-        string summaryStyle = "Exact";
-
-        foreach (var arg in configAttr.NamedArguments)
-        {
-            switch (arg.Key)
-            {
-                case "EndpointDiscovery" when arg.Value.Value is int v:
-                    discovery = v switch { 1 => "Explicit", 2 => "All", _ => "None" };
-                    break;
-                case "EndpointRoutePrefix" when arg.Value.Value is string s:
-                    routePrefix = s;
-                    break;
-                case "EndpointFilters" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
-                    filters = arg.Value.Values
-                        .Where(v => v.Value is INamedTypeSymbol)
-                        .Select(v => ((INamedTypeSymbol)v.Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                        .ToArray();
-                    break;
-                case "AuthorizationRequired" when arg.Value.Value is bool:
-                    requireAuth = (bool)arg.Value.Value!;
-                    break;
-                case "AuthorizationPolicies" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
-                    policies = arg.Value.Values
-                        .Where(v => v.Value is string)
-                        .Select(v => (string)v.Value!)
-                        .ToArray();
-                    break;
-                case "AuthorizationRoles" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
-                    roles = arg.Value.Values
-                        .Where(v => v.Value is string)
-                        .Select(v => (string)v.Value!)
-                        .ToArray();
-                    break;
-                case "EndpointSummaryStyle" when arg.Value.Value is int v:
-                    summaryStyle = v switch { 1 => "Spaced", _ => "Exact" };
-                    break;
-            }
-        }
-
-        return new EndpointDefaultsInfo
-        {
-            Discovery = discovery,
-            RoutePrefix = routePrefix,
-            Filters = new(filters),
-            RequireAuth = requireAuth,
-            Policies = new(policies),
-            Roles = new(roles),
-            SummaryStyle = summaryStyle,
-            IsConfigured = true
-        };
     }
 
     private static void Execute(
@@ -531,13 +520,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
     {
         // If explicit lifetime is set and not "None", use it
         if (!string.IsNullOrEmpty(explicitLifetime) &&
-            !string.Equals(explicitLifetime, "None", StringComparison.OrdinalIgnoreCase))
+            !string.Equals(explicitLifetime, WellKnownTypes.LifetimeNone, StringComparison.OrdinalIgnoreCase))
         {
             return explicitLifetime;
         }
 
         // Fall back to default lifetime if it's not "None"
-        if (!string.Equals(defaultLifetime, "None", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(defaultLifetime, WellKnownTypes.LifetimeNone, StringComparison.OrdinalIgnoreCase))
         {
             return defaultLifetime;
         }

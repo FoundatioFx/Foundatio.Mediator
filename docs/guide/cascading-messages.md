@@ -222,7 +222,7 @@ public class PaymentHandler
             );
         }
 
-        return (Result<Payment>.Failed("Payment failed"), null, null, null);
+        return (Result<Payment>.Error("Payment failed"), null, null, null);
     }
 }
 ```
@@ -275,7 +275,7 @@ public class OrderSagaHandler
 ```csharp
 public class EventSourcedOrderHandler
 {
-    public static (Result<Order>, params object[]) Handle(
+    public static (Result<Order>, object[]) Handle(
         CreateOrderCommand command,
         IEventStore eventStore)
     {
@@ -305,7 +305,7 @@ public class EventSourcedOrderHandler
 ```csharp
 public class BatchOrderHandler
 {
-    public static (Result<Order[]>, params object[]) Handle(
+    public static (Result<Order[]>, object[]) Handle(
         ProcessOrderBatchCommand command,
         IOrderRepository repository)
     {
@@ -411,7 +411,7 @@ public static (Result<Order>, OrderCreated?) Handle(CreateOrderCommand command)
     }
     catch (Exception ex)
     {
-        return (Result<Order>.Failed(ex.Message), null);  // No events on failure
+        return (Result<Order>.Error(ex.Message), null);  // No events on failure
     }
 }
 ```

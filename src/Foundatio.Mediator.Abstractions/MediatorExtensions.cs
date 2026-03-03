@@ -29,7 +29,7 @@ public static class MediatorExtensions
 
         options ??= new MediatorOptions();
 
-        if (options.Assemblies == null)
+        if (options.Assemblies.Count == 0)
         {
             options.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
         }
@@ -37,9 +37,9 @@ public static class MediatorExtensions
         var registry = new HandlerRegistry();
 
         var callingAssembly = Assembly.GetCallingAssembly();
-        INotificationPublisher? publisher = GetNotificationPublisherFromAssembly(callingAssembly);
+        NotificationPublishStrategy? strategy = GetPublishStrategyFromAssembly(callingAssembly);
 
-        foreach (var assembly in options.Assemblies!)
+        foreach (var assembly in options.Assemblies)
         {
             if (!IsAssemblyMarkedWithFoundatioModule(assembly))
                 continue;
@@ -53,10 +53,11 @@ public static class MediatorExtensions
             if (moduleType == null)
                 continue;
 
-            if (publisher == null)
+            if (strategy == null)
             {
-                var publisherProperty = moduleType.GetProperty("NotificationPublisher", BindingFlags.Public | BindingFlags.Static);
-                publisher = publisherProperty?.GetValue(null) as INotificationPublisher;
+                var strategyProperty = moduleType.GetProperty("PublishStrategy", BindingFlags.Public | BindingFlags.Static);
+                if (strategyProperty?.GetValue(null) is NotificationPublishStrategy s)
+                    strategy = s;
             }
 
             var method = moduleType.GetMethod("AddHandlers", BindingFlags.Public | BindingFlags.Static);
@@ -66,13 +67,8 @@ public static class MediatorExtensions
         registry.Freeze();
         services.AddSingleton(registry);
 
-        services.TryAddSingleton<INotificationPublisher>(sp =>
-        {
-            if (publisher is FireAndForgetPublisher)
-                return new FireAndForgetPublisher(sp.GetService<ILogger<FireAndForgetPublisher>>());
-
-            return publisher ?? new ForeachAwaitPublisher();
-        });
+        var resolvedStrategy = strategy ?? NotificationPublishStrategy.ForeachAwait;
+        services.TryAddSingleton<INotificationPublisher>(sp => CreatePublisher(resolvedStrategy, sp));
 
         services.Add(ServiceDescriptor.Describe(typeof(IMediator), typeof(Mediator), options.MediatorLifetime));
 
@@ -92,7 +88,7 @@ public static class MediatorExtensions
         return services.AddMediator(optionsBuilder.Build());
     }
 
-    private static INotificationPublisher? GetNotificationPublisherFromAssembly(Assembly assembly)
+    private static NotificationPublishStrategy? GetPublishStrategyFromAssembly(Assembly assembly)
     {
         if (!IsAssemblyMarkedWithFoundatioModule(assembly))
             return null;
@@ -106,8 +102,18 @@ public static class MediatorExtensions
         if (moduleType == null)
             return null;
 
-        var publisherProperty = moduleType.GetProperty("NotificationPublisher", BindingFlags.Public | BindingFlags.Static);
-        return publisherProperty?.GetValue(null) as INotificationPublisher;
+        var strategyProperty = moduleType.GetProperty("PublishStrategy", BindingFlags.Public | BindingFlags.Static);
+        return strategyProperty?.GetValue(null) as NotificationPublishStrategy?;
+    }
+
+    private static INotificationPublisher CreatePublisher(NotificationPublishStrategy strategy, IServiceProvider sp)
+    {
+        return strategy switch
+        {
+            NotificationPublishStrategy.TaskWhenAll => new TaskWhenAllPublisher(),
+            NotificationPublishStrategy.FireAndForget => new FireAndForgetPublisher(sp.GetService<ILogger<FireAndForgetPublisher>>()),
+            _ => new ForeachAwaitPublisher()
+        };
     }
 
     private static Type[] GetLoadableTypes(Assembly assembly)
@@ -140,7 +146,6 @@ public sealed class MediatorOptionsBuilder
     /// </summary>
     public MediatorOptionsBuilder AddAssembly(params Assembly[] assemblies)
     {
-        _options.Assemblies ??= new List<Assembly>();
         _options.Assemblies.AddRange(assemblies);
         return this;
     }

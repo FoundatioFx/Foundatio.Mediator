@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator;
@@ -16,7 +15,7 @@ namespace Foundatio.Mediator;
 public sealed class DefaultHandlerAuthorizationService : IHandlerAuthorizationService
 {
     private readonly ILogger<DefaultHandlerAuthorizationService> _logger;
-    private bool _policyWarningLogged;
+    private volatile bool _policyWarningLogged;
 
     /// <summary>
     /// Creates a new instance of <see cref="DefaultHandlerAuthorizationService"/>.

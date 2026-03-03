@@ -65,9 +65,9 @@ The HTTP method is inferred from the message type name:
 |---------------------|-------------|
 | `Get*`, `Find*`, `Search*`, `List*`, `Query*` | GET |
 | `Create*`, `Add*`, `New*` | POST |
-| `Update*`, `Edit*`, `Modify*`, `Set*` | PUT |
+| `Update*`, `Edit*`, `Modify*`, `Set*`, `Change*` | PUT |
 | `Delete*`, `Remove*` | DELETE |
-| `Patch*`, `Change*` | PATCH |
+| `Patch*` | PATCH |
 | Default | POST |
 
 ## Route Generation
@@ -176,7 +176,7 @@ When a handler returns `Result<FileResult>`, the endpoint automatically uses `Re
 ```csharp
 public class ReportHandler
 {
-    [Endpoint(Method = "GET", Route = "/reports/{id}")]
+    [HandlerEndpoint(HttpMethod = "GET", Route = "/reports/{id}")]
     public async Task<Result<FileResult>> HandleAsync(
         GetReport query, IReportService reports, CancellationToken ct)
     {
@@ -248,7 +248,7 @@ public class SecureHandler
 }
 
 // With roles and policies
-[HandlerAuthorize(Roles = "Admin,Manager", Policies = ["CanEditProducts"])]
+[HandlerAuthorize(Roles = ["Admin", "Manager"], Policies = ["CanEditProducts"])]
 public class AdminHandler
 {
     public Task<Result> HandleAsync(DeleteProduct command) { ... }
@@ -301,7 +301,7 @@ public class PublicHandler { ... }
 Use `[HandlerAuthorize]` on individual handler methods for endpoint-specific authorization:
 
 ```csharp
-[HandlerAuthorize(Roles = "Admin,Manager")]
+[HandlerAuthorize(Roles = ["Admin", "Manager"])]
 public Task<Result> HandleAsync(DeleteProduct command) { ... }
 ```
 

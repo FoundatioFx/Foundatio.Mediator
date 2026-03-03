@@ -309,12 +309,12 @@ public class RobustStreamHandler
             catch (ProcessingException ex)
             {
                 logger.LogWarning(ex, "Failed to process item {ItemId}", item.Id);
-                result = Result<ProcessedData>.Failed($"Processing failed: {ex.Message}");
+                result = Result<ProcessedData>.Error($"Processing failed: {ex.Message}");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Unexpected error processing item {ItemId}", item.Id);
-                result = Result<ProcessedData>.Failed("Unexpected processing error");
+                result = Result<ProcessedData>.Error("Unexpected processing error");
             }
 
             yield return result;

@@ -3,7 +3,7 @@ namespace Foundatio.Mediator;
 /// <summary>
 /// Represents the result of handler execution that can be used to control execution flow.
 /// </summary>
-public readonly struct HandlerResult
+public readonly struct HandlerResult : IEquatable<HandlerResult>
 {
     private HandlerResult(object? value, bool isShortCircuited)
     {
@@ -43,13 +43,34 @@ public readonly struct HandlerResult
     /// <returns>A strongly-typed handler result that short-circuits execution.</returns>
     public static HandlerResult<T> ShortCircuit<T>(T value) => HandlerResult<T>.ShortCircuit(value);
 
+    /// <inheritdoc />
+    public bool Equals(HandlerResult other) =>
+        IsShortCircuited == other.IsShortCircuited && Equals(Value, other.Value);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is HandlerResult other && Equals(other);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            return ((Value?.GetHashCode() ?? 0) * 397) ^ IsShortCircuited.GetHashCode();
+        }
+    }
+
+    /// <summary>Equality operator.</summary>
+    public static bool operator ==(HandlerResult left, HandlerResult right) => left.Equals(right);
+
+    /// <summary>Inequality operator.</summary>
+    public static bool operator !=(HandlerResult left, HandlerResult right) => !left.Equals(right);
 }
 
 /// <summary>
 /// Represents a strongly-typed result of handler execution that can be used to control execution flow.
 /// This generic version avoids boxing for value types and provides type safety.
 /// </summary>
-public readonly struct HandlerResult<T>
+public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
 {
     private HandlerResult(T value, bool isShortCircuited)
     {
@@ -97,4 +118,26 @@ public readonly struct HandlerResult<T>
     /// Implicitly converts from generic to non-generic HandlerResult.
     /// </summary>
     public static implicit operator HandlerResult(HandlerResult<T> result) => result.ToNonGeneric();
+
+    /// <inheritdoc />
+    public bool Equals(HandlerResult<T> other) =>
+        IsShortCircuited == other.IsShortCircuited && EqualityComparer<T>.Default.Equals(Value, other.Value);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is HandlerResult<T> other && Equals(other);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            return (EqualityComparer<T>.Default.GetHashCode(Value!) * 397) ^ IsShortCircuited.GetHashCode();
+        }
+    }
+
+    /// <summary>Equality operator.</summary>
+    public static bool operator ==(HandlerResult<T> left, HandlerResult<T> right) => left.Equals(right);
+
+    /// <summary>Inequality operator.</summary>
+    public static bool operator !=(HandlerResult<T> left, HandlerResult<T> right) => !left.Equals(right);
 }

@@ -27,7 +27,7 @@ public sealed class Result<T> : IResult
     /// </summary>
     /// <param name="result">The result to convert.</param>
     [return: MaybeNull]
-    public static implicit operator T?(Result<T> result) => result.Value;
+    public static implicit operator T?(Result<T> result) => result._value;
 
     /// <summary>
     /// Implicit conversion from Result to Result&lt;T&gt;.
@@ -75,10 +75,33 @@ public sealed class Result<T> : IResult
         ValidationErrors = result.ValidationErrors
     };
 
+    private T _value = default!;
+
     /// <summary>
     /// Gets the result value.
     /// </summary>
-    public T Value { get; internal init; } = default!;
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the result is not successful. Check <see cref="IsSuccess"/> before accessing this property.
+    /// Use <see cref="ValueOrDefault"/> to access the value without throwing.
+    /// </exception>
+    public T Value
+    {
+        get
+        {
+            if (!IsSuccess)
+                throw new InvalidOperationException(
+                    $"Cannot access Result<{typeof(T).Name}>.Value when result status is '{Status}'. Check IsSuccess before accessing Value.");
+
+            return _value;
+        }
+        internal init => _value = value;
+    }
+
+    /// <summary>
+    /// Gets the result value without checking the status. Returns <c>default(T)</c> for non-success results.
+    /// </summary>
+    [MaybeNull]
+    public T ValueOrDefault => _value;
 
     /// <summary>
     /// Gets the status of the result.
@@ -109,13 +132,13 @@ public sealed class Result<T> : IResult
     /// Gets the result value as an object.
     /// </summary>
     /// <returns>The result value as an object.</returns>
-    public object? GetValue() => Value;
+    public object? GetValue() => _value;
 
     /// <inheritdoc />
     public override string ToString()
     {
-        if (IsSuccess && Value is not null)
-            return $"Result<{typeof(T).Name}> {{ Status = {Status}, Value = {Value} }}";
+        if (IsSuccess && _value is not null)
+            return $"Result<{typeof(T).Name}> {{ Status = {Status}, Value = {_value} }}";
 
         if (!String.IsNullOrEmpty(Message))
             return $"Result<{typeof(T).Name}> {{ Status = {Status}, Message = {Message} }}";

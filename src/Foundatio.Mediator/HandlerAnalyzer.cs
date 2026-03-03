@@ -80,7 +80,7 @@ internal static class HandlerAnalyzer
 
         // Determine if the class should be treated as a handler class
         bool nameMatches = classSymbol.Name.EndsWith("Handler") || classSymbol.Name.EndsWith("Consumer");
-        bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == "Foundatio.Mediator.IHandler");
+        bool implementsMarker = classSymbol.AllInterfaces.Any(i => i.ToDisplayString() == WellKnownTypes.IHandler);
         bool hasClassHandlerAttribute = classSymbol.GetAttributes().Any(attr => attr.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerAttribute);
 
         // Explicit discovery: IHandler interface or [Handler] attribute on class
@@ -469,7 +469,7 @@ internal static class HandlerAnalyzer
         string? producesType = ExtractProducesType(returnType, compilation);
 
         // Analyze message type for parameters
-        var (routeParams, queryParams, supportsAsParameters) = AnalyzeMessageParameters(messageType, httpMethod, compilation);
+        var (routeParams, queryParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation);
 
         // Generate route if not explicitly specified
         if (string.IsNullOrEmpty(route))
@@ -494,6 +494,7 @@ internal static class HandlerAnalyzer
             QueryParameters = new(queryParams),
             BindFromBody = bindFromBody,
             SupportsAsParameters = supportsAsParameters,
+            HasParameterlessConstructor = hasParameterlessConstructor,
             GenerateEndpoint = true,
             HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null,
             AllowAnonymous = allowAnonymous,
@@ -601,7 +602,7 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
-    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, bool supportsAsParameters)
+    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, bool supportsAsParameters, bool hasParameterlessConstructor)
         AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation)
     {
         var routeParams = new List<EndpointParameterInfo>();
@@ -652,7 +653,7 @@ internal static class HandlerAnalyzer
             }
         }
 
-        return (routeParams.ToArray(), queryParams.ToArray(), supportsAsParameters);
+        return (routeParams.ToArray(), queryParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
     }
 
     /// <summary>

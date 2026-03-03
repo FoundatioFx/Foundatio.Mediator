@@ -29,7 +29,7 @@ namespace Foundatio.Mediator;
 [ExcludeFromCodeCoverage]
 public static class Tests_MediatorHandlers
 {
-    public static INotificationPublisher NotificationPublisher { get; } = new ForeachAwaitPublisher();
+    public static NotificationPublishStrategy PublishStrategy { get; } = NotificationPublishStrategy.ForeachAwait;
 
     public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)
     {

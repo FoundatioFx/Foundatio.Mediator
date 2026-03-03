@@ -10,7 +10,7 @@
 4. **Test thoroughly** - All changes require running `dotnet build` then `dotnet test`
 5. **Static caching rules**:
    - Only cache when handler/middleware has NO constructor dependencies AND lifetime is None/Default
-   - OR when handler/middleware has constructor dependencies AND lifetime is None/Default (uses `ActivatorUtilities.CreateInstance`)
+   - NEVER cache when handler/middleware has constructor dependencies (use `ActivatorUtilities.CreateInstance` each invocation - deps may be scoped)
    - NEVER cache when lifetime is Scoped/Transient (always resolve from DI)
    - NEVER cache when lifetime is Singleton (always resolve from DI - let DI container manage singleton caching)
 
@@ -88,25 +88,15 @@ accessor = "handlerInstance";
 
 ### 5. Has Constructor Dependencies, Lifetime is None/Default
 
-**Use `ActivatorUtilities.CreateInstance` and cache**:
+**Use `ActivatorUtilities.CreateInstance` - NO caching**:
 
 ```csharp
-// In GenerateGetOrCreateHandler:
-private static {handler.FullName}? _cachedHandler;
-
-[DebuggerStepThrough]
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
-private static {handler.FullName} GetOrCreateHandler(IServiceProvider serviceProvider)
-{
-    return _cachedHandler ??= ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);
-}
-
 // In EmitHandlerInvocation:
-source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
+source.AppendLine($"var handlerInstance = ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);");
 accessor = "handlerInstance";
 ```
 
-**Important**: When lifetime is None (default), we assume the handler is NOT registered in DI. Dependencies are resolved from the service provider via `ActivatorUtilities`, but the handler instance itself is cached in a static field for performance.
+**Important**: When a handler has constructor dependencies AND lifetime is None/Default, a fresh instance is created via `ActivatorUtilities.CreateInstance` on every invocation. We do NOT cache these handlers because their constructor dependencies may be scoped (e.g., `DbContext`, `IMediator`) and would become stale or invalid after the scope ends.
 
 ## Middleware Instantiation Rules (CRITICAL)
 
@@ -166,22 +156,14 @@ source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);"
 
 ### 5. Has Constructor Dependencies, Lifetime is None/Default
 
-**Use `ActivatorUtilities.CreateInstance` and cache**:
+**Use `ActivatorUtilities.CreateInstance` - NO caching**:
 
 ```csharp
-// In GenerateMiddlewareInstantiation:
-private static {m.FullName}? _cached{m.Identifier};
-
-[DebuggerStepThrough]
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
-private static {m.FullName} GetOrCreate{m.Identifier}(IServiceProvider serviceProvider)
-{
-    return _cached{m.Identifier} ??= ActivatorUtilities.CreateInstance<{m.FullName}>(serviceProvider);
-}
-
 // In EmitMiddlewareInstances:
-source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);");
+source.AppendLine($"var {varName} = ActivatorUtilities.CreateInstance<{m.FullName}>(serviceProvider);");
 ```
+
+**Important**: When middleware has constructor dependencies AND lifetime is None/Default, a fresh instance is created via `ActivatorUtilities.CreateInstance` on every invocation. We do NOT cache these because their constructor dependencies may be scoped and would become stale.
 
 ## Helper Methods Reference
 
@@ -266,6 +248,7 @@ All code generation decisions are driven by computed properties on `HandlerInfo`
 | `RequiresTryCatch`                  | Need try/catch/finally blocks (finally middleware exists)                   |
 | `CanSkipAsyncStateMachine`          | Can generate direct passthrough without async state machine                 |
 | `RequiresDIResolutionPerInvocation` | Handler must be resolved from DI every call (Scoped/Transient)              |
+| `HasExplicitLifetime`               | Handler has an explicit DI lifetime (Scoped/Transient/Singleton)            |
 
 ### Middleware Properties
 
@@ -276,6 +259,7 @@ All code generation decisions are driven by computed properties on `HandlerInfo`
 | `HasNoDependencies`                 | Static OR (no constructor injection AND no method injection)       |
 | `IsStatic`                          | Middleware class is static                                         |
 | `RequiresDIResolutionPerInvocation` | Middleware must be resolved from DI every call (Scoped/Transient)  |
+| `HasExplicitLifetime`               | Middleware has an explicit DI lifetime (Scoped/Transient/Singleton)|
 
 ## Performance Optimization: CanSkipAsyncStateMachine
 

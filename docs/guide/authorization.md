@@ -62,17 +62,17 @@ public class MixedHandler
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Roles` | `string?` | Comma-separated list of required roles (e.g., `"Admin,Manager"`) |
+| `Roles` | `string[]?` | Array of required roles (any-of semantics) |
 | `Policies` | `string[]?` | Array of authorization policy names to evaluate |
 
 ```csharp
-[HandlerAuthorize(Roles = "Admin,Manager")]
+[HandlerAuthorize(Roles = ["Admin", "Manager"])]
 public class AdminHandler { ... }
 
-[HandlerAuthorize(Policies = [ "CanEditProducts", "IsVerified" ])]
+[HandlerAuthorize(Policies = ["CanEditProducts", "IsVerified"])]
 public class ProductHandler { ... }
 
-[HandlerAuthorize(Roles = "Admin", Policies = [ "MfaRequired" ])]
+[HandlerAuthorize(Roles = ["Admin"], Policies = ["MfaRequired"])]
 public class HighSecurityHandler { ... }
 ```
 

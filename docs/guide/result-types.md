@@ -143,7 +143,7 @@ if (result.IsSuccess)
 }
 else
 {
-    Console.WriteLine($"Error: {result.ErrorMessage}");
+    Console.WriteLine($"Error: {result.Message}");
 }
 ```
 
@@ -157,7 +157,7 @@ var message = result.Status switch
     ResultStatus.Success => $"Order: {result.Value.Description}",
     ResultStatus.NotFound => "Order not found",
     ResultStatus.Forbidden => "Access denied",
-    _ => $"Error: {result.ErrorMessage}"
+    _ => $"Error: {result.Message}"
 };
 ```
 
@@ -167,11 +167,11 @@ var message = result.Status switch
 public class Result<T>
 {
     public bool IsSuccess { get; }
-    public bool IsFailure => !IsSuccess;
     public ResultStatus Status { get; }
-    public T Value { get; }
-    public string? ErrorMessage { get; }
-    public IReadOnlyList<ValidationError> ValidationErrors { get; }
+    public T Value { get; }                    // throws if !IsSuccess
+    public T ValueOrDefault { get; }           // returns default(T) if !IsSuccess
+    public string Message { get; }
+    public IEnumerable<ValidationError> ValidationErrors { get; }
 }
 ```
 
@@ -310,9 +310,9 @@ if (result.IsSuccess)
 // ✅ Pattern matching all cases
 return result.Status switch
 {
-    ResultStatus.Ok => result.Value,
-    ResultStatus.NotFound => throw new NotFoundException(result.ErrorMessage),
-    _ => throw new InvalidOperationException(result.ErrorMessage)
+    ResultStatus.Success => result.Value,
+    ResultStatus.NotFound => throw new NotFoundException(result.Message),
+    _ => throw new InvalidOperationException(result.Message)
 };
 ```
 
@@ -322,11 +322,11 @@ return result.Status switch
 public async Task<Result<OrderSummary>> Handle(GetOrderSummary query)
 {
     var orderResult = await _mediator.InvokeAsync<Result<Order>>(new GetOrder(query.OrderId));
-    if (orderResult.IsFailure)
+    if (!orderResult.IsSuccess)
         return Result<OrderSummary>.FromResult(orderResult);
 
     var customerResult = await _mediator.InvokeAsync<Result<Customer>>(new GetCustomer(orderResult.Value.CustomerId));
-    if (customerResult.IsFailure)
+    if (!customerResult.IsSuccess)
         return Result<OrderSummary>.FromResult(customerResult);
 
     var summary = new OrderSummary(orderResult.Value, customerResult.Value);
@@ -336,6 +336,6 @@ public async Task<Result<OrderSummary>> Handle(GetOrderSummary query)
 
 ## Next Steps
 
-- [CRUD Operations](/examples/crud-operations) - See Result types in action
-- [Validation Middleware](/examples/validation-middleware) - Automatic validation with Results
+- [Handler Conventions](/guide/handler-conventions) - See Result types in handler return values
+- [Middleware](/guide/middleware) - Middleware patterns including validation
 - [Handler Conventions](/guide/handler-conventions) - Learn handler return type rules

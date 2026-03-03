@@ -255,7 +255,7 @@ Now that you have the basics working, explore more advanced features:
 - [Handler Conventions](./handler-conventions) - Learn all the discovery rules
 - [Result Types](./result-types) - Using Result&lt;T&gt; for robust error handling
 - [Middleware](./middleware) - Adding cross-cutting concerns
-- [Examples](../examples/simple-handlers) - See practical examples
+- [Samples](../samples/) - See practical examples
 
 ## LLM-Friendly Documentation
 

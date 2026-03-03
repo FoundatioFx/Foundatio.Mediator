@@ -205,6 +205,14 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 - **Default:** None
 - **Effect:** Sets default authorization policies and roles for all handlers globally
 
+**`EndpointSummaryStyle`** (`EndpointSummaryStyle` enum)
+
+- **Values:** `Exact`, `Spaced`
+- **Default:** `Exact`
+- **Effect:** Controls how endpoint summaries are generated from message type names
+  - `Exact`: Uses the message type name as-is (e.g., `"GetProduct"`)
+  - `Spaced`: Splits PascalCase into space-separated words (e.g., `"Get Product"`)
+
 ### Example Configuration
 
 All configuration is done via the assembly attribute in any `.cs` file in your project:

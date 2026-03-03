@@ -7,8 +7,22 @@ internal static class MiddlewareAnalyzer
 {
     public static bool IsMatch(SyntaxNode node)
     {
-        return node is ClassDeclarationSyntax { Identifier.ValueText: var name }
-               && name.EndsWith("Middleware");
+        if (node is not ClassDeclarationSyntax { Identifier.ValueText: var name } classDecl)
+            return false;
+
+        if (name.EndsWith("Middleware"))
+            return true;
+
+        // Check for [Middleware] attribute on the class
+        if (classDecl.AttributeLists.Count > 0 && classDecl.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(a => a.Name is IdentifierNameSyntax { Identifier.ValueText: "Middleware" }
+                    or QualifiedNameSyntax { Right.Identifier.ValueText: "Middleware" }))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public static MiddlewareInfo? GetMiddleware(GeneratorSyntaxContext context)
@@ -205,9 +219,9 @@ internal static class MiddlewareAnalyzer
             {
                 lifetime = lifetimeValue switch
                 {
-                    1 => "Transient",
-                    2 => "Scoped",
-                    3 => "Singleton",
+                    1 => WellKnownTypes.LifetimeTransient,
+                    2 => WellKnownTypes.LifetimeScoped,
+                    3 => WellKnownTypes.LifetimeSingleton,
                     _ => null
                 };
             }

@@ -163,7 +163,8 @@ public class ResultTests
         Assert.Equal(originalResult.Message, convertedResult.Message);
         Assert.Equal(originalResult.Location, convertedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, convertedResult.ValidationErrors);
-        Assert.Equal(default(string), convertedResult.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = convertedResult.Value);
+        Assert.Equal(default(string), convertedResult.ValueOrDefault);
     }
 
     [Fact]
@@ -233,7 +234,8 @@ public class ResultTests
         Assert.Equal(originalResult.Message, convertedResult.Message);
         Assert.Equal(originalResult.Location, convertedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, convertedResult.ValidationErrors);
-        Assert.Equal(default(string), convertedResult.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = convertedResult.Value);
+        Assert.Equal(default(string), convertedResult.ValueOrDefault);
         Assert.False(convertedResult.IsSuccess);
     }
 
@@ -249,7 +251,8 @@ public class ResultTests
         Assert.Equal(originalResult.Message, convertedResult.Message);
         Assert.Equal(originalResult.Location, convertedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, convertedResult.ValidationErrors);
-        Assert.Equal(default(string), convertedResult.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = convertedResult.Value);
+        Assert.Equal(default(string), convertedResult.ValueOrDefault);
         Assert.False(convertedResult.IsSuccess);
     }
 
@@ -265,7 +268,8 @@ public class ResultTests
         Assert.Equal(originalResult.Message, convertedResult.Message);
         Assert.Equal(originalResult.Location, convertedResult.Location);
         Assert.Equal(originalResult.ValidationErrors, convertedResult.ValidationErrors);
-        Assert.Equal(default(string), convertedResult.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = convertedResult.Value);
+        Assert.Equal(default(string), convertedResult.ValueOrDefault);
         Assert.False(convertedResult.IsSuccess);
     }
 
@@ -293,7 +297,8 @@ public class ResultTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ResultStatus.Invalid, result.Status);
-        Assert.Equal(default(string), result.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = result.Value);
+        Assert.Equal(default(string), result.ValueOrDefault);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Single(result.ValidationErrors);
@@ -312,7 +317,8 @@ public class ResultTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ResultStatus.Invalid, result.Status);
-        Assert.Equal(default(string), result.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = result.Value);
+        Assert.Equal(default(string), result.ValueOrDefault);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Equal(2, result.ValidationErrors.Count());
@@ -332,7 +338,8 @@ public class ResultTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ResultStatus.Invalid, result.Status);
-        Assert.Equal(default(string), result.Value);
+        Assert.Throws<InvalidOperationException>(() => _ = result.Value);
+        Assert.Equal(default(string), result.ValueOrDefault);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Equal(3, result.ValidationErrors.Count());

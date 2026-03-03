@@ -4,7 +4,7 @@ namespace Foundatio.Mediator;
 /// Marks a handler method for endpoint generation and allows customizing the generated endpoint.
 /// When applied to a class, the settings apply to all handler methods in that class unless overridden.
 /// </summary>
-[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
 public sealed class HandlerEndpointAttribute : Attribute
 {
     /// <summary>

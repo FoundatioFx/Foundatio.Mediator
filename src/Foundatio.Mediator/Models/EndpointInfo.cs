@@ -69,6 +69,12 @@ internal readonly record struct EndpointInfo
     public bool SupportsAsParameters { get; init; }
 
     /// <summary>
+    /// Whether the message type has a public parameterless constructor (or a record with all-default parameters).
+    /// Used to validate GET/DELETE endpoint generation that may need to construct the message via <c>new T()</c>.
+    /// </summary>
+    public bool HasParameterlessConstructor { get; init; }
+
+    /// <summary>
     /// Whether this handler should generate an endpoint.
     /// </summary>
     public bool GenerateEndpoint { get; init; }

@@ -21,8 +21,9 @@ public sealed class AuthorizationRequirements
     public AuthorizationRequirements(bool required, IReadOnlyList<string> roles, IReadOnlyList<string> policies, bool allowAnonymous)
     {
         Required = required;
-        Roles = roles ?? Array.Empty<string>();
-        Policies = policies ?? Array.Empty<string>();
+        // Defensive copy: store a snapshot so callers can't mutate the lists after construction.
+        Roles = roles is null || roles.Count == 0 ? Array.Empty<string>() : roles.ToArray();
+        Policies = policies is null || policies.Count == 0 ? Array.Empty<string>() : policies.ToArray();
         AllowAnonymous = allowAnonymous;
     }
 

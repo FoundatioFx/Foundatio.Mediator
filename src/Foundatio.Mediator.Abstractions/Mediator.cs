@@ -30,18 +30,21 @@ public sealed class Mediator : IMediator, IServiceProvider
     /// <inheritdoc />
     object? IServiceProvider.GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 
+    /// <inheritdoc />
     public ValueTask InvokeAsync(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = _registry.GetInvokeAsyncDelegate(message.GetType());
         return handlerFunc(this, message, cancellationToken);
     }
 
+    /// <inheritdoc />
     public void Invoke(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = _registry.GetInvokeDelegate(message.GetType());
         handlerFunc(this, message, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async ValueTask<TResponse> InvokeAsync<TResponse>(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = _registry.GetInvokeAsyncResponseDelegate(message.GetType(), typeof(TResponse));
@@ -49,11 +52,13 @@ public sealed class Mediator : IMediator, IServiceProvider
         return (TResponse)result!;
     }
 
+    /// <inheritdoc />
     public ValueTask<TResponse> InvokeAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
     {
         return InvokeAsync<TResponse>((object)request, cancellationToken);
     }
 
+    /// <inheritdoc />
     public TResponse Invoke<TResponse>(object message, CancellationToken cancellationToken = default)
     {
         var handlerFunc = _registry.GetInvokeResponseDelegate(message.GetType(), typeof(TResponse));
@@ -61,11 +66,13 @@ public sealed class Mediator : IMediator, IServiceProvider
         return (TResponse)result!;
     }
 
+    /// <inheritdoc />
     public TResponse Invoke<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
     {
         return Invoke<TResponse>((object)request, cancellationToken);
     }
 
+    /// <inheritdoc />
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
         var handlers = _registry.GetAllApplicableHandlers(message);

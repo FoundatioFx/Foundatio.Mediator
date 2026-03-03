@@ -17,19 +17,25 @@ A simplified console application demonstrating all key features of Foundatio.Med
 - Validation with detailed error messages
 - Status codes (Created, NotFound, NoContent, etc.)
 
-### 3. Event Publishing & Multiple Handlers
+### 3. Streaming Handlers
+
+- **IAsyncEnumerable** streaming via `CounterStreamHandler`
+- `Invoke<IAsyncEnumerable<T>>` for streaming results
+- Cancellation token support for early termination
+
+### 4. Event Publishing & Multiple Handlers
 
 - **PublishAsync** for events with multiple handlers
 - Event-driven architecture examples
 - Audit logging and notifications
 
-### 4. Dependency Injection
+### 5. Dependency Injection
 
 - Automatic handler registration via source generator
 - Logger injection and service resolution
 - Clean service configuration
 
-### 5. Middleware Examples
+### 6. Middleware Examples
 
 - **ValidationMiddleware** (static) - Using MiniValidation for automatic validation
 - **LoggingMiddleware** (instance) - Performance tracking and execution logging
@@ -161,8 +167,8 @@ This will execute all examples showing:
 
 1. Simple ping/greeting operations
 2. Complete order CRUD lifecycle
-3. Event publishing with multiple handlers
-4. Validation error handling
+3. Counter streaming with cancellation
+4. Event publishing with multiple handlers
 
 ## 🧠 Source Generator Magic
 

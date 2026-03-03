@@ -168,8 +168,7 @@ internal static class HandlerGenerator
             {
                 accessor = handler.FullName;
             }
-            else if (handler.RequiresDIResolutionPerInvocation ||
-                     string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            else if (handler.HasExplicitLifetime)
             {
                 // Scoped/Transient/Singleton: resolve from DI (requires registration)
                 source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
@@ -648,19 +647,22 @@ internal static class HandlerGenerator
         {
             string varName = m.Identifier.ToCamelCase();
 
-            // Scoped/Transient/Singleton: Always resolve from DI
-            // For Singleton, the user explicitly wants DI to manage the instance
-            if (m.RequiresDIResolutionPerInvocation ||
-                string.Equals(m.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            // Explicit DI lifetime (Scoped/Transient/Singleton): Always resolve from DI
+            if (m.HasExplicitLifetime)
             {
                 source.AppendLine($"var {varName} = serviceProvider.GetRequiredService<{m.FullName}>();");
             }
+            else if (!m.RequiresConstructorInjection)
+            {
+                // No explicit lifetime (None/Default), no constructor deps: use cached instance
+                source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);");
+            }
             else
             {
-                // No explicit lifetime (None/Default) and default is None - use caching
-                // No constructor deps: use new() and cache
-                // With constructor deps: use ActivatorUtilities and cache
-                source.AppendLine($"var {varName} = GetOrCreate{m.Identifier}(serviceProvider);");
+                // No explicit lifetime (None/Default), has constructor deps: create fresh each time
+                // We can't safely cache middleware with DI dependencies because those dependencies
+                // might be scoped (e.g., DbContext) and would become invalid after the scope ends
+                source.AppendLine($"var {varName} = ActivatorUtilities.CreateInstance<{m.FullName}>(serviceProvider);");
             }
         }
         source.AppendLine();
@@ -822,8 +824,7 @@ internal static class HandlerGenerator
         {
             accessor = handler.FullName;
         }
-        else if (handler.RequiresDIResolutionPerInvocation ||
-                 string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+        else if (handler.HasExplicitLifetime)
         {
             // Scoped/Transient/Singleton: resolve from DI (requires registration)
             source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
@@ -1149,18 +1150,8 @@ internal static class HandlerGenerator
 
     private static void GenerateGetOrCreateHandler(IndentedStringBuilder source, HandlerInfo handler)
     {
-        // Scoped/Transient/Singleton: Always resolve from DI inline - no wrapper method needed
-        // The invocation code uses serviceProvider.GetRequiredService<T>() directly
-        if (handler.RequiresDIResolutionPerInvocation ||
-            string.Equals(handler.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        // Has constructor dependencies - must resolve from DI every time
-        // We can't safely cache handlers with DI dependencies because those dependencies
-        // might be scoped (e.g., IMediator, DbContext) and would become invalid after the scope ends
-        if (handler.RequiresConstructorInjection)
+        // Explicit DI lifetime or constructor dependencies: resolve from DI, no caching
+        if (handler.HasExplicitLifetime || handler.RequiresConstructorInjection)
         {
             return;
         }
@@ -1184,61 +1175,29 @@ internal static class HandlerGenerator
 
     private static void GenerateMiddlewareInstantiation(IndentedStringBuilder source, HandlerInfo handler)
     {
-        // Only generate for non-static middleware
-        var nonStaticMiddleware = handler.Middleware.Where(m => !m.IsStatic).ToList();
-        if (nonStaticMiddleware.Count == 0)
-            return;
-
-        foreach (var m in nonStaticMiddleware)
+        foreach (var m in handler.Middleware)
         {
-            // Scoped/Transient/Singleton: Always resolve from DI - no caching method needed
-            // For Singleton, the user explicitly wants DI to manage the instance
-            if (m.RequiresDIResolutionPerInvocation ||
-                string.Equals(m.Lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
+            // Only generate caching methods for non-static middleware with no explicit DI lifetime
+            // and no constructor dependencies. All other cases are resolved inline at call time.
+            if (m.IsStatic || m.RequiresConstructorInjection || m.HasExplicitLifetime)
             {
                 continue;
             }
 
-            // No explicit lifetime (None/Default) - generate caching method
-            // No constructor dependencies - use new() and cache
-            if (!m.RequiresConstructorInjection)
-            {
-                source.AppendLine()
-                      .AppendLines($$"""
-                        private static {{m.FullName}}? _cached{{m.Identifier}};
+            source.AppendLine()
+                  .AppendLines($$"""
+                    private static {{m.FullName}}? _cached{{m.Identifier}};
 
-                        [DebuggerStepThrough]
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
-                        {
-                            if (_cached{{m.Identifier}} is { } cached)
-                                return cached;
-                            var instance = new {{m.FullName}}();
-                            return Interlocked.CompareExchange(ref _cached{{m.Identifier}}, instance, null) ?? instance;
-                        }
-                        """);
-            }
-            // Has constructor dependencies - cache the instance after first creation
-            // This is safe when lifetime is None (default) because the middleware will be long-lived
-            // and dependencies are resolved once. If dependencies are scoped, user should use
-            // [Middleware(Lifetime = Scoped)] or MediatorConfiguration MiddlewareLifetime=Scoped.
-            else
-            {
-                source.AppendLine()
-                      .AppendLines($$"""
-                        private static {{m.FullName}}? _cached{{m.Identifier}};
-
-                        [DebuggerStepThrough]
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
-                        {
-                            if (_cached{{m.Identifier}} is { } cached)
-                                return cached;
-                            var instance = ActivatorUtilities.CreateInstance<{{m.FullName}}>(serviceProvider);
-                            return Interlocked.CompareExchange(ref _cached{{m.Identifier}}, instance, null) ?? instance;
-                        }
-                        """);
-            }
+                    [DebuggerStepThrough]
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    private static {{m.FullName}} GetOrCreate{{m.Identifier}}(IServiceProvider serviceProvider)
+                    {
+                        if (_cached{{m.Identifier}} is { } cached)
+                            return cached;
+                        var instance = new {{m.FullName}}();
+                        return Interlocked.CompareExchange(ref _cached{{m.Identifier}}, instance, null) ?? instance;
+                    }
+                    """);
         }
     }
 

@@ -164,9 +164,9 @@ internal static class MetadataMiddlewareScanner
                 {
                     lifetime = lifetimeValue switch
                     {
-                        1 => "Transient",
-                        2 => "Scoped",
-                        3 => "Singleton",
+                        1 => WellKnownTypes.LifetimeTransient,
+                        2 => WellKnownTypes.LifetimeScoped,
+                        3 => WellKnownTypes.LifetimeSingleton,
                         _ => null
                     };
                 }

@@ -31,10 +31,21 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
             return default;
 
         // Sequential execution - start each handler after the previous completes
-        // Loop until we find one that doesn't complete synchronously
+        // Loop until we find one that doesn't complete synchronously or throws
         for (int i = 0; i < handlers.Length; i++)
         {
-            var task = handlers[i](mediator, message, cancellationToken);
+            ValueTask task;
+            try
+            {
+                task = handlers[i](mediator, message, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Handler threw synchronously before returning a ValueTask.
+                // Continue executing remaining handlers and aggregate exceptions.
+                return AwaitRemainingAfterSyncThrowAsync(ex, mediator, handlers, message, cancellationToken, i + 1);
+            }
+
             if (!task.IsCompletedSuccessfully)
             {
                 return AwaitRemainingAsync(task, mediator, handlers, message, cancellationToken, i + 1);
@@ -74,6 +85,25 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
         if (exceptions != null)
             throw new AggregateException(exceptions);
     }
+
+    private static async ValueTask AwaitRemainingAfterSyncThrowAsync(Exception syncException, IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken, int startIndex)
+    {
+        List<Exception> exceptions = [syncException];
+
+        for (int i = startIndex; i < handlers.Length; i++)
+        {
+            try
+            {
+                await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+        }
+
+        throw new AggregateException(exceptions);
+    }
 }
 
 /// <summary>
@@ -90,9 +120,26 @@ public sealed class TaskWhenAllPublisher : INotificationPublisher
             return handlers[0](mediator, message, cancellationToken);
 
         // Start all handlers concurrently
+        // Wrap invocations in try/catch so a synchronous throw doesn't prevent remaining handlers from starting
         var tasks = new ValueTask[handlers.Length];
+        List<Exception>? syncExceptions = null;
         for (int i = 0; i < handlers.Length; i++)
-            tasks[i] = handlers[i](mediator, message, cancellationToken);
+        {
+            try
+            {
+                tasks[i] = handlers[i](mediator, message, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                syncExceptions ??= [];
+                syncExceptions.Add(ex);
+                tasks[i] = default; // Mark as completed (no-op)
+            }
+        }
+
+        // If we had sync throws, must await all tasks and aggregate
+        if (syncExceptions != null)
+            return AwaitAllWithSyncExceptionsAsync(tasks, syncExceptions);
 
         // Check if all completed synchronously and successfully
         for (int i = 0; i < tasks.Length; i++)
@@ -123,6 +170,23 @@ public sealed class TaskWhenAllPublisher : INotificationPublisher
 
         if (exceptions != null)
             throw new AggregateException(exceptions);
+    }
+
+    private static async ValueTask AwaitAllWithSyncExceptionsAsync(ValueTask[] tasks, List<Exception> exceptions)
+    {
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            try
+            {
+                await tasks[i].ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+        }
+
+        throw new AggregateException(exceptions);
     }
 }
 

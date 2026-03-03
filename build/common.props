@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>true</ImplicitUsings>
-    <LangVersion>Latest</LangVersion>
+    <LangVersion>latest</LangVersion>
     <Product>Foundatio.Mediator</Product>
     <Description>A fast, convention-based C# mediator library using incremental source generators</Description>
     <PackageProjectUrl>https://github.com/FoundatioFx/Foundatio.Mediator</PackageProjectUrl>
@@ -16,7 +16,6 @@
     <Authors>FoundatioFx</Authors>
     <NoWarn>$(NoWarn);CS1591;NU1701</NoWarn>
     <WarningsAsErrors>true</WarningsAsErrors>
-    <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageIcon>foundatio-icon.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>

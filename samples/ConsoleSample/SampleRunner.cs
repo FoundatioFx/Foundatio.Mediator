@@ -92,7 +92,7 @@ public class SampleRunner
 
     private async Task RunCounterStreamExample()
     {
-        Console.WriteLine("2️⃣ Counter Stream Example");
+        Console.WriteLine("3️⃣ Counter Stream Example");
         Console.WriteLine("==========================\n");
 
         Console.WriteLine("🔢 Starting counter stream...");
@@ -114,7 +114,7 @@ public class SampleRunner
 
     private async Task RunEventPublishingExamples()
     {
-        Console.WriteLine("3️⃣ Event Publishing (Multiple Handlers)");
+        Console.WriteLine("4️⃣ Event Publishing (Multiple Handlers)");
         Console.WriteLine("========================================\n");
 
         Console.WriteLine("📢 Publishing OrderCreated event (will trigger multiple handlers)...");

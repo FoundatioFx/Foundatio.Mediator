@@ -160,5 +160,59 @@ public class E2E_NotificationStrategyTests(ITestOutputHelper output) : TestWithL
     }
 
     #endregion
+
+    #region ForeachAwait - Sync Throwing Handler Should Still Run All Handlers
+
+    public record SyncThrowEvent(string Name);
+
+    [Handler(Order = 1, Lifetime = MediatorLifetime.Singleton)]
+    public class BeforeSyncThrowHandler(EventTracker tracker)
+    {
+        public void Handle(SyncThrowEvent evt) => tracker.Record("before");
+    }
+
+    [Handler(Order = 2, Lifetime = MediatorLifetime.Singleton)]
+    public class SyncThrowingHandler(EventTracker tracker)
+    {
+        public void Handle(SyncThrowEvent evt)
+        {
+            tracker.Record("sync-throw");
+            throw new InvalidOperationException("sync-handler-error");
+        }
+    }
+
+    [Handler(Order = 3, Lifetime = MediatorLifetime.Singleton)]
+    public class AfterSyncThrowHandler(EventTracker tracker)
+    {
+        public void Handle(SyncThrowEvent evt) => tracker.Record("after");
+    }
+
+    [Fact]
+    public async Task ForeachAwait_AllHandlersRun_EvenWhenSyncHandlerThrows()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<EventTracker>();
+        services.AddMediator(b => b.AddAssembly<SyncThrowEvent>());
+
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var tracker = provider.GetRequiredService<EventTracker>();
+
+        var ex = await Assert.ThrowsAsync<AggregateException>(
+            () => mediator.PublishAsync(new SyncThrowEvent("test"), TestCancellationToken).AsTask());
+
+        // All three handlers should have executed despite the middle one throwing synchronously
+        Assert.Equal(3, tracker.Events.Count);
+        Assert.Equal("before", tracker.Events[0]);
+        Assert.Equal("sync-throw", tracker.Events[1]);
+        Assert.Equal("after", tracker.Events[2]);
+
+        // The AggregateException should contain the handler's exception
+        Assert.Single(ex.InnerExceptions);
+        Assert.IsType<InvalidOperationException>(ex.InnerExceptions[0]);
+        Assert.Equal("sync-handler-error", ex.InnerExceptions[0].Message);
+    }
+
+    #endregion
 }
 

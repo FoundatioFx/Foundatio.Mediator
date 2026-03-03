@@ -52,7 +52,7 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("[ExcludeFromCodeCoverage]");
             source.AppendLine($"public static class {className}");
             source.AppendLine("{");
-            source.AppendLine($"    public static INotificationPublisher NotificationPublisher {{ get; }} = new {configuration.NotificationPublishStrategy}Publisher();");
+            source.AppendLine($"    public static NotificationPublishStrategy PublishStrategy {{ get; }} = NotificationPublishStrategy.{configuration.NotificationPublishStrategy};");
             source.AppendLine();
             source.AppendLine("    public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)");
             source.AppendLine("    {");

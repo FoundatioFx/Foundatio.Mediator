@@ -159,4 +159,4 @@ Ready to get started? Here's what to explore next:
 
 - [Getting Started](./getting-started) - Set up your first handler
 - [Handler Conventions](./handler-conventions) - Learn the discovery rules
-- [Examples](../examples/simple-handlers) - See practical implementations
+- [Samples](../samples/) - See practical implementations

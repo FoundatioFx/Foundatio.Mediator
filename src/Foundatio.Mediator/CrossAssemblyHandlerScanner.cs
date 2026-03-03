@@ -19,7 +19,7 @@ internal static class CrossAssemblyHandlerScanner
         var handlers = new List<HandlerInfo>();
         var moduleAttribute = compilation.GetTypeByMetadataName(WellKnownTypes.FoundatioModuleAttribute);
         var handlerAttribute = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerAttribute);
-        var handlerInterface = compilation.GetTypeByMetadataName("Foundatio.Mediator.IHandler");
+        var handlerInterface = compilation.GetTypeByMetadataName(WellKnownTypes.IHandler);
 
         if (moduleAttribute == null)
             return handlers;
@@ -98,7 +98,7 @@ internal static class CrossAssemblyHandlerScanner
                 return;
 
             // Exclude generated handler classes in Foundatio.Mediator.Generated namespace with names ending in "_Handler"
-            if (classSymbol.ContainingNamespace?.ToDisplayString() == "Foundatio.Mediator.Generated" &&
+            if (classSymbol.ContainingNamespace?.ToDisplayString() == WellKnownTypes.GeneratedNamespace &&
                 classSymbol.Name.EndsWith("_Handler"))
                 return;
 

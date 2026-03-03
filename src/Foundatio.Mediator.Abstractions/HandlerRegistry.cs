@@ -16,7 +16,7 @@ public sealed class HandlerRegistry
     private readonly Dictionary<string, List<HandlerRegistration>> _handlersByMessageType = new();
     private readonly List<OpenGenericHandlerDescriptor> _openGenericDescriptors = new();
     private readonly List<HandlerRegistration> _allRegistrations = new();
-    private bool _frozen;
+    private volatile bool _frozen;
 
     private readonly ConcurrentDictionary<Type, InvokeAsyncDelegate> _invokeAsyncCache = new();
     private readonly ConcurrentDictionary<Type, InvokeDelegate> _invokeCache = new();
@@ -140,8 +140,25 @@ public sealed class HandlerRegistry
                 throw new InvalidOperationException($"Multiple handlers found for message type {MessageTypeKey.Get(mt)}. Use PublishAsync for multiple handlers.");
 
             var handler = handlersList[0];
-            return async (mediator, msg, ct) => await handler.HandleAsync(mediator, msg, ct, null);
+            return (mediator, msg, ct) => DiscardResult(handler.HandleAsync(mediator, msg, ct, null));
         });
+    }
+
+    /// <summary>
+    /// Converts a <see cref="ValueTask{T}"/> to a non-generic <see cref="ValueTask"/>,
+    /// avoiding an async state machine allocation on the synchronous completion hot path.
+    /// </summary>
+    [DebuggerStepThrough]
+    private static ValueTask DiscardResult(ValueTask<object?> task)
+    {
+        if (task.IsCompletedSuccessfully)
+        {
+            _ = task.Result;
+            return default;
+        }
+
+        return Awaited(task);
+        static async ValueTask Awaited(ValueTask<object?> t) { _ = await t; }
     }
 
     [DebuggerStepThrough]

@@ -263,7 +263,7 @@ using Foundatio.Mediator;
     ProjectName = "MyProject",                          // Custom suffix for generated endpoint methods
     EnableGenerationCounter = false,                    // Debug: add generation timestamp comment
     EndpointDiscovery = EndpointDiscovery.All,          // None, Explicit, All
-    EndpointRoutePrefix = "/api",                       // Global route prefix for all endpoints (default: "/api")
+    EndpointRoutePrefix = "api",                        // Global route prefix for all endpoints (default: "api")
     AuthorizationRequired = false,                         // Require auth for all handlers and endpoints
     EndpointFilters = [typeof(MyFilter)]                // Global endpoint filters
 )]

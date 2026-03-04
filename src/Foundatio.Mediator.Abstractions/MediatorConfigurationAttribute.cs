@@ -96,10 +96,10 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// <summary>
     /// Global route prefix prepended to all generated endpoints. Category-level prefixes
     /// from <see cref="HandlerEndpointAttribute"/> are appended after this value
-    /// (e.g. <c>"/api"</c> + <c>"/products"</c> → <c>"/api/products/..."</c>).
-    /// Default: <c>"/api"</c>.
+    /// (e.g. <c>"api"</c> + <c>"products"</c> → <c>"/api/products/..."</c>).
+    /// Default: <c>"api"</c>.
     /// </summary>
-    public string? EndpointRoutePrefix { get; set; } = "/api";
+    public string? EndpointRoutePrefix { get; set; } = "api";
 
     /// <summary>
     /// Endpoint filter types applied globally to all generated endpoints.

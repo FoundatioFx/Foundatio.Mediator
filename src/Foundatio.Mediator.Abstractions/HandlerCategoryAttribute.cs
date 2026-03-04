@@ -23,7 +23,8 @@ public sealed class HandlerCategoryAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the route prefix for all endpoints in this category.
-    /// For example, "/api/products" will prefix all product-related endpoints.
+    /// This is relative to the global <c>EndpointRoutePrefix</c>.
+    /// Use a leading <c>/</c> to create an absolute route that bypasses the global prefix (e.g., <c>"/health"</c> routes to <c>/health</c> instead of <c>/api/health</c>).
     /// </summary>
     public string? RoutePrefix { get; set; }
 

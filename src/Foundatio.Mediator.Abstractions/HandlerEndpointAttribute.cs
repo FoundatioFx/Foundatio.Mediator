@@ -25,6 +25,7 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// <summary>
     /// Gets or sets the route template for this endpoint.
     /// Use {propertyName} for route parameters that match message properties.
+    /// Use a leading <c>/</c> to create an absolute route that bypasses both the global and category prefixes (e.g., <c>"/status"</c> routes to <c>/status</c>).
     /// When null, the route is generated from the category's RoutePrefix and message properties.
     /// </summary>
     public string? Route { get; set; }

@@ -268,7 +268,7 @@ Foundatio Mediator has two configuration surfaces:
     HandlerLifetime = MediatorLifetime.Scoped,      // DI lifetime for handlers
     MiddlewareLifetime = MediatorLifetime.Scoped,    // DI lifetime for middleware
     EndpointDiscovery = EndpointDiscovery.All,       // Generate API endpoints
-    EndpointRoutePrefix = "/api",                    // Global endpoint prefix
+    EndpointRoutePrefix = "api",                    // Global endpoint prefix
     ProjectName = "MyApp"                            // Controls generated method names
 )]
 ```

@@ -12,7 +12,7 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(
     HandlerLifetime = MediatorLifetime.Scoped,
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRoutePrefix = "/api"
+    EndpointRoutePrefix = "api"
 )]
 ```
 
@@ -183,9 +183,9 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 
 **`EndpointRoutePrefix`** (`string?`)
 
-- **Default:** `"/api"`
-- **Effect:** Sets a global route prefix that all category groups nest under. Categories auto-derive their route from their name (e.g., `[HandlerCategory("Products")]` → `/products`), composing with the global prefix to produce `/api/products`.
-- **Important:** Category-level `RoutePrefix` values are **relative** to this global prefix. Don't include `/api` in your category prefixes when using the default global prefix, or you'll get `/api/api/...`.
+- **Default:** `"api"`
+- **Effect:** Sets a global route prefix that all category groups nest under. Categories auto-derive their route from their name (e.g., `[HandlerCategory("Products")]` → `products`), composing with the global prefix to produce `/api/products`.
+- **Important:** Category-level `RoutePrefix` values without a leading `/` are **relative** to this global prefix. Don't include `api` in your category prefixes when using the default global prefix, or you'll get `/api/api/...`. Use a leading `/` on a category prefix to make it absolute (bypasses the global prefix).
 - **To disable:** Set `EndpointRoutePrefix = ""` to remove the global prefix entirely, then use full paths in category prefixes.
 
 **`AuthorizationRequired`** (`bool`)
@@ -226,7 +226,7 @@ using Foundatio.Mediator;
     HandlerLifetime = MediatorLifetime.Scoped,
     MiddlewareLifetime = MediatorLifetime.Scoped,
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRoutePrefix = "/api"
+    EndpointRoutePrefix = "api"
 )]
 ```
 

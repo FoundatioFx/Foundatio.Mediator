@@ -29,7 +29,7 @@ internal static class EndpointGenerator
             return;
 
         // Validate endpoint configurations and emit diagnostics
-        ValidateEndpoints(context, endpointHandlers);
+        ValidateEndpoints(context, endpointHandlers, endpointDefaults);
 
         // Generate the endpoint registration code
         var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
@@ -56,13 +56,48 @@ internal static class EndpointGenerator
     /// <summary>
     /// Validates endpoint configurations and emits diagnostics for common issues.
     /// </summary>
-    private static void ValidateEndpoints(SourceProductionContext context, List<HandlerInfo> handlers)
+    private static void ValidateEndpoints(SourceProductionContext context, List<HandlerInfo> handlers, EndpointDefaultsInfo endpointDefaults)
     {
+        var warnedCategories = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var handler in handlers)
         {
             var endpoint = handler.Endpoint!.Value;
 
-            // Check for GET/DELETE endpoints where the message type cannot be constructed
+            // FMED015: Category route prefix duplicates global endpoint prefix.
+            // Only applies to relative prefixes (no leading /) since absolute prefixes bypass the global group.
+            var globalPrefix = endpointDefaults.RoutePrefix;
+            var catPrefix = endpoint.CategoryRoutePrefix;
+            if (!endpoint.CategoryBypassGlobalPrefix
+                && !string.IsNullOrEmpty(globalPrefix)
+                && !string.IsNullOrEmpty(catPrefix))
+            {
+                // For relative prefixes, check if the prefix content duplicates the global prefix content.
+                // e.g. global = "/api", relative category = "api/products" → /api/api/products (wrong)
+                var globalContent = globalPrefix!.TrimStart('/');
+                var catContent = catPrefix!.TrimStart('/');
+                if (catContent.StartsWith(globalContent, StringComparison.OrdinalIgnoreCase)
+                    && catContent.Length > globalContent.Length
+                    && warnedCategories.Add(catPrefix))
+                {
+                    var suggested = catContent.Substring(globalContent.Length).TrimStart('/');
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        new DiagnosticDescriptor(
+                            "FMED015",
+                            "Category route prefix duplicates global endpoint prefix",
+                            "HandlerCategory RoutePrefix '{0}' starts with the global EndpointRoutePrefix '{1}' content, which will produce a doubled path. " +
+                            "Remove the duplicated portion (e.g. use '{2}' instead), or prefix with '/' for an absolute path that bypasses the global prefix.",
+                            "Foundatio.Mediator",
+                            DiagnosticSeverity.Warning,
+                            isEnabledByDefault: true),
+                        Location.None,
+                        catPrefix,
+                        globalPrefix,
+                        suggested));
+                }
+            }
+
+            // FMED014: GET/DELETE endpoints where the message type cannot be constructed
             if (endpoint.HttpMethod is "GET" or "DELETE"
                 && !endpoint.BindFromBody
                 && !endpoint.SupportsAsParameters
@@ -243,13 +278,18 @@ internal static class EndpointGenerator
             var firstEndpoint = categoryHandlers.First().Endpoint!.Value;
             var routePrefix = firstEndpoint.CategoryRoutePrefix ?? "";
 
+            // When the category uses an absolute prefix (leading /), bypass the global route prefix
+            var categoryParent = (firstEndpoint.CategoryBypassGlobalPrefix && hasGlobalGroup)
+                ? "endpoints"
+                : parentGroupVar;
+
             source.AppendLine();
             source.AppendLine($"// {category} endpoints");
 
             // Create route group for the category
             var groupVarName = $"{category.ToCamelCase()}Group";
 
-            source.Append($"var {groupVarName} = {parentGroupVar}.MapGroup(\"{routePrefix}\")");
+            source.Append($"var {groupVarName} = {categoryParent}.MapGroup(\"{routePrefix}\")");
 
             // Only add tag if category is explicitly defined (not "Default")
             if (category != "Default")
@@ -285,7 +325,13 @@ internal static class EndpointGenerator
                 // Use the unique handler key that includes message type
                 var handlerKey = HandlerGenerator.GetHandlerClassName(handler);
                 routeOverrides.TryGetValue(handlerKey, out var routeOverride);
-                GenerateEndpoint(source, handler, groupVarName, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, categoryRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
+
+                // When the explicit route is absolute (leading /), bypass all prefixes
+                var targetGroup = handler.Endpoint!.Value.RouteBypassPrefixes
+                    ? "endpoints"
+                    : groupVarName;
+
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, categoryRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
             }
         }
 

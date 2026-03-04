@@ -130,6 +130,18 @@ internal readonly record struct EndpointInfo
     /// Used to emit <c>.ProducesProblem(statusCode)</c> for OpenAPI documentation.
     /// </summary>
     public EquatableArray<int> ProducesStatusCodes { get; init; }
+
+    /// <summary>
+    /// When true, the category route prefix bypasses the global <c>EndpointRoutePrefix</c>.
+    /// Set when the category <c>RoutePrefix</c> starts with <c>/</c> (e.g., <c>"/health"</c>).
+    /// </summary>
+    public bool CategoryBypassGlobalPrefix { get; init; }
+
+    /// <summary>
+    /// When true, the explicit route bypasses both the global and category prefixes.
+    /// Set when the <c>[HandlerEndpoint(Route = "/...")]</c> starts with <c>/</c>.
+    /// </summary>
+    public bool RouteBypassPrefixes { get; init; }
 }
 
 /// <summary>

@@ -28,7 +28,7 @@ To get endpoint summaries from your handler's XML doc comments, enable documenta
 Use `[HandlerCategory]` to group endpoints and set route prefixes:
 
 ```csharp
-[HandlerCategory("Products", RoutePrefix = "/api/products")]
+[HandlerCategory("Products", RoutePrefix = "products")]
 public class ProductHandler
 {
     /// <summary>
@@ -78,22 +78,64 @@ Routes are generated based on:
 
 ### Route Prefix Architecture
 
-Endpoint routes are composed from two levels of prefixes:
+Endpoint routes are composed from three levels, using ASP.NET Core's nested `MapGroup()` pattern:
 
-| Setting | Source | Default | Example |
-| ------- | ------ | ------- | ------- |
-| Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"/api"` | `"/api"` |
-| Category prefix | `[HandlerCategory("Products", RoutePrefix = "...")]` | Derived from name | `"/products"` |
+| Level | Source | Default | Example |
+| ----- | ------ | ------- | ------- |
+| Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` | `"api"` |
+| Category prefix | `[HandlerCategory("Products", RoutePrefix = "...")]` | Derived from class name | `"products"` |
+| Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated from message properties | Auto-generated | `"/{productId}"` |
 
-The final route is: **Global prefix + Category prefix + Route parameters**
+The generator creates nested route groups, and ASP.NET Core concatenates them into the final path:
 
 ```text
-EndpointRoutePrefix = "/api"  +  RoutePrefix = "/products"  →  /api/products
-EndpointRoutePrefix = ""      +  RoutePrefix = "/api/products"  →  /api/products
-EndpointRoutePrefix = "/api"  +  RoutePrefix = "/api/products"  →  /api/api/products  ⚠️ Wrong!
+endpoints.MapGroup("api")           // Global prefix
+    → rootGroup.MapGroup("products")    // Category prefix
+        → productsGroup.MapGet("/{productId}", ...)  // Endpoint route
 ```
 
-> **Important:** Category `RoutePrefix` values are **relative** to the global `EndpointRoutePrefix`. Don't include `/api` in category prefixes when using the default global prefix — this would produce `/api/api/...`.
+This produces the final route: **`/api/products/{productId}`**
+
+Here are examples of how the global and category prefixes combine:
+
+```text
+EndpointRoutePrefix = "api"   +  RoutePrefix = "products"     →  /api/products
+EndpointRoutePrefix = "api"   +  RoutePrefix = "v2/products"  →  /api/v2/products
+EndpointRoutePrefix = ""      +  RoutePrefix = "products"     →  /products
+EndpointRoutePrefix = "api"   +  RoutePrefix = "api/products" →  /api/api/products  ⚠️ Wrong!
+```
+
+> **Important:** Category `RoutePrefix` values without a leading `/` are **relative** — they nest under the global `EndpointRoutePrefix`. Don't repeat the global prefix in category prefixes (e.g. `"api/products"` when the global is already `"api"`) or you'll get doubled paths like `/api/api/...`. The compiler emits warning **FMED015** if it detects this mistake.
+
+### Absolute Routes (Bypassing Prefixes)
+
+Use a leading `/` to create an absolute route that bypasses parent prefixes, matching ASP.NET Core MVC's attribute routing convention where `[Route("/health")]` is absolute:
+
+**Category-level bypass** — skip the global `EndpointRoutePrefix`:
+
+```csharp
+[assembly: MediatorConfiguration(EndpointRoutePrefix = "api")]
+
+// Routes to /health, NOT /api/health (leading / = absolute)
+[HandlerCategory("Health", RoutePrefix = "/health")]
+public class HealthHandler { ... }
+```
+
+**Endpoint-level bypass** — skip both the global and category prefixes:
+
+```csharp
+[assembly: MediatorConfiguration(EndpointRoutePrefix = "api")]
+
+[HandlerCategory("Products", RoutePrefix = "products")]
+public class ProductHandler
+{
+    // Routes to /status, NOT /api/products/status (leading / = absolute)
+    [HandlerEndpoint(Route = "/status")]
+    public string Handle(GetStatus query) => "ok";
+}
+```
+
+This is useful for health checks, status endpoints, or any route that should live outside the normal API hierarchy.
 
 To disable the global prefix entirely, set `EndpointRoutePrefix = ""`:
 
@@ -109,7 +151,7 @@ To disable the global prefix entirely, set `EndpointRoutePrefix = ""`:
 Use `[HandlerEndpoint]` to override the generated route and/or HTTP method for individual handlers:
 
 ```csharp
-[HandlerCategory("Todos", RoutePrefix = "/todos")]
+[HandlerCategory("Todos", RoutePrefix = "todos")]
 public class TodoHandler
 {
     // POST /api/todos/{todoId}/complete
@@ -277,13 +319,13 @@ The generated endpoint maps the `FileResult` to a file response with the correct
 Groups handlers and sets route prefixes:
 
 ```csharp
-[HandlerCategory("Products", RoutePrefix = "/api/products")]
+[HandlerCategory("Products", RoutePrefix = "products")]
 public class ProductHandler { ... }
 ```
 
 Properties:
 - `Name` (constructor) - Category name for OpenAPI tags
-- `RoutePrefix` - Base route for all handlers in this class
+- `RoutePrefix` - Route prefix for all handlers in this class (relative to global prefix; use leading `/` for absolute)
 
 ### `[HandlerEndpoint]`
 
@@ -294,7 +336,7 @@ public class ProductHandler
 {
     [HandlerEndpoint(
         HttpMethod = "POST",
-        Route = "/api/products/bulk",
+        Route = "bulk",
         Name = "BulkCreateProducts",
         Summary = "Creates multiple products at once")]
     public Task<Result<List<Product>>> HandleAsync(BulkCreateProducts command) { ... }
@@ -306,7 +348,7 @@ public class ProductHandler
 
 Properties:
 - `HttpMethod` - Override the inferred HTTP method
-- `Route` - Custom route template
+- `Route` - Custom route template (relative to category prefix; use leading `/` for absolute)
 - `Name` - OpenAPI operation ID
 - `Summary` - Override XML doc summary
 - `Description` - OpenAPI description
@@ -435,11 +477,11 @@ ASP.NET Core's `[AllowAnonymous]` attribute is also recognized.
 Override at the category level:
 
 ```csharp
-[HandlerCategory("Admin", RoutePrefix = "/api/admin")]
+[HandlerCategory("Admin", RoutePrefix = "admin")]
 [HandlerAuthorize(Policies = ["AdminOnly"])]
 public class AdminHandler { ... }
 
-[HandlerCategory("Public", RoutePrefix = "/api/public")]
+[HandlerCategory("Public", RoutePrefix = "public")]
 [HandlerAllowAnonymous]
 public class PublicHandler { ... }
 ```
@@ -478,7 +520,7 @@ Use `[HandlerEndpoint(Exclude = true)]` to opt out specific handlers.
 
 ### Explicit Mode
 
-Only handlers with `[HandlerEndpoint]` attribute generate endpoints:
+Only handlers with `[HandlerEndpoint]` or `[HandlerCategory]` attributes generate endpoints:
 
 ```csharp
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.Explicit)]
@@ -537,8 +579,8 @@ public static class MediatorEndpointExtensions_Products
 {
     public static IEndpointRouteBuilder MapProductsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var rootGroup = endpoints.MapGroup("/api");
-        var productsGroup = rootGroup.MapGroup("/products").WithTags("Products");
+        var rootGroup = endpoints.MapGroup("api");
+        var productsGroup = rootGroup.MapGroup("products").WithTags("Products");
 
         // POST /api/products - CreateProduct
         productsGroup.MapPost("/", async ([FromBody] CreateProduct message,
@@ -571,16 +613,18 @@ public static class MediatorEndpointExtensions_Products
 ## Events and Notifications
 
 Handlers for event/notification types are automatically excluded from endpoint generation:
-- Types implementing `INotification`
-- Types with names ending in `Event`, `Notification`, `Created`, `Updated`, `Deleted`
+
+- Types implementing `INotification`, `IEvent`, `IDomainEvent`, or `IIntegrationEvent`
+- Handler classes named `*EventHandler` or `*NotificationHandler`
+- Types with names ending in common event suffixes: `Created`, `Updated`, `Deleted`, `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`, `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`, `Expired`
 
 ## Troubleshooting
 
 ### Endpoints Not Generated
 
 1. Ensure your project references ASP.NET Core (has `Microsoft.AspNetCore.Routing`)
-2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` - default is `None` (no endpoints). Set to `All` or `Explicit`.
-3. In `Explicit` mode, handlers need `[HandlerEndpoint]`
+2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default is `None` (no endpoints). Set to `All` or `Explicit`.
+3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or `[HandlerCategory]`
 4. Verify the handler isn't excluded via `[HandlerEndpoint(Exclude = true)]`
 
 ### XML Summaries Not Appearing

@@ -313,6 +313,8 @@ public class LoggingMiddleware
 | `FMED010` | Error | Synchronous invoke on handler with tuple return |
 | `FMED011` | Error | Multiple Execute methods in a middleware class. Only one Execute/ExecuteAsync method is allowed per middleware class. |
 | `FMED012` | Warning | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`. |
+| `FMED014` | Warning | GET/DELETE endpoint message type has no parameterless constructor and no route/query parameters. |
+| `FMED015` | Warning | `HandlerCategory` `RoutePrefix` starts with the global `EndpointRoutePrefix`, producing a doubled path (e.g. `/api/api/...`). |
 
 ## Getting Help
 

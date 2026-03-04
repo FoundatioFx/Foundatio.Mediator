@@ -422,11 +422,26 @@ internal static class HandlerAnalyzer
                 categoryName = categoryAttr.ConstructorArguments[0].Value as string;
 
             categoryRoutePrefix = GetStringProperty(categoryAttr, "RoutePrefix");
-            // If no explicit RoutePrefix, use the category name as the prefix (lowercase)
+            // If no explicit RoutePrefix, use the category name as the prefix (lowercase, no leading / = relative)
             if (string.IsNullOrEmpty(categoryRoutePrefix) && !string.IsNullOrEmpty(categoryName))
             {
-                categoryRoutePrefix = "/" + categoryName!.ToLowerInvariant();
+                categoryRoutePrefix = categoryName!.ToLowerInvariant();
             }
+        }
+
+        // A leading / on the category RoutePrefix means absolute (bypass global prefix),
+        // matching ASP.NET Core MVC's attribute routing convention.
+        // No leading / means relative (nested under global prefix).
+        bool categoryBypassGlobalPrefix = false;
+        if (!string.IsNullOrEmpty(categoryRoutePrefix) && categoryRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
+        {
+            categoryBypassGlobalPrefix = true;
+        }
+        else if (!string.IsNullOrEmpty(categoryRoutePrefix))
+        {
+            // Ensure relative prefixes don't start with / in the generated MapGroup call
+            // (they're relative to the parent group)
+            categoryRoutePrefix = categoryRoutePrefix!.TrimStart('/');
         }
 
         // Extract endpoint info (method takes precedence over class)
@@ -437,6 +452,15 @@ internal static class HandlerAnalyzer
         var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
                             GetStringProperty(classEndpointAttr, "Route");
         var hasExplicitRoute = !string.IsNullOrEmpty(explicitRoute);
+
+        // A leading / on an explicit route means absolute (bypass all prefixes),
+        // matching ASP.NET Core MVC's attribute routing convention.
+        bool routeBypassPrefixes = false;
+        if (explicitRoute != null && explicitRoute.StartsWith("/", StringComparison.Ordinal))
+        {
+            routeBypassPrefixes = true;
+        }
+
         var route = explicitRoute;
 
         var name = GetStringProperty(methodEndpointAttr, "Name") ??
@@ -532,6 +556,8 @@ internal static class HandlerAnalyzer
             Description = description,
             Category = categoryName ?? tags?.FirstOrDefault(),
             CategoryRoutePrefix = categoryRoutePrefix,
+            CategoryBypassGlobalPrefix = categoryBypassGlobalPrefix,
+            RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
             BindFromBody = bindFromBody,

@@ -73,7 +73,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -92,8 +92,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        Assert.Contains("MapGroup(\"/api\")", endpointSource);
-        Assert.Contains("rootGroup.MapGroup(\"/widgets\")", endpointSource);
+        Assert.Contains("MapGroup(\"api\")", endpointSource);
+        Assert.Contains("rootGroup.MapGroup(\"widgets\")", endpointSource);
         Assert.Contains(".WithTags(\"Widgets\")", endpointSource);
     }
 
@@ -105,7 +105,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Microsoft.AspNetCore.Http;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 EndpointFilters = new[] { typeof(MyGlobalFilter) }
             )]
@@ -345,7 +345,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Microsoft.AspNetCore.Http;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 EndpointFilters = new[] { typeof(GlobalFilter) }
             )]
@@ -395,7 +395,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 AuthorizationRequired = true
             )]
@@ -415,7 +415,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        Assert.Contains("MapGroup(\"/api\").RequireAuthorization()", endpointSource);
+        Assert.Contains("MapGroup(\"api\").RequireAuthorization()", endpointSource);
     }
 
     [Fact]
@@ -425,7 +425,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -445,8 +445,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // Category name "Products" auto-derives to "/products"
-        Assert.Contains("MapGroup(\"/products\")", endpointSource);
+        // Category name "Products" auto-derives to "products" (relative, no leading /)
+        Assert.Contains("MapGroup(\"products\")", endpointSource);
     }
 
     [Fact]
@@ -457,7 +457,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Microsoft.AspNetCore.Authorization;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 AuthorizationRequired = true
             )]
@@ -495,7 +495,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Microsoft.AspNetCore.Authorization;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 AuthorizationRequired = true
             )]
@@ -533,7 +533,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Microsoft.AspNetCore.Authorization;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All,
                 AuthorizationRequired = true,
                 AuthorizationRoles = ["Admin"]
@@ -575,7 +575,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -606,7 +606,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -644,7 +644,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -678,7 +678,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             using Foundatio.Mediator;
 
             [assembly: MediatorConfiguration(
-                EndpointRoutePrefix = "/api",
+                EndpointRoutePrefix = "api",
                 EndpointDiscovery = EndpointDiscovery.All
             )]
 
@@ -1097,6 +1097,228 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // Non-Result return type — no ProducesProblem at all
         Assert.DoesNotContain(".ProducesProblem(", endpointSource);
+    }
+
+    [Fact]
+    public void FMED015_CategoryPrefixStartsWithGlobalPrefix_EmitsWarning()
+    {
+        // Relative prefix (no leading /) that duplicates the global prefix content
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetOrder(string Id);
+
+            [HandlerCategory("Orders", RoutePrefix = "api/orders")]
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED015");
+        Assert.NotNull(warning);
+        Assert.Equal(DiagnosticSeverity.Warning, warning!.Severity);
+        Assert.Contains("api/orders", warning.GetMessage());
+        Assert.Contains("orders", warning.GetMessage()); // suggests the trimmed prefix
+    }
+
+    [Fact]
+    public void FMED015_AbsoluteCategoryPrefix_NoWarning()
+    {
+        // A leading / makes the category absolute (bypasses global prefix), so no doubling
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetOrder(string Id);
+
+            [HandlerCategory("Orders", RoutePrefix = "/orders")]
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED015");
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void FMED015_NoGlobalPrefix_NoWarning()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetOrder(string Id);
+
+            [HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED015");
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void FMED015_ExactMatchOfGlobalPrefix_NoWarning()
+    {
+        // Category prefix that exactly equals the global prefix is unusual but not a "double-up"
+        // because the generated path is just /api (not /api/api)
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetOrder(string Id);
+
+            [HandlerCategory("Orders", RoutePrefix = "/api")]
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED015");
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void AbsolutePrefix_CategoryRouteBypassesGlobalPrefix()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetHealth();
+
+            [HandlerCategory("Health", RoutePrefix = "/health")]
+            public class HealthHandler
+            {
+                public string Handle(GetHealth query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Category group should be parented on `endpoints`, not `rootGroup`
+        Assert.Contains("endpoints.MapGroup(\"/health\")", endpointSource);
+        // Global prefix group should still exist
+        Assert.Contains("MapGroup(\"api\")", endpointSource);
+        // No FMED015 warning for absolute route
+        Assert.Null(diagnostics.FirstOrDefault(d => d.Id == "FMED015"));
+    }
+
+    [Fact]
+    public void AbsoluteRoute_ExplicitRouteBypassesAllPrefixes()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetStatus();
+
+            [HandlerCategory("Products", RoutePrefix = "products")]
+            public class ProductHandler
+            {
+                [HandlerEndpoint(Route = "/status")]
+                public string Handle(GetStatus query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // The endpoint should be registered directly on `endpoints`, not the category group
+        Assert.Contains("endpoints.MapGet(\"/status\"", endpointSource);
+    }
+
+    [Fact]
+    public void RelativePrefix_CategoryNestedUnderGlobalGroup()
+    {
+        // Verify that without leading / the category is nested under the global group
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetHealth();
+
+            [HandlerCategory("Health", RoutePrefix = "health")]
+            public class HealthHandler
+            {
+                public string Handle(GetHealth query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Category group should be parented on `rootGroup` (relative behavior)
+        Assert.Contains("rootGroup.MapGroup(\"health\")", endpointSource);
     }
 }
 

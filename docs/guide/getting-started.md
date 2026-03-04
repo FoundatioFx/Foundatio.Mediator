@@ -86,7 +86,6 @@ Endpoints are generated automatically for all handlers:
 public record CreateTodo(string Title);
 public record GetTodo(string Id);
 
-[HandlerCategory("Todos", RoutePrefix = "todos")]
 public class TodoHandler
 {
     public Todo Handle(CreateTodo cmd) => new(Guid.NewGuid().ToString(), cmd.Title);
@@ -96,34 +95,17 @@ public class TodoHandler
 
 ```csharp
 // Program.cs
-app.MapMyAppEndpoints(); // generated extension method
+app.MapMyAppEndpoints(); // generated extension method based on project name
 ```
 
 This generates:
 
-- `POST /api/todos` → `TodoHandler.Handle(CreateTodo)`
-- `GET /api/todos/{id}` → `TodoHandler.Handle(GetTodo)`
+- `POST /api/todo` → `TodoHandler.Handle(CreateTodo)`
+- `GET /api/todo/{id}` → `TodoHandler.Handle(GetTodo)`
 
 <!-- -->
 
 HTTP methods, routes, and parameter binding are all inferred from message names and properties. Pass `logEndpoints: true` to see all mapped routes at startup:
-
-```csharp
-app.MapMyAppEndpoints(logEndpoints: true);
-```
-
-Need to customize a specific endpoint? Use the `[HandlerEndpoint]` attribute:
-
-```csharp
-public class TodoHandler
-{
-    [HandlerEndpoint(Route = "/todos/search", HttpMethod = "GET")]
-    public Task<Result<Todo[]>> HandleAsync(SearchTodos query) { /* ... */ }
-
-    [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents, SseEventType = "todo")]
-    public async IAsyncEnumerable<Todo> Handle(SubscribeToTodos msg) { /* ... */ }
-}
-```
 
 See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
 
@@ -152,7 +134,7 @@ When used with generated endpoints, `Result<T>` maps automatically to the correc
 Publish messages to multiple handlers with `PublishAsync`:
 
 ```csharp
-public record OrderCreated(string OrderId, DateTime CreatedAt);
+public record OrderCreated(string OrderId, DateTime CreatedAt) : INotification;
 
 // Both handlers run when OrderCreated is published
 public class EmailHandler
@@ -176,25 +158,21 @@ Handlers can even return cascading events as tuple results — see [Cascading Me
 
 ### Dynamic Subscriptions
 
-For real-time push scenarios like SSE, subscribe to published notifications as an async stream:
+Subscribe to published notifications as an async stream — and combine with a streaming handler to get a real-time SSE endpoint in just a few lines:
 
 ```csharp
-await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken: ct))
+public class EventStreamHandler(IMediator mediator)
 {
-    Console.WriteLine($"Order created: {evt.OrderId}");
+    [HandlerEndpoint(Route = "/events/stream", Streaming = EndpointStreaming.ServerSentEvents)]
+    public async IAsyncEnumerable<object> Handle(SubscribeToEvents message, [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var evt in mediator.SubscribeAsync<INotification>(cancellationToken: ct))
+            yield return evt;
+    }
 }
 ```
 
-Subscribe to **all** published notifications at once using `INotification`:
-
-```csharp
-await foreach (var evt in mediator.SubscribeAsync<INotification>(cancellationToken: ct))
-{
-    Console.WriteLine($"{evt.GetType().Name} published");
-}
-```
-
-You can also subscribe to a custom marker interface (e.g., `IDispatchToClient`) to receive a targeted subset — no bridging layer or relay pipeline needed. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+Every notification published anywhere in the app is now pushed to connected clients over SSE — no bridging layer needed. You can subscribe to any type, including interfaces; any published notification assignable to the type parameter will be delivered. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
 
 ## Middleware
 

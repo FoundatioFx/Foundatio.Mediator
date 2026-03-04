@@ -368,7 +368,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Implementation file should also be generated (compile-time only in real IDE, but test runs both)
         var implSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
         Assert.NotNull(implSource);
-        Assert.Contains("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints)", implSource);
+        Assert.Contains("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)", implSource);
         Assert.Contains("MapGet", implSource);
     }
 

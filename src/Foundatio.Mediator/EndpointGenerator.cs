@@ -54,11 +54,12 @@ internal static class EndpointGenerator
         source.AppendLine("/// Maps all discovered handler endpoints to the application.");
         source.AppendLine("/// </summary>");
         source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        source.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup using ILogger or Console.</param>");
         source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
-        source.AppendLine($"public static IEndpointRouteBuilder Map{safeSuffix}Endpoints(this IEndpointRouteBuilder endpoints)");
+        source.AppendLine($"public static IEndpointRouteBuilder Map{safeSuffix}Endpoints(this IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
         source.AppendLine("{");
         source.IncrementIndent();
-        source.AppendLine("MapEndpointsCore(endpoints);");
+        source.AppendLine("MapEndpointsCore(endpoints, logEndpoints);");
         source.AppendLine("return endpoints;");
         source.DecrementIndent();
         source.AppendLine("}");
@@ -67,7 +68,7 @@ internal static class EndpointGenerator
         source.AppendLine("/// Core endpoint registration, implemented by the source generator at compile time.");
         source.AppendLine("/// At design time this is a no-op so IntelliSense works before the first build.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints);");
+        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);");
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -213,9 +214,16 @@ internal static class EndpointGenerator
             using Microsoft.AspNetCore.Http;
             using Microsoft.AspNetCore.Routing;
             using System.Diagnostics.CodeAnalysis;
-
-            namespace Foundatio.Mediator;
             """);
+
+        if (compilationInfo.HasLoggerFactory)
+        {
+            source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+            source.AppendLine("using Microsoft.Extensions.Logging;");
+        }
+
+        source.AppendLine();
+        source.AppendLine($"namespace Foundatio.Mediator;");
 
         source.AppendLine();
         source.AppendLine($"public static partial class MediatorEndpointExtensions_{safeSuffix}");
@@ -224,7 +232,7 @@ internal static class EndpointGenerator
 
         // Generate the core implementation as a static partial void method
         // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
-        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, safeSuffix);
+        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, safeSuffix, compilationInfo.HasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -248,12 +256,13 @@ internal static class EndpointGenerator
         bool hasAsParametersAttribute,
         bool hasFromBodyAttribute,
         bool hasWithOpenApi,
-        string assemblySuffix)
+        string assemblySuffix,
+        bool hasLoggerFactory)
     {
         source.AppendLine("/// <summary>");
         source.AppendLine("/// Core endpoint registration implementation.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints)");
+        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)");
         source.AppendLine("{");
         source.IncrementIndent();
 
@@ -334,6 +343,9 @@ internal static class EndpointGenerator
             .OrderBy(g => g.Key)
             .ToList();
 
+        // Collect endpoint info for startup logging
+        var endpointLogEntries = new List<(string HttpMethod, string FullRoute, string HandlerInfo)>();
+
         foreach (var categoryGroup in handlersByCategory)
         {
             var category = categoryGroup.Key;
@@ -397,11 +409,101 @@ internal static class EndpointGenerator
                     : groupVarName;
 
                 GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, categoryRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
+
+                // Collect endpoint info for logging
+                var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
+                var fullRoute = ComputeFullDisplayRoute(
+                    endpointDefaults.RoutePrefix, routePrefix, endpointRoute,
+                    firstEndpoint.CategoryBypassGlobalPrefix,
+                    handler.Endpoint!.Value.RouteBypassPrefixes);
+                endpointLogEntries.Add((
+                    handler.Endpoint!.Value.HttpMethod,
+                    fullRoute,
+                    $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})"));
             }
+        }
+
+        // Emit endpoint logging block
+        EmitEndpointLogging(source, endpointLogEntries, hasLoggerFactory);
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Emits the endpoint logging block at the end of MapEndpointsCore.
+    /// </summary>
+    private static void EmitEndpointLogging(
+        IndentedStringBuilder source,
+        List<(string HttpMethod, string FullRoute, string HandlerInfo)> entries,
+        bool hasLoggerFactory)
+    {
+        if (entries.Count == 0)
+            return;
+
+        var maxMethodLen = entries.Max(e => e.HttpMethod.Length);
+        var maxRouteLen = entries.Max(e => e.FullRoute.Length);
+
+        source.AppendLine();
+        source.AppendLine("// Log mapped endpoints when requested");
+        source.AppendLine("if (logEndpoints)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        if (hasLoggerFactory)
+        {
+            source.AppendLine("var endpointLogger = endpoints.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"Foundatio.Mediator.Endpoints\");");
+            source.AppendLine("System.Action<string> writeLog = endpointLogger != null");
+            source.IncrementIndent();
+            source.AppendLine("? msg => endpointLogger.LogInformation(\"{MediatorEndpointInfo}\", msg)");
+            source.AppendLine(": System.Console.WriteLine;");
+            source.DecrementIndent();
+        }
+        else
+        {
+            source.AppendLine("System.Action<string> writeLog = System.Console.WriteLine;");
+        }
+
+        source.AppendLine($"writeLog(\"Foundatio.Mediator mapped {entries.Count} endpoint(s):\");");
+
+        foreach (var (httpMethod, fullRoute, handlerInfo) in entries)
+        {
+            var paddedMethod = httpMethod.PadRight(maxMethodLen);
+            var paddedRoute = fullRoute.PadRight(maxRouteLen);
+            source.AppendLine($"writeLog(\"  {paddedMethod}  {paddedRoute}  \u2192 {handlerInfo}\");");
         }
 
         source.DecrementIndent();
         source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Computes the full display route path for logging by combining global prefix, category prefix, and endpoint route.
+    /// </summary>
+    private static string ComputeFullDisplayRoute(string? globalPrefix, string categoryPrefix, string endpointRoute, bool categoryBypassGlobalPrefix, bool routeBypassPrefixes)
+    {
+        string result;
+        if (routeBypassPrefixes)
+            result = endpointRoute;
+        else if (categoryBypassGlobalPrefix)
+            result = JoinRouteParts(categoryPrefix, endpointRoute);
+        else
+            result = JoinRouteParts(globalPrefix ?? "", JoinRouteParts(categoryPrefix, endpointRoute));
+
+        if (string.IsNullOrEmpty(result))
+            return "/";
+        if (!result.StartsWith("/"))
+            result = "/" + result;
+        return result;
+    }
+
+    private static string JoinRouteParts(string a, string b)
+    {
+        a = a.TrimEnd('/');
+        b = b.TrimStart('/');
+        if (string.IsNullOrEmpty(a)) return b;
+        if (string.IsNullOrEmpty(b)) return a;
+        return a + "/" + b;
     }
 
     /// <summary>

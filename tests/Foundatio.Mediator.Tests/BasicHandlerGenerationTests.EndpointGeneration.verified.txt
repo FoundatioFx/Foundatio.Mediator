@@ -114,10 +114,11 @@ public static partial class MediatorEndpointExtensions_Tests
     /// Maps all discovered handler endpoints to the application.
     /// </summary>
     /// <param name="endpoints">The endpoint route builder.</param>
+    /// <param name="logEndpoints">When true, logs all mapped endpoints at startup using ILogger or Console.</param>
     /// <returns>The endpoint route builder for chaining.</returns>
-    public static IEndpointRouteBuilder MapTestsEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapTestsEndpoints(this IEndpointRouteBuilder endpoints, bool logEndpoints = false)
     {
-        MapEndpointsCore(endpoints);
+        MapEndpointsCore(endpoints, logEndpoints);
         return endpoints;
     }
 
@@ -125,7 +126,7 @@ public static partial class MediatorEndpointExtensions_Tests
     /// Core endpoint registration, implemented by the source generator at compile time.
     /// At design time this is a no-op so IntelliSense works before the first build.
     /// </summary>
-    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints);
+    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);
 }
 
     },
@@ -150,7 +151,7 @@ public static partial class MediatorEndpointExtensions_Tests
     /// <summary>
     /// Core endpoint registration implementation.
     /// </summary>
-    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints)
+    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)
     {
 
         // Global route prefix
@@ -171,6 +172,14 @@ public static partial class MediatorEndpointExtensions_Tests
             .Produces<string>(200)
         ;
 
+
+        // Log mapped endpoints when requested
+        if (logEndpoints)
+        {
+            System.Action<string> writeLog = System.Console.WriteLine;
+            writeLog("Foundatio.Mediator mapped 1 endpoint(s):");
+            writeLog("  GET  /api/widget/{id}  → WidgetHandler.Handle(GetWidget)");
+        }
     }
 }
 

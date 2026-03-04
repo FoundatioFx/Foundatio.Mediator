@@ -233,7 +233,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             HasAsParametersAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.AsParametersAttribute") != null,
             HasFromBodyAttribute: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.FromBodyAttribute") != null,
             HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null,
-            IsAspNetCore: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IHttpContextAccessor") != null);
+            IsAspNetCore: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IHttpContextAccessor") != null,
+            HasLoggerFactory: compilation.GetTypeByMetadataName("Microsoft.Extensions.Logging.ILoggerFactory") != null);
     }
 
     private static void Execute(

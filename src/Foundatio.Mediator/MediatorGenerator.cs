@@ -119,7 +119,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         string? projectName = null;
 
         // Endpoint defaults
-        string discovery = "None";
+        string discovery = "All";
         string? routePrefix = "/api";
         var filters = Array.Empty<string>();
         bool requireAuth = false;

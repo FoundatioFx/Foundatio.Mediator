@@ -77,23 +77,27 @@ public record LogEvent(string Message) : INotification;      // Multiple handler
 ::: tip When to Use These Interfaces
 These interfaces are **optional**. Use them when you want:
 - Type inference at call sites (no need to specify `<TResponse>`)
-- Self-documenting message intent (command vs query)
+- Self-documenting message intent (command vs query vs notification)
+- Message classification — e.g., a handler can accept `INotification` to handle all notification types
 - Compatibility with MediatR-style patterns
 
-Plain messages (like `public record Ping(string Text);`) work fine without any interface.
+Plain messages (like `public record Ping(string Text);`) work fine without any interface. In particular, `INotification` is not required for events to work with `PublishAsync` or cascading messages — it serves as a classification/self-documentation tool.
 :::
 
 ## Class Naming Conventions
 
 Handler classes must end with one of these suffixes:
 
-- `Handler`
-- `Consumer`
+- **`Handler`** — the preferred convention for all handler classes
+- `Consumer` — supported for convenience when migrating from other libraries (e.g., MassTransit), but `Handler` is recommended for new code
 
 ```csharp
-// ✅ Valid handler class names
+// ✅ Recommended
 public class UserHandler { }
 public class OrderHandler { }
+public class EventHandler { }
+
+// ✅ Also valid (migration convenience)
 public class EmailConsumer { }
 public class NotificationConsumer { }
 
@@ -102,23 +106,29 @@ public class UserService { }
 public class OrderProcessor { }
 ```
 
+::: tip Use Handler for Everything
+Unlike some libraries that distinguish between "handlers" and "consumers," Foundatio Mediator treats both identically. The `Consumer` suffix exists purely to ease migration from libraries like MassTransit. For new projects, use `Handler` consistently for commands, queries, and events alike.
+:::
+
 ## Method Naming Conventions
 
 Handler methods must use one of these names:
 
-- `Handle` / `HandleAsync`
-- `Handles` / `HandlesAsync`
-- `Consume` / `ConsumeAsync`
-- `Consumes` / `ConsumesAsync`
+- **`Handle`** / **`HandleAsync`** — the preferred convention
+- `Handles` / `HandlesAsync` — alternative form
+- `Consume` / `ConsumeAsync` — migration convenience (same as class suffix)
+- `Consumes` / `ConsumesAsync` — migration convenience
 
 ```csharp
 public class UserHandler
 {
-    // ✅ All of these work
+    // ✅ Recommended
     public User Handle(GetUser query) { }
     public Task<User> HandleAsync(GetUser query) { }
+
+    // ✅ Also valid (all are functionally identical)
     public User Handles(GetUser query) { }
-    public Task<User> HandlesAsync(GetUser query) { }
+    public User Consume(GetUser query) { }
 
     // ❌ These won't be discovered
     public User Process(GetUser query) { }

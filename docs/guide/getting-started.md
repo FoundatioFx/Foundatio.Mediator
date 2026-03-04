@@ -76,12 +76,7 @@ The first parameter is always the message. Everything else — services, `Cancel
 
 ## Generate API Endpoints
 
-Skip the boilerplate of manually mapping endpoints to message handlers:
-
-```csharp
-// Enable endpoint generation (in any .cs file)
-[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
-```
+Endpoints are generated automatically for all handlers:
 
 ```csharp
 public record CreateTodo(string Title);

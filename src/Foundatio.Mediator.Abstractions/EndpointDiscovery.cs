@@ -16,7 +16,7 @@ public enum EndpointDiscovery
     Explicit = 1,
 
     /// <summary>
-    /// All discovered handlers generate endpoints unless explicitly excluded.
+    /// All discovered handlers generate endpoints unless explicitly excluded. This is the default.
     /// </summary>
     All = 2
 }

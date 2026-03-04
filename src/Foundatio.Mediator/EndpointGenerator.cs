@@ -112,10 +112,10 @@ internal static class EndpointGenerator
         return endpointDefaults.Discovery switch
         {
             "Explicit" => handlers
-                .Where(h => h.Endpoint is { GenerateEndpoint: true, HasExplicitEndpointAttribute: true } && !h.MessageType.IsInterface)
+                .Where(h => h.Endpoint is { GenerateEndpoint: true, HasExplicitEndpointAttribute: true } && !h.MessageType.IsInterface && !h.IsGenericHandlerClass)
                 .ToList(),
             "All" => handlers
-                .Where(h => h.Endpoint is { GenerateEndpoint: true } && !h.MessageType.IsInterface)
+                .Where(h => h.Endpoint is { GenerateEndpoint: true } && !h.MessageType.IsInterface && !h.IsGenericHandlerClass)
                 .ToList(),
             _ => [] // "None" mode - no endpoints generated
         };

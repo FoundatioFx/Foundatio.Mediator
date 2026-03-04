@@ -262,7 +262,7 @@ using Foundatio.Mediator;
     NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait, // Sequential, TaskWhenAll, or FireAndForget
     ProjectName = "MyProject",                          // Custom suffix for generated endpoint methods
     EnableGenerationCounter = false,                    // Debug: add generation timestamp comment
-    EndpointDiscovery = EndpointDiscovery.All,          // None, Explicit, All
+    EndpointDiscovery = EndpointDiscovery.All,          // All (default), Explicit, None
     EndpointRoutePrefix = "api",                        // Global route prefix for all endpoints (default: "api")
     AuthorizationRequired = false,                         // Require auth for all handlers and endpoints
     EndpointFilters = [typeof(MyFilter)]                // Global endpoint filters

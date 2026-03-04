@@ -544,11 +544,12 @@ You can replace either service via DI to customize behavior.
 
 Control which handlers generate endpoints using the assembly attribute:
 
-### All Mode
+### All Mode (Default)
 
-All handlers with valid endpoint info generate endpoints:
+All handlers with valid endpoint info generate endpoints. This is the default — no `MediatorConfiguration` attribute is needed:
 
 ```csharp
+// Optional — this is already the default
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
 ```
 
@@ -562,9 +563,13 @@ Only handlers with `[HandlerEndpoint]` or `[HandlerCategory]` attributes generat
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.Explicit)]
 ```
 
-### None Mode (Default)
+### None Mode
 
-No endpoints are generated. This is the default when `EndpointDiscovery` is not set.
+No endpoints are generated:
+
+```csharp
+[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.None)]
+```
 
 ## Project Name Configuration
 
@@ -661,12 +666,16 @@ Handlers for event/notification types are automatically excluded from endpoint g
 - Handler classes named `*EventHandler` or `*NotificationHandler`
 - Types with names ending in common event suffixes: `Created`, `Updated`, `Deleted`, `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`, `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`, `Expired`
 
+::: info INotification Is Not Required
+The `INotification` interface is **not required** for events to be excluded from endpoints or for cascading/publishing to work. Events are excluded based on naming conventions (suffixes like `Created`, `Deleted`, etc.) regardless of interface implementation. `INotification` is a classification tool — use it when you want a handler that can receive all notification-type messages, or simply as self-documentation.
+:::
+
 ## Troubleshooting
 
 ### Endpoints Not Generated
 
 1. Ensure your project references ASP.NET Core (has `Microsoft.AspNetCore.Routing`)
-2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default is `None` (no endpoints). Set to `All` or `Explicit`.
+2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default is `All`. Make sure it hasn't been set to `None` or `Explicit`.
 3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or `[HandlerCategory]`
 4. Verify the handler isn't excluded via `[HandlerEndpoint(Exclude = true)]`
 

@@ -89,7 +89,7 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// <see cref="EndpointDiscovery.Explicit"/> only generates endpoints for handlers
     /// marked with <see cref="HandlerEndpointAttribute"/>, and
     /// <see cref="EndpointDiscovery.All"/> generates endpoints for all discovered handlers.
-    /// Default: <see cref="EndpointDiscovery.None"/>.
+    /// Default: <see cref="EndpointDiscovery.All"/>.
     /// </summary>
     public EndpointDiscovery EndpointDiscovery { get; set; }
 

@@ -378,9 +378,11 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     [Fact]
     public void DiscoveryNone_NoEndpointsGenerated()
     {
-        // No assembly attribute = default Discovery = None
+        // Explicitly set Discovery = None
         var source = """
             using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.None)]
 
             public record GetItem(string Id);
 
@@ -437,9 +439,11 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     [Fact]
     public void DesignTimeStub_NotGeneratedWhenDiscoveryNone()
     {
-        // No assembly attribute = default Discovery = None
+        // Explicitly set Discovery = None
         var source = """
             using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.None)]
 
             public record GetItem(string Id);
 

@@ -12,7 +12,6 @@ using Reports.Module;
 using Reports.Module.Messages;
 using Scalar.AspNetCore;
 using Api.Handlers;
-using Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,9 +41,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// Add ClientEventBroadcaster singleton for SSE event streaming
-builder.Services.AddSingleton<ClientEventBroadcaster>();
-
 // Add Foundatio.Mediator with assemblies from all modules
 builder.Services.AddMediator(c =>
 {
@@ -53,7 +49,7 @@ builder.Services.AddMediator(c =>
     c.AddAssembly<CreateOrder>();          // Orders.Module
     c.AddAssembly<CreateProduct>();        // Products.Module
     c.AddAssembly<GetDashboardReport>();   // Reports.Module
-    c.AddAssembly<ClientDispatchHandler>(); // Api (for client dispatch handlers)
+    c.AddAssembly<ClientEventStreamHandler>(); // Api (for SSE streaming handler)
 });
 
 // Add module services

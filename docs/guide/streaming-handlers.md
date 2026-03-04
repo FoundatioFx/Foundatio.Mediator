@@ -423,6 +423,94 @@ public class MemoryEfficientHandler
 }
 ```
 
+## Dynamic Subscriptions with SubscribeAsync
+
+Foundatio Mediator supports **dynamic subscriptions** — receive published notifications as an async stream. This is ideal for real-time push scenarios like Server-Sent Events (SSE), where each connected client needs its own live stream of domain events.
+
+### Basic Usage
+
+Call `mediator.SubscribeAsync<T>()` to create a subscription that yields every notification assignable to `T`:
+
+```csharp
+await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken: ct))
+{
+    Console.WriteLine($"Order created: {evt.OrderId}");
+}
+```
+
+The stream continues until the `CancellationToken` is cancelled. Each subscriber gets its own independent buffered channel — no shared state, no coordination required.
+
+### Interface Subscriptions
+
+Subscribe to an interface or base class to receive all matching types:
+
+```csharp
+public interface IDispatchToClient { }
+public record OrderCreated(string OrderId) : IDispatchToClient;
+public record ProductUpdated(string ProductId) : IDispatchToClient;
+
+// Receives both OrderCreated and ProductUpdated
+await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken: ct))
+{
+    // evt is typed as IDispatchToClient, but the actual type is preserved
+    var eventType = evt.GetType().Name; // "OrderCreated" or "ProductUpdated"
+}
+```
+
+Type matching uses `Type.IsAssignableFrom` and is cached — the check only runs once per unique message type, not per subscriber or per publish.
+
+### SSE Streaming Example
+
+The most common use case is pushing domain events to browser clients via SSE. Combine `SubscribeAsync` with a streaming handler endpoint:
+
+```csharp
+public record SubscribeToClientEvents;
+public record ClientEvent(string EventType, object Data);
+
+[Handler]
+public class ClientEventStreamHandler(IMediator mediator)
+{
+    [HandlerEndpoint(
+        Route = "/events/stream",
+        Streaming = EndpointStreaming.ServerSentEvents,
+        SseEventType = "event")]
+    [HandlerAllowAnonymous]
+    public async IAsyncEnumerable<ClientEvent> Handle(
+        SubscribeToClientEvents message,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
+            cancellationToken: cancellationToken))
+        {
+            yield return new ClientEvent(evt.GetType().Name, evt);
+        }
+    }
+}
+```
+
+When any handler publishes a notification that implements `IDispatchToClient`, every connected SSE client receives it automatically.
+
+### Buffer Configuration
+
+Each subscriber has a bounded buffer (default: 100 items). When full, the oldest unread item is dropped:
+
+```csharp
+// Small buffer for low-latency clients that consume quickly
+await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(maxCapacity: 10, cancellationToken: ct))
+{
+    // ...
+}
+```
+
+### Lifecycle
+
+- **Subscribe:** `SubscribeAsync<T>()` registers the subscription immediately.
+- **Receive:** Published notifications matching `T` are written to the subscriber's channel.
+- **Unsubscribe:** When the `CancellationToken` is cancelled (e.g., SSE client disconnects), the subscription is automatically removed and the channel is completed.
+- **Dispose:** When `HandlerRegistry` is disposed at app shutdown, all active channels are completed so subscribers exit cleanly.
+
+There is zero cost when nobody is subscribed — `PublishAsync` skips the subscription fan-out entirely.
+
 ## Integration with ASP.NET Core
 
 ### Streaming API Endpoints
@@ -628,9 +716,10 @@ For real-time push scenarios, set `Streaming = EndpointStreaming.ServerSentEvent
 
 ```csharp
 public record SubscribeToEvents;
+public record ClientEvent(string EventType, object Data);
 
 [Handler]
-public class EventStreamHandler(ClientEventBroadcaster broadcaster)
+public class EventStreamHandler(IMediator mediator)
 {
     [HandlerEndpoint(
         Route = "/events/stream",
@@ -638,11 +727,15 @@ public class EventStreamHandler(ClientEventBroadcaster broadcaster)
         SseEventType = "event",
         Summary = "Subscribe to real-time events via SSE")]
     [HandlerAllowAnonymous]
-    public IAsyncEnumerable<ClientEvent> Handle(
+    public async IAsyncEnumerable<ClientEvent> Handle(
         SubscribeToEvents message,
-        CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        return broadcaster.SubscribeAsync(cancellationToken);
+        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
+            cancellationToken: cancellationToken))
+        {
+            yield return new ClientEvent(evt.GetType().Name, evt);
+        }
     }
 }
 ```
@@ -657,6 +750,34 @@ endpoints.MapGet("/events/stream", (...) =>
 })
     .Produces(200, contentType: "text/event-stream");
 ```
+
+### SSE with Dynamic Subscriptions
+
+For real-time event push, combine SSE endpoints with `SubscribeAsync`:
+
+```csharp
+[Handler]
+public class EventStreamHandler(IMediator mediator)
+{
+    [HandlerEndpoint(
+        Route = "/events/stream",
+        Streaming = EndpointStreaming.ServerSentEvents,
+        SseEventType = "event")]
+    [HandlerAllowAnonymous]
+    public async IAsyncEnumerable<ClientEvent> Handle(
+        SubscribeToEvents message,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
+            cancellationToken: cancellationToken))
+        {
+            yield return new ClientEvent(evt.GetType().Name, evt);
+        }
+    }
+}
+```
+
+See [Dynamic Subscriptions with SubscribeAsync](#dynamic-subscriptions-with-subscribeasync) above for the full API.
 
 ### SSE Configuration Options
 

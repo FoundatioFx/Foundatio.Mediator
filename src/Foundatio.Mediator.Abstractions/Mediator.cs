@@ -75,7 +75,16 @@ public sealed class Mediator : IMediator, IServiceProvider
     /// <inheritdoc />
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
+        if (_registry.HasSubscribers)
+            _registry.TryWriteSubscription(message);
+
         var handlers = _registry.GetAllApplicableHandlers(message);
         return _notificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public IAsyncEnumerable<T> SubscribeAsync<T>(int maxCapacity = 100, CancellationToken cancellationToken = default)
+    {
+        return _registry.SubscribeAsync<T>(maxCapacity, cancellationToken);
     }
 }

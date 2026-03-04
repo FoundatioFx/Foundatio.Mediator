@@ -118,4 +118,32 @@ public interface IMediator
     /// and an aggregate exception with all encountered exceptions will be thrown after all handlers complete.
     /// </remarks>
     ValueTask PublishAsync(object message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a dynamic subscription that yields published notifications assignable to
+    /// <typeparamref name="T"/> as an async stream. The subscription is automatically
+    /// removed when <paramref name="cancellationToken"/> is cancelled.
+    /// </summary>
+    /// <typeparam name="T">
+    /// The notification type to subscribe to. Can be a concrete type, base class, or interface.
+    /// Messages are matched at runtime using <see cref="Type.IsAssignableFrom"/>.
+    /// </typeparam>
+    /// <param name="maxCapacity">
+    /// Maximum number of items buffered per subscriber. When full, the oldest item is dropped.
+    /// Default is 100.
+    /// </param>
+    /// <param name="cancellationToken">Token that ends the subscription when cancelled.</param>
+    /// <returns>An async stream of matching notifications.</returns>
+    /// <remarks>
+    /// Typical usage is in streaming SSE endpoints that push domain events to connected clients:
+    /// <code>
+    /// public IAsyncEnumerable&lt;IDispatchToClient&gt; Handle(
+    ///     SubscribeToClientEvents message,
+    ///     CancellationToken ct)
+    /// {
+    ///     return mediator.SubscribeAsync&lt;IDispatchToClient&gt;(cancellationToken: ct);
+    /// }
+    /// </code>
+    /// </remarks>
+    IAsyncEnumerable<T> SubscribeAsync<T>(int maxCapacity = 100, CancellationToken cancellationToken = default);
 }

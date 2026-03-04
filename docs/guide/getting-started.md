@@ -157,6 +157,19 @@ await mediator.PublishAsync(new OrderCreated("ORD-001", DateTime.UtcNow));
 
 Handlers can even return cascading events as tuple results — see [Cascading Messages](./cascading-messages).
 
+### Dynamic Subscriptions
+
+For real-time push scenarios like SSE, subscribe to published notifications as an async stream:
+
+```csharp
+await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken: ct))
+{
+    Console.WriteLine($"Order created: {evt.OrderId}");
+}
+```
+
+This is ideal for streaming endpoints where each client needs its own live feed. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+
 ## Middleware
 
 Add cross-cutting concerns by creating classes ending in `Middleware`:
@@ -197,7 +210,7 @@ See [Clean Architecture](./clean-architecture) for a complete modular monolith e
 | [Middleware](./middleware) | Pipeline hooks, ordering, state passing, short-circuiting |
 | [Endpoints](./endpoints) | Route conventions, OpenAPI, authorization, filters |
 | [Configuration](./configuration) | All compile-time and runtime options |
-| [Streaming Handlers](./streaming-handlers) | `IAsyncEnumerable<T>` support |
+| [Streaming Handlers](./streaming-handlers) | `IAsyncEnumerable<T>` support and dynamic subscriptions |
 | [Performance](./performance) | Benchmarks and how interceptors work |
 | [Troubleshooting](./troubleshooting) | Common issues and solutions |
 

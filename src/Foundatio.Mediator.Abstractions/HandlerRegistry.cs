@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -11,7 +13,7 @@ namespace Foundatio.Mediator;
 /// Central registry for all handler registrations. Populated at startup during
 /// <c>AddMediator</c> and frozen (made immutable) before the application runs.
 /// </summary>
-public sealed class HandlerRegistry
+public sealed class HandlerRegistry : IDisposable
 {
     private readonly Dictionary<string, List<HandlerRegistration>> _handlersByMessageType = new();
     private readonly List<OpenGenericHandlerDescriptor> _openGenericDescriptors = new();
@@ -25,6 +27,13 @@ public sealed class HandlerRegistry
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
     private readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
     private readonly ConcurrentDictionary<Type, HandlerRegistration?> _openGenericClosedCache = new();
+
+    // Subscription type → array of entries (copy-on-write per group).
+    private volatile Dictionary<Type, SubscriptionEntry[]> _subscriptionGroups = new();
+    // Message type → matching subscription types (invalidated when subscription types change).
+    private readonly ConcurrentDictionary<Type, Type[]> _messageTypeMatchCache = new();
+    private readonly object _subscriptionWriteLock = new();
+    private volatile bool _disposed;
 
     /// <summary>
     /// Adds a handler registration to the registry. Must be called before <see cref="Freeze"/>.
@@ -398,6 +407,201 @@ public sealed class HandlerRegistry
         catch (InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    #region Dynamic Subscriptions
+
+    /// <summary>
+    /// Returns <c>true</c> when at least one dynamic subscriber is active.
+    /// </summary>
+    public bool HasSubscribers
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _subscriptionGroups.Count > 0;
+    }
+
+    /// <summary>
+    /// Creates a dynamic subscription that yields published notifications assignable to
+    /// <typeparamref name="T"/>. The stream ends when <paramref name="cancellationToken"/>
+    /// is cancelled (e.g., when the SSE client disconnects).
+    /// </summary>
+    /// <typeparam name="T">
+    /// The notification type to subscribe to. Can be a concrete type, base class, or interface.
+    /// Messages are matched using <see cref="Type.IsAssignableFrom"/>.
+    /// </typeparam>
+    /// <param name="maxCapacity">
+    /// Maximum number of items buffered per subscriber. When full, the oldest item is dropped.
+    /// Default is 100.
+    /// </param>
+    /// <param name="cancellationToken">Token that ends the subscription when cancelled.</param>
+    /// <returns>An async stream of matching notifications.</returns>
+    public async IAsyncEnumerable<T> SubscribeAsync<T>(
+        int maxCapacity = 100,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(HandlerRegistry));
+
+        var channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maxCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleWriter = false,
+            SingleReader = true
+        });
+
+        var entry = new SubscriptionEntry(
+            msg => channel.Writer.TryWrite((T)msg),
+            () => channel.Writer.TryComplete());
+
+        AddSubscription(typeof(T), entry);
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                yield return item;
+            }
+        }
+        finally
+        {
+            RemoveSubscription(typeof(T), entry);
+            channel.Writer.TryComplete();
+        }
+    }
+
+    /// <summary>
+    /// Fans out a published message to all active dynamic subscribers whose type filter matches.
+    /// Non-blocking: never awaits.
+    /// </summary>
+    /// <param name="message">The notification that was just published.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void TryWriteSubscription(object message)
+    {
+        // Volatile read — gets a consistent snapshot (copy-on-write).
+        var groups = _subscriptionGroups;
+        if (groups.Count == 0)
+            return;
+
+        var messageType = message.GetType();
+
+        // One-time IsAssignableFrom check per unique message type; cached thereafter.
+        var matchingTypes = _messageTypeMatchCache.GetOrAdd(messageType, mt =>
+        {
+            var g = _subscriptionGroups; // Volatile read for the latest subscription types.
+            var matches = new List<Type>();
+            foreach (var subscriptionType in g.Keys)
+            {
+                if (subscriptionType.IsAssignableFrom(mt))
+                    matches.Add(subscriptionType);
+            }
+            return matches.ToArray();
+        });
+
+        for (int i = 0; i < matchingTypes.Length; i++)
+        {
+            if (groups.TryGetValue(matchingTypes[i], out var entries))
+            {
+                for (int j = 0; j < entries.Length; j++)
+                    entries[j].Write(message);
+            }
+        }
+    }
+
+    private void AddSubscription(Type subscriptionType, SubscriptionEntry entry)
+    {
+        lock (_subscriptionWriteLock)
+        {
+            var current = _subscriptionGroups;
+            var next = new Dictionary<Type, SubscriptionEntry[]>(current);
+
+            if (next.TryGetValue(subscriptionType, out var existing))
+            {
+                var arr = new SubscriptionEntry[existing.Length + 1];
+                existing.CopyTo(arr, 0);
+                arr[existing.Length] = entry;
+                next[subscriptionType] = arr;
+            }
+            else
+            {
+                next[subscriptionType] = [entry];
+                // New subscription type — invalidate the message-type match cache.
+                _messageTypeMatchCache.Clear();
+            }
+
+            _subscriptionGroups = next; // Volatile write.
+        }
+    }
+
+    private void RemoveSubscription(Type subscriptionType, SubscriptionEntry entry)
+    {
+        lock (_subscriptionWriteLock)
+        {
+            var current = _subscriptionGroups;
+            if (!current.TryGetValue(subscriptionType, out var existing))
+                return;
+
+            int index = Array.IndexOf(existing, entry);
+            if (index < 0)
+                return;
+
+            var next = new Dictionary<Type, SubscriptionEntry[]>(current);
+
+            if (existing.Length == 1)
+            {
+                next.Remove(subscriptionType);
+                // Subscription type removed — invalidate the message-type match cache.
+                _messageTypeMatchCache.Clear();
+            }
+            else
+            {
+                var arr = new SubscriptionEntry[existing.Length - 1];
+                Array.Copy(existing, 0, arr, 0, index);
+                Array.Copy(existing, index + 1, arr, index, existing.Length - index - 1);
+                next[subscriptionType] = arr;
+            }
+
+            _subscriptionGroups = next; // Volatile write.
+        }
+    }
+
+    private sealed class SubscriptionEntry(Action<object> write, Action complete)
+    {
+        public void Write(object message) => write(message);
+        public void Complete() => complete();
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Completes all active subscription channels so that <see cref="SubscribeAsync{T}"/>
+    /// consumers unblock and exit cleanly.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        SubscriptionEntry[][] groupsToComplete;
+        lock (_subscriptionWriteLock)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+
+            var groups = _subscriptionGroups;
+            groupsToComplete = new SubscriptionEntry[groups.Count][];
+            groups.Values.CopyTo(groupsToComplete, 0);
+
+            _subscriptionGroups = new Dictionary<Type, SubscriptionEntry[]>();
+            _messageTypeMatchCache.Clear();
+        }
+
+        // Complete all channels outside the lock so SubscribeAsync consumers can unblock.
+        for (int i = 0; i < groupsToComplete.Length; i++)
+        {
+            var entries = groupsToComplete[i];
+            for (int j = 0; j < entries.Length; j++)
+                entries[j].Complete();
         }
     }
 

@@ -1,321 +1,211 @@
 # Getting Started
 
-Foundatio Mediator is a high-performance, convention-based mediator for .NET applications. This guide will walk you through the basic setup and your first handler.
+Get a working mediator in under a minute, then explore the features that make Foundatio Mediator unique.
 
-## Installation
+## Quick Start
 
-Install the Foundatio.Mediator NuGet package:
+### 1. Install the package
 
-::: code-group
-
-```bash [.NET CLI]
+```bash
 dotnet add package Foundatio.Mediator
 ```
 
-```xml [PackageReference]
-<PackageReference Include="Foundatio.Mediator" Version="1.0.0" />
+### 2. Define a message and handler
+
+```csharp
+// A message is just a record (or class)
+public record Ping(string Text);
+
+// Any class ending in "Handler" is discovered automatically
+public static class PingHandler
+{
+    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
+}
 ```
 
-```powershell [Package Manager]
-Install-Package Foundatio.Mediator
+### 3. Wire up DI and call it
+
+::: code-group
+
+```csharp [ASP.NET Core]
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddMediator();
+var app = builder.Build();
+
+app.MapGet("/ping", (IMediator mediator) =>
+    mediator.Invoke<string>(new Ping("Hello")));
+
+app.Run();
+```
+
+```csharp [Console / Worker]
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddMediator();
+var host = builder.Build();
+
+var mediator = host.Services.GetRequiredService<IMediator>();
+var result = mediator.Invoke<string>(new Ping("Hello"));
+Console.WriteLine(result); // Pong: Hello
 ```
 
 :::
 
-## Basic Setup
+That's it. No interfaces, no base classes, no registration — the source generator handles everything at compile time with near-direct-call performance.
 
-### 1. Register the Mediator
+## Async Handlers
 
-Add the mediator to your dependency injection container:
-
-```csharp
-// Program.cs (Minimal API)
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddMediator();
-
-var app = builder.Build();
-```
+Handlers can be async and accept additional parameters resolved from DI:
 
 ```csharp
-// Program.cs (Generic Host)
-var host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices(services =>
-    {
-        services.AddMediator();
-    })
-    .Build();
-```
+public record GetUser(int Id);
 
-```csharp
-// Startup.cs (Traditional ASP.NET Core)
-public void ConfigureServices(IServiceCollection services)
-{
-    services.AddMediator();
-    // ... other services
-}
-```
-
-### Adding Handlers From Other Assemblies
-
-If your handlers live in other class library projects (e.g. a modular feature like `Orders.Module`), register those assemblies so their generated handlers are picked up.
-
-Basic usage:
-
-```csharp
-using Orders.Module.Messages; // any type from the target assembly
-
-builder.Services.AddMediator(c =>
-    c.AddAssembly<OrderCreated>()
-);
-```
-
-Multiple assemblies:
-
-```csharp
-builder.Services.AddMediator(c =>
-    c.AddAssembly<OrderCreated>()
-     .AddAssembly<InventoryItemReserved>()
-);
-```
-
-Tip: If you don't call `AddAssembly(...)`, the mediator will scan currently loaded (non-System) assemblies, which is fine for simple apps. Explicit registration gives you clearer intent and can trim startup work. For deeper details see the dependency injection guide.
-
-### 2. Create Your First Message
-
-Define a simple message:
-
-```csharp
-public record Ping(string Text);
-```
-
-For type inference support, implement `IRequest<TResponse>`:
-
-```csharp
-// With IRequest<T>, the response type is inferred automatically
-public record GetUser(int Id) : IRequest<User>;
-public record CreateUser(string Name) : ICommand<User>;  // ICommand<T> extends IRequest<T>
-public record FindUsers(string Query) : IQuery<List<User>>;  // IQuery<T> extends IRequest<T>
-```
-
-### 3. Create a Handler
-
-Create a handler class following the naming conventions:
-
-```csharp
-public static class PingHandler
-{
-    public static string Handle(Ping msg)
-    {
-        return $"Pong: {msg.Text}";
-    }
-}
-```
-
-### 4. Use the Mediator
-
-Inject and use the mediator in your application:
-
-```csharp
-public class MyService
-{
-    private readonly IMediator _mediator;
-
-    public MyService(IMediator mediator)
-    {
-        _mediator = mediator;
-    }
-
-    public void DoSomething()
-    {
-        // Sync call - works when all handlers and middleware are sync
-        var result = _mediator.Invoke<string>(new Ping("Hello"));
-        Console.WriteLine(result); // Output: "Pong: Hello"
-    }
-
-    public async Task DoSomethingAsync()
-    {
-        // Async call - works with both sync and async handlers
-        var result = await _mediator.InvokeAsync<string>(new Ping("Hello"));
-        Console.WriteLine(result); // Output: "Pong: Hello"
-    }
-}
-```
-
-#### Type Inference with IRequest&lt;T&gt;
-
-When your messages implement `IRequest<TResponse>`, the return type is inferred automatically:
-
-```csharp
-public record GetUser(int Id) : IRequest<User>;
-
-public class MyService(IMediator mediator)
-{
-    public async Task DoSomethingAsync()
-    {
-        // Type inference - no need to specify <User>
-        User user = await mediator.InvokeAsync(new GetUser(123));
-
-        // Explicit generic still works
-        var user2 = await mediator.InvokeAsync<User>(new GetUser(456));
-    }
-}
-```
-
-## Handler Conventions
-
-Foundatio Mediator uses simple naming conventions to discover handlers automatically:
-
-### Class Names
-
-Handler classes must end with:
-
-- `Handler`
-- `Consumer`
-
-### Method Names
-
-Valid handler method names:
-
-- `Handle` / `HandleAsync`
-- `Handles` / `HandlesAsync`
-- `Consume` / `ConsumeAsync`
-- `Consumes` / `ConsumesAsync`
-
-### Method Signatures
-
-- **First parameter**: The message object (required)
-- **Remaining parameters**: Injected via dependency injection
-- **Return type**: Any type including `void`, `Task`, `Task<T>`
-
-## Examples
-
-### Synchronous Handler
-
-```csharp
-public record GetGreeting(string Name);
-
-public static class GreetingHandler
-{
-    public static string Handle(GetGreeting query)
-    {
-        return $"Hello, {query.Name}!";
-    }
-}
-
-// Usage
-var greeting = mediator.Invoke<string>(new GetGreeting("World"));
-```
-
-### Asynchronous Handler
-
-```csharp
-public record SendEmail(string To, string Subject, string Body);
-
-public class EmailHandler
-{
-    public async Task HandleAsync(SendEmail command)
-    {
-        // Simulate sending email
-        await Task.Delay(100);
-        Console.WriteLine($"Email sent to {command.To}");
-    }
-}
-
-// Usage
-await mediator.InvokeAsync(new SendEmail("user@example.com", "Hello", "World"));
-```
-
-### Handler with Dependency Injection
-
-```csharp
 public class UserHandler
 {
-    private readonly IUserRepository _repository;
-    private readonly ILogger<UserHandler> _logger;
-
-    public UserHandler(IUserRepository repository, ILogger<UserHandler> logger)
+    public async Task<User> HandleAsync(GetUser query, IUserRepository repo, CancellationToken ct)
     {
-        _repository = repository;
-        _logger = logger;
-    }
-
-    public async Task<User> HandleAsync(GetUser query, CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Getting user {UserId}", query.Id);
-        return await _repository.GetByIdAsync(query.Id, cancellationToken);
+        return await repo.GetByIdAsync(query.Id, ct);
     }
 }
 ```
+
+```csharp
+var user = await mediator.InvokeAsync<User>(new GetUser(42));
+```
+
+The first parameter is always the message. Everything else — services, `CancellationToken` — is injected automatically. See [Handler Conventions](./handler-conventions) for the full set of discovery rules, method names, and signature options.
+
+## Generate API Endpoints
+
+Build a completely message-oriented, loosely coupled app — and skip all the boilerplate of manually mapping endpoints to handlers:
+
+```csharp
+// Enable endpoint generation (in any .cs file)
+[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+```
+
+```csharp
+public record CreateTodo(string Title);
+public record GetTodo(string Id);
+
+[HandlerCategory("Todos", RoutePrefix = "todos")]
+public class TodoHandler
+{
+    public Todo Handle(CreateTodo cmd) => new(Guid.NewGuid().ToString(), cmd.Title);
+    public Todo Handle(GetTodo query)  => new(query.Id, "Sample");
+}
+```
+
+```csharp
+// Program.cs
+app.MapMyAppEndpoints(); // generated extension method
+```
+
+This generates:
+
+- `POST /api/todos` → `TodoHandler.Handle(CreateTodo)`
+- `GET /api/todos/{id}` → `TodoHandler.Handle(GetTodo)`
+
+<!-- -->
+
+HTTP methods, routes, and parameter binding are all inferred from message names and properties. Pass `logEndpoints: true` to see all mapped routes at startup:
+
+```csharp
+app.MapMyAppEndpoints(logEndpoints: true);
+```
+
+See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
+
+## Result Types
+
+Return `Result<T>` instead of throwing exceptions for expected failures:
+
+```csharp
+public class TodoHandler
+{
+    public Result<Todo> Handle(GetTodo query, ITodoRepository repo)
+    {
+        var todo = repo.Find(query.Id);
+        if (todo is null)
+            return Result.NotFound($"Todo {query.Id} not found");
+
+        return todo; // implicit conversion to Result<Todo>
+    }
+}
+```
+
+When used with generated endpoints, `Result<T>` maps automatically to the correct HTTP status code — `200`, `404`, `400`, `409`, etc. See [Result Types](./result-types) for the full API.
+
+## Events
+
+Publish messages to multiple handlers with `PublishAsync`:
+
+```csharp
+public record OrderCreated(string OrderId, DateTime CreatedAt);
+
+// Both handlers run when OrderCreated is published
+public class EmailHandler
+{
+    public Task HandleAsync(OrderCreated e, IEmailService email)
+        => email.SendAsync($"Order {e.OrderId} confirmed");
+}
+
+public class AuditHandler
+{
+    public void Handle(OrderCreated e, ILogger<AuditHandler> logger)
+        => logger.LogInformation("Order {OrderId} created at {Time}", e.OrderId, e.CreatedAt);
+}
+```
+
+```csharp
+await mediator.PublishAsync(new OrderCreated("ORD-001", DateTime.UtcNow));
+```
+
+Handlers can even return cascading events as tuple results — see [Cascading Messages](./cascading-messages).
+
+## Middleware
+
+Add cross-cutting concerns by creating classes ending in `Middleware`:
+
+```csharp
+public class LoggingMiddleware
+{
+    public void Before(object message, ILogger<LoggingMiddleware> logger)
+        => logger.LogInformation("→ {MessageType}", message.GetType().Name);
+
+    public void After(object message, ILogger<LoggingMiddleware> logger)
+        => logger.LogInformation("← {MessageType}", message.GetType().Name);
+}
+```
+
+Middleware supports `Before`, `After`, `Finally`, and `ExecuteAsync` hooks with state passing, ordering, and short-circuiting. See [Middleware](./middleware) for the full pipeline.
+
+## Cross-Assembly Handlers
+
+In multi-project solutions, register assemblies so handlers in referenced projects are discovered:
+
+```csharp
+builder.Services.AddMediator(c => c
+    .AddAssembly<OrderCreated>()    // Orders.Module
+    .AddAssembly<CreateProduct>()   // Products.Module
+);
+```
+
+See [Clean Architecture](./clean-architecture) for a complete modular monolith example.
 
 ## Next Steps
 
-Now that you have the basics working, explore more advanced features:
+| Topic | Description |
+| ----- | ----------- |
+| [Handler Conventions](./handler-conventions) | All discovery rules, method names, static handlers, explicit attributes |
+| [Dependency Injection](./dependency-injection) | Lifetimes, parameter injection, constructor vs method injection |
+| [Result Types](./result-types) | `Result<T>` API, status codes, validation errors |
+| [Middleware](./middleware) | Pipeline hooks, ordering, state passing, short-circuiting |
+| [Endpoints](./endpoints) | Route conventions, OpenAPI, authorization, filters |
+| [Configuration](./configuration) | All compile-time and runtime options |
+| [Streaming Handlers](./streaming-handlers) | `IAsyncEnumerable<T>` support |
+| [Performance](./performance) | Benchmarks and how interceptors work |
+| [Troubleshooting](./troubleshooting) | Common issues and solutions |
 
-- [Handler Conventions](./handler-conventions) - Learn all the discovery rules
-- [Result Types](./result-types) - Using Result&lt;T&gt; for robust error handling
-- [Middleware](./middleware) - Adding cross-cutting concerns
-- [Samples](../samples/) - See practical examples
-
-## Configuration Quick Reference
-
-Foundatio Mediator has two configuration surfaces:
-
-**Compile-time** — controls source generator behavior (set once in any `.cs` file):
-
-```csharp
-[assembly: MediatorConfiguration(
-    HandlerLifetime = MediatorLifetime.Scoped,      // DI lifetime for handlers
-    MiddlewareLifetime = MediatorLifetime.Scoped,    // DI lifetime for middleware
-    EndpointDiscovery = EndpointDiscovery.All,       // Generate API endpoints
-    EndpointRoutePrefix = "api",                    // Global endpoint prefix
-    ProjectName = "MyApp"                            // Controls generated method names
-)]
-```
-
-::: tip ProjectName
-`ProjectName` controls the generated endpoint method name — e.g., `ProjectName = "Products"` produces `MapProductsEndpoints()`. If omitted, the name is derived from your assembly name (last segment, with common suffixes like `.Api` stripped). Set it explicitly in modular monolith setups for clean, predictable method names.
-:::
-
-::: tip Endpoint Discovery Modes
-- **`All`** — generates endpoints for every handler (use `[HandlerEndpoint(Exclude = true)]` to opt out)
-- **`Explicit`** — only generates endpoints for handlers marked with `[HandlerEndpoint]` or `[HandlerCategory]`
-- **`None`** — no endpoints generated (default)
-
-Use `Explicit` when you want fine-grained control over which handlers become API endpoints.
-:::
-
-**Runtime** — controls mediator instance behavior (in your DI setup):
-
-```csharp
-builder.Services.AddMediator(cfg => cfg
-    .SetMediatorLifetime(ServiceLifetime.Scoped)     // Mediator DI lifetime
-    .AddAssembly<OrderCreated>()                     // Cross-assembly handler discovery
-);
-```
-
-See [Configuration](./configuration) for full details on all options.
-
-## LLM-Friendly Documentation
-
-For AI assistants and Large Language Models, we provide optimized documentation formats:
-
-- [📜 LLMs Index](/llms.txt) - Quick reference with links to all sections
-- [📖 Complete Documentation](/llms-full.txt) - All docs in one LLM-friendly file
-
-These files follow the [llmstxt.org](https://llmstxt.org/) standard and contain the same information as this documentation in a format optimized for AI consumption.
-
-## Common Issues
-
-### Handler Not Found
-
-If you get a "handler not found" error:
-
-1. Ensure your class name ends with `Handler` or `Consumer`
-2. Ensure your method name follows the naming conventions
-3. Ensure the first parameter matches your message type exactly
-4. If using cross-assembly handlers, ensure `AddMediator()` is called and configured to add all appropriate assemblies.
-
-::: tip Build First
-Generated methods like `Map{X}Endpoints()` won't appear in IntelliSense until after the first build. If you see red squiggles on generated method calls, run `dotnet build` once. See [Troubleshooting](./troubleshooting) for more details.
+::: info LLM-Friendly Docs
+For AI assistants, we provide [llms.txt](/llms.txt) and [llms-full.txt](/llms-full.txt) following the [llmstxt.org](https://llmstxt.org/) standard.
 :::

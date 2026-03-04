@@ -25,7 +25,6 @@ public class ClientEventStreamHandler(IMediator mediator)
     [HandlerEndpoint(
         Route = "/events/stream",
         Streaming = EndpointStreaming.ServerSentEvents,
-        SseEventType = "event",
         Summary = "Subscribe to real-time domain events via Server-Sent Events")]
     [HandlerAllowAnonymous]
     public async IAsyncEnumerable<ClientEvent> Handle(

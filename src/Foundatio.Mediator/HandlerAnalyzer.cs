@@ -212,8 +212,9 @@ internal static class HandlerAnalyzer
             bool hasConstructorParameters = !handlerMethod.IsStatic &&
                 classSymbol.InstanceConstructors.Any(c => c.Parameters.Length > 0);
 
-            // Extract XML documentation summary
-            var xmlDocSummary = ExtractXmlDocSummary(handlerMethod);
+            // Extract XML documentation summary (method first, then class if single handler)
+            var xmlDocSummary = ExtractXmlDocSummary(handlerMethod)
+                ?? (handlerMethods.Count == 1 ? ExtractXmlDocSummary(classSymbol) : null);
 
             // Extract authorization metadata from [HandlerAuthorize], [HandlerAllowAnonymous], [AllowAnonymous]
             var authorizationInfo = ExtractAuthorizationInfo(classSymbol, handlerMethod, context.SemanticModel.Compilation);
@@ -317,12 +318,12 @@ internal static class HandlerAnalyzer
     }
 
     /// <summary>
-    /// Extracts the XML documentation summary from a method symbol using syntax trivia.
+    /// Extracts the XML documentation summary from a symbol (method, class, etc.) using syntax trivia.
     /// Requires GenerateDocumentationFile to be enabled for the trivia to be parsed as documentation.
     /// </summary>
-    private static string? ExtractXmlDocSummary(IMethodSymbol method)
+    private static string? ExtractXmlDocSummary(ISymbol symbol)
     {
-        var syntaxRef = method.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
         if (syntaxRef == null)
             return null;
 

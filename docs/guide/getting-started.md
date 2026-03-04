@@ -105,9 +105,7 @@ This generates:
 
 <!-- -->
 
-HTTP methods, routes, and parameter binding are all inferred from message names and properties. Pass `logEndpoints: true` to see all mapped routes at startup:
-
-See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
+HTTP methods, routes, and parameter binding are all inferred from message names and properties. See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
 
 ## Result Types
 

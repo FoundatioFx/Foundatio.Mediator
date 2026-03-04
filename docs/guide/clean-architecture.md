@@ -404,7 +404,7 @@ public class OrderHandler
 - **No controllers or endpoint classes** - handlers define the API surface
 - **Automatic HTTP method inference** - `Create*` → POST, `Get*` → GET, `Update*` → PUT, `Delete*` → DELETE
 - **Automatic route generation** - ID properties become route parameters
-- **Result-to-HTTP mapping** - `Result.NotFound()` → 404, `Result.Invalid()` → 422, etc.
+- **Result-to-HTTP mapping** - `Result.NotFound()` → 404, `Result.Invalid()` → 400, etc.
 - **OpenAPI generation** - XML doc comments become endpoint summaries
 - **Authentication built-in** - Configure auth at category or endpoint level
 

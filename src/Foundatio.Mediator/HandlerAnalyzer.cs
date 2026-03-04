@@ -513,9 +513,16 @@ internal static class HandlerAnalyzer
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
                                   GetIntArrayProperty(classEndpointAttr, "ProducesStatusCodes");
 
-        // If no explicit status codes, auto-detect from Result factory method calls in the handler body
-        var producesStatusCodes = explicitStatusCodes ??
-            DetectResultStatusCodes(handlerMethod, returnType, compilation);
+        // Auto-detect Result factory method calls in the handler body (Created, NotFound, Invalid, etc.)
+        var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var usesResultCreated);
+
+        // If no explicit status codes, use auto-detected ones
+        var producesStatusCodes = explicitStatusCodes ?? detectedStatusCodes;
+
+        // Read explicit success status code (method -> class, 0 means auto-detect)
+        var explicitSuccessStatusCode = GetIntProperty(methodEndpointAttr, "SuccessStatusCode")
+                                     ?? GetIntProperty(classEndpointAttr, "SuccessStatusCode")
+                                     ?? 0;
 
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
@@ -612,6 +619,8 @@ internal static class HandlerAnalyzer
             CategoryFilters = new(categoryFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
+            UsesResultCreated = usesResultCreated,
+            ExplicitSuccessStatusCode = explicitSuccessStatusCode,
             IsStreaming = isStreaming,
             StreamingFormat = streamingFormat,
             StreamingItemType = streamingItemType,
@@ -1109,7 +1118,7 @@ internal static class HandlerAnalyzer
         ["Forbidden"] = 403,
         ["NotFound"] = 404,
         ["Conflict"] = 409,
-        ["Invalid"] = 422,
+        ["Invalid"] = 400,
         ["Error"] = 500,
         ["CriticalError"] = 500,
         ["Unavailable"] = 503,
@@ -1118,10 +1127,13 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Scans the handler method body for <c>Result.NotFound()</c>, <c>Result.Invalid()</c>, etc.
     /// factory method calls and returns the corresponding HTTP status codes.
+    /// Also detects whether <c>Result.Created()</c> is used (returned via out parameter).
     /// Only runs when the return type involves <c>Result</c> or <c>Result&lt;T&gt;</c>.
     /// </summary>
-    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation)
+    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation, out bool usesResultCreated)
     {
+        usesResultCreated = false;
+
         // Only scan if the return type involves Result/Result<T>
         var unwrapped = returnType.UnwrapTask(compilation).UnwrapNullable(compilation);
 
@@ -1155,6 +1167,12 @@ internal static class HandlerAnalyzer
             if (methodName != null && ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
             {
                 detectedCodes.Add(statusCode);
+            }
+
+            // Detect Result.Created() calls separately (not an error status code)
+            if (methodName == "Created")
+            {
+                usesResultCreated = true;
             }
         }
 

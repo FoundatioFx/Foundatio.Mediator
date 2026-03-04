@@ -284,7 +284,7 @@ When handlers return `Result<T>` or `Result`, the status is automatically mapped
 | `Created` | 201 Created |
 | `NoContent` | 204 No Content |
 | `BadRequest` | 400 Bad Request |
-| `Invalid` | 422 Unprocessable Entity (ValidationProblem) |
+| `Invalid` | 400 Bad Request (ValidationProblem) |
 | `NotFound` | 404 Not Found |
 | `Unauthorized` | 401 Unauthorized |
 | `Forbidden` | 403 Forbidden |
@@ -355,7 +355,8 @@ Properties:
 - `Tags` - Override category tags
 - `Exclude` - Exclude from endpoint generation
 - `EndpointFilters` - Endpoint filter types
-- `ProducesStatusCodes` - Additional HTTP status codes for OpenAPI documentation
+- `ProducesStatusCodes` - Additional error status codes (4xx/5xx) for OpenAPI documentation
+- `SuccessStatusCode` - Override the auto-detected success status code (e.g., 200, 201)
 
 ### OpenAPI Error Responses
 
@@ -370,14 +371,14 @@ public class OrderHandler
             return Result<OrderView>.NotFound("Order not found");  // → .ProducesProblem(404)
 
         if (!IsValid(query))
-            return Result<OrderView>.Invalid("Bad request");       // → .ProducesProblem(422)
+            return Result<OrderView>.Invalid("Bad request");       // → .ProducesProblem(400)
 
         return new OrderView(query.Id, "Test");
     }
     // Auto-generates:
     //   .Produces<OrderView>(200)
     //   .ProducesProblem(404)
-    //   .ProducesProblem(422)
+    //   .ProducesProblem(400)
 }
 ```
 
@@ -390,18 +391,53 @@ The following `Result` factory methods are detected:
 | `Forbidden()` | 403 |
 | `NotFound()` | 404 |
 | `Conflict()` | 409 |
-| `Invalid()` | 422 |
+| `Invalid()` | 400 |
 | `Error()` / `CriticalError()` | 500 |
 | `Unavailable()` | 503 |
+| `Created()` | 201 (success) |
 
-#### Explicit Override
+### Success Status Codes
+
+The success status code (`.Produces<T>(200)` vs `.Produces<T>(201)`) is also auto-detected. If a handler body contains `Result.Created()`, the endpoint is generated with **201 Created**; otherwise it defaults to **200 OK**:
+
+```csharp
+public class ProductHandler
+{
+    // Returns Result.Created() → .Produces<Product>(201)
+    public Result<Product> Handle(CreateProduct cmd)
+    {
+        var product = new Product(cmd.Name);
+        return Result.Created(product);
+    }
+
+    // No Result.Created() → .Produces<Product>(200)
+    public Result<Product> Handle(GetProduct query)
+    {
+        return new Product(query.Id, "Widget");
+    }
+}
+```
+
+To override auto-detection, use `SuccessStatusCode`:
+
+```csharp
+// Force 200 even though handler uses Result.Created()
+[HandlerEndpoint(SuccessStatusCode = 200)]
+public Result<Product> Handle(CreateProduct cmd) => Result.Created(product);
+
+// Force 201 even though handler doesn't use Result.Created()
+[HandlerEndpoint(SuccessStatusCode = 201)]
+public Result<Product> Handle(ImportProduct cmd) => product;
+```
+
+#### Explicit Error Override
 
 To override auto-detection (e.g., when error results come from injected services), use `ProducesStatusCodes`:
 
 ```csharp
 public class OrderHandler
 {
-    [HandlerEndpoint(ProducesStatusCodes = [404, 422])]
+    [HandlerEndpoint(ProducesStatusCodes = [404, 400])]
     public Result<OrderView> Handle(GetOrder query) => ...;
     // Uses only the explicitly declared codes, ignoring method body analysis
 }
@@ -417,7 +453,7 @@ public class ProductHandler
     public Result<ProductView> Handle(CreateProduct command) => ...;
 
     // Overrides with its own set
-    [HandlerEndpoint(ProducesStatusCodes = [404, 409, 422])]
+    [HandlerEndpoint(ProducesStatusCodes = [404, 409, 400])]
     public Result<ProductView> Handle(UpdateProduct command) => ...;
 }
 ```
@@ -563,12 +599,19 @@ public class ProductHandler
     /// <summary>
     /// Creates a new product
     /// </summary>
-    public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
+    public Task<Result<Product>> HandleAsync(CreateProduct command)
+    {
+        var product = new Product(command.Name);
+        return Task.FromResult(Result.Created(product));
+    }
 
     /// <summary>
     /// Gets a product by ID
     /// </summary>
-    public Result<Product> Handle(GetProduct query) { ... }
+    public Result<Product> Handle(GetProduct query)
+    {
+        return new Product(query.ProductId, "Widget");
+    }
 }
 ```
 

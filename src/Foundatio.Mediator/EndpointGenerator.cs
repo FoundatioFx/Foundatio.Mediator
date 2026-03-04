@@ -662,7 +662,10 @@ internal static class EndpointGenerator
         }
         else if (!string.IsNullOrEmpty(endpoint.ProducesType))
         {
-            var statusCode = httpMethod == "POST" ? "201" : "200";
+            // Use explicit SuccessStatusCode if set, otherwise 201 when Result.Created() detected, else 200
+            var statusCode = endpoint.ExplicitSuccessStatusCode > 0
+                ? endpoint.ExplicitSuccessStatusCode.ToString()
+                : endpoint.UsesResultCreated ? "201" : "200";
             source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
         }
 

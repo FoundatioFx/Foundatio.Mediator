@@ -67,6 +67,15 @@ public sealed class HandlerEndpointAttribute : Attribute
     public Type[]? EndpointFilters { get; set; }
 
     /// <summary>
+    /// Gets or sets the HTTP success status code for the generated <c>.Produces&lt;T&gt;()</c> metadata.
+    /// When null (default), the status code is auto-detected: 201 if the handler body contains
+    /// <c>Result.Created()</c>, otherwise 200.
+    /// Set explicitly to override auto-detection (e.g., <c>SuccessStatusCode = 201</c> for a
+    /// POST handler, or <c>SuccessStatusCode = 200</c> to force 200 even when Created is used).
+    /// </summary>
+    public int SuccessStatusCode { get; set; }
+
+    /// <summary>
     /// Gets or sets additional HTTP status codes this endpoint can produce.
     /// Used to generate <c>.ProducesProblem(statusCode)</c> calls for OpenAPI documentation.
     /// Only error/problem status codes (4xx, 5xx) should be listed here; the success

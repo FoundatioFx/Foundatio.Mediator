@@ -34,6 +34,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         Assert.Contains("InterceptsLocation", publishInterceptor.Source);
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
         Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
+        // Should fan out to dynamic subscribers
+        Assert.Contains("TryWriteSubscription", publishInterceptor.Source);
         // Should have exception aggregation
         Assert.Contains("AggregateException", publishInterceptor.Source);
         // Should pass mediator to handlers
@@ -71,6 +73,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         Assert.Contains("InterceptPublishAsync_UserRegistered_", publishInterceptor.Source);
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
         Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
+        // Should fan out to dynamic subscribers
+        Assert.Contains("TryWriteSubscription", publishInterceptor.Source);
         // TaskWhenAll should have task array and sync completion check
         Assert.Contains("var tasks = new", publishInterceptor.Source);
         Assert.Contains("IsCompletedSuccessfully", publishInterceptor.Source);
@@ -107,6 +111,8 @@ public class PublishInterceptorGenerationTests(ITestOutputHelper output) : Gener
         Assert.Contains("InterceptPublishAsync_ItemDeleted_", publishInterceptor.Source);
         Assert.Contains("GetPublishHandlersForType", publishInterceptor.Source);
         Assert.Contains("Mediator)mediator).Registry", publishInterceptor.Source);
+        // Should fan out to dynamic subscribers
+        Assert.Contains("TryWriteSubscription", publishInterceptor.Source);
         // FireAndForget should use Task.Run
         Assert.Contains("Task.Run", publishInterceptor.Source);
         // And swallow exceptions

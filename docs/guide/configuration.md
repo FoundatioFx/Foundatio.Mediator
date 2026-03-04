@@ -1,5 +1,9 @@
 # Configuration Options
 
+::: tip You Probably Don't Need This
+Foundatio Mediator works out of the box with sensible defaults — most projects never need to configure anything beyond `services.AddMediator()`. Only reach for the options below when you want to change a specific default behavior.
+:::
+
 Foundatio Mediator provides two types of configuration: **compile-time configuration** via the `[assembly: MediatorConfiguration]` attribute that controls source generator behavior, and **runtime configuration** via the `AddMediator()` method that controls mediator behavior.
 
 ## Compile-Time Configuration (Assembly Attribute)

@@ -107,7 +107,7 @@ public class OrderProcessor { }
 ```
 
 ::: tip Use Handler for Everything
-Unlike some libraries that distinguish between "handlers" and "consumers," Foundatio Mediator treats both identically. The `Consumer` suffix exists purely to ease migration from libraries like MassTransit. For new projects, use `Handler` consistently for commands, queries, and events alike.
+Unlike some libraries that distinguish between "handlers" and "consumers," Foundatio Mediator treats both identically. The `Consumer` suffix exists purely to ease migration from other mediator and message bus libraries. For new projects, use `Handler` consistently for commands, queries, and events alike.
 :::
 
 ## Method Naming Conventions

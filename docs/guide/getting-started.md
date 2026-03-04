@@ -52,6 +52,10 @@ Console.WriteLine(result); // Pong: Hello
 
 That's it. No interfaces, no base classes, no registration — the source generator handles everything at compile time with near-direct-call performance.
 
+::: tip Zero Configuration Required
+The defaults are optimized for the most common use cases. You do **not** need `[assembly: MediatorConfiguration]` — it exists only as an escape hatch when you want to change a specific default behavior. See [Configuration](./configuration) for the full list of options.
+:::
+
 ## Async Handlers
 
 Handlers can be async and accept additional parameters resolved from DI:
@@ -106,6 +110,19 @@ HTTP methods, routes, and parameter binding are all inferred from message names 
 
 ```csharp
 app.MapMyAppEndpoints(logEndpoints: true);
+```
+
+Need to customize a specific endpoint? Use the `[HandlerEndpoint]` attribute:
+
+```csharp
+public class TodoHandler
+{
+    [HandlerEndpoint(Route = "/todos/search", HttpMethod = "GET")]
+    public Task<Result<Todo[]>> HandleAsync(SearchTodos query) { /* ... */ }
+
+    [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents, SseEventType = "todo")]
+    public async IAsyncEnumerable<Todo> Handle(SubscribeToTodos msg) { /* ... */ }
+}
 ```
 
 See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
@@ -168,7 +185,16 @@ await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToke
 }
 ```
 
-This is ideal for streaming endpoints where each client needs its own live feed. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+Subscribe to **all** published notifications at once using `INotification`:
+
+```csharp
+await foreach (var evt in mediator.SubscribeAsync<INotification>(cancellationToken: ct))
+{
+    Console.WriteLine($"{evt.GetType().Name} published");
+}
+```
+
+You can also subscribe to a custom marker interface (e.g., `IDispatchToClient`) to receive a targeted subset — no bridging layer or relay pipeline needed. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
 
 ## Middleware
 

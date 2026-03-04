@@ -53,7 +53,7 @@ Console.WriteLine(result); // Pong: Hello
 That's it. No interfaces, no base classes, no registration — the source generator handles everything at compile time with near-direct-call performance.
 
 ::: tip Zero Configuration Required
-The defaults are optimized for the most common use cases. You do **not** need `[assembly: MediatorConfiguration]` — it exists only as an escape hatch when you want to change a specific default behavior. See [Configuration](./configuration) for the full list of options.
+The library tries to do the right thing by default — discovery, lifetimes, routing, and endpoints all just work. Configuration options exist only as an escape hatch when you need more control. See [Configuration](./configuration) for the full list.
 :::
 
 ## Async Handlers

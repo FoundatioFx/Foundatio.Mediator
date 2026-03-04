@@ -99,6 +99,32 @@ public class TracingMiddleware
 
 Runs before the handler. Can return values that are passed to `After` and `Finally`:
 
+::: warning One Method Per Hook
+Each middleware class may define only **one** `Before` (or `BeforeAsync`) method — the same applies to `After`, `Finally`, and `ExecuteAsync`. Defining multiple overloads of the same hook (e.g., `Before(CreateOrder cmd)` and `Before(UpdateOrder cmd)`) will produce diagnostic error **FMED001** and the middleware will not compile.
+
+To handle multiple message types in a single middleware class, accept `object` and use pattern matching:
+
+```csharp
+public class ValidationMiddleware
+{
+    public HandlerResult Before(object message)
+    {
+        switch (message)
+        {
+            case CreateOrder create when string.IsNullOrEmpty(create.Name):
+                return HandlerResult.ShortCircuit(Result.Invalid("Name is required"));
+            case UpdateOrder update when update.OrderId == null:
+                return HandlerResult.ShortCircuit(Result.Invalid("OrderId is required"));
+            default:
+                return HandlerResult.Continue();
+        }
+    }
+}
+```
+
+Alternatively, create separate middleware classes when each message type needs different state (return types from `Before` that flow to `After`/`Finally`).
+:::
+
 ```csharp
 public class TimingMiddleware
 {

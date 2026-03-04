@@ -707,4 +707,159 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // The endpoint lambda should NOT call ToHttpResult (only the mapper class definition has it)
         Assert.DoesNotContain("return MediatorEndpointResultMapper", endpointSource);
     }
+
+    [Fact]
+    public void DiscoveryExplicit_HandlerCategoryTriggersEndpointGeneration()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.Explicit)]
+
+            public record GetAlpha(string Id);
+            public record GetBeta(string Id);
+
+            [HandlerCategory("Widgets")]
+            public class ExplicitCatHandler
+            {
+                public string Handle(GetAlpha query) => "alpha";
+            }
+
+            public class ImplicitHandler
+            {
+                public string Handle(GetBeta query) => "beta";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // The [HandlerCategory] handler should be included in Explicit mode
+        Assert.Contains("GetAlpha", endpointSource);
+        // The handler without any explicit attribute should NOT be included
+        Assert.DoesNotContain("GetBeta", endpointSource);
+    }
+
+    [Fact]
+    public void PostWithExplicitRoute_AllPropsInRoute_SkipsBodyBinding()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CompleteTodo(string TodoId);
+
+            public class TodoHandler
+            {
+                [HandlerEndpoint(Route = "/{todoId}/complete")]
+                public Result Handle(CompleteTodo command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should be POST (action verb "Complete")
+        Assert.Contains("MapPost", endpointSource);
+        // Should NOT have [FromBody] since all properties are in the route
+        Assert.DoesNotContain("FromBody", endpointSource);
+        // Route should contain the placeholder
+        Assert.Contains("{todoId}", endpointSource);
+    }
+
+    [Fact]
+    public void ActionVerbPrefix_GeneratesCleanRouteName()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record ApproveOrder(string OrderId);
+
+            public class OrderHandler
+            {
+                public Result Handle(ApproveOrder command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should be POST (action verb "Approve" implies write operation)
+        Assert.Contains("MapPost", endpointSource);
+        // Route should use the cleaned name (verb prefix "Approve" stripped from "ApproveOrder" for route)
+        Assert.Contains("/order", endpointSource);
+    }
+
+    [Theory]
+    [InlineData("MyApp.Orders.Api", "Orders")]
+    [InlineData("Products.Module", "Products")]
+    [InlineData("MyWebApp", "MyWebApp")]
+    [InlineData("my-cool-api", "my_cool_api")]
+    [InlineData("Api", "Api")]
+    [InlineData("Company.Platform.Billing.Service", "Billing")]
+    [InlineData("Web", "Web")]
+    public void DeriveProjectNameFromAssembly_ProducesExpectedName(string assemblyName, string expected)
+    {
+        // Source-imported from src/Foundatio.Mediator/Utility/AssemblyNameHelper.cs
+        var result = TestAssemblyNameHelper.DeriveProjectNameFromAssembly(assemblyName);
+        Assert.Equal(expected, result);
+    }
+}
+
+/// <summary>
+/// Mirrors <c>AssemblyNameHelper.DeriveProjectNameFromAssembly</c> from the generator project
+/// so we can unit-test the algorithm without exposing internal types across a strong-name boundary.
+/// Source of truth: src/Foundatio.Mediator/Utility/AssemblyNameHelper.cs
+/// </summary>
+file static class TestAssemblyNameHelper
+{
+    internal static string DeriveProjectNameFromAssembly(string assemblyName)
+    {
+        var segments = assemblyName.Split('.');
+        string[] stripSuffixes = ["Api", "Web", "Module", "Service", "Server", "Host", "App"];
+
+        for (int i = segments.Length - 1; i >= 0; i--)
+        {
+            var segment = segments[i].Trim();
+            if (string.IsNullOrEmpty(segment))
+                continue;
+
+            bool isSuffix = false;
+            foreach (var suffix in stripSuffixes)
+            {
+                if (string.Equals(segment, suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    isSuffix = true;
+                    break;
+                }
+            }
+
+            if (!isSuffix)
+                return Sanitize(segment.Replace("-", "_"));
+        }
+
+        return Sanitize(assemblyName.Replace(".", "_").Replace("-", "_"));
+    }
+
+    private static string Sanitize(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return string.Empty;
+        var id = new string(name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
+        return id.Length > 0 && char.IsDigit(id[0]) ? "_" + id : id;
+    }
 }

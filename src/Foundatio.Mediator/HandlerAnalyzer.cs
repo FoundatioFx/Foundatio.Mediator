@@ -480,6 +480,40 @@ internal static class HandlerAnalyzer
         // Determine binding strategy
         bool bindFromBody = httpMethod is "POST" or "PUT" or "PATCH";
 
+        // If we have an explicit route with placeholders that cover all message properties,
+        // skip body binding — all data comes from the route (e.g., POST /{todoId}/complete)
+        if (bindFromBody && hasExplicitRoute && !string.IsNullOrEmpty(route))
+        {
+            var allProperties = messageType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null)
+                .ToList();
+
+            if (allProperties.Count > 0)
+            {
+                bool allCoveredByRoute = allProperties.All(p =>
+                    route!.Contains($"{{{p.Name.ToCamelCase()}}}", StringComparison.OrdinalIgnoreCase) ||
+                    route!.Contains($"{{{p.Name}}}", StringComparison.OrdinalIgnoreCase));
+
+                if (allCoveredByRoute)
+                {
+                    bindFromBody = false;
+
+                    // Re-extract route params since AnalyzeMessageParameters only extracts
+                    // ID properties for GET/DELETE/PUT — now we need all matched properties
+                    routeParams = allProperties.Select(p => new EndpointParameterInfo
+                    {
+                        Name = p.Name.ToCamelCase(),
+                        PropertyName = p.Name,
+                        Type = TypeSymbolInfo.From(p.Type, compilation),
+                        IsRouteParameter = true,
+                        IsOptional = p.Type.NullableAnnotation == NullableAnnotation.Annotated ||
+                                     p.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+                    }).ToArray();
+                }
+            }
+        }
+
         return new EndpointInfo
         {
             HttpMethod = httpMethod,
@@ -496,7 +530,7 @@ internal static class HandlerAnalyzer
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
             GenerateEndpoint = true,
-            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null,
+            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null || categoryAttr != null,
             AllowAnonymous = allowAnonymous,
             RequireAuth = requireAuth,
             Roles = new(roles),
@@ -698,7 +732,17 @@ internal static class HandlerAnalyzer
     /// </summary>
     private static string RemoveVerbPrefix(string name)
     {
-        string[] prefixes = ["Get", "Find", "Search", "List", "Query", "Create", "Add", "New", "Update", "Edit", "Modify", "Change", "Set", "Delete", "Remove", "Patch"];
+        string[] prefixes = [
+            "Get", "Find", "Search", "List", "Query",
+            "Create", "Add", "New",
+            "Update", "Edit", "Modify", "Change", "Set",
+            "Delete", "Remove",
+            "Patch",
+            "Complete", "Approve", "Cancel", "Submit", "Process",
+            "Execute", "Activate", "Deactivate", "Archive", "Restore",
+            "Publish", "Unpublish", "Enable", "Disable", "Reset",
+            "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen"
+        ];
 
         foreach (var prefix in prefixes)
         {

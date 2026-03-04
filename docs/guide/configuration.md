@@ -178,7 +178,7 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 - **Effect:** Controls which handlers generate API endpoints
   - `None`: No endpoints generated (default)
   - `All`: All handlers with endpoint-compatible message types generate endpoints (use `[HandlerEndpoint(Exclude = true)]` to opt out)
-  - `Explicit`: Only handlers with `[HandlerEndpoint]` attribute generate endpoints
+  - `Explicit`: Only handlers with `[HandlerEndpoint]` or `[HandlerCategory]` attribute generate endpoints
 - **See:** [Endpoints Guide](/guide/endpoints) for full documentation
 
 **`EndpointRoutePrefix`** (`string?`)

@@ -2,6 +2,19 @@
 
 This guide covers common issues and debugging techniques when working with Foundatio Mediator.
 
+## IntelliSense Shows Errors Before First Build
+
+Since Foundatio Mediator relies on source generators, extension methods like `Map{X}Endpoints()`, handler registration helpers, and interceptor attributes don't exist until the generator runs during a build. This means:
+
+- **Red squiggles** will appear on calls to generated methods before you build.
+- **IntelliSense / autocomplete** won't suggest generated methods until after the first build.
+
+**Solution:** Run `dotnet build` (or build from your IDE) once after adding the package or changing configuration. The generated code will be picked up automatically. Subsequent edits trigger incremental generation so the squiggles will resolve on their own.
+
+::: tip
+If IntelliSense still shows errors after building, restart the IDE language server. In VS Code: `Ctrl+Shift+P` → "Restart Language Server". In Visual Studio: close and reopen the solution.
+:::
+
 ## Viewing Generated Source Code
 
 Since Foundatio Mediator uses source generators, it can be helpful to see the actual code being generated. This is useful for:

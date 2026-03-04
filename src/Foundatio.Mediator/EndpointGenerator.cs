@@ -101,10 +101,10 @@ internal static class EndpointGenerator
         bool hasFromBodyAttribute = compilationInfo.HasFromBodyAttribute;
         bool hasWithOpenApi = compilationInfo.HasWithOpenApi;
 
-        // Get suffix from configuration or fall back to assembly name
+        // Get suffix from configuration or fall back to a cleaned-up assembly name
         var safeSuffix = !string.IsNullOrEmpty(configuration.ProjectName)
             ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
-            : compilationInfo.AssemblyName.Replace(".", "_").Replace("-", "_").ToIdentifier();
+            : DeriveProjectNameFromAssembly(compilationInfo.AssemblyName);
 
         source.AppendLine("""
             using Microsoft.AspNetCore.Builder;
@@ -754,6 +754,14 @@ internal static class EndpointGenerator
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Derives a clean project name from the assembly name for use as a suffix
+    /// in generated endpoint method names. Takes the last meaningful segment,
+    /// strips common suffixes like Api/Web/Module/Service/Server, and sanitizes.
+    /// </summary>
+    internal static string DeriveProjectNameFromAssembly(string assemblyName)
+        => AssemblyNameHelper.DeriveProjectNameFromAssembly(assemblyName);
 
     /// <summary>
     /// Escapes a string for use in C# source code.

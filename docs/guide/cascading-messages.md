@@ -388,17 +388,31 @@ public record OrderEvent(Order Order, Customer Customer, Product Product, /* ...
 
 ### 2. Use Nullable Types for Conditional Events
 
-```csharp
-public static (Order, OrderCreated, WelcomeEmail?) Handle(CreateOrderCommand command)
-{
-    var isNewCustomer = CheckNewCustomer(command.Email);
+Always declare cascade event types as **nullable** (`?`) in tuple return signatures. This lets you return `null` on error or conditional paths without resorting to `null!`:
 
-    return (
-        order,
-        new OrderCreated(order.Id),
-        isNewCustomer ? new WelcomeEmail(command.Email) : null  // Conditional
-    );
+```csharp
+// ✅ Recommended: nullable event types — clean on both success and error paths
+public (Result<Order>, OrderCreated?) Handle(CreateOrder command)
+{
+    if (!IsValid(command))
+        return (Result.Invalid("Bad order"), null);          // No compiler warning
+
+    var order = CreateOrder(command);
+    return (order, new OrderCreated(order.Id, order.Email));  // Event published
 }
+
+// ❌ Avoid: non-nullable event types force null! on error paths
+public (Result<Order>, OrderCreated) Handle(CreateOrder command)
+{
+    if (!IsValid(command))
+        return (Result.Invalid("Bad order"), null!);  // Suppresses warning but defeats null safety
+    // ...
+}
+```
+
+::: tip
+The mediator automatically skips publishing any `null` cascade item, so nullable types have zero runtime cost — they only improve the developer experience on error paths.
+:::
 ```
 
 ### 3. Limit Cascade Depth

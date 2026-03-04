@@ -268,9 +268,22 @@ Foundatio Mediator has two configuration surfaces:
     HandlerLifetime = MediatorLifetime.Scoped,      // DI lifetime for handlers
     MiddlewareLifetime = MediatorLifetime.Scoped,    // DI lifetime for middleware
     EndpointDiscovery = EndpointDiscovery.All,       // Generate API endpoints
-    EndpointRoutePrefix = "/api"                     // Global endpoint prefix
+    EndpointRoutePrefix = "/api",                    // Global endpoint prefix
+    ProjectName = "MyApp"                            // Controls generated method names
 )]
 ```
+
+::: tip ProjectName
+`ProjectName` controls the generated endpoint method name — e.g., `ProjectName = "Products"` produces `MapProductsEndpoints()`. If omitted, the name is derived from your assembly name (last segment, with common suffixes like `.Api` stripped). Set it explicitly in modular monolith setups for clean, predictable method names.
+:::
+
+::: tip Endpoint Discovery Modes
+- **`All`** — generates endpoints for every handler (use `[HandlerEndpoint(Exclude = true)]` to opt out)
+- **`Explicit`** — only generates endpoints for handlers marked with `[HandlerEndpoint]` or `[HandlerCategory]`
+- **`None`** — no endpoints generated (default)
+
+Use `Explicit` when you want fine-grained control over which handlers become API endpoints.
+:::
 
 **Runtime** — controls mediator instance behavior (in your DI setup):
 
@@ -302,3 +315,7 @@ If you get a "handler not found" error:
 2. Ensure your method name follows the naming conventions
 3. Ensure the first parameter matches your message type exactly
 4. If using cross-assembly handlers, ensure `AddMediator()` is called and configured to add all appropriate assemblies.
+
+::: tip Build First
+Generated methods like `Map{X}Endpoints()` won't appear in IntelliSense until after the first build. If you see red squiggles on generated method calls, run `dotnet build` once. See [Troubleshooting](./troubleshooting) for more details.
+:::

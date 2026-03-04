@@ -280,10 +280,20 @@ builder.Services.AddMediator(cfg => cfg
 public class MediatorOptions {
     public List<Assembly> Assemblies { get; set; } = [];
     public ServiceLifetime? MediatorLifetime { get; set; } // null = auto-detect
+    public bool LogHandlers { get; set; }    // Log all discovered handlers at startup
+    public bool LogMiddleware { get; set; }  // Log the middleware pipeline at startup
 }
 ```
 
 When `MediatorLifetime` is `null` (the default), the mediator is registered as **Scoped** in ASP.NET Core apps and **Singleton** otherwise. Set it explicitly to override auto-detection.
+
+When `LogHandlers` is `true`, all registered handlers are printed in a formatted, aligned table during `AddMediator()`. When `LogMiddleware` is `true`, the middleware pipeline is printed in execution order:
+
+```csharp
+services.AddMediator(new MediatorOptions { LogHandlers = true, LogMiddleware = true });
+// or
+services.AddMediator(b => b.LogHandlers().LogMiddleware());
+```
 
 ### Notification Publishers
 

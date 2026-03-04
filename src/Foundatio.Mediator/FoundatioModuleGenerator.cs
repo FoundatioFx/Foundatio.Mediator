@@ -71,6 +71,30 @@ internal static class FoundatioModuleGenerator
                 source.AppendLine();
             }
 
+            // Register middleware metadata for diagnostic logging
+            if (middleware.Length > 0)
+            {
+                source.AppendLine("// Register middleware metadata for diagnostics");
+                foreach (var m in middleware)
+                {
+                    var hooks = new List<string>();
+                    if (m.BeforeMethod != null) hooks.Add("Before");
+                    if (m.AfterMethod != null) hooks.Add("After");
+                    if (m.FinallyMethod != null) hooks.Add("Finally");
+                    if (m.ExecuteMethod != null) hooks.Add("Execute");
+                    var hooksStr = string.Join(", ", hooks);
+
+                    var messageScope = m.MessageType.FullName == "object" || string.IsNullOrEmpty(m.MessageType.FullName)
+                        ? "object"
+                        : m.MessageType.Identifier;
+
+                    var orderStr = m.Order.HasValue ? m.Order.Value.ToString() : "null";
+
+                    source.AppendLine($"registry.AddMiddleware(new MiddlewareRegistration(\"{m.Identifier}\", \"{hooksStr}\", {orderStr}, \"{messageScope}\", {m.IsStatic.ToString().ToLower()}, {m.ExplicitOnly.ToString().ToLower()}));");
+                }
+                source.AppendLine();
+            }
+
             if (hasHandlers)
             {
                 source.AppendLine("// Register HandlerRegistration instances keyed by message type name");
@@ -151,12 +175,18 @@ internal static class FoundatioModuleGenerator
                         {
                             source.AppendLine($"        {handler.Order},");
                             source.AppendLine($"        orderBefore: {FormatStringArray(handler.OrderBefore)},");
-                            source.AppendLine($"        orderAfter: {FormatStringArray(handler.OrderAfter)}));");
+                            source.AppendLine($"        orderAfter: {FormatStringArray(handler.OrderAfter)},");
                         }
                         else
                         {
-                            source.AppendLine($"        {handler.Order}));");
+                            source.AppendLine($"        {handler.Order},");
                         }
+
+                        // Emit display metadata for diagnostic logging
+                        var returnDisplay = handler.HasReturnValue ? handler.ReturnType.UnwrappedFullName : "";
+                        source.AppendLine($"        sourceHandlerName: \"{handler.Identifier}\",");
+                        source.AppendLine($"        methodName: \"{handler.MethodName}\",");
+                        source.AppendLine($"        returnTypeName: \"{returnDisplay}\"));");
                         source.AppendLine();
                     }
                 }

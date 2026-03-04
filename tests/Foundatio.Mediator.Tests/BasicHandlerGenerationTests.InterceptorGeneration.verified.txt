@@ -41,7 +41,10 @@ public static class Tests_MediatorHandlers
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(EchoHandler_Echo_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
                 EchoHandler_Echo_Handler.UntypedHandle,
                 false,
-                2147483647));
+                2147483647,
+                sourceHandlerName: "EchoHandler",
+                methodName: "Handle",
+                returnTypeName: "string"));
 
     }
 }

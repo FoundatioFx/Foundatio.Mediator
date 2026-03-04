@@ -19,7 +19,10 @@ public sealed class HandlerRegistration
     /// <param name="publishAsync">The delegate for publish scenarios (discards return value, avoids allocation)</param>
     /// <param name="orderBefore">Fully qualified type names of handlers that this handler must execute before.</param>
     /// <param name="orderAfter">Fully qualified type names of handlers that this handler must execute after.</param>
-    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null)
+    /// <param name="sourceHandlerName">The short name of the original handler class (e.g., "OrderHandler"). Used for diagnostic logging.</param>
+    /// <param name="methodName">The handler method name (e.g., "HandleAsync"). Used for diagnostic logging.</param>
+    /// <param name="returnTypeName">The display name of the handler return type (e.g., "Result&lt;Order&gt;"). Used for diagnostic logging.</param>
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null, string? sourceHandlerName = null, string? methodName = null, string? returnTypeName = null)
     {
         MessageTypeName = messageTypeName;
         HandlerClassName = handlerClassName;
@@ -29,6 +32,9 @@ public sealed class HandlerRegistration
         Order = order;
         OrderBefore = orderBefore ?? [];
         OrderAfter = orderAfter ?? [];
+        SourceHandlerName = sourceHandlerName;
+        MethodName = methodName;
+        ReturnTypeName = returnTypeName;
         // If no publish delegate provided, create a wrapper that discards the result
         PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
     }
@@ -94,6 +100,21 @@ public sealed class HandlerRegistration
     /// Fully qualified type names of handlers that this handler must execute after during PublishAsync.
     /// </summary>
     public IReadOnlyList<string> OrderAfter { get; }
+
+    /// <summary>
+    /// The short name of the original handler class (e.g., "OrderHandler"). Used for diagnostic logging.
+    /// </summary>
+    public string? SourceHandlerName { get; }
+
+    /// <summary>
+    /// The handler method name (e.g., "HandleAsync"). Used for diagnostic logging.
+    /// </summary>
+    public string? MethodName { get; }
+
+    /// <summary>
+    /// The display name of the handler return type (e.g., "Result&lt;Order&gt;"). Used for diagnostic logging.
+    /// </summary>
+    public string? ReturnTypeName { get; }
 }
 
 /// <summary>

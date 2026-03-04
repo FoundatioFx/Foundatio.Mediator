@@ -42,7 +42,10 @@ public static class Tests_MediatorHandlers
                 GetUserHandler_GetUser_Handler.UntypedHandleAsync,
                 null,
                 true,
-                2147483647));
+                2147483647,
+                sourceHandlerName: "GetUserHandler",
+                methodName: "HandleAsync",
+                returnTypeName: "string"));
 
     }
 }

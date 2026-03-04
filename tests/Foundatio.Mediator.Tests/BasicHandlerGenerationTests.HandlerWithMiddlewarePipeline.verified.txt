@@ -33,6 +33,9 @@ public static class Tests_MediatorHandlers
 
     public static void AddHandlers(IServiceCollection services, HandlerRegistry registry)
     {
+        // Register middleware metadata for diagnostics
+        registry.AddMiddleware(new MiddlewareRegistration("TimingMiddleware", "Before, After, Finally", 10, "object", false, false));
+
         // Register HandlerRegistration instances keyed by message type name
 
         registry.AddHandler(new HandlerRegistration(
@@ -41,7 +44,10 @@ public static class Tests_MediatorHandlers
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
                 ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle,
                 false,
-                2147483647));
+                2147483647,
+                sourceHandlerName: "ProcessOrderHandler",
+                methodName: "Handle",
+                returnTypeName: "string"));
 
     }
 }

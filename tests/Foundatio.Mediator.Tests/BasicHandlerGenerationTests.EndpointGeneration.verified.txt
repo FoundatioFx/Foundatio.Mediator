@@ -41,7 +41,10 @@ public static class Tests_MediatorHandlers
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(WidgetHandler_GetWidget_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
                 WidgetHandler_GetWidget_Handler.UntypedHandle,
                 false,
-                2147483647));
+                2147483647,
+                sourceHandlerName: "WidgetHandler",
+                methodName: "Handle",
+                returnTypeName: "string"));
 
     }
 }

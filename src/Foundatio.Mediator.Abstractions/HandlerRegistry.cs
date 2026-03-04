@@ -16,6 +16,7 @@ public sealed class HandlerRegistry
     private readonly Dictionary<string, List<HandlerRegistration>> _handlersByMessageType = new();
     private readonly List<OpenGenericHandlerDescriptor> _openGenericDescriptors = new();
     private readonly List<HandlerRegistration> _allRegistrations = new();
+    private readonly List<MiddlewareRegistration> _allMiddleware = new();
     private volatile bool _frozen;
 
     private readonly ConcurrentDictionary<Type, InvokeAsyncDelegate> _invokeAsyncCache = new();
@@ -55,6 +56,17 @@ public sealed class HandlerRegistry
     }
 
     /// <summary>
+    /// Adds a middleware registration to the registry. Must be called before <see cref="Freeze"/>.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public void AddMiddleware(MiddlewareRegistration registration)
+    {
+        if (_frozen) throw new InvalidOperationException("Cannot add middleware after the registry has been frozen.");
+
+        _allMiddleware.Add(registration);
+    }
+
+    /// <summary>
     /// Freezes the registry so no more handlers can be added. Called after all modules are scanned.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
@@ -74,26 +86,104 @@ public sealed class HandlerRegistry
     public IReadOnlyList<OpenGenericHandlerDescriptor> OpenGenericDescriptors => _openGenericDescriptors;
 
     /// <summary>
-    /// Logs all registered handlers to the provided logger.
+    /// Gets all middleware registrations in the registry.
     /// </summary>
+    public IReadOnlyList<MiddlewareRegistration> MiddlewareRegistrations => _allMiddleware;
+
+    /// <summary>
+    /// Logs all registered handlers in an aligned, diagnostic-friendly format.
+    /// </summary>
+    /// <param name="logger">The logger to write to. When null, writes to the console.</param>
     public void ShowRegisteredHandlers(ILogger? logger = null)
     {
-        logger ??= NullLogger.Instance;
+        Action<string> writeLog = logger != null
+            ? msg => logger.LogInformation("{MediatorHandlerInfo}", msg)
+            : Console.WriteLine;
 
         if (_allRegistrations.Count == 0)
         {
-            logger.LogInformation("No handlers registered.");
+            writeLog("Foundatio.Mediator: no handlers registered.");
             return;
         }
 
-        var sb = new StringBuilder();
-        sb.AppendLine("Registered Handlers:");
-        foreach (var registration in _allRegistrations.OrderBy(r => r.MessageTypeName).ThenBy(r => r.HandlerClassName))
+        var sorted = _allRegistrations
+            .OrderBy(r => r.MessageTypeName)
+            .ThenBy(r => r.HandlerClassName)
+            .ToList();
+
+        // Compute column widths for aligned output
+        int maxMsg = sorted.Max(r => GetShortTypeName(r.MessageTypeName).Length);
+        int maxHandler = sorted.Max(r => FormatHandlerColumn(r).Length);
+        int maxReturn = sorted.Max(r => (r.ReturnTypeName ?? "").Length);
+
+        writeLog($"Foundatio.Mediator registered {sorted.Count} handler(s):");
+
+        foreach (var r in sorted)
         {
-            sb.AppendLine($"- Message: {registration.MessageTypeName}, Handler: {registration.HandlerClassName}, IsAsync: {registration.IsAsync}");
+            var msg = GetShortTypeName(r.MessageTypeName).PadRight(maxMsg);
+            var handler = FormatHandlerColumn(r).PadRight(maxHandler);
+            var ret = (r.ReturnTypeName ?? "").PadRight(maxReturn);
+            var flags = r.IsAsync ? "  [async]" : "";
+            writeLog($"  {msg}  \u2192 {handler}  {ret}{flags}");
+        }
+    }
+
+    private static string FormatHandlerColumn(HandlerRegistration r)
+    {
+        if (r.SourceHandlerName != null && r.MethodName != null)
+            return $"{r.SourceHandlerName}.{r.MethodName}";
+
+        return r.HandlerClassName;
+    }
+
+    private static string GetShortTypeName(string fullyQualifiedName)
+    {
+        var idx = fullyQualifiedName.LastIndexOf('.');
+        return idx >= 0 ? fullyQualifiedName.Substring(idx + 1) : fullyQualifiedName;
+    }
+
+    /// <summary>
+    /// Logs the middleware pipeline in an aligned, diagnostic-friendly format.
+    /// </summary>
+    /// <param name="logger">The logger to write to. When null, writes to the console.</param>
+    public void ShowRegisteredMiddleware(ILogger? logger = null)
+    {
+        Action<string> writeLog = logger != null
+            ? msg => logger.LogInformation("{MediatorMiddlewareInfo}", msg)
+            : Console.WriteLine;
+
+        if (_allMiddleware.Count == 0)
+        {
+            writeLog("Foundatio.Mediator: no middleware registered.");
+            return;
         }
 
-        logger.LogInformation(sb.ToString());
+        // Sort by order (nulls last), then name
+        var sorted = _allMiddleware
+            .OrderBy(m => m.Order ?? int.MaxValue)
+            .ThenBy(m => m.Name)
+            .ToList();
+
+        int maxName = sorted.Max(m => m.Name.Length);
+        int maxHooks = sorted.Max(m => m.Hooks.Length);
+        int maxScope = sorted.Max(m => m.MessageScope.Length);
+
+        writeLog($"Foundatio.Mediator middleware pipeline ({sorted.Count}):");
+
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            var m = sorted[i];
+            var num = $"{i + 1}.".PadRight(4);
+            var name = m.Name.PadRight(maxName);
+            var hooks = $"[{m.Hooks}]".PadRight(maxHooks + 2);
+            var scope = m.MessageScope == "object" ? "" : $"  <{m.MessageScope}>";
+            var orderStr = m.Order.HasValue ? $"  Order: {m.Order}" : "";
+            var flags = new List<string>();
+            if (m.IsStatic) flags.Add("static");
+            if (m.IsExplicitOnly) flags.Add("explicit-only");
+            var flagStr = flags.Count > 0 ? $"  [{string.Join(", ", flags)}]" : "";
+            writeLog($"  {num}{name}  {hooks}{orderStr}{scope}{flagStr}");
+        }
     }
 
     internal List<HandlerRegistration> GetHandlersForType(Type type)

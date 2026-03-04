@@ -41,7 +41,10 @@ public static class Tests_MediatorHandlers
                 (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(PingHandler_Ping_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
                 PingHandler_Ping_Handler.UntypedHandle,
                 false,
-                2147483647));
+                2147483647,
+                sourceHandlerName: "PingHandler",
+                methodName: "Handle",
+                returnTypeName: "string"));
 
     }
 }

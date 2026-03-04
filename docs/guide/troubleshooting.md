@@ -66,26 +66,42 @@ Generated/
 
 ### Viewing All Registered Handlers
 
-The easiest way to see which handlers are registered at runtime is to use the `HandlerRegistry`:
+The quickest way to see every discovered handler at startup is to enable `LogHandlers`:
+
+```csharp
+// Option 1: via MediatorOptions
+services.AddMediator(new MediatorOptions { LogHandlers = true });
+
+// Option 2: via builder
+services.AddMediator(b => b.LogHandlers());
+```
+
+This prints aligned, columnar output to the console during `AddMediator()`:
+
+```text
+Foundatio.Mediator registered 5 handler(s):
+  CreateOrder    → OrderHandler.HandleAsync    Result<Order>   [async]
+  GetOrder       → OrderHandler.Handle         Result<Order>
+  GetUser        → UserHandler.HandleAsync     Result<User>    [async]
+  OrderCreated   → EventHandler.HandleAsync                    [async]
+  UserCreated    → EventHandler.Handle
+```
+
+You can also call `ShowRegisteredHandlers()` manually after building the service provider, optionally passing an `ILogger`:
 
 ```csharp
 var registry = serviceProvider.GetRequiredService<HandlerRegistry>();
-registry.ShowRegisteredHandlers(logger);
+registry.ShowRegisteredHandlers(logger);  // uses ILogger
+registry.ShowRegisteredHandlers();        // falls back to Console.WriteLine
+```
 
-// You can also inspect registrations directly:
+Each `HandlerRegistration` also exposes diagnostic metadata for programmatic inspection:
+
+```csharp
 foreach (var reg in registry.Registrations)
 {
-    Console.WriteLine($"{reg.MessageTypeName} -> {reg.HandlerClassName}");
+    Console.WriteLine($"{reg.SourceHandlerName}.{reg.MethodName}({GetShortName(reg.MessageTypeName)}) → {reg.ReturnTypeName}");
 }
-```
-
-This logs all registered handlers to your configured logger:
-
-```
-Registered Handlers:
-- Message: MyApp.Messages.CreateOrder, Handler: OrderHandler_CreateOrder_Handler, IsAsync: True
-- Message: MyApp.Messages.GetUser, Handler: UserHandler_GetUser_Handler, IsAsync: True
-- Message: MyApp.Messages.UserCreated, Handler: NotificationHandler_UserCreated_Handler, IsAsync: False
 ```
 
 **If a handler is missing from this list:**
@@ -96,6 +112,46 @@ Registered Handlers:
 - Verify `AddHandlers()` was called during DI configuration
 
 For deeper inspection, you can also [view the generated source files](#enabling-generated-file-output) to see the actual registration code in `*_MediatorHandlers.g.cs`.
+
+### Viewing the Middleware Pipeline
+
+Enable `LogMiddleware` to dump the middleware pipeline in execution order at startup:
+
+```csharp
+// Option 1: via MediatorOptions
+services.AddMediator(new MediatorOptions { LogMiddleware = true });
+
+// Option 2: via builder
+services.AddMediator(b => b.LogMiddleware());
+
+// Option 3: enable both handlers and middleware
+services.AddMediator(b => b.LogHandlers().LogMiddleware());
+```
+
+This prints the middleware pipeline sorted by execution order:
+
+```text
+Foundatio.Mediator middleware pipeline (3):
+  1.  AuthMiddleware       [Before]                  Order: 5
+  2.  TimingMiddleware     [Before, After, Finally]  Order: 10
+  3.  AuditMiddleware      [Execute]                 <AuditableCommand>  [explicit-only]
+```
+
+Each line shows:
+
+- **Name** — the middleware class name
+- **Hooks** — which hooks the middleware implements (`Before`, `After`, `Finally`, `Execute`)
+- **Order** — numeric execution order (lower runs first in `Before`, reverse in `After`/`Finally`)
+- **Scope** — if the middleware targets a specific message type (e.g., `<AuditableCommand>`), it's shown; global middleware (`object`) is omitted for clarity
+- **Flags** — `static` if the middleware uses static methods, `explicit-only` if it requires `[UseMiddleware]`
+
+You can also call `ShowRegisteredMiddleware()` manually:
+
+```csharp
+var registry = serviceProvider.GetRequiredService<HandlerRegistry>();
+registry.ShowRegisteredMiddleware(logger);  // uses ILogger
+registry.ShowRegisteredMiddleware();        // falls back to Console.WriteLine
+```
 
 ### Example Generated Handler
 

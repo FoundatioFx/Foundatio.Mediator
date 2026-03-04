@@ -20,4 +20,17 @@ public sealed class MediatorOptions
     /// <see cref="ServiceLifetime.Singleton"/> otherwise.
     /// </summary>
     public ServiceLifetime? MediatorLifetime { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, logs all registered handlers at startup in a formatted, columnar layout.
+    /// Uses <c>ILogger</c> when available (via <c>ILoggerFactory</c> in the service collection),
+    /// falling back to the console.
+    /// </summary>
+    public bool LogHandlers { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, logs the middleware pipeline at startup in a formatted, columnar layout.
+    /// Shows each middleware's name, hooks (Before/After/Finally/Execute), order, and message scope.
+    /// </summary>
+    public bool LogMiddleware { get; set; }
 }

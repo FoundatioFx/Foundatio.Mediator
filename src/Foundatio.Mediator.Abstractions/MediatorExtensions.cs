@@ -71,6 +71,12 @@ public static class MediatorExtensions
         registry.Freeze();
         services.AddSingleton(registry);
 
+        if (options.LogHandlers)
+            registry.ShowRegisteredHandlers();
+
+        if (options.LogMiddleware)
+            registry.ShowRegisteredMiddleware();
+
         var resolvedStrategy = strategy ?? NotificationPublishStrategy.ForeachAwait;
         services.TryAddSingleton<INotificationPublisher>(sp => CreatePublisher(resolvedStrategy, sp));
 
@@ -187,6 +193,24 @@ public sealed class MediatorOptionsBuilder
     public MediatorOptionsBuilder SetMediatorLifetime(ServiceLifetime lifetime)
     {
         _options.MediatorLifetime = lifetime;
+        return this;
+    }
+
+    /// <summary>
+    /// Enables logging of all registered handlers at startup.
+    /// </summary>
+    public MediatorOptionsBuilder LogHandlers(bool log = true)
+    {
+        _options.LogHandlers = log;
+        return this;
+    }
+
+    /// <summary>
+    /// Enables logging of the middleware pipeline at startup.
+    /// </summary>
+    public MediatorOptionsBuilder LogMiddleware(bool log = true)
+    {
+        _options.LogMiddleware = log;
         return this;
     }
 

@@ -457,9 +457,28 @@ public sealed class HandlerRegistry : IDisposable
         AddSubscription(typeof(T), entry);
         try
         {
-            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            // Use WaitToReadAsync + TryRead instead of ReadAllAsync so we can
+            // catch OperationCanceledException without wrapping yield return in
+            // a try/catch block (which C# disallows).
+            while (true)
             {
-                yield return item;
+                bool canRead;
+                try
+                {
+                    canRead = await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                if (!canRead)
+                    break;
+
+                while (channel.Reader.TryRead(out var item))
+                {
+                    yield return item;
+                }
             }
         }
         finally

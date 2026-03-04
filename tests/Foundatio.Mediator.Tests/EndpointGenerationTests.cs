@@ -1674,6 +1674,93 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Should NOT contain eventType parameter
         Assert.DoesNotContain("eventType:", endpointSource);
     }
+
+    [Fact]
+    public void EndpointSummaryStyle_Spaced_SplitsPascalCase()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointDiscovery = EndpointDiscovery.All,
+                EndpointSummaryStyle = EndpointSummaryStyle.Spaced
+            )]
+
+            public record CreateTodo(string Title);
+
+            [HandlerCategory("Todos")]
+            public class TodoHandler
+            {
+                public string Handle(CreateTodo cmd) => "done";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".WithSummary(\"Create Todo\")", endpointSource);
+        Assert.DoesNotContain(".WithSummary(\"CreateTodo\")", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointSummaryStyle_Exact_KeepsPascalCase()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointDiscovery = EndpointDiscovery.All,
+                EndpointSummaryStyle = EndpointSummaryStyle.Exact
+            )]
+
+            public record CreateTodo(string Title);
+
+            [HandlerCategory("Todos")]
+            public class TodoHandler
+            {
+                public string Handle(CreateTodo cmd) => "done";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".WithSummary(\"CreateTodo\")", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointSummaryStyle_Default_KeepsPascalCase()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record GetProductDetails(string Id);
+
+            [HandlerCategory("Products")]
+            public class ProductHandler
+            {
+                public string Handle(GetProductDetails query) => "product";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".WithSummary(\"GetProductDetails\")", endpointSource);
+    }
 }
 
 /// <summary>

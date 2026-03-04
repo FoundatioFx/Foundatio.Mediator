@@ -205,6 +205,7 @@ internal static class TypeExtensions
                     Name = e.Name ?? e.CorrespondingTupleField!.Name,
                     Field = e.CorrespondingTupleField!.Name,
                     IsNullable = e.Type.IsNullable(compilation),
+                    IsResult = unwrappedType.IsResult(compilation),
                     IsReferenceType = unwrappedType.IsReferenceType,
                     TypeFullName = e.Type.ToDisplayString(),
                     Interfaces = new EquatableArray<string>(interfaces),

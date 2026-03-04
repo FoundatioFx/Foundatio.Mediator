@@ -267,6 +267,11 @@ internal readonly record struct TupleItemInfo
     /// </summary>
     public bool IsNullable { get; init; }
     /// <summary>
+    /// Indicates if the tuple item type is a Result or Result&lt;T&gt; type.
+    /// Used for endpoint generation to apply ToHttpResult mapping.
+    /// </summary>
+    public bool IsResult { get; init; }
+    /// <summary>
     /// Indicates if the tuple item type is a reference type.
     /// Used for defensive null checks in cascading message publishing.
     /// </summary>

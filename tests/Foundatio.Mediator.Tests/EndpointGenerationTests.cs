@@ -598,4 +598,113 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // File results go through the result mapper which handles FileResult
         Assert.Contains("ToHttpResult(result)", endpointSource);
     }
+
+    [Fact]
+    public void TupleWithResultT_UsesInvokeAsyncAndToHttpResult()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "/api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record CreateProduct(string Name, decimal Price);
+            public record ProductView(string Id, string Name, decimal Price);
+            public record ProductCreated(string Id, string Name, System.DateTime CreatedAt);
+
+            public class ProductHandler
+            {
+                public (Result<ProductView>, ProductCreated?) Handle(CreateProduct command)
+                    => (new ProductView("1", command.Name, command.Price),
+                        new ProductCreated("1", command.Name, System.DateTime.UtcNow));
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should use mediator.InvokeAsync<Result<ProductView>> instead of calling wrapper directly
+        Assert.Contains("mediator.InvokeAsync<Foundatio.Mediator.Result<ProductView>>", endpointSource);
+        // Should use ToHttpResult for proper status code mapping
+        Assert.Contains("ToHttpResult(result)", endpointSource);
+        // Should NOT serialize the raw Result wrapper
+        Assert.DoesNotContain("Results.Ok(result)", endpointSource);
+    }
+
+    [Fact]
+    public void TupleWithNonGenericResult_UsesInvokeAsyncAndToHttpResult()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "/api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record DeleteProduct(string ProductId);
+            public record ProductDeleted(string ProductId, System.DateTime DeletedAt);
+
+            public class ProductHandler
+            {
+                public (Result, ProductDeleted?) Handle(DeleteProduct command)
+                    => (Result.Success(), new ProductDeleted(command.ProductId, System.DateTime.UtcNow));
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should use mediator.InvokeAsync<Result> for non-generic Result
+        Assert.Contains("mediator.InvokeAsync<Foundatio.Mediator.Result>", endpointSource);
+        // Should use ToHttpResult for proper status code mapping (e.g., 204 NoContent)
+        Assert.Contains("ToHttpResult(result)", endpointSource);
+    }
+
+    [Fact]
+    public void TupleWithNonResult_UsesInvokeAsyncAndResultsOk()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "/api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record CreateItem(string Name);
+            public record ItemView(string Id, string Name);
+            public record ItemCreated(string Id, System.DateTime CreatedAt);
+
+            public class ItemHandler
+            {
+                public (ItemView, ItemCreated?) Handle(CreateItem command)
+                    => (new ItemView("1", command.Name), new ItemCreated("1", System.DateTime.UtcNow));
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should use mediator.InvokeAsync<ItemView> for non-Result tuple item
+        Assert.Contains("mediator.InvokeAsync<ItemView>", endpointSource);
+        // Should use Results.Ok for plain types (not Result)
+        Assert.Contains("Results.Ok(result)", endpointSource);
+        // The endpoint lambda should NOT call ToHttpResult (only the mapper class definition has it)
+        Assert.DoesNotContain("return MediatorEndpointResultMapper", endpointSource);
+    }
 }

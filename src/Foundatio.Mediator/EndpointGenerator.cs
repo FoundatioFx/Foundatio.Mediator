@@ -629,6 +629,17 @@ internal static class EndpointGenerator
             source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
+        else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 0)
+        {
+            // For tuple handlers, use mediator.InvokeAsync<T>() which handles cascading internally
+            // and returns only the first tuple item (the result value).
+            var firstItem = handler.ReturnType.TupleItems[0];
+            source.AppendLine($"var result = await mediator.InvokeAsync<{firstItem.TypeFullName}>({messageVar}, cancellationToken);");
+            if (firstItem.IsResult)
+                source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
+            else
+                source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
+        }
         else
         {
             source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");

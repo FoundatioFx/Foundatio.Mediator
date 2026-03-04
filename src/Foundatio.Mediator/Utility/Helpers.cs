@@ -26,6 +26,7 @@ internal static class Helpers
         source.AppendLine("// </auto-generated>");
         source.AppendLine();
         source.AppendLine("#nullable enable");
+        source.AppendLine("#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member");
         source.AppendLine();
     }
 

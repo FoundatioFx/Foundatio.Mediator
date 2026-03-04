@@ -170,7 +170,9 @@ public class EventStreamHandler(IMediator mediator)
 }
 ```
 
-Every notification published anywhere in the app is now pushed to connected clients over SSE — no bridging layer needed. You can subscribe to any type, including interfaces; any published notification assignable to the type parameter will be delivered. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+Every notification published anywhere in the app is now pushed to connected clients over SSE.
+
+You can use `SubscribeAsync` to subscribe to any type, including interfaces; any published messages assignable to the type parameter will be delivered. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
 
 ## Middleware
 

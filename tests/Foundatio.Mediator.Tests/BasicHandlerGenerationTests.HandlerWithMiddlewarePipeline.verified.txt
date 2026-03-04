@@ -10,6 +10,7 @@
 // </auto-generated>
 
 #nullable enable
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
 
 using Microsoft.Extensions.DependencyInjection;
@@ -61,6 +62,7 @@ public static class Tests_MediatorHandlers
 // </auto-generated>
 
 #nullable enable
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
 using System;
 
@@ -104,6 +106,7 @@ internal sealed class InterceptsLocationAttribute : global::System.Attribute
 // </auto-generated>
 
 #nullable enable
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -250,6 +253,7 @@ internal static class MediatorHelpers
 // </auto-generated>
 
 #nullable enable
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 
 using System;
 using System.Collections.Generic;

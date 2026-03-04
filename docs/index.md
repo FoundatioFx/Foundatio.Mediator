@@ -25,29 +25,33 @@ features:
     title: Convention-Based Discovery
     details: No interfaces or base classes required. Just name your classes and methods following simple conventions.
     link: /guide/handler-conventions
+  - icon: 🧩
+    title: Plain Handler Classes
+    details: Use regular classes or static methods. Sync or async, any signature, multiple handlers per class. No framework coupling.
+    link: /guide/handler-conventions
+  - icon: 🌐
+    title: Auto-Generated API Endpoints
+    details: Full Minimal API endpoints generated from your handlers — routes, methods, parameter binding, OpenAPI metadata, and authorization all inferred automatically. No boilerplate.
+    link: /guide/endpoints
+  - icon: 📡
+    title: Real-Time Streaming
+    details: Add Server-Sent Events to your API by returning IAsyncEnumerable<T> from a handler. Real-time push with zero infrastructure plumbing.
+    link: /guide/streaming-handlers
+  - icon: 🎯
+    title: Rich Result Types
+    details: Built-in Result<T> for success, validation errors, and failure states — auto-mapped to HTTP status codes on endpoints.
+    link: /guide/result-types
   - icon: 🔧
     title: Full Dependency Injection
     details: Built-in support for Microsoft.Extensions.DependencyInjection with constructor and method injection.
     link: /guide/dependency-injection
-  - icon: 🧩
-    title: Plain Handler Classes
-    details: Use regular classes or static methods. No framework coupling or special interfaces required.
-    link: /guide/handler-conventions
   - icon: 🎪
     title: Middleware Pipeline
     details: Before/After/Finally/Execute hooks with state passing and short-circuiting capabilities.
     link: /guide/middleware
-  - icon: 🌐
-    title: Auto-Generated Endpoints
-    details: Zero-boilerplate ASP.NET Core Minimal API endpoints generated directly from your handlers.
-    link: /guide/endpoints
-  - icon: 🎯
-    title: Rich Result Types
-    details: Built-in Result and Result<T> types for handling success, validation errors, and various failure states.
-    link: /guide/result-types
   - icon: 🔄
     title: Automatic Message Cascading
-    details: Return tuples to automatically publish additional messages in sequence.
+    details: Return tuples to automatically publish additional messages in sequence — ideal for event-driven workflows.
     link: /guide/cascading-messages
   - icon: 🔒
     title: Compile-Time Safety
@@ -83,4 +87,11 @@ services.AddMediator();
 // Usage
 var reply = await mediator.InvokeAsync<string>(new Ping("Hello"));
 // Output: "Pong: Hello"
+```
+
+Turn your message handlers into API endpoints automatically:
+
+```csharp
+app.MapMyAppEndpoints();
+// That's it — routes, methods, and parameter binding are all generated for you.
 ```

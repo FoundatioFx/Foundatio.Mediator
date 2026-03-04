@@ -1,6 +1,6 @@
 # Getting Started
 
-Get a working mediator in under a minute, then explore the features that make Foundatio Mediator unique.
+Build a completely message-oriented, loosely coupled app that's easy to test — with near-direct-call performance and zero boilerplate. Get up and running in under a minute.
 
 ## Quick Start
 
@@ -76,7 +76,7 @@ The first parameter is always the message. Everything else — services, `Cancel
 
 ## Generate API Endpoints
 
-Build a completely message-oriented, loosely coupled app — and skip all the boilerplate of manually mapping endpoints to handlers:
+Skip the boilerplate of manually mapping endpoints to message handlers:
 
 ```csharp
 // Enable endpoint generation (in any .cs file)

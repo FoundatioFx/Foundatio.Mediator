@@ -219,6 +219,42 @@ internal static class TypeExtensions
         var handlerExecutionInfoSymbol = compilation.GetTypeByMetadataName(WellKnownTypes.HandlerExecutionInfo);
         return SymbolEqualityComparer.Default.Equals(typeSymbol, handlerExecutionInfoSymbol);
     }
+
+    /// <summary>
+    /// Checks if the type is <c>IAsyncEnumerable&lt;T&gt;</c> and extracts the element type.
+    /// Unwraps Task/ValueTask wrappers first.
+    /// </summary>
+    internal static bool IsAsyncEnumerable(this ITypeSymbol typeSymbol, Compilation compilation, out ITypeSymbol? elementType)
+    {
+        var unwrapped = typeSymbol.UnwrapTask(compilation);
+        var asyncEnumerableSymbol = compilation.GetTypeByMetadataName(WellKnownTypes.IAsyncEnumerableOfT);
+        if (asyncEnumerableSymbol != null && unwrapped is INamedTypeSymbol namedType)
+        {
+            // Check if the type itself is IAsyncEnumerable<T>
+            if (namedType.IsGenericType
+                && SymbolEqualityComparer.Default.Equals(namedType.OriginalDefinition, asyncEnumerableSymbol)
+                && namedType.TypeArguments.Length > 0)
+            {
+                elementType = namedType.TypeArguments[0];
+                return true;
+            }
+
+            // Check if the type implements IAsyncEnumerable<T>
+            foreach (var iface in namedType.AllInterfaces)
+            {
+                if (iface.IsGenericType
+                    && SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, asyncEnumerableSymbol)
+                    && iface.TypeArguments.Length > 0)
+                {
+                    elementType = iface.TypeArguments[0];
+                    return true;
+                }
+            }
+        }
+
+        elementType = null;
+        return false;
+    }
 }
 
 internal static class WellKnownTypes
@@ -248,6 +284,8 @@ internal static class WellKnownTypes
     public const string HandlerAllowAnonymousAttribute = "Foundatio.Mediator.HandlerAllowAnonymousAttribute";
     public const string IHandler = "Foundatio.Mediator.IHandler";
     public const string GeneratedNamespace = "Foundatio.Mediator.Generated";
+    public const string IAsyncEnumerableOfT = "System.Collections.Generic.IAsyncEnumerable`1";
+    public const string EndpointStreamingEnum = "Foundatio.Mediator.EndpointStreaming";
 
     // Lifetime string constants (matching MediatorLifetime enum names)
     public const string LifetimeNone = "None";

@@ -1515,6 +1515,100 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Category group should be parented on `rootGroup` (relative behavior)
         Assert.Contains("rootGroup.MapGroup(\"health\")", endpointSource);
     }
+
+    [Fact]
+    public void StreamingEndpoint_DefaultFormat_ReturnsOkWithStream()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using System.Collections.Generic;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record SubscribeToEvents;
+
+            public class EventStreamHandler
+            {
+                public async IAsyncEnumerable<string> HandleAsync(SubscribeToEvents query) { yield return "event"; }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Default streaming endpoints should use GET
+        Assert.Contains("MapGet(", endpointSource);
+        // Should return Ok(stream) for default JSON array streaming
+        Assert.Contains("Results.Ok(stream)", endpointSource);
+    }
+
+    [Fact]
+    public void StreamingEndpoint_SseFormat_UsesTypedResultsServerSentEvents()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using System.Collections.Generic;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record SubscribeToEvents;
+
+            public class EventStreamHandler
+            {
+                [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents, SseEventType = "event")]
+                public async IAsyncEnumerable<string> HandleAsync(SubscribeToEvents query) { yield return "event"; }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // SSE streaming endpoints should use GET
+        Assert.Contains("MapGet(", endpointSource);
+        // Should use TypedResults.ServerSentEvents
+        Assert.Contains("TypedResults.ServerSentEvents(stream", endpointSource);
+        Assert.Contains("eventType: \"event\"", endpointSource);
+        // Should include SSE using
+        Assert.Contains("using System.Net.ServerSentEvents;", endpointSource);
+        // Should have SSE content type metadata
+        Assert.Contains("text/event-stream", endpointSource);
+    }
+
+    [Fact]
+    public void StreamingEndpoint_SseFormat_WithoutEventType()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using System.Collections.Generic;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetUpdates;
+
+            public class UpdateStreamHandler
+            {
+                [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
+                public async IAsyncEnumerable<string> HandleAsync(GetUpdates query) { yield return "update"; }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Should use TypedResults.ServerSentEvents without eventType
+        Assert.Contains("TypedResults.ServerSentEvents(stream)", endpointSource);
+        // Should NOT contain eventType parameter
+        Assert.DoesNotContain("eventType:", endpointSource);
+    }
 }
 
 /// <summary>

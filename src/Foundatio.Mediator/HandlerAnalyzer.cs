@@ -445,9 +445,29 @@ internal static class HandlerAnalyzer
         }
 
         // Extract endpoint info (method takes precedence over class)
+        // Extract streaming configuration
+        var streamingEnumValue = GetIntProperty(methodEndpointAttr, "Streaming") ??
+                                 GetIntProperty(classEndpointAttr, "Streaming") ?? 0;
+        var sseEventType = GetStringProperty(methodEndpointAttr, "SseEventType") ??
+                           GetStringProperty(classEndpointAttr, "SseEventType");
+        // 0 = Default, 1 = ServerSentEvents
+        string streamingFormat = streamingEnumValue == 1 ? "ServerSentEvents" : "Default";
+
+        // Detect IAsyncEnumerable return type for streaming
+        bool isAsyncEnumerable = returnType.IsAsyncEnumerable(compilation, out var asyncElementType);
+        string? streamingItemType = asyncElementType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        bool isStreaming = isAsyncEnumerable;
+
+        // If SSE is explicitly requested via attribute but return type isn't IAsyncEnumerable, clear it
+        if (!isAsyncEnumerable)
+        {
+            streamingFormat = "Default";
+            isStreaming = false;
+        }
+
         var httpMethod = GetStringProperty(methodEndpointAttr, "HttpMethod") ??
                          GetStringProperty(classEndpointAttr, "HttpMethod") ??
-                         InferHttpMethod(messageType.Name);
+                         (isStreaming ? "GET" : InferHttpMethod(messageType.Name));
 
         var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
                             GetStringProperty(classEndpointAttr, "Route");
@@ -592,6 +612,10 @@ internal static class HandlerAnalyzer
             CategoryFilters = new(categoryFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
+            IsStreaming = isStreaming,
+            StreamingFormat = streamingFormat,
+            StreamingItemType = streamingItemType,
+            SseEventType = sseEventType,
         };
     }
 
@@ -953,6 +977,18 @@ internal static class HandlerAnalyzer
         return null;
     }
 
+    private static int? GetIntProperty(AttributeData? attr, string propertyName)
+    {
+        if (attr == null)
+            return null;
+
+        var arg = attr.NamedArguments.FirstOrDefault(na => na.Key == propertyName);
+        if (arg.Value.Value is int value)
+            return value;
+
+        return null;
+    }
+
     private static string[]? GetStringArrayProperty(AttributeData? attr, string propertyName)
     {
         if (attr == null)
@@ -1036,6 +1072,12 @@ internal static class HandlerAnalyzer
         // Check for void
         if (unwrapped.IsVoid(compilation) || unwrapped.IsTask(compilation))
             return null;
+
+        // Check for IAsyncEnumerable<T> — extract element type T
+        if (unwrapped.IsAsyncEnumerable(compilation, out var asyncElementType) && asyncElementType != null)
+        {
+            return asyncElementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        }
 
         // Check for tuple (cascading messages) - use the first item as the result type
         if (unwrapped is INamedTypeSymbol { IsTupleType: true } tupleType && tupleType.TupleElements.Length > 0)

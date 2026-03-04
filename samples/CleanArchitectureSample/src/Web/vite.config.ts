@@ -62,11 +62,10 @@ export default defineConfig({
                 target,
                 secure: false
             },
-            // Proxy SignalR hub (WebSocket support)
-            '^/hubs': {
+            // Proxy SSE event stream
+            '^/events/stream': {
                 target,
-                secure: false,
-                ws: true
+                secure: false
             }
         }
     }

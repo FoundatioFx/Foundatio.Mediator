@@ -593,3 +593,103 @@ public static async IAsyncEnumerable<T> Handle(
 ```
 
 Streaming handlers are powerful for processing large datasets, real-time data feeds, and scenarios where you need to return results incrementally. They provide excellent memory efficiency and allow for responsive, scalable applications.
+
+## Streaming Endpoints
+
+Handlers that return `IAsyncEnumerable<T>` can automatically generate streaming HTTP endpoints. The source generator detects `IAsyncEnumerable<T>` return types and generates the appropriate endpoint code.
+
+### Default Streaming (JSON Array)
+
+By default, when a handler returns `IAsyncEnumerable<T>`, ASP.NET Core serializes the stream as a JSON array. The endpoint is automatically mapped as `GET`:
+
+```csharp
+public record GetProductStream(string? CategoryId);
+
+public class ProductStreamHandler
+{
+    public async IAsyncEnumerable<Product> HandleAsync(
+        GetProductStream query,
+        IProductRepository repository,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var product in repository.GetProductsAsync(query.CategoryId, cancellationToken))
+        {
+            yield return product;
+        }
+    }
+}
+```
+
+The generated endpoint returns the `IAsyncEnumerable<T>` directly — ASP.NET Core streams items as a JSON array without buffering the entire response.
+
+### Server-Sent Events (SSE)
+
+For real-time push scenarios, set `Streaming = EndpointStreaming.ServerSentEvents` to use ASP.NET Core's built-in `TypedResults.ServerSentEvents()` (requires .NET 10+):
+
+```csharp
+public record SubscribeToEvents;
+
+[Handler]
+public class EventStreamHandler(ClientEventBroadcaster broadcaster)
+{
+    [HandlerEndpoint(
+        Route = "/events/stream",
+        Streaming = EndpointStreaming.ServerSentEvents,
+        SseEventType = "event",
+        Summary = "Subscribe to real-time events via SSE")]
+    [HandlerAllowAnonymous]
+    public IAsyncEnumerable<ClientEvent> Handle(
+        SubscribeToEvents message,
+        CancellationToken cancellationToken)
+    {
+        return broadcaster.SubscribeAsync(cancellationToken);
+    }
+}
+```
+
+The source generator produces:
+
+```csharp
+endpoints.MapGet("/events/stream", (...) =>
+{
+    var stream = ...Handler.Handle(mediator, message, cancellationToken);
+    return TypedResults.ServerSentEvents(stream, eventType: "event");
+})
+    .Produces(200, contentType: "text/event-stream");
+```
+
+### SSE Configuration Options
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Streaming` | `EndpointStreaming` | `Default` (JSON array) or `ServerSentEvents` (SSE) |
+| `SseEventType` | `string?` | Optional SSE event type passed to `TypedResults.ServerSentEvents()` |
+
+### Client-Side Consumption
+
+SSE endpoints are consumed using the browser's built-in `EventSource` API:
+
+```typescript
+const source = new EventSource('/events/stream');
+
+source.addEventListener('event', (e) => {
+    const data = JSON.parse(e.data);
+    console.log('Received:', data);
+});
+
+source.onerror = () => {
+    console.warn('SSE connection error, auto-reconnecting...');
+};
+```
+
+`EventSource` automatically handles reconnection — no library like SignalR is needed.
+
+### When to Use SSE vs Default Streaming
+
+| Scenario                 | Recommended          |
+| ------------------------ | -------------------- |
+| One-time data export     | Default (JSON array) |
+| Database query results   | Default (JSON array) |
+| Real-time event feed     | SSE                  |
+| Live notifications       | SSE                  |
+| Progress updates         | SSE                  |

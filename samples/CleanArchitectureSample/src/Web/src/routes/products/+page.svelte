@@ -5,7 +5,7 @@
   import { ProductList } from '$lib/components/products';
   import { Button, Spinner, Alert } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
-  import { signalr } from '$lib/stores/signalr.svelte';
+  import { eventStream } from '$lib/stores/eventstream.svelte';
   import { auth } from '$lib/stores/auth.svelte';
   import type { Product } from '$lib/types/product';
 
@@ -83,17 +83,17 @@
     // the layout delays mounting children (e.g. auth check)
     loadProducts();
 
-    const unsubCreated = signalr.onProductCreated((event) => {
+    const unsubCreated = eventStream.onProductCreated((event) => {
       toast.success('New product created');
       refresh().then(() => highlightItem(event.productId));
     });
 
-    const unsubUpdated = signalr.onProductUpdated((event) => {
+    const unsubUpdated = eventStream.onProductUpdated((event) => {
       toast.info('Product updated');
       refresh().then(() => highlightItem(event.productId));
     });
 
-    const unsubDeleted = signalr.onProductDeleted((event) => {
+    const unsubDeleted = eventStream.onProductDeleted((event) => {
       toast.info('Product deleted');
       products = products.filter((p) => p.id !== event.productId);
     });

@@ -1,8 +1,7 @@
 using Common.Module.Events;
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
-using Api.Hubs;
+using Api.Services;
 
 namespace Api.Handlers;
 
@@ -10,25 +9,24 @@ namespace Api.Handlers;
 /// Handler that listens for all events implementing IDispatchToClient.
 /// This handler is in the Api project but can receive events published from any module
 /// (e.g., OrderCreated from Orders.Module) thanks to runtime DI handler discovery.
-/// Pushes events to connected clients via SignalR.
+/// Pushes events to connected SSE clients via the ClientEventBroadcaster.
 /// </summary>
 [Handler]
 public class ClientDispatchHandler(
-    IHubContext<EventHub> hubContext,
+    ClientEventBroadcaster broadcaster,
     ILogger<ClientDispatchHandler> logger)
 {
-    public async Task HandleAsync(IDispatchToClient message, CancellationToken cancellationToken)
+    public Task HandleAsync(IDispatchToClient message, CancellationToken cancellationToken)
     {
         var eventType = message.GetType().Name;
 
         logger.LogInformation(
-            "Dispatching {EventType} to connected clients via SignalR",
+            "Dispatching {EventType} to connected clients via SSE",
             eventType);
 
-        // Send the event to all connected clients
-        await hubContext.Clients.All.SendAsync(
-            eventType,
-            message,
-            cancellationToken);
+        // Broadcast the event to all connected SSE subscribers
+        broadcaster.Broadcast(new ClientEvent(eventType, message));
+
+        return Task.CompletedTask;
     }
 }

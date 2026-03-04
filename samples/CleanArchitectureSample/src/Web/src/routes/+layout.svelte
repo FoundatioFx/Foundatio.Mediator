@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { Header, Sidebar, ToastContainer } from '$lib/components/layout';
-  import { signalr } from '$lib/stores/signalr.svelte';
+  import { eventStream } from '$lib/stores/eventstream.svelte';
   import { auth } from '$lib/stores/auth.svelte';
   import { onMount } from 'svelte';
 
@@ -9,8 +9,8 @@
 
   onMount(() => {
     auth.check();
-    signalr.start();
-    return () => signalr.stop();
+    eventStream.start();
+    return () => eventStream.stop();
   });
 </script>
 

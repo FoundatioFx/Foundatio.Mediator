@@ -89,7 +89,7 @@ html {
   }
 }
 
-/* Row highlight animation for real-time SignalR updates */
+/* Row highlight animation for real-time SSE updates */
 @keyframes row-flash {
   from {
     background-color: rgb(254 249 195);

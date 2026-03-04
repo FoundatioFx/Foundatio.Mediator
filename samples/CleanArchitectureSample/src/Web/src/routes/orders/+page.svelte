@@ -6,7 +6,7 @@
   import { AuthGuard } from '$lib/components/layout';
   import { Button, Spinner, Alert } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
-  import { signalr } from '$lib/stores/signalr.svelte';
+  import { eventStream } from '$lib/stores/eventstream.svelte';
   import type { Order } from '$lib/types/order';
 
   let orders = $state<Order[]>([]);
@@ -83,17 +83,17 @@
     // the layout delays mounting children (e.g. auth check)
     loadOrders();
 
-    const unsubCreated = signalr.onOrderCreated((event) => {
+    const unsubCreated = eventStream.onOrderCreated((event) => {
       toast.success('New order created');
       refresh().then(() => highlightItem(event.orderId));
     });
 
-    const unsubUpdated = signalr.onOrderUpdated((event) => {
+    const unsubUpdated = eventStream.onOrderUpdated((event) => {
       toast.info('Order updated');
       refresh().then(() => highlightItem(event.orderId));
     });
 
-    const unsubDeleted = signalr.onOrderDeleted((event) => {
+    const unsubDeleted = eventStream.onOrderDeleted((event) => {
       toast.info('Order deleted');
       orders = orders.filter((o) => o.id !== event.orderId);
     });

@@ -1,5 +1,3 @@
-import * as signalR from '@microsoft/signalr';
-
 // Event types that the server can send
 export type OrderCreatedEvent = {
   orderId: string;
@@ -40,80 +38,102 @@ export type ProductDeletedEvent = {
   deletedAt: string;
 };
 
+export type ClientEvent = {
+  eventType: string;
+  data: Record<string, unknown>;
+};
+
 type EventCallback<T> = (event: T) => void;
 
-class SignalRService {
-  private connection: signalR.HubConnection | null = null;
+/**
+ * SSE-based event service. Connects to the server's /events/stream endpoint
+ * using the EventSource API and dispatches domain events to registered callbacks.
+ * Replaces the previous SignalR-based implementation.
+ */
+class EventStreamService {
+  private eventSource: EventSource | null = null;
   private orderCreatedCallbacks: EventCallback<OrderCreatedEvent>[] = [];
   private orderUpdatedCallbacks: EventCallback<OrderUpdatedEvent>[] = [];
   private orderDeletedCallbacks: EventCallback<OrderDeletedEvent>[] = [];
   private productCreatedCallbacks: EventCallback<ProductCreatedEvent>[] = [];
   private productUpdatedCallbacks: EventCallback<ProductUpdatedEvent>[] = [];
   private productDeletedCallbacks: EventCallback<ProductDeletedEvent>[] = [];
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   isConnected = $state(false);
 
-  async start() {
-    if (this.connection) return;
+  start() {
+    if (this.eventSource) return;
+    this.connect();
+  }
 
-    this.connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/events')
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Information)
-      .build();
+  private connect() {
+    this.eventSource = new EventSource('/events/stream');
 
-    // Register event handlers
-    this.connection.on('OrderCreated', (event: OrderCreatedEvent) => {
-      console.log('OrderCreated event received:', event);
-      this.orderCreatedCallbacks.forEach((cb) => cb(event));
+    this.eventSource.addEventListener('event', (e: MessageEvent) => {
+      try {
+        const clientEvent: ClientEvent = JSON.parse(e.data);
+        this.dispatch(clientEvent);
+      } catch (err) {
+        console.error('Failed to parse SSE event:', err);
+      }
     });
 
-    this.connection.on('OrderUpdated', (event: OrderUpdatedEvent) => {
-      console.log('OrderUpdated event received:', event);
-      this.orderUpdatedCallbacks.forEach((cb) => cb(event));
-    });
+    this.eventSource.onopen = () => {
+      this.isConnected = true;
+      console.log('SSE connected');
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+    };
 
-    this.connection.on('OrderDeleted', (event: OrderDeletedEvent) => {
-      console.log('OrderDeleted event received:', event);
-      this.orderDeletedCallbacks.forEach((cb) => cb(event));
-    });
-
-    this.connection.on('ProductCreated', (event: ProductCreatedEvent) => {
-      console.log('ProductCreated event received:', event);
-      this.productCreatedCallbacks.forEach((cb) => cb(event));
-    });
-
-    this.connection.on('ProductUpdated', (event: ProductUpdatedEvent) => {
-      console.log('ProductUpdated event received:', event);
-      this.productUpdatedCallbacks.forEach((cb) => cb(event));
-    });
-
-    this.connection.on('ProductDeleted', (event: ProductDeletedEvent) => {
-      console.log('ProductDeleted event received:', event);
-      this.productDeletedCallbacks.forEach((cb) => cb(event));
-    });
-
-    this.connection.onclose(() => {
+    this.eventSource.onerror = () => {
       this.isConnected = false;
-    });
+      console.warn('SSE connection error, will auto-reconnect...');
+      // EventSource automatically reconnects, but if it closes we handle it
+      if (this.eventSource?.readyState === EventSource.CLOSED) {
+        this.eventSource = null;
+        // Reconnect after a delay
+        this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+      }
+    };
+  }
 
-    this.connection.onreconnected(() => {
-      this.isConnected = true;
-    });
+  private dispatch(clientEvent: ClientEvent) {
+    const { eventType, data } = clientEvent;
+    console.log(`${eventType} event received:`, data);
 
-    try {
-      await this.connection.start();
-      this.isConnected = true;
-      console.log('SignalR connected');
-    } catch (err) {
-      console.error('SignalR connection error:', err);
+    switch (eventType) {
+      case 'OrderCreated':
+        this.orderCreatedCallbacks.forEach((cb) => cb(data as unknown as OrderCreatedEvent));
+        break;
+      case 'OrderUpdated':
+        this.orderUpdatedCallbacks.forEach((cb) => cb(data as unknown as OrderUpdatedEvent));
+        break;
+      case 'OrderDeleted':
+        this.orderDeletedCallbacks.forEach((cb) => cb(data as unknown as OrderDeletedEvent));
+        break;
+      case 'ProductCreated':
+        this.productCreatedCallbacks.forEach((cb) => cb(data as unknown as ProductCreatedEvent));
+        break;
+      case 'ProductUpdated':
+        this.productUpdatedCallbacks.forEach((cb) => cb(data as unknown as ProductUpdatedEvent));
+        break;
+      case 'ProductDeleted':
+        this.productDeletedCallbacks.forEach((cb) => cb(data as unknown as ProductDeletedEvent));
+        break;
     }
   }
 
-  async stop() {
-    if (this.connection) {
-      await this.connection.stop();
-      this.connection = null;
+  stop() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
       this.isConnected = false;
     }
   }
@@ -163,4 +183,4 @@ class SignalRService {
   }
 }
 
-export const signalr = new SignalRService();
+export const eventStream = new EventStreamService();

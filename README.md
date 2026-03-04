@@ -5,21 +5,21 @@
 [![feedz.io](https://img.shields.io/endpoint?url=https%3A%2F%2Ff.feedz.io%2Ffoundatio%2Ffoundatio%2Fshield%2FFoundatio.Mediator%2Flatest)](https://f.feedz.io/foundatio/foundatio/packages/Foundatio.Mediator/latest/download)
 [![Discord](https://img.shields.io/discord/715744504891703319)](https://discord.gg/6HxgFCx)
 
-Blazingly fast, convention-based C# mediator powered by source generators and interceptors.
+Build completely message-oriented, loosely coupled .NET apps that are easy to test — with near-direct-call performance and zero boilerplate. Powered by source generators and interceptors.
 
 ## ✨ Why Choose Foundatio Mediator?
 
-- 🚀 **Near-direct call performance** - Zero runtime reflection, minimal overhead ([see benchmarks](https://mediator.foundatio.dev/guide/performance.html))
-- ⚡ **Convention-based** - No interfaces or base classes required
-- 🔧 **Full DI support** - Microsoft.Extensions.DependencyInjection integration
-- 🧩 **Plain handler classes** - Drop in static or instance methods anywhere
-- 🎪 **Middleware pipeline** - Before/After/Finally/Execute hooks with state passing
-- 🎯 **Built-in Result\<T>** - Rich status handling without exceptions
-- 🔄 **Tuple returns** - Automatic cascading messages
-- 🌐 **Auto-generated endpoints** - Minimal API endpoints from handlers with zero boilerplate
-- 🔒 **Compile-time safety** - Early validation and diagnostics
-- 🧪 **Easy testing** - Plain objects, no framework coupling
-- 🐛 **Superior debugging** - Short, simple call stacks
+- 🚀 **Near-direct call performance** — zero runtime reflection, minimal overhead ([benchmarks](https://mediator.foundatio.dev/guide/performance.html))
+- ⚡ **Convention-based** — no interfaces or base classes required
+- 🌐 **Auto-generated endpoints** — Minimal API endpoints from handlers, skip the mapping boilerplate
+- 🎯 **Built-in Result\<T>** — rich status handling without exceptions, auto-mapped to HTTP status codes
+- 🎪 **Middleware pipeline** — Before/After/Finally/Execute hooks with state passing
+- 🔄 **Cascading messages** — tuple returns auto-publish events
+- 🧩 **Plain handler classes** — static or instance methods, any signature
+- 🔧 **Full DI support** — Microsoft.Extensions.DependencyInjection integration
+- 🔒 **Compile-time safety** — early validation and diagnostics
+- 🧪 **Easy testing** — plain objects, no framework coupling
+- 🐛 **Superior debugging** — short, simple call stacks
 
 ### Why Convention-Based?
 
@@ -55,9 +55,7 @@ public static class MathHandler
 
 > **Prefer explicit interfaces?** Use `IHandler` marker interface or `[Handler]` attributes instead. See [Handler Conventions](https://mediator.foundatio.dev/guide/handler-conventions.html#explicit-handler-declaration).
 
-## 🚀 Complete Example
-
-### 1. Install & Register
+## 🚀 Quick Start
 
 ```bash
 dotnet add package Foundatio.Mediator
@@ -65,10 +63,14 @@ dotnet add package Foundatio.Mediator
 
 ```csharp
 // Program.cs
-services.AddMediator();
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddMediator();
+var app = builder.Build();
+app.MapMyAppEndpoints(); // generated — see "Auto-Generate API Endpoints" below
+app.Run();
 ```
 
-### 2. Create Messages & Handlers
+That's it for setup. Now define messages and handlers:
 
 ```csharp
 // Messages (records, classes, anything)
@@ -134,55 +136,36 @@ var user = await mediator.InvokeAsync<User>(new CreateUser("John", "john@example
 await mediator.PublishAsync(new UserCreated(user.Id, user.Email));
 ```
 
-### 4. Auto-Generate API Endpoints (Optional)
+### 4. Auto-Generate API Endpoints
 
-Foundatio Mediator can automatically generate ASP.NET Core Minimal API endpoints from your handlers:
+Skip the boilerplate of manually mapping endpoints to message handlers:
 
 ```csharp
-// Add category to group endpoints
-[HandlerCategory("Products", RoutePrefix = "/api/products")]
+// Enable endpoint generation (in any .cs file)
+[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+```
+
+```csharp
+[HandlerCategory("Products", RoutePrefix = "products")]
 public class ProductHandler
 {
-    /// <summary>
-    /// Creates a new product in the catalog.
-    /// </summary>
     public Task<Result<Product>> HandleAsync(CreateProduct command) { /* ... */ }
-
-    /// <summary>
-    /// Gets a product by ID.
-    /// </summary>
     public Result<Product> Handle(GetProduct query) { /* ... */ }
 }
-
-// Program.cs - map the generated endpoints
-app.MapProductsEndpoints();
 ```
 
-This automatically generates:
-- `POST /api/products` → `CreateProduct` handler
-- `GET /api/products/{productId}` → `GetProduct` handler
-- HTTP method inferred from message name (`Create*` → POST, `Get*` → GET, etc.)
-- `Result<T>` status mapped to HTTP status codes
-- OpenAPI metadata from XML doc comments
+This generates:
 
-Configure with an assembly attribute:
+- `POST /api/products` → `ProductHandler.HandleAsync(CreateProduct)`
+- `GET /api/products/{productId}` → `ProductHandler.Handle(GetProduct)`
+
+HTTP methods, routes, and parameter binding are inferred from message names and properties. `Result<T>` maps to the correct HTTP status codes automatically. Pass `logEndpoints: true` to see all mapped routes at startup:
+
 ```csharp
-[assembly: MediatorConfiguration(
-    EndpointDiscovery = EndpointDiscovery.All,
-    AuthorizationRequired = true,
-    ProjectName = "Products"
-)]
+app.MapProductsEndpoints(logEndpoints: true);
 ```
 
-Enable XML documentation for endpoint summaries:
-
-```xml
-<PropertyGroup>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-</PropertyGroup>
-```
-
-See [Endpoints Guide](https://mediator.foundatio.dev/guide/endpoints.html) for full documentation.
+See [Endpoints Guide](https://mediator.foundatio.dev/guide/endpoints.html) for route customization, OpenAPI metadata, authorization, and more.
 
 ## 📚 Learn More
 

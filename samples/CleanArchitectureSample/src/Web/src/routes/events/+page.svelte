@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { signalr } from '$lib/stores/signalr.svelte';
+  import { eventStream } from '$lib/stores/eventstream.svelte';
   import { Button, Badge } from '$lib/components/ui';
 
   type EventEntry = {
@@ -52,22 +52,22 @@
 
   onMount(() => {
     const unsubs = [
-      signalr.onOrderCreated((e) =>
+      eventStream.onOrderCreated((e) =>
         addEvent('OrderCreated', 'order', 'created', { orderId: e.orderId, customerId: e.customerId, amount: e.amount })
       ),
-      signalr.onOrderUpdated((e) =>
+      eventStream.onOrderUpdated((e) =>
         addEvent('OrderUpdated', 'order', 'updated', { orderId: e.orderId, amount: e.amount, status: e.status })
       ),
-      signalr.onOrderDeleted((e) =>
+      eventStream.onOrderDeleted((e) =>
         addEvent('OrderDeleted', 'order', 'deleted', { orderId: e.orderId })
       ),
-      signalr.onProductCreated((e) =>
+      eventStream.onProductCreated((e) =>
         addEvent('ProductCreated', 'product', 'created', { productId: e.productId, name: e.name, price: e.price })
       ),
-      signalr.onProductUpdated((e) =>
+      eventStream.onProductUpdated((e) =>
         addEvent('ProductUpdated', 'product', 'updated', { productId: e.productId, name: e.name, price: e.price, status: e.status })
       ),
-      signalr.onProductDeleted((e) =>
+      eventStream.onProductDeleted((e) =>
         addEvent('ProductDeleted', 'product', 'deleted', { productId: e.productId })
       ),
     ];
@@ -85,20 +85,20 @@
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Live Events</h1>
       <p class="mt-1 text-sm text-gray-500">
-        Real-time SignalR events from the server
+        Real-time SSE events from the server
       </p>
     </div>
     <div class="flex items-center gap-3">
       <div class="flex items-center gap-2">
         <span class="relative flex h-3 w-3">
-          {#if signalr.isConnected}
+          {#if eventStream.isConnected}
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
           {:else}
             <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
           {/if}
         </span>
-        <span class="text-sm text-gray-600">{signalr.isConnected ? 'Connected' : 'Disconnected'}</span>
+        <span class="text-sm text-gray-600">{eventStream.isConnected ? 'Connected' : 'Disconnected'}</span>
       </div>
       <span class="text-sm text-gray-400">|</span>
       <span class="text-sm text-gray-500">{events.length} event{events.length !== 1 ? 's' : ''}</span>

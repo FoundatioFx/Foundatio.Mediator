@@ -79,4 +79,20 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// </code>
     /// </example>
     public int[]? ProducesStatusCodes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the streaming format for handlers that return <c>IAsyncEnumerable&lt;T&gt;</c>.
+    /// When set to <see cref="EndpointStreaming.ServerSentEvents"/>, the generated endpoint wraps
+    /// the result with <c>TypedResults.ServerSentEvents()</c> for real-time server-to-client push.
+    /// Defaults to <see cref="EndpointStreaming.Default"/> (JSON array streaming).
+    /// </summary>
+    public EndpointStreaming Streaming { get; set; } = EndpointStreaming.Default;
+
+    /// <summary>
+    /// Gets or sets the SSE event type name used when <see cref="Streaming"/> is
+    /// <see cref="EndpointStreaming.ServerSentEvents"/>. Clients receive this as the
+    /// <c>event:</c> field in the SSE stream. When null, no explicit event type is set and
+    /// the browser <c>EventSource</c> API fires the default <c>"message"</c> event.
+    /// </summary>
+    public string? SseEventType { get; set; }
 }

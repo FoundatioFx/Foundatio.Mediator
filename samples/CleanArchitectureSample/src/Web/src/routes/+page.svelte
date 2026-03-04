@@ -3,7 +3,7 @@
   import { reportsApi } from '$lib/api';
   import { DashboardStats, RecentOrdersWidget, TopProductsWidget } from '$lib/components/reports';
   import { Button, Spinner, Alert } from '$lib/components/ui';
-  import { signalr } from '$lib/stores/signalr.svelte';
+  import { eventStream } from '$lib/stores/eventstream.svelte';
   import type { DashboardReport } from '$lib/types/report';
 
   let dashboard = $state<DashboardReport | null>(null);
@@ -43,12 +43,12 @@
 
     // Refresh dashboard stats when any entity changes
     const unsubs = [
-      signalr.onOrderCreated(() => refresh()),
-      signalr.onOrderUpdated(() => refresh()),
-      signalr.onOrderDeleted(() => refresh()),
-      signalr.onProductCreated(() => refresh()),
-      signalr.onProductUpdated(() => refresh()),
-      signalr.onProductDeleted(() => refresh())
+      eventStream.onOrderCreated(() => refresh()),
+      eventStream.onOrderUpdated(() => refresh()),
+      eventStream.onOrderDeleted(() => refresh()),
+      eventStream.onProductCreated(() => refresh()),
+      eventStream.onProductUpdated(() => refresh()),
+      eventStream.onProductDeleted(() => refresh())
     ];
 
     return () => unsubs.forEach((unsub) => unsub());

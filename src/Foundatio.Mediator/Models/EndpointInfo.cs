@@ -142,6 +142,27 @@ internal readonly record struct EndpointInfo
     /// Set when the <c>[HandlerEndpoint(Route = "/...")]</c> starts with <c>/</c>.
     /// </summary>
     public bool RouteBypassPrefixes { get; init; }
+
+    /// <summary>
+    /// Whether this endpoint returns an <c>IAsyncEnumerable&lt;T&gt;</c> and should be treated as streaming.
+    /// </summary>
+    public bool IsStreaming { get; init; }
+
+    /// <summary>
+    /// The streaming format: "Default" (JSON array) or "ServerSentEvents" (SSE via TypedResults.ServerSentEvents).
+    /// </summary>
+    public string? StreamingFormat { get; init; }
+
+    /// <summary>
+    /// The fully qualified element type name for streaming handlers (<c>T</c> in <c>IAsyncEnumerable&lt;T&gt;</c>).
+    /// </summary>
+    public string? StreamingItemType { get; init; }
+
+    /// <summary>
+    /// The SSE event type name. When non-null, passed as the <c>eventType</c> parameter
+    /// to <c>TypedResults.ServerSentEvents()</c>.
+    /// </summary>
+    public string? SseEventType { get; init; }
 }
 
 /// <summary>

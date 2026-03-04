@@ -12,13 +12,12 @@ using Reports.Module;
 using Reports.Module.Messages;
 using Scalar.AspNetCore;
 using Api.Handlers;
-using Api.Hubs;
+using Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddOpenApi();
-builder.Services.AddSignalR();
 
 // Simple cookie authentication for the sample
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -42,6 +41,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
     });
 builder.Services.AddAuthorization();
+
+// Add ClientEventBroadcaster singleton for SSE event streaming
+builder.Services.AddSingleton<ClientEventBroadcaster>();
 
 // Add Foundatio.Mediator with assemblies from all modules
 builder.Services.AddMediator(c =>
@@ -125,9 +127,6 @@ app.MapGet("/api/auth/me", (HttpContext http) =>
     return Results.Ok(new UserInfo(displayName, username, role));
 }).AllowAnonymous();
 
-// Map SignalR hub for real-time events
-app.MapHub<EventHub>("/hubs/events");
-
 // Map module endpoints - each module exposes its own API endpoints
 // All generated endpoints now require authentication via [assembly: MediatorConfiguration(AuthorizationRequired = true)]
 // Handlers marked with [AllowAnonymous] (e.g., HealthHandler) opt out of auth
@@ -135,6 +134,7 @@ app.MapCommonEndpoints();
 app.MapOrdersEndpoints();
 app.MapProductsEndpoints();
 app.MapReportsEndpoints();
+app.MapApiEndpoints();
 
 // SPA fallback - serves index.html for client-side routing
 app.MapFallbackToFile("/index.html");

@@ -209,12 +209,20 @@ internal static class EndpointGenerator
             ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
             : DeriveProjectNameFromAssembly(compilationInfo.AssemblyName);
 
+        // Check if any handler uses SSE streaming
+        bool hasAnySseEndpoints = handlers.Any(h => h.Endpoint is { IsStreaming: true, StreamingFormat: "ServerSentEvents" });
+
         source.AppendLine("""
             using Microsoft.AspNetCore.Builder;
             using Microsoft.AspNetCore.Http;
             using Microsoft.AspNetCore.Routing;
             using System.Diagnostics.CodeAnalysis;
             """);
+
+        if (hasAnySseEndpoints)
+        {
+            source.AppendLine("using System.Net.ServerSentEvents;");
+        }
 
         if (compilationInfo.HasLoggerFactory)
         {
@@ -646,7 +654,13 @@ internal static class EndpointGenerator
         }
 
         // Add Produces<T> metadata from return type
-        if (!string.IsNullOrEmpty(endpoint.ProducesType))
+        if (endpoint.IsStreaming && endpoint.StreamingFormat == "ServerSentEvents")
+        {
+            // SSE endpoints produce text/event-stream; TypedResults.ServerSentEvents()
+            // handles the content type header at runtime, but we add metadata for OpenAPI.
+            source.AppendLine(".Produces(200, contentType: \"text/event-stream\")");
+        }
+        else if (!string.IsNullOrEmpty(endpoint.ProducesType))
         {
             var statusCode = httpMethod == "POST" ? "201" : "200";
             source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
@@ -856,6 +870,25 @@ internal static class EndpointGenerator
                 source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
             else
                 source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
+        }
+        else if (handler.Endpoint is { IsStreaming: true })
+        {
+            // Streaming endpoint — IAsyncEnumerable<T>
+            var endpoint = handler.Endpoint.Value;
+            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            if (endpoint.StreamingFormat == "ServerSentEvents")
+            {
+                // Wrap in TypedResults.ServerSentEvents() for SSE format
+                var eventTypeArg = !string.IsNullOrEmpty(endpoint.SseEventType)
+                    ? $", eventType: \"{endpoint.SseEventType}\""
+                    : "";
+                source.AppendLine($"return Microsoft.AspNetCore.Http.TypedResults.ServerSentEvents(stream{eventTypeArg});");
+            }
+            else
+            {
+                // Default: return IAsyncEnumerable directly — ASP.NET serializes as JSON array
+                source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(stream);");
+            }
         }
         else
         {

@@ -87,6 +87,14 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsRecord { get; init; }
     /// <summary>
+    /// Indicates if the type is an <c>IAsyncEnumerable&lt;T&gt;</c>, used for streaming endpoints.
+    /// </summary>
+    public bool IsAsyncEnumerable { get; init; }
+    /// <summary>
+    /// The fully qualified name of the element type T when <see cref="IsAsyncEnumerable"/> is true.
+    /// </summary>
+    public string? AsyncEnumerableItemFullName { get; init; }
+    /// <summary>
     /// Contains information about the items in a tuple type, if applicable.
     /// </summary>
     public EquatableArray<TupleItemInfo> TupleItems { get; init; }
@@ -115,7 +123,9 @@ internal readonly record struct TypeSymbolInfo
             IsTypeParameter = false,
             TupleItems = EquatableArray<TupleItemInfo>.Empty,
             IsGeneric = false,
-            IsRecord = false
+            IsRecord = false,
+            IsAsyncEnumerable = false,
+            AsyncEnumerableItemFullName = null
         };
     }
 
@@ -171,6 +181,8 @@ internal readonly record struct TypeSymbolInfo
         bool isGeneric = typeSymbol is INamedTypeSymbol { IsGenericType: true } nts && !nts.IsUnboundGenericType;
         bool isValueTask = typeSymbol.IsValueTask(compilation);
         bool isRecord = unwrappedNullableType is INamedTypeSymbol { IsRecord: true };
+        bool isAsyncEnumerable = typeSymbol.IsAsyncEnumerable(compilation, out var asyncEnumerableElementType);
+        string? asyncEnumerableItemFullName = asyncEnumerableElementType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         // Get the fully qualified metadata name for reliable type matching
         var qualifiedName = GetQualifiedName(unwrappedNullableType);
@@ -197,7 +209,9 @@ internal readonly record struct TypeSymbolInfo
             IsTypeParameter = isTypeParameter,
             TupleItems = tupleItems,
             IsGeneric = isGeneric,
-            IsRecord = isRecord
+            IsRecord = isRecord,
+            IsAsyncEnumerable = isAsyncEnumerable,
+            AsyncEnumerableItemFullName = asyncEnumerableItemFullName
         };
     }
 

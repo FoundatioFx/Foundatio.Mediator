@@ -153,6 +153,29 @@ public sealed class Result : IResult
     };
 
     /// <summary>
+    /// Creates an invalid result with a validation error message.
+    /// </summary>
+    /// <param name="errorMessage">The error message.</param>
+    /// <returns>An invalid result.</returns>
+    public static Result Invalid(string errorMessage) => new()
+    {
+        Status = ResultStatus.Invalid,
+        ValidationErrors = [ValidationError.Create(errorMessage)]
+    };
+
+    /// <summary>
+    /// Creates an invalid result with a validation error for a specific field.
+    /// </summary>
+    /// <param name="identifier">The field or property identifier that caused the validation error.</param>
+    /// <param name="errorMessage">The error message.</param>
+    /// <returns>An invalid result.</returns>
+    public static Result Invalid(string identifier, string errorMessage) => new()
+    {
+        Status = ResultStatus.Invalid,
+        ValidationErrors = [ValidationError.Create(identifier, errorMessage)]
+    };
+
+    /// <summary>
     /// Creates an invalid result with multiple validation errors.
     /// </summary>
     /// <param name="validationErrors">The validation errors.</param>

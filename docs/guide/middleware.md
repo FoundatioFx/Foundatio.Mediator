@@ -91,6 +91,8 @@ public class TracingMiddleware
 
 > **Note:** The `Exception?` parameter is only available in `After` and `Finally` methods since exceptions can only occur during or after handler execution.
 
+> **Note:** If a middleware's `Before` method is skipped due to short-circuiting by an earlier middleware, that middleware's `Finally` method will not be called. Only middleware whose `Before` has executed will have `Finally` invoked.
+
 ## Lifecycle Methods
 
 ### Before

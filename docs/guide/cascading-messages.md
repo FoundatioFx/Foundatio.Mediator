@@ -95,6 +95,8 @@ public static (Order, OrderCreated, CustomerUpdated, InventoryReserved) Handle(C
 
 ### Conditional Event Publishing
 
+Use nullable tuple items to conditionally publish cascaded events. Any `null` cascade item is skipped:
+
 ```csharp
 public static (Result<Order>, OrderCreated?, CustomerWelcomeEmail?) Handle(CreateOrderCommand command)
 {
@@ -108,6 +110,16 @@ public static (Result<Order>, OrderCreated?, CustomerWelcomeEmail?) Handle(Creat
         new OrderCreated(order.Id, order.Email),           // Always published
         isNewCustomer ? new CustomerWelcomeEmail(command.Email) : null  // Conditional
     );
+}
+
+```csharp
+public static (Result<Order>, OrderCreated?) Handle(CreateOrderCommand command)
+{
+    if (!IsValid(command))
+        return (Result.Conflict("Invalid order"), null);   // No event published
+
+    var order = new Order { Email = command.Email };
+    return (order, new OrderCreated(order.Id, order.Email)); // Event published
 }
 ```
 

@@ -532,7 +532,7 @@ internal static class HandlerGenerator
         if (requiresTryCatch)
         {
             source.DecrementIndent();
-            EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, variables, messageVar);
+            EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, beforeMiddleware, variables, messageVar);
         }
     }
 
@@ -682,6 +682,12 @@ internal static class HandlerGenerator
 
             source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{nullableMarker} {resultVarName} = {defaultValue};");
 
+            // Track whether Before ran so Finally can be skipped when short-circuited
+            if (!m.Method.ReturnType.IsHandlerResult)
+            {
+                source.AppendLine($"bool {m.Middleware.Identifier.ToCamelCase()}BeforeRan = false;");
+            }
+
             variables[m.Method.ReturnType.FullName] = $"{resultVarName}{(allowNull ? "!" : "")}";
             if (m.Method.ReturnType.IsTuple)
             {
@@ -721,6 +727,12 @@ internal static class HandlerGenerator
             string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
+
+            // Mark that Before ran so Finally knows it's safe to execute
+            if (m.Method.HasReturnValue && !m.Method.ReturnType.IsHandlerResult)
+            {
+                source.AppendLine($"{m.Middleware.Identifier.ToCamelCase()}BeforeRan = true;");
+            }
 
             if (m.Method.ReturnType.IsHandlerResult)
             {
@@ -897,6 +909,7 @@ internal static class HandlerGenerator
         IndentedStringBuilder source,
         GeneratorConfiguration configuration,
         List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> finallyMiddleware,
+        List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
         Dictionary<string, string> variables,
         string messageVar)
     {
@@ -923,13 +936,29 @@ internal static class HandlerGenerator
 
         source.IncrementIndent();
 
+        // Build a set of middleware identifiers whose Before has state (non-void, non-HandlerResult return)
+        var middlewareWithState = new HashSet<string>(
+            beforeMiddleware
+                .Where(m => m.Method.HasReturnValue && !m.Method.ReturnType.IsHandlerResult)
+                .Select(m => m.Middleware.Identifier));
+
         foreach (var m in finallyMiddleware)
         {
             string asyncModifier = m.Method.IsAsync ? "await " : "";
             string accessor = m.Method.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
             string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
 
-            source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
+            // Guard Finally calls for middleware whose Before has state —
+            // if Before was skipped due to short-circuiting, Finally would receive null/default state
+            if (middlewareWithState.Contains(m.Middleware.Identifier))
+            {
+                source.AppendLine($"if ({m.Middleware.Identifier.ToCamelCase()}BeforeRan)");
+                source.AppendLine($"    {asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
+            }
+            else
+            {
+                source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
+            }
         }
 
         source.DecrementIndent();
@@ -1309,7 +1338,9 @@ internal static class HandlerGenerator
             string access = $"result.{publishItem.Name}";
             string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
-            if (publishItem.IsNullable)
+            // Always null-check reference types defensively (handles null! from error paths)
+            bool needsNullCheck = publishItem.IsNullable || publishItem.IsReferenceType;
+            if (needsNullCheck)
             {
                 source.AppendLine($"if ({access} != null)");
                 source.AppendLine("{");
@@ -1328,7 +1359,7 @@ internal static class HandlerGenerator
             source.DecrementIndent();
             source.AppendLine("}");
 
-            if (publishItem.IsNullable)
+            if (needsNullCheck)
             {
                 source.DecrementIndent();
                 source.AppendLine("}");
@@ -1348,7 +1379,9 @@ internal static class HandlerGenerator
             string access = $"result.{publishItem.Name}";
             string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
-            if (publishItem.IsNullable)
+            // Always null-check reference types defensively (handles null! from error paths)
+            bool needsNullCheck = publishItem.IsNullable || publishItem.IsReferenceType;
+            if (needsNullCheck)
             {
                 source.AppendLine($"if ({access} != null)");
                 source.AppendLine("{");
@@ -1361,7 +1394,7 @@ internal static class HandlerGenerator
             source.AppendLine($"    allCascadeTasks.Add(cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}](mediator, {access}, cancellationToken));");
             source.AppendLine("}");
 
-            if (publishItem.IsNullable)
+            if (needsNullCheck)
             {
                 source.DecrementIndent();
                 source.AppendLine("}");
@@ -1385,7 +1418,9 @@ internal static class HandlerGenerator
             string access = $"result.{publishItem.Name}";
             string typeFullName = publishItem.TypeFullName.TrimEnd('?');
 
-            if (publishItem.IsNullable)
+            // Always null-check reference types defensively (handles null! from error paths)
+            bool needsNullCheck = publishItem.IsNullable || publishItem.IsReferenceType;
+            if (needsNullCheck)
             {
                 source.AppendLine($"if ({access} != null)");
                 source.AppendLine("{");
@@ -1412,7 +1447,7 @@ internal static class HandlerGenerator
             source.DecrementIndent();
             source.AppendLine("}");
 
-            if (publishItem.IsNullable)
+            if (needsNullCheck)
             {
                 source.DecrementIndent();
                 source.AppendLine("}");

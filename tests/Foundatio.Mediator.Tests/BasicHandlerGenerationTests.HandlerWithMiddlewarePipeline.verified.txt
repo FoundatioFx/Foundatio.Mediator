@@ -268,6 +268,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         var timingMiddleware = GetOrCreateTimingMiddleware(serviceProvider);
 
         System.Diagnostics.Stopwatch? timingMiddlewareResult = null;
+        bool timingMiddlewareBeforeRan = false;
 
         string? result = default;
         System.Exception? exception = null;
@@ -275,6 +276,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         try
         {
             timingMiddlewareResult = timingMiddleware.Before(message);
+            timingMiddlewareBeforeRan = true;
 
             var handlerInstance = GetOrCreateHandler(serviceProvider);
             result = handlerInstance.Handle(message);
@@ -288,7 +290,8 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         }
         finally
         {
-            timingMiddleware.Finally(message, timingMiddlewareResult!, exception);
+            if (timingMiddlewareBeforeRan)
+                timingMiddleware.Finally(message, timingMiddlewareResult!, exception);
         }
         return result;
     }
@@ -300,6 +303,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         var timingMiddleware = GetOrCreateTimingMiddleware(serviceProvider);
 
         System.Diagnostics.Stopwatch? timingMiddlewareResult = null;
+        bool timingMiddlewareBeforeRan = false;
 
         string? result = default;
         System.Exception? exception = null;
@@ -307,6 +311,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         try
         {
             timingMiddlewareResult = timingMiddleware.Before(typedMessage);
+            timingMiddlewareBeforeRan = true;
 
             var handlerInstance = GetOrCreateHandler(serviceProvider);
             result = handlerInstance.Handle(typedMessage);
@@ -320,7 +325,8 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         }
         finally
         {
-            timingMiddleware.Finally(typedMessage, timingMiddlewareResult!, exception);
+            if (timingMiddlewareBeforeRan)
+                timingMiddleware.Finally(typedMessage, timingMiddlewareResult!, exception);
         }
         if (responseType == null)
         {

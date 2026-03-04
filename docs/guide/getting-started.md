@@ -257,6 +257,32 @@ Now that you have the basics working, explore more advanced features:
 - [Middleware](./middleware) - Adding cross-cutting concerns
 - [Samples](../samples/) - See practical examples
 
+## Configuration Quick Reference
+
+Foundatio Mediator has two configuration surfaces:
+
+**Compile-time** — controls source generator behavior (set once in any `.cs` file):
+
+```csharp
+[assembly: MediatorConfiguration(
+    HandlerLifetime = MediatorLifetime.Scoped,      // DI lifetime for handlers
+    MiddlewareLifetime = MediatorLifetime.Scoped,    // DI lifetime for middleware
+    EndpointDiscovery = EndpointDiscovery.All,       // Generate API endpoints
+    EndpointRoutePrefix = "/api"                     // Global endpoint prefix
+)]
+```
+
+**Runtime** — controls mediator instance behavior (in your DI setup):
+
+```csharp
+builder.Services.AddMediator(cfg => cfg
+    .SetMediatorLifetime(ServiceLifetime.Scoped)     // Mediator DI lifetime
+    .AddAssembly<OrderCreated>()                     // Cross-assembly handler discovery
+);
+```
+
+See [Configuration](./configuration) for full details on all options.
+
 ## LLM-Friendly Documentation
 
 For AI assistants and Large Language Models, we provide optimized documentation formats:

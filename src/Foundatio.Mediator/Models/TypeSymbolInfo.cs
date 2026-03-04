@@ -267,6 +267,11 @@ internal readonly record struct TupleItemInfo
     /// </summary>
     public bool IsNullable { get; init; }
     /// <summary>
+    /// Indicates if the tuple item type is a reference type.
+    /// Used for defensive null checks in cascading message publishing.
+    /// </summary>
+    public bool IsReferenceType { get; init; }
+    /// <summary>
     /// The full names of interfaces implemented by the tuple item type.
     /// Used for finding handlers that handle interface types.
     /// </summary>

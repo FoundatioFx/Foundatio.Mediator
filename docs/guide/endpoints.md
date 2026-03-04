@@ -76,6 +76,88 @@ Routes are generated based on:
 1. The `[HandlerEndpoint(Route = "...")]` attribute if specified
 2. Otherwise: category route prefix + route parameters from message properties
 
+### Route Prefix Architecture
+
+Endpoint routes are composed from two levels of prefixes:
+
+| Setting | Source | Default | Example |
+| ------- | ------ | ------- | ------- |
+| Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"/api"` | `"/api"` |
+| Category prefix | `[HandlerCategory("Products", RoutePrefix = "...")]` | Derived from name | `"/products"` |
+
+The final route is: **Global prefix + Category prefix + Route parameters**
+
+```text
+EndpointRoutePrefix = "/api"  +  RoutePrefix = "/products"  →  /api/products
+EndpointRoutePrefix = ""      +  RoutePrefix = "/api/products"  →  /api/products
+EndpointRoutePrefix = "/api"  +  RoutePrefix = "/api/products"  →  /api/api/products  ⚠️ Wrong!
+```
+
+> **Important:** Category `RoutePrefix` values are **relative** to the global `EndpointRoutePrefix`. Don't include `/api` in category prefixes when using the default global prefix — this would produce `/api/api/...`.
+
+To disable the global prefix entirely, set `EndpointRoutePrefix = ""`:
+
+```csharp
+[assembly: MediatorConfiguration(
+    EndpointDiscovery = EndpointDiscovery.All,
+    EndpointRoutePrefix = ""  // No global prefix
+)]
+```
+
+### Custom Routes and HTTP Methods
+
+Use `[HandlerEndpoint]` to override the generated route and/or HTTP method for individual handlers:
+
+```csharp
+[HandlerCategory("Todos", RoutePrefix = "/todos")]
+public class TodoHandler
+{
+    // POST /api/todos/{todoId}/complete
+    [HandlerEndpoint(Route = "{todoId}/complete", HttpMethod = "POST")]
+    public Task<Result> HandleAsync(CompleteTodo command) { ... }
+
+    // PATCH /api/todos/{todoId}
+    [HandlerEndpoint(HttpMethod = "PATCH")]
+    public Task<Result<Todo>> HandleAsync(PatchTodo command) { ... }
+
+    // GET /api/todos/search (custom route, inferred GET from name)
+    [HandlerEndpoint(Route = "search")]
+    public Task<Result<List<Todo>>> HandleAsync(SearchTodos query) { ... }
+}
+```
+
+The `Route` property is relative to the category's `RoutePrefix`. The `HttpMethod` property accepts `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, or `"PATCH"`.
+
+### Excluding Handlers from Endpoint Generation
+
+Use `[HandlerEndpoint(Exclude = true)]` to prevent endpoint generation for specific handlers:
+
+```csharp
+public class ProductHandler
+{
+    // This handler will NOT have an endpoint generated
+    [HandlerEndpoint(Exclude = true)]
+    public Task<Result> HandleAsync(InternalSync command) { ... }
+
+    // This handler gets a normal endpoint
+    public Task<Result<Product>> HandleAsync(GetProduct query) { ... }
+}
+```
+
+Apply at the class level to exclude all methods in a handler:
+
+```csharp
+[HandlerEndpoint(Exclude = true)]
+public class InternalHandler
+{
+    // No endpoints generated for any method
+    public Task<Result> HandleAsync(ProcessBatch command) { ... }
+    public Task<Result> HandleAsync(CleanupOldData command) { ... }
+}
+```
+
+> **Tip:** If you manually map endpoints for some handlers using `app.MapGet(...)` etc., exclude them from auto-generation with `[HandlerEndpoint(Exclude = true)]` to avoid route conflicts at startup.
+
 ### Route Parameters
 
 Properties named `Id` or ending with `Id` automatically become route parameters:

@@ -9,6 +9,73 @@ namespace Foundatio.Mediator;
 internal static class EndpointGenerator
 {
     /// <summary>
+    /// Generates the design-time API surface (stub) for endpoint extension methods.
+    /// Registered via RegisterSourceOutput so IntelliSense sees Map{X}Endpoints()
+    /// before the first build. Delegates to a static partial void core method
+    /// that is a no-op at design time.
+    /// </summary>
+    public static void ExecuteStub(
+        SourceProductionContext context,
+        GeneratorConfiguration configuration,
+        EndpointDefaultsInfo endpointDefaults,
+        CompilationInfo compilationInfo)
+    {
+        // Only generate stub when minimal APIs are available and endpoint discovery is enabled
+        if (!compilationInfo.SupportsMinimalApis)
+            return;
+
+        if (endpointDefaults.Discovery is "None" or null)
+            return;
+
+        var safeSuffix = !string.IsNullOrEmpty(configuration.ProjectName)
+            ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
+            : DeriveProjectNameFromAssembly(compilationInfo.AssemblyName);
+
+        var source = new IndentedStringBuilder();
+
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.Api.g.cs");
+        source.AppendLine("""
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+            using System.Diagnostics.CodeAnalysis;
+
+            namespace Foundatio.Mediator;
+            """);
+
+        source.AppendLine();
+        source.AddGeneratedCodeAttribute();
+        source.AppendLine("[ExcludeFromCodeCoverage]");
+        source.AppendLine($"public static partial class MediatorEndpointExtensions_{safeSuffix}");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine("/// <summary>");
+        source.AppendLine("/// Maps all discovered handler endpoints to the application.");
+        source.AppendLine("/// </summary>");
+        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
+        source.AppendLine($"public static IEndpointRouteBuilder Map{safeSuffix}Endpoints(this IEndpointRouteBuilder endpoints)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("MapEndpointsCore(endpoints);");
+        source.AppendLine("return endpoints;");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("/// <summary>");
+        source.AppendLine("/// Core endpoint registration, implemented by the source generator at compile time.");
+        source.AppendLine("/// At design time this is a no-op so IntelliSense works before the first build.");
+        source.AppendLine("/// </summary>");
+        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints);");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        context.AddSource("_MediatorEndpoints.Api.g.cs", source.ToString());
+    }
+
+    /// <summary>
     /// Executes endpoint generation for handlers.
     /// </summary>
     public static void Execute(
@@ -151,14 +218,13 @@ internal static class EndpointGenerator
             """);
 
         source.AppendLine();
-        source.AddGeneratedCodeAttribute();
-        source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine($"public static class MediatorEndpointExtensions_{safeSuffix}");
+        source.AppendLine($"public static partial class MediatorEndpointExtensions_{safeSuffix}");
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Generate MapMediatorEndpoints extension method with unique name
-        GenerateMapMediatorEndpointsMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, safeSuffix);
+        // Generate the core implementation as a static partial void method
+        // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
+        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, safeSuffix);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -171,9 +237,10 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Generates the MapMediatorEndpoints extension method.
+    /// Generates the MapEndpointsCore static partial void implementation.
+    /// This provides the compile-time body for the stub declared in _MediatorEndpoints.Api.g.cs.
     /// </summary>
-    private static void GenerateMapMediatorEndpointsMethod(
+    private static void GenerateMapMediatorEndpointsCoreMethod(
         IndentedStringBuilder source,
         List<HandlerInfo> handlers,
         EndpointDefaultsInfo endpointDefaults,
@@ -184,11 +251,9 @@ internal static class EndpointGenerator
         string assemblySuffix)
     {
         source.AppendLine("/// <summary>");
-        source.AppendLine("/// Maps all discovered handler endpoints to the application.");
+        source.AppendLine("/// Core endpoint registration implementation.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
-        source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
-        source.AppendLine($"public static IEndpointRouteBuilder Map{assemblySuffix}Endpoints(this IEndpointRouteBuilder endpoints)");
+        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints)");
         source.AppendLine("{");
         source.IncrementIndent();
 
@@ -335,8 +400,6 @@ internal static class EndpointGenerator
             }
         }
 
-        source.AppendLine();
-        source.AppendLine("return endpoints;");
         source.DecrementIndent();
         source.AppendLine("}");
     }

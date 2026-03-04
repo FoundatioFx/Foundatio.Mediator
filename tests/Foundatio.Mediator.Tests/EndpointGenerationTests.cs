@@ -338,6 +338,68 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void DesignTimeStub_GeneratedForIntelliSense()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(string Id);
+
+            public class WidgetHandler
+            {
+                public string Handle(GetWidget query) => "widget";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        // Stub file should be generated (this is what IntelliSense sees at design time)
+        var stubSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.Api.g.cs").Source;
+        Assert.NotNull(stubSource);
+        Assert.Contains("public static partial class", stubSource);
+        Assert.Contains("MapTestsEndpoints", stubSource);
+        Assert.Contains("static partial void MapEndpointsCore", stubSource);
+
+        // Implementation file should also be generated (compile-time only in real IDE, but test runs both)
+        var implSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+        Assert.NotNull(implSource);
+        Assert.Contains("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints)", implSource);
+        Assert.Contains("MapGet", implSource);
+    }
+
+    [Fact]
+    public void DesignTimeStub_NotGeneratedWhenDiscoveryNone()
+    {
+        // No assembly attribute = default Discovery = None
+        var source = """
+            using Foundatio.Mediator;
+
+            public record GetItem(string Id);
+
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => "item";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        // Neither stub nor implementation should be generated when discovery is None
+        var stubSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.Api.g.cs");
+        Assert.Null(stubSource.Source);
+        var implSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs");
+        Assert.Null(implSource.Source);
+    }
+
+    [Fact]
     public void AllThreeLevels_Filters_Applied()
     {
         var source = """
@@ -777,7 +839,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void ActionVerbPrefix_GeneratesCleanRouteName()
+    public void ActionVerbPrefix_GeneratesActionRouteWithId()
     {
         var source = """
             using Foundatio.Mediator;
@@ -801,8 +863,141 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // Should be POST (action verb "Approve" implies write operation)
         Assert.Contains("MapPost", endpointSource);
-        // Route should use the cleaned name (verb prefix "Approve" stripped from "ApproveOrder" for route)
-        Assert.Contains("/order", endpointSource);
+        // Route should include entity name, ID route param, and action verb suffix
+        // ApproveOrder(string OrderId) → POST /order/{orderId}/approve
+        Assert.Contains("/order/{orderId}/approve", endpointSource);
+        // All properties covered by route — no body binding
+        Assert.DoesNotContain("FromBody", endpointSource);
+    }
+
+    [Fact]
+    public void ActionVerbWithCategory_GeneratesActionRoute()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CompleteTodo(string TodoId);
+            public record ArchiveTodo(string TodoId);
+            public record CreateTodo(string Name);
+
+            [HandlerCategory("Todos")]
+            public class TodoHandler
+            {
+                public Result Handle(CompleteTodo command) => Result.Success();
+                public Result Handle(ArchiveTodo command) => Result.Success();
+                public Result Handle(CreateTodo command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // CompleteTodo → POST /api/todos/{todoId}/complete
+        Assert.Contains("{todoId}/complete", endpointSource);
+        // ArchiveTodo → POST /api/todos/{todoId}/archive
+        Assert.Contains("{todoId}/archive", endpointSource);
+        // CreateTodo → POST /api/todos/ (CRUD verb, no action suffix)
+        // Should NOT have "create" as a route suffix
+        Assert.DoesNotContain("/create", endpointSource);
+    }
+
+    [Fact]
+    public void ActionVerbNoId_GeneratesActionRouteWithoutRouteParam()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record ResetCounters;
+
+            [HandlerCategory("Counters")]
+            public class CounterHandler
+            {
+                public Result Handle(ResetCounters command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // ResetCounters in "Counters" category → POST /api/counters/reset
+        Assert.Contains("MapPost", endpointSource);
+        Assert.Contains("/reset", endpointSource);
+    }
+
+    [Fact]
+    public void ActionVerbWithExtraProps_KeepsBodyBinding()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record RejectOrder(string OrderId, string Reason);
+
+            [HandlerCategory("Orders")]
+            public class OrderHandler
+            {
+                public Result Handle(RejectOrder command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // RejectOrder → POST /api/orders/{orderId}/reject
+        Assert.Contains("{orderId}/reject", endpointSource);
+        // Has non-ID property (Reason) so body binding should remain
+        Assert.Contains("FromBody", endpointSource);
+    }
+
+    [Fact]
+    public void ActionVerbMismatchedEntity_PreservesEntityInRoute()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CompleteSomething(string SomethingId);
+            public record CompleteTodo(string TodoId);
+
+            [HandlerCategory("Todos")]
+            public class TodoHandler
+            {
+                public Result Handle(CompleteSomething command) => Result.Success();
+                public Result Handle(CompleteTodo command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // CompleteSomething — entity "Something" doesn't match category "Todos"
+        // should preserve entity: /{somethingId}/complete-something
+        Assert.Contains("{somethingId}/complete-something", endpointSource);
+        // CompleteTodo — entity "Todo" matches category "Todos"
+        // should use clean action: /{todoId}/complete
+        Assert.Contains("{todoId}/complete\"", endpointSource);
     }
 
     [Theory]

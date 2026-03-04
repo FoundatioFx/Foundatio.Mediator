@@ -500,17 +500,36 @@ internal static class HandlerAnalyzer
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
 
+        // Detect action verb for route generation (e.g., CompleteTodo → "complete")
+        var actionVerb = GetActionVerb(messageType.Name);
+
         // Analyze message type for parameters
-        var (routeParams, queryParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation);
+        var (routeParams, queryParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
 
         // Generate route if not explicitly specified
         if (string.IsNullOrEmpty(route))
         {
-            route = GenerateRoute(messageType.Name, categoryRoutePrefix, routeParams, httpMethod);
+            route = GenerateRoute(messageType.Name, categoryRoutePrefix, categoryName, routeParams, httpMethod, actionVerb);
         }
 
         // Determine binding strategy
         bool bindFromBody = httpMethod is "POST" or "PUT" or "PATCH";
+
+        // For auto-generated action verb routes, check if all properties are already
+        // covered by route params (IDs). If so, skip body binding.
+        if (bindFromBody && actionVerb != null && !hasExplicitRoute)
+        {
+            var allProperties = messageType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null)
+                .ToList();
+
+            if (allProperties.Count > 0 && allProperties.All(p =>
+                    routeParams.Any(rp => string.Equals(rp.PropertyName, p.Name, StringComparison.Ordinal))))
+            {
+                bindFromBody = false;
+            }
+        }
 
         // If we have an explicit route with placeholders that cover all message properties,
         // skip body binding — all data comes from the route (e.g., POST /{todoId}/complete)
@@ -672,7 +691,7 @@ internal static class HandlerAnalyzer
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
     private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, bool supportsAsParameters, bool hasParameterlessConstructor)
-        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation)
+        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
@@ -710,8 +729,10 @@ internal static class HandlerAnalyzer
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
                                 prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
 
-            // For GET/DELETE/PUT, ID properties become route parameters
-            if (isIdProperty && httpMethod is "GET" or "DELETE" or "PUT")
+            // For GET/DELETE/PUT, ID properties become route parameters.
+            // For action verbs (POST), IDs are also promoted to route params
+            // (e.g., CompleteTodo(string TodoId) → POST /todos/{todoId}/complete)
+            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" || isActionVerb))
             {
                 routeParams.Add(paramInfo with { IsRouteParameter = true });
             }
@@ -732,20 +753,23 @@ internal static class HandlerAnalyzer
     private static string GenerateRoute(
         string messageTypeName,
         string? categoryRoutePrefix,
+        string? categoryName,
         EndpointParameterInfo[] routeParams,
-        string httpMethod)
+        string httpMethod,
+        string? actionVerb = null)
     {
         var parts = new List<string>();
+        var entityName = RemoveVerbPrefix(messageTypeName);
 
         // If we have a category with a route prefix, the route is relative to that prefix
         // Otherwise, we need to include the entity name in the route
         if (string.IsNullOrEmpty(categoryRoutePrefix))
         {
             // No category prefix - include entity name in route
-            var entityName = RemoveVerbPrefix(messageTypeName).ToKebabCase();
-            if (!string.IsNullOrEmpty(entityName))
+            var kebabEntity = entityName.ToKebabCase();
+            if (!string.IsNullOrEmpty(kebabEntity))
             {
-                parts.Add(entityName);
+                parts.Add(kebabEntity);
             }
         }
 
@@ -753,6 +777,29 @@ internal static class HandlerAnalyzer
         foreach (var param in routeParams)
         {
             parts.Add($"{{{param.Name}}}");
+        }
+
+        // Add action verb suffix for action-style endpoints
+        // e.g., CompleteTodo in "Todos" → /{todoId}/complete
+        //        CompleteSomething in "Todos" → /{somethingId}/complete-something
+        if (actionVerb != null)
+        {
+            // When entity matches category (or no category), use just the verb: /complete
+            // When entity doesn't match, preserve entity in action segment: /complete-something
+            bool entityMatchesCategory = !string.IsNullOrEmpty(categoryName) &&
+                entityName.Length >= 2 &&
+                (categoryName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
+                 entityName.StartsWith(categoryName, StringComparison.OrdinalIgnoreCase));
+
+            if (entityMatchesCategory || string.IsNullOrEmpty(categoryRoutePrefix))
+            {
+                parts.Add(actionVerb);
+            }
+            else
+            {
+                // Entity doesn't match category — include it to avoid ambiguity
+                parts.Add(actionVerb + "-" + entityName.ToKebabCase());
+            }
         }
 
         // Build the route
@@ -763,23 +810,59 @@ internal static class HandlerAnalyzer
     }
 
     /// <summary>
+    /// All verb prefixes used for route and HTTP method inference.
+    /// CRUD verbs map to specific HTTP methods; action verbs default to POST
+    /// and generate an action route suffix (e.g., /complete, /archive).
+    /// </summary>
+    private static readonly string[] CrudPrefixes =
+    [
+        "Get", "Find", "Search", "List", "Query",
+        "Create", "Add", "New",
+        "Update", "Edit", "Modify", "Change", "Set",
+        "Delete", "Remove",
+        "Patch"
+    ];
+
+    private static readonly string[] ActionPrefixes =
+    [
+        "Complete", "Approve", "Cancel", "Submit", "Process",
+        "Execute", "Activate", "Deactivate", "Archive", "Restore",
+        "Publish", "Unpublish", "Enable", "Disable", "Reset",
+        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen"
+    ];
+
+    /// <summary>
+    /// Returns the action verb (kebab-cased) if the message name starts with an action prefix,
+    /// or null for CRUD verbs. Action verbs produce a route suffix (e.g., "complete", "archive")
+    /// and promote ID properties to route parameters even for POST.
+    /// </summary>
+    private static string? GetActionVerb(string messageTypeName)
+    {
+        foreach (var prefix in ActionPrefixes)
+        {
+            if (messageTypeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && messageTypeName.Length > prefix.Length)
+            {
+                return prefix.ToKebabCase();
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Removes common verb prefixes from message type names.
     /// </summary>
     private static string RemoveVerbPrefix(string name)
     {
-        string[] prefixes = [
-            "Get", "Find", "Search", "List", "Query",
-            "Create", "Add", "New",
-            "Update", "Edit", "Modify", "Change", "Set",
-            "Delete", "Remove",
-            "Patch",
-            "Complete", "Approve", "Cancel", "Submit", "Process",
-            "Execute", "Activate", "Deactivate", "Archive", "Restore",
-            "Publish", "Unpublish", "Enable", "Disable", "Reset",
-            "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen"
-        ];
+        foreach (var prefix in CrudPrefixes)
+        {
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
+            {
+                return name.Substring(prefix.Length);
+            }
+        }
 
-        foreach (var prefix in prefixes)
+        foreach (var prefix in ActionPrefixes)
         {
             if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
             {

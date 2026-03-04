@@ -84,6 +84,17 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 source.Handlers, source.Middleware, source.CallSites,
                 source.Configuration, source.EndpointDefaults, source.CompilationInfo,
                 source.CrossAssemblyMiddleware, source.CrossAssemblyHandlers, spc));
+
+        // Endpoint API surface: registered via RegisterSourceOutput so IntelliSense
+        // sees Map{X}Endpoints() at design time — before anything is built.
+        // Uses a lightweight pipeline (config + compilation info only, no handlers).
+        var endpointStubData = generatorConfiguration
+            .Combine(endpointDefaults)
+            .Combine(compilationInfo);
+
+        context.RegisterSourceOutput(endpointStubData,
+            static (spc, source) => EndpointGenerator.ExecuteStub(
+                spc, source.Left.Left, source.Left.Right, source.Right));
     }
 
     /// <summary>

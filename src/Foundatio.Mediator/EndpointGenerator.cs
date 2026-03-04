@@ -441,6 +441,12 @@ internal static class EndpointGenerator
             source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
         }
 
+        // Add additional ProducesProblem metadata from [HandlerEndpoint(ProducesStatusCodes = [...])]
+        foreach (var statusCode in endpoint.ProducesStatusCodes)
+        {
+            source.AppendLine($".ProducesProblem({statusCode})");
+        }
+
         // Add endpoint-level filters
         foreach (var filter in endpoint.Filters)
         {

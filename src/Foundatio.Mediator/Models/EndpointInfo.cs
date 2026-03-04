@@ -124,6 +124,12 @@ internal readonly record struct EndpointInfo
     /// Null for void handlers or non-generic Result.
     /// </summary>
     public string? ProducesType { get; init; }
+
+    /// <summary>
+    /// Additional HTTP status codes this endpoint can produce (e.g., 404, 422, 500).
+    /// Used to emit <c>.ProducesProblem(statusCode)</c> for OpenAPI documentation.
+    /// </summary>
+    public EquatableArray<int> ProducesStatusCodes { get; init; }
 }
 
 /// <summary>

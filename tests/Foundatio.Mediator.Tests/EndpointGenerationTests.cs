@@ -819,6 +819,285 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var result = TestAssemblyNameHelper.DeriveProjectNameFromAssembly(assemblyName);
         Assert.Equal(expected, result);
     }
+
+    [Fact]
+    public void ProducesStatusCodes_EmitsProducesProblemCalls()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrder(string Id);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                [HandlerEndpoint(ProducesStatusCodes = [404, 422])]
+                public Result<OrderView> Handle(GetOrder query) => new OrderView("1", "test");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Success Produces should still be present
+        Assert.Contains(".Produces<global::OrderView>(200)", endpointSource);
+        // Error status codes from attribute
+        Assert.Contains(".ProducesProblem(404)", endpointSource);
+        Assert.Contains(".ProducesProblem(422)", endpointSource);
+        // No other ProducesProblem should be emitted
+        Assert.DoesNotContain(".ProducesProblem(400)", endpointSource);
+        Assert.DoesNotContain(".ProducesProblem(500)", endpointSource);
+    }
+
+    [Fact]
+    public void ProducesStatusCodes_ClassLevel_AppliesToAllMethods()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(string Id);
+            public record CreateWidget(string Name);
+            public record WidgetView(string Id, string Name);
+
+            [HandlerEndpoint(ProducesStatusCodes = [400, 404, 500])]
+            public class WidgetHandler
+            {
+                public Result<WidgetView> Handle(GetWidget query) => new WidgetView("1", "test");
+                public Result<WidgetView> Handle(CreateWidget command) => new WidgetView("1", command.Name);
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Both endpoints should have ProducesProblem calls
+        var problemCount400 = endpointSource!.Split(".ProducesProblem(400)").Length - 1;
+        var problemCount404 = endpointSource!.Split(".ProducesProblem(404)").Length - 1;
+        var problemCount500 = endpointSource!.Split(".ProducesProblem(500)").Length - 1;
+        Assert.Equal(2, problemCount400);
+        Assert.Equal(2, problemCount404);
+        Assert.Equal(2, problemCount500);
+    }
+
+    [Fact]
+    public void ProducesStatusCodes_MethodOverridesClass()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(string Id);
+            public record CreateItem(string Name);
+            public record ItemView(string Id, string Name);
+
+            [HandlerEndpoint(ProducesStatusCodes = [400, 500])]
+            public class ItemHandler
+            {
+                [HandlerEndpoint(ProducesStatusCodes = [404, 422])]
+                public Result<ItemView> Handle(GetItem query) => new ItemView("1", "test");
+
+                public Result<ItemView> Handle(CreateItem command) => new ItemView("1", command.Name);
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetItem (method override) should have 404 and 422, NOT 400 and 500
+        Assert.Contains(".ProducesProblem(404)", endpointSource);
+        Assert.Contains(".ProducesProblem(422)", endpointSource);
+        // CreateItem (class-level fallback) should have 400 and 500
+        Assert.Contains(".ProducesProblem(400)", endpointSource);
+        Assert.Contains(".ProducesProblem(500)", endpointSource);
+    }
+
+    [Fact]
+    public void NoProducesStatusCodes_NoProducesProblemEmitted()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetThing(string Id);
+
+            public class ThingHandler
+            {
+                public Result<string> Handle(GetThing query) => "thing";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Success Produces should still be present
+        Assert.Contains(".Produces<", endpointSource);
+        // No ProducesProblem without the attribute and no Result factory calls
+        Assert.DoesNotContain(".ProducesProblem(", endpointSource);
+    }
+
+    [Fact]
+    public void AutoDetect_ResultFactoryCalls_EmitsProducesProblem()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrder(string Id);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                public Result<OrderView> Handle(GetOrder query)
+                {
+                    if (query.Id == null)
+                        return Result<OrderView>.NotFound("Order not found");
+
+                    if (query.Id == "bad")
+                        return Result<OrderView>.Invalid("Invalid ID");
+
+                    return new OrderView(query.Id, "Test");
+                }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Auto-detected from method body
+        Assert.Contains(".ProducesProblem(404)", endpointSource); // NotFound
+        Assert.Contains(".ProducesProblem(422)", endpointSource); // Invalid
+        // Should NOT contain codes not used in the method
+        Assert.DoesNotContain(".ProducesProblem(400)", endpointSource);
+        Assert.DoesNotContain(".ProducesProblem(500)", endpointSource);
+        Assert.DoesNotContain(".ProducesProblem(409)", endpointSource);
+    }
+
+    [Fact]
+    public void AutoDetect_NonGenericResult_EmitsProducesProblem()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record DeleteOrder(string Id);
+
+            public class OrderHandler
+            {
+                public Result Handle(DeleteOrder command)
+                {
+                    if (command.Id == null)
+                        return Result.NotFound("Order not found");
+
+                    if (command.Id == "conflict")
+                        return Result.Conflict("Order is in use");
+
+                    return Result.Success();
+                }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".ProducesProblem(404)", endpointSource); // NotFound
+        Assert.Contains(".ProducesProblem(409)", endpointSource); // Conflict
+        Assert.DoesNotContain(".ProducesProblem(422)", endpointSource);
+    }
+
+    [Fact]
+    public void ExplicitAttribute_OverridesAutoDetection()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(string Id);
+            public record ItemView(string Id);
+
+            public class ItemHandler
+            {
+                [HandlerEndpoint(ProducesStatusCodes = [400])]
+                public Result<ItemView> Handle(GetItem query)
+                {
+                    if (query.Id == null)
+                        return Result<ItemView>.NotFound("Not found");
+
+                    return new ItemView(query.Id);
+                }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Explicit attribute wins — only 400, NOT the auto-detected 404
+        Assert.Contains(".ProducesProblem(400)", endpointSource);
+        Assert.DoesNotContain(".ProducesProblem(404)", endpointSource);
+    }
+
+    [Fact]
+    public void AutoDetect_NonResultReturn_NoProducesProblem()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetName(string Id);
+
+            public class NameHandler
+            {
+                public string Handle(GetName query) => "hello";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Non-Result return type — no ProducesProblem at all
+        Assert.DoesNotContain(".ProducesProblem(", endpointSource);
+    }
 }
 
 /// <summary>

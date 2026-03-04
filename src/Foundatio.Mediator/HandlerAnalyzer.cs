@@ -465,6 +465,14 @@ internal static class HandlerAnalyzer
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
         var categoryFilters = GetTypeArrayProperty(categoryAttr, "EndpointFilters") ?? [];
 
+        // Extract ProducesStatusCodes from [HandlerEndpoint] attribute (method -> class)
+        var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
+                                  GetIntArrayProperty(classEndpointAttr, "ProducesStatusCodes");
+
+        // If no explicit status codes, auto-detect from Result factory method calls in the handler body
+        var producesStatusCodes = explicitStatusCodes ??
+            DetectResultStatusCodes(handlerMethod, returnType, compilation);
+
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
 
@@ -538,6 +546,7 @@ internal static class HandlerAnalyzer
             Filters = new(endpointFilters),
             CategoryFilters = new(categoryFilters),
             ProducesType = producesType,
+            ProducesStatusCodes = new(producesStatusCodes),
         };
     }
 
@@ -856,6 +865,29 @@ internal static class HandlerAnalyzer
     }
 
     /// <summary>
+    /// Gets an int[] property value from an attribute.
+    /// </summary>
+    private static int[]? GetIntArrayProperty(AttributeData? attr, string propertyName)
+    {
+        if (attr == null)
+            return null;
+
+        var arg = attr.NamedArguments.FirstOrDefault(na => na.Key == propertyName);
+        if (arg.Value.IsNull)
+            return null;
+
+        if (arg.Value.Kind == TypedConstantKind.Array)
+        {
+            return arg.Value.Values
+                .Where(v => v.Value is int)
+                .Select(v => (int)v.Value!)
+                .ToArray();
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Gets a Type[] property value from an attribute as fully qualified type name strings.
     /// </summary>
     private static string[]? GetTypeArrayProperty(AttributeData? attr, string propertyName)
@@ -914,6 +946,68 @@ internal static class HandlerAnalyzer
 
         // Direct return type (not Result, not void)
         return unwrapped.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    }
+
+    /// <summary>
+    /// Maps Result factory method names to HTTP status codes.
+    /// </summary>
+    private static readonly Dictionary<string, int> ResultMethodToStatusCode = new(StringComparer.Ordinal)
+    {
+        ["BadRequest"] = 400,
+        ["Unauthorized"] = 401,
+        ["Forbidden"] = 403,
+        ["NotFound"] = 404,
+        ["Conflict"] = 409,
+        ["Invalid"] = 422,
+        ["Error"] = 500,
+        ["CriticalError"] = 500,
+        ["Unavailable"] = 503,
+    };
+
+    /// <summary>
+    /// Scans the handler method body for <c>Result.NotFound()</c>, <c>Result.Invalid()</c>, etc.
+    /// factory method calls and returns the corresponding HTTP status codes.
+    /// Only runs when the return type involves <c>Result</c> or <c>Result&lt;T&gt;</c>.
+    /// </summary>
+    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation)
+    {
+        // Only scan if the return type involves Result/Result<T>
+        var unwrapped = returnType.UnwrapTask(compilation).UnwrapNullable(compilation);
+
+        // Unwrap tuple — check if first element is Result
+        if (unwrapped is INamedTypeSymbol { IsTupleType: true } tupleType && tupleType.TupleElements.Length > 0)
+            unwrapped = tupleType.TupleElements[0].Type;
+
+        if (!unwrapped.IsResult(compilation))
+            return [];
+
+        // Get the syntax node for the method body
+        var syntaxRef = handlerMethod.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxRef == null)
+            return [];
+
+        var syntaxNode = syntaxRef.GetSyntax();
+
+        var detectedCodes = new HashSet<int>();
+
+        // Walk all descendant nodes looking for invocations of Result factory methods
+        foreach (var invocation in syntaxNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            string? methodName = null;
+
+            // Match: Result.NotFound(...), Result<T>.NotFound(...), or ResultStatus.NotFound style
+            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+            {
+                methodName = memberAccess.Name.Identifier.ValueText;
+            }
+
+            if (methodName != null && ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
+            {
+                detectedCodes.Add(statusCode);
+            }
+        }
+
+        return detectedCodes.OrderBy(c => c).ToArray();
     }
 
     /// <summary>

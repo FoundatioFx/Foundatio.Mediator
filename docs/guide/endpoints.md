@@ -313,6 +313,72 @@ Properties:
 - `Tags` - Override category tags
 - `Exclude` - Exclude from endpoint generation
 - `EndpointFilters` - Endpoint filter types
+- `ProducesStatusCodes` - Additional HTTP status codes for OpenAPI documentation
+
+### OpenAPI Error Responses
+
+When a handler returns `Result<T>` or `Result`, the generator automatically scans the method body for `Result` factory method calls (`Result.NotFound()`, `Result.Invalid()`, etc.) and emits matching `.ProducesProblem()` metadata — no configuration needed:
+
+```csharp
+public class OrderHandler
+{
+    public Result<OrderView> Handle(GetOrder query)
+    {
+        if (query.Id == null)
+            return Result<OrderView>.NotFound("Order not found");  // → .ProducesProblem(404)
+
+        if (!IsValid(query))
+            return Result<OrderView>.Invalid("Bad request");       // → .ProducesProblem(422)
+
+        return new OrderView(query.Id, "Test");
+    }
+    // Auto-generates:
+    //   .Produces<OrderView>(200)
+    //   .ProducesProblem(404)
+    //   .ProducesProblem(422)
+}
+```
+
+The following `Result` factory methods are detected:
+
+| Method | Status Code |
+| --- | --- |
+| `BadRequest()` | 400 |
+| `Unauthorized()` | 401 |
+| `Forbidden()` | 403 |
+| `NotFound()` | 404 |
+| `Conflict()` | 409 |
+| `Invalid()` | 422 |
+| `Error()` / `CriticalError()` | 500 |
+| `Unavailable()` | 503 |
+
+#### Explicit Override
+
+To override auto-detection (e.g., when error results come from injected services), use `ProducesStatusCodes`:
+
+```csharp
+public class OrderHandler
+{
+    [HandlerEndpoint(ProducesStatusCodes = [404, 422])]
+    public Result<OrderView> Handle(GetOrder query) => ...;
+    // Uses only the explicitly declared codes, ignoring method body analysis
+}
+```
+
+Class-level settings apply to all methods unless overridden at method level:
+
+```csharp
+[HandlerEndpoint(ProducesStatusCodes = [400, 500])]
+public class ProductHandler
+{
+    // Inherits [400, 500] from class
+    public Result<ProductView> Handle(CreateProduct command) => ...;
+
+    // Overrides with its own set
+    [HandlerEndpoint(ProducesStatusCodes = [404, 409, 422])]
+    public Result<ProductView> Handle(UpdateProduct command) => ...;
+}
+```
 
 ## Authentication & Authorization
 

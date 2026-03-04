@@ -64,4 +64,18 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// These filters are additive to any global or category-level filters.
     /// </summary>
     public Type[]? EndpointFilters { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional HTTP status codes this endpoint can produce.
+    /// Used to generate <c>.ProducesProblem(statusCode)</c> calls for OpenAPI documentation.
+    /// Only error/problem status codes (4xx, 5xx) should be listed here; the success
+    /// <c>.Produces&lt;T&gt;(200/201)</c> is generated automatically from the return type.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// [HandlerEndpoint(ProducesStatusCodes = [404, 422])]
+    /// public Result&lt;Order&gt; Handle(GetOrder query) => ...;
+    /// </code>
+    /// </example>
+    public int[]? ProducesStatusCodes { get; set; }
 }

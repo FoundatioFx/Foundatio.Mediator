@@ -270,7 +270,7 @@ public class OpenTelemetryTests(ITestOutputHelper output) : GeneratorTestBase(ou
 
         // When OpenTelemetry is disabled, activity won't be available, so it should try DI
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-        // Activity should be resolved via DI when OTel is disabled (using full type name in generated code)
-        Assert.Contains("GetRequiredService<System.Diagnostics.Activity?>()", wrapper.Source);
+        // Activity should be resolved via GetService (nullable) when OTel is disabled
+        Assert.Contains("GetService<System.Diagnostics.Activity>()", wrapper.Source);
     }
 }

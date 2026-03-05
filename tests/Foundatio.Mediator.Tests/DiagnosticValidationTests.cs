@@ -86,7 +86,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], assertCleanCompilation: false);
         Assert.Contains(genDiags, d => d.Id == "FMED004" && d.GetMessage().Contains("BadMiddleware"));
     }
 
@@ -107,7 +107,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], assertCleanCompilation: false);
         Assert.Contains(genDiags, d => d.Id == "FMED005" && d.GetMessage().Contains("BadMiddleware"));
     }
 
@@ -131,7 +131,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], assertCleanCompilation: false);
         Assert.Contains(genDiags, d => d.Id == "FMED011" && d.GetMessage().Contains("BadMiddleware"));
     }
 
@@ -217,7 +217,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 				public static void Call(IMediator m) { m.Invoke(new Msg()); }
 			}
 			""";
-        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], assertCleanCompilation: false);
         Assert.Contains(genDiags, d => d.Id == "FMED010");
     }
 
@@ -258,7 +258,7 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], assertCleanCompilation: false);
         Assert.Contains(genDiags, d => d.Id == "FMED006" && d.GetMessage().Contains("PrivateMiddleware"));
     }
 
@@ -393,7 +393,9 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
 			}
 			""";
 
-        var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, _) = RunGenerator(consumerSource, [Gen], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         Assert.Contains(diagnostics, d => d.Id == "FMED008" && d.GetMessage().Contains("referenced assembly"));
     }

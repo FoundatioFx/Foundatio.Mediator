@@ -99,6 +99,37 @@ public class BasicHandlerGenerationTests(ITestOutputHelper output) : GeneratorTe
     }
 
     /// <summary>
+    /// Middleware with a state-returning Before but no Finally method.
+    /// Exercises: BeforeRan variable should NOT be emitted when Finally is absent (CS0219).
+    /// </summary>
+    [Fact]
+    public async Task MiddlewareWithBeforeStateButNoFinally()
+    {
+        var source = """
+            using System;
+            using System.Diagnostics;
+            using Foundatio.Mediator;
+
+            public record ProcessOrder(string Id);
+
+            public class ProcessOrderHandler
+            {
+                public string Handle(ProcessOrder cmd) => $"Processed-{cmd.Id}";
+            }
+
+            [Middleware(Order = 10)]
+            public class LoggingMiddleware
+            {
+                public Stopwatch Before(object message) => Stopwatch.StartNew();
+                public void After(object message, Stopwatch sw) => sw.Stop();
+            }
+            """;
+
+        // AssertNoCompilationDiagnostics will catch CS0219 if BeforeRan is emitted but never read
+        await VerifyGenerated(source, new MediatorGenerator());
+    }
+
+    /// <summary>
     /// Interceptor generation with a call site.
     /// Exercises: [InterceptsLocation] attribute emission, static dispatch method wiring.
     /// </summary>
@@ -162,50 +193,4 @@ public class BasicHandlerGenerationTests(ITestOutputHelper output) : GeneratorTe
         await VerifyGenerated(source, null, refs, new MediatorGenerator());
     }
 
-    private static MetadataReference[] GetAspNetCoreReferences()
-    {
-        var aspNetCorePath = GetAspNetCoreAssemblyPath();
-        if (aspNetCorePath == null)
-        {
-            Assert.Skip("ASP.NET Core shared framework not found");
-            return [];
-        }
-
-        var assemblies = new[]
-        {
-            "Microsoft.AspNetCore.dll",
-            "Microsoft.AspNetCore.Authorization.dll",
-            "Microsoft.AspNetCore.Http.Abstractions.dll",
-            "Microsoft.AspNetCore.Http.dll",
-            "Microsoft.AspNetCore.Routing.dll",
-            "Microsoft.AspNetCore.Routing.Abstractions.dll",
-            "Microsoft.AspNetCore.Mvc.Core.dll",
-            "Microsoft.AspNetCore.OpenApi.dll",
-            "Microsoft.Extensions.Primitives.dll",
-        };
-
-        var refs = new List<MetadataReference>();
-        foreach (var assembly in assemblies)
-        {
-            var path = Path.Combine(aspNetCorePath, assembly);
-            if (File.Exists(path))
-                refs.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        return refs.Count > 0 ? refs.ToArray() : throw new InvalidOperationException("No ASP.NET Core assemblies found");
-    }
-
-    private static string? GetAspNetCoreAssemblyPath()
-    {
-        var dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet");
-
-        var aspNetCorePath = Path.Combine(dotnetRoot, "shared", "Microsoft.AspNetCore.App");
-        if (!Directory.Exists(aspNetCorePath))
-            return null;
-
-        return Directory.GetDirectories(aspNetCorePath)
-            .OrderByDescending(d => d)
-            .FirstOrDefault();
-    }
 }

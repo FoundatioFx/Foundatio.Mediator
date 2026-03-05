@@ -482,8 +482,11 @@ internal static class HandlerGenerator
             }
             else
             {
-                // DI parameter
-                parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                // DI parameter — use GetService for nullable types to avoid notnull constraint violation
+                if (param.Type.IsNullable)
+                    parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                else
+                    parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
             }
         }
 
@@ -1170,7 +1173,11 @@ internal static class HandlerGenerator
             }
             else
             {
-                parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                // DI parameter — use GetService for nullable types to avoid notnull constraint violation
+                if (param.Type.IsNullable)
+                    parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                else
+                    parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
             }
         }
 

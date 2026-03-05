@@ -49,7 +49,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         // Should not have any errors
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
@@ -108,7 +110,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
 
@@ -162,7 +166,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
 
@@ -215,7 +221,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
 
@@ -277,7 +285,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, _, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, _, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         var interceptors = trees.FirstOrDefault(t => t.HintName == "_CrossAssemblyInterceptors.g.cs");
         Assert.NotNull(interceptors.HintName);
@@ -343,7 +353,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, _, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, _, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         var interceptors = trees.FirstOrDefault(t => t.HintName == "_CrossAssemblyInterceptors.g.cs");
         Assert.NotNull(interceptors.HintName);
@@ -514,7 +526,9 @@ public class CrossAssemblyHandlerTests(ITestOutputHelper output) : GeneratorTest
             }
             """;
 
-        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly]);
+        // assertCleanCompilation: false — cross-assembly interceptors reference handler wrapper types
+        // that only exist in the referenced assembly's generator output (not available in test).
+        var (_, diagnostics, trees) = RunGenerator(consumerSource, [new MediatorGenerator()], additionalReferences: [handlerAssembly], assertCleanCompilation: false);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
 

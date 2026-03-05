@@ -21,22 +21,7 @@ public class IdentifierGenerationTests(ITestOutputHelper output) : GeneratorTest
             """;
 
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions, cancellationToken: TestCancellationToken);
-
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Microsoft.Extensions.DependencyInjection.ServiceCollection).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(IMediator).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(MediatorGenerator).Assembly.Location)
-        };
-
-        var customCompilation = CSharpCompilation.Create(
-            assemblyName: "123ABC",
-            syntaxTrees: [syntaxTree],
-            references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var compilation = CreateCompilation(source, parseOptions, assemblyName: "123ABC");
 
         var generator = new MediatorGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
@@ -44,7 +29,7 @@ public class IdentifierGenerationTests(ITestOutputHelper output) : GeneratorTest
             additionalTexts: null,
             parseOptions: parseOptions,
             optionsProvider: null);
-        driver = driver.RunGeneratorsAndUpdateCompilation(customCompilation, out var outputCompilation, out var outputDiagnostics, TestCancellationToken);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var outputDiagnostics, TestCancellationToken);
 
         var genResult = driver.GetRunResult();
         var generatedSources = genResult.Results
@@ -60,8 +45,7 @@ public class IdentifierGenerationTests(ITestOutputHelper output) : GeneratorTest
         // The class name should be _123ABC_MediatorHandlers (prefixed with underscore)
         Assert.Contains("public static class _123ABC_MediatorHandlers", sourceText);
 
-        // Verify it's valid C# by checking compilation errors
-        var errors = outputDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        Assert.Empty(errors);
+        // Verify generated code compiles cleanly
+        AssertNoCompilationDiagnostics(outputCompilation);
     }
 }

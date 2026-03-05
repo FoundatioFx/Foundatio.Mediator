@@ -6,66 +6,6 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 {
     private static readonly MediatorGenerator Gen = new();
 
-    /// <summary>
-    /// Helper to create ASP.NET Core metadata references so the endpoint generator activates.
-    /// </summary>
-    private static MetadataReference[] GetAspNetCoreReferences()
-    {
-        var aspNetCorePath = GetAspNetCoreAssemblyPath();
-        if (aspNetCorePath == null)
-        {
-            Assert.Skip("ASP.NET Core shared framework not found; endpoint generation tests require the ASP.NET Core SDK");
-            return []; // unreachable but satisfies compiler
-        }
-
-        var assemblies = new[]
-        {
-            "Microsoft.AspNetCore.dll",
-            "Microsoft.AspNetCore.Authorization.dll",
-            "Microsoft.AspNetCore.Http.Abstractions.dll",
-            "Microsoft.AspNetCore.Http.dll",
-            "Microsoft.AspNetCore.Routing.dll",
-            "Microsoft.AspNetCore.Routing.Abstractions.dll",
-            "Microsoft.AspNetCore.Mvc.Core.dll",
-            "Microsoft.AspNetCore.OpenApi.dll",
-            "Microsoft.Extensions.Primitives.dll",
-        };
-
-        var refs = new List<MetadataReference>();
-        foreach (var assembly in assemblies)
-        {
-            var path = Path.Combine(aspNetCorePath, assembly);
-            if (File.Exists(path))
-                refs.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        if (refs.Count == 0)
-        {
-            Assert.Skip("No ASP.NET Core assemblies found in the shared framework directory");
-            return []; // unreachable but satisfies compiler
-        }
-
-        return refs.ToArray();
-    }
-
-    private static string? GetAspNetCoreAssemblyPath()
-    {
-        // Find the ASP.NET Core shared framework directory
-        var dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet");
-
-        var aspNetCorePath = Path.Combine(dotnetRoot, "shared", "Microsoft.AspNetCore.App");
-        if (!Directory.Exists(aspNetCorePath))
-            return null;
-
-        // Get the latest version directory
-        var latestVersion = Directory.GetDirectories(aspNetCorePath)
-            .OrderByDescending(d => d)
-            .FirstOrDefault();
-
-        return latestVersion;
-    }
-
     [Fact]
     public void GlobalRoutePrefix_GeneratesNestedMapGroup()
     {

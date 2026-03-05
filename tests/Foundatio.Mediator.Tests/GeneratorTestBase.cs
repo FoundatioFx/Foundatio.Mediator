@@ -21,13 +21,16 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
 
     protected async Task VerifyGenerated(string source, AnalyzerConfigOptionsProvider? optionsProvider, MetadataReference[]? additionalReferences, params IIncrementalGenerator[] generators)
     {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview)
+            .WithFeatures([new KeyValuePair<string, string>("InterceptorsNamespaces", "Foundatio.Mediator")]);
         var compilation = CreateCompilation(source, parseOptions, additionalReferences);
 
         var sourceGenerators = generators.Select(g => g.AsSourceGenerator());
         GeneratorDriver driver = CSharpGeneratorDriver.Create(sourceGenerators, additionalTexts: null,
             parseOptions: parseOptions, optionsProvider: optionsProvider);
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+
+        AssertNoCompilationDiagnostics(outputCompilation);
 
         var genResult = driver.GetRunResult();
 
@@ -71,9 +74,10 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
         RunGenerator(string source, IIncrementalGenerator[] generators,
             AnalyzerConfigOptionsProvider? optionsProvider = null,
             MetadataReference[]? additionalReferences = null,
-            bool assertCleanCompilation = false)
+            bool assertCleanCompilation = true)
     {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview)
+            .WithFeatures([new KeyValuePair<string, string>("InterceptorsNamespaces", "Foundatio.Mediator")]);
         var compilation = CreateCompilation(source, parseOptions, additionalReferences);
 
         var sourceGenerators = generators.Select(g => g.AsSourceGenerator()).ToImmutableArray();
@@ -94,18 +98,17 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
     }
 
     /// <summary>
-    /// Asserts that the output compilation has no errors or warnings, ensuring the generated
-    /// code compiles cleanly. Filters out known acceptable diagnostics like assembly binding
-    /// redirects (CS1701/CS1702) and nullable annotation context warnings (CS8632).
+    /// Asserts that compilation of the generated code has no errors or warnings.
+    /// Only inspects diagnostics originating from generated source files (*.g.cs),
+    /// not from the user-authored test input. Filters out diagnostics that are inherent
+    /// to in-memory test compilations (missing assembly references, interceptors feature
+    /// flag, etc.) since these are test infrastructure limitations, not generator bugs.
     /// </summary>
     protected static void AssertNoCompilationDiagnostics(Compilation compilation)
     {
-        // Known acceptable diagnostic IDs to ignore
-        HashSet<string> ignoredIds = ["CS1701", "CS1702", "CS8632"];
-
         var problems = compilation.GetDiagnostics()
             .Where(d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
-            .Where(d => !ignoredIds.Contains(d.Id))
+            .Where(d => d.Location.SourceTree?.FilePath.EndsWith(".g.cs") == true) // Only check generated code
             .ToList();
 
         if (problems.Count > 0)
@@ -118,7 +121,9 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
     /// <summary>
     /// Compiles source code into an in-memory assembly that can be used as
     /// an additional reference for cross-assembly generator tests.
-    /// Use for both handler and middleware cross-assembly scenarios.
+    /// Note: Does not run the source generator, so handler wrapper types are not
+    /// emitted. Cross-assembly interceptor tests that reference these wrappers
+    /// should use assertCleanCompilation: false since CS0234 is expected.
     /// </summary>
     internal static MetadataReference CreateAssembly(string source, string assemblyName = "TestAssembly")
     {
@@ -163,7 +168,7 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
         return MetadataReference.CreateFromStream(ms);
     }
 
-    private static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions, MetadataReference[]? additionalReferences = null)
+    protected static Compilation CreateCompilation(string source, CSharpParseOptions parseOptions, MetadataReference[]? additionalReferences = null, string assemblyName = "Tests")
     {
         var runtimeDir = System.IO.Path.GetDirectoryName(typeof(object).Assembly.Location)!;
 
@@ -192,11 +197,16 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             "System.Threading.Tasks.dll",
             "System.ComponentModel.dll",
             "System.Threading.Tasks.Extensions.dll",
+            "System.Console.dll",
+            "System.Security.Claims.dll",
+            "System.Linq.dll",
+            "System.Net.ServerSentEvents.dll",
+            "System.Private.Uri.dll",
         };
 
-        foreach (var assemblyName in additionalAssemblies)
+        foreach (var asm in additionalAssemblies)
         {
-            var path = System.IO.Path.Combine(runtimeDir, assemblyName);
+            var path = System.IO.Path.Combine(runtimeDir, asm);
             if (System.IO.File.Exists(path))
             {
                 references.Add(MetadataReference.CreateFromFile(path));
@@ -209,7 +219,7 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
         }
 
         return CSharpCompilation.Create(
-            assemblyName: "Tests",
+            assemblyName: assemblyName,
             syntaxTrees: [CSharpSyntaxTree.ParseText(source, parseOptions)],
             references: references,
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -219,6 +229,61 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
     {
         var dict = globalOptions.ToImmutableDictionary(kv => kv.Key, kv => kv.Value);
         return new SimpleOptionsProvider(dict);
+    }
+
+    /// <summary>
+    /// Returns ASP.NET Core metadata references so the endpoint generator activates.
+    /// These are deliberately NOT included in <see cref="CreateCompilation"/> because
+    /// their presence changes generator behavior (enables endpoint generation).
+    /// Pass them via <c>additionalReferences</c> only in endpoint-specific tests.
+    /// </summary>
+    protected static MetadataReference[] GetAspNetCoreReferences()
+    {
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var aspNetCoreDir = Path.GetFullPath(
+            Path.Combine(runtimeDir, "..", "..", "Microsoft.AspNetCore.App",
+                new DirectoryInfo(runtimeDir).Name));
+
+        if (!Directory.Exists(aspNetCoreDir))
+        {
+            Assert.Skip("ASP.NET Core shared framework not found; endpoint generation tests require the ASP.NET Core SDK");
+            return [];
+        }
+
+        var assemblies = new[]
+        {
+            "Microsoft.AspNetCore.dll",
+            "Microsoft.AspNetCore.Authentication.Abstractions.dll",
+            "Microsoft.AspNetCore.Authorization.dll",
+            "Microsoft.AspNetCore.Authorization.Policy.dll",
+            "Microsoft.AspNetCore.Http.Abstractions.dll",
+            "Microsoft.AspNetCore.Http.dll",
+            "Microsoft.AspNetCore.Http.Extensions.dll",
+            "Microsoft.AspNetCore.Http.Results.dll",
+            "Microsoft.AspNetCore.Metadata.dll",
+            "Microsoft.AspNetCore.Routing.dll",
+            "Microsoft.AspNetCore.Routing.Abstractions.dll",
+            "Microsoft.AspNetCore.Mvc.Core.dll",
+            "Microsoft.AspNetCore.OpenApi.dll",
+            "Microsoft.Extensions.Primitives.dll",
+            "Microsoft.Net.Http.Headers.dll",
+        };
+
+        var refs = new List<MetadataReference>();
+        foreach (var assembly in assemblies)
+        {
+            var path = Path.Combine(aspNetCoreDir, assembly);
+            if (File.Exists(path))
+                refs.Add(MetadataReference.CreateFromFile(path));
+        }
+
+        if (refs.Count == 0)
+        {
+            Assert.Skip("No ASP.NET Core assemblies found in the shared framework directory");
+            return [];
+        }
+
+        return refs.ToArray();
     }
 
     private sealed class SimpleOptionsProvider : AnalyzerConfigOptionsProvider

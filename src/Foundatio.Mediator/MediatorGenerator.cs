@@ -275,10 +275,22 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             var crossAssemblyCallSites = new List<CallSiteInfo>();
             var crossAssemblyHandlerMessageTypes = new HashSet<string>(crossAssemblyHandlerList.Select(h => h.MessageType.FullName));
 
+            // Find message types with multiple local handlers — these are ambiguous and
+            // must NOT have interceptors generated (would cause CS9153: intercepted multiple times).
+            var ambiguousMessageTypes = new HashSet<string>(filteredHandlers
+                .GroupBy(h => h.MessageType.FullName)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key));
+
             var handlersWithInfo = new List<HandlerInfo>();
             foreach (var handler in filteredHandlers)
             {
-                callSitesByMessage.TryGetValue(handler.MessageType, out var handlerCallSites);
+                // Don't assign call sites when multiple handlers exist for the same message type,
+                // since each would generate an interceptor for the same call site.
+                CallSiteInfo[]? handlerCallSites = null;
+                if (!ambiguousMessageTypes.Contains(handler.MessageType.FullName))
+                    callSitesByMessage.TryGetValue(handler.MessageType, out handlerCallSites);
+
                 var applicableMiddleware = GetApplicableMiddlewares(allMiddleware.ToImmutableArray(), handler, configuration, out var orderingDiagnostics);
 
                 // Resolve effective handler lifetime: use explicit lifetime if set, otherwise use project default
@@ -287,7 +299,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 // Merge assembly-level authorization defaults into handler authorization info
                 var mergedAuth = MergeAuthorizationDefaults(handler.Authorization, endpointDefaults);
 
-                handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()), Authorization = mergedAuth });
+                handlersWithInfo.Add(handler with { CallSites = new(handlerCallSites ?? []), Middleware = applicableMiddleware, Lifetime = resolvedHandlerLifetime, OrderingDiagnostics = new(orderingDiagnostics.ToArray()), Authorization = mergedAuth });
             }
 
             // Collect call sites that need cross-assembly interceptors

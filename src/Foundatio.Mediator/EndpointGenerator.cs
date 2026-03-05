@@ -271,6 +271,7 @@ internal static class EndpointGenerator
             using Microsoft.AspNetCore.Http;
             using Microsoft.AspNetCore.Routing;
             using System.Diagnostics.CodeAnalysis;
+            using System.Linq;
             """);
 
         if (hasAnySseEndpoints)

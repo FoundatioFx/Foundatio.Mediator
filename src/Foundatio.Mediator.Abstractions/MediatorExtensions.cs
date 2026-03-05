@@ -78,6 +78,9 @@ public static class MediatorExtensions
         if (options.LogMiddleware)
             registry.ShowRegisteredMiddleware();
 
+        if (!options.LogHandlers && !options.LogMiddleware)
+            Console.WriteLine($"Foundatio.Mediator registered {registry.Registrations.Count} handler(s) and {registry.MiddlewareRegistrations.Count} middleware.");
+
         var resolvedStrategy = strategy ?? NotificationPublishStrategy.ForeachAwait;
         services.TryAddSingleton<INotificationPublisher>(sp => CreatePublisher(resolvedStrategy, sp));
 

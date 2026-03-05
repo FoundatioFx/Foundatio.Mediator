@@ -666,6 +666,74 @@ Handlers for event/notification types are automatically excluded from endpoint g
 The `INotification` interface is **not required** for events to be excluded from endpoints or for cascading/publishing to work. Events are excluded based on naming conventions (suffixes like `Created`, `Deleted`, etc.) regardless of interface implementation. `INotification` is a classification tool — use it when you want a handler that can receive all notification-type messages, or simply as self-documentation.
 :::
 
+## Streaming Handlers
+
+Foundatio Mediator supports handlers that return `IAsyncEnumerable<T>` for streaming data incrementally — useful for large datasets, real-time feeds, or progressive processing. These work through both the mediator and generated endpoints:
+
+```csharp
+public class ProductStreamHandler
+{
+    public async IAsyncEnumerable<Product> HandleAsync(
+        GetProductStream query,
+        IProductRepository repository,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var product in repository.GetProductsAsync(
+            query.CategoryId, cancellationToken))
+        {
+            yield return product;
+        }
+    }
+}
+```
+
+Consume streaming results through the mediator:
+
+```csharp
+await foreach (var product in mediator.InvokeStreamAsync<Product>(
+    new GetProductStream("electronics"), cancellationToken))
+{
+    Console.WriteLine(product.Name);
+}
+```
+
+When endpoint generation is enabled, streaming handlers automatically generate HTTP endpoints that return the `IAsyncEnumerable<T>` directly — ASP.NET Core streams items as a JSON array without buffering.
+
+### Server-Sent Events (SSE)
+
+For real-time push scenarios, set `Streaming = EndpointStreaming.ServerSentEvents` on the endpoint to use Server-Sent Events instead of JSON array streaming:
+
+```csharp
+[Handler]
+public class EventStreamHandler(IMediator mediator)
+{
+    [HandlerEndpoint(
+        Route = "/events/stream",
+        Streaming = EndpointStreaming.ServerSentEvents,
+        SseEventType = "event",
+        Summary = "Subscribe to real-time events via SSE")]
+    public async IAsyncEnumerable<ClientEvent> Handle(
+        SubscribeToEvents message,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
+            cancellationToken: cancellationToken))
+        {
+            yield return new ClientEvent(evt.GetType().Name, evt);
+        }
+    }
+}
+```
+
+| Property       | Purpose |
+| ---            | --- |
+| `Streaming`    | `EndpointStreaming.ServerSentEvents` wraps the result with `TypedResults.ServerSentEvents()` (requires .NET 10+). `Default` streams as a JSON array. |
+| `SseEventType` | Sets the `event:` field in the SSE stream. When set, clients listen with `addEventListener('event-name', ...)`. When `null`, the browser `EventSource` fires the default `message` event. |
+
+::: tip
+For a complete guide on streaming patterns including `SubscribeAsync`, error handling, and real-world examples, see [Streaming Handlers](./streaming-handlers.md#streaming-endpoints).
+:::
+
 ## Troubleshooting
 
 ### Endpoints Not Generated

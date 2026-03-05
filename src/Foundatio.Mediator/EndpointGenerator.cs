@@ -539,6 +539,29 @@ internal static class EndpointGenerator
 
         source.DecrementIndent();
         source.AppendLine("}");
+        source.AppendLine("else");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        if (hasLoggerFactory)
+        {
+            source.AppendLine("var endpointLogger = endpoints.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"Foundatio.Mediator.Endpoints\");");
+            source.AppendLine("if (endpointLogger != null)");
+            source.IncrementIndent();
+            source.AppendLine($"endpointLogger.LogInformation(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+            source.DecrementIndent();
+            source.AppendLine("else");
+            source.IncrementIndent();
+            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+            source.DecrementIndent();
+        }
+        else
+        {
+            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+        }
+
+        source.DecrementIndent();
+        source.AppendLine("}");
     }
 
     /// <summary>

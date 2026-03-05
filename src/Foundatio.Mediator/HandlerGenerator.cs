@@ -683,7 +683,7 @@ internal static class HandlerGenerator
             source.AppendLine($"{m.Method.ReturnType.UnwrappedFullName}{nullableMarker} {resultVarName} = {defaultValue};");
 
             // Track whether Before ran so Finally can be skipped when short-circuited
-            if (!m.Method.ReturnType.IsHandlerResult)
+            if (!m.Method.ReturnType.IsHandlerResult && m.Middleware.FinallyMethod != null)
             {
                 source.AppendLine($"bool {m.Middleware.Identifier.ToCamelCase()}BeforeRan = false;");
             }
@@ -729,7 +729,7 @@ internal static class HandlerGenerator
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
 
             // Mark that Before ran so Finally knows it's safe to execute
-            if (m.Method.HasReturnValue && !m.Method.ReturnType.IsHandlerResult)
+            if (m.Method.HasReturnValue && !m.Method.ReturnType.IsHandlerResult && m.Middleware.FinallyMethod != null)
             {
                 source.AppendLine($"{m.Middleware.Identifier.ToCamelCase()}BeforeRan = true;");
             }

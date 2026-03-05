@@ -14,9 +14,14 @@
     { href: '/reports', label: 'Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   ];
 
+  const allHrefs = [...publicItems, ...adminItems].map((i) => i.href);
+
   function isActive(href: string, pathname: string): boolean {
     if (href === '/') return pathname === '/';
-    return pathname.startsWith(href);
+    if (pathname === href) return true;
+    if (!pathname.startsWith(href + '/')) return false;
+    // Only highlight if no other nav item is a more specific match
+    return !allHrefs.some((h) => h !== href && h.startsWith(href + '/') && (pathname === h || pathname.startsWith(h + '/')));
   }
 </script>
 

@@ -92,6 +92,6 @@ var reply = await mediator.InvokeAsync<string>(new Ping("Hello"));
 Turn your message handlers into API endpoints automatically:
 
 ```csharp
-app.MapMyAppEndpoints();
+app.MapMediatorEndpoints();
 // That's it — routes, methods, and parameter binding are all generated for you.
 ```

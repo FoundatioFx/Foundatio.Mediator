@@ -69,12 +69,7 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// </summary>
     public NotificationPublishStrategy NotificationPublishStrategy { get; set; }
 
-    /// <summary>
-    /// Custom name used as a suffix for generated endpoint extension methods and classes
-    /// (e.g. <c>Map{ProjectName}Endpoints</c>). When <c>null</c>, the assembly name is used.
-    /// Default: <c>null</c>.
-    /// </summary>
-    public string? ProjectName { get; set; }
+
 
     /// <summary>
     /// Adds a generation counter timestamp comment to generated files. Useful for verifying

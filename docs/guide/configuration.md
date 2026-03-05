@@ -154,17 +154,6 @@ public class FirstTransientMiddleware
   - `TaskWhenAll`: Invokes all handlers concurrently and waits for all to complete
   - `FireAndForget`: Fires all handlers in parallel without waiting
 
-**`ProjectName`** (`string?`)
-
-- **Default:** Assembly name (with dots/dashes replaced by underscores)
-- **Effect:** Controls the suffix used in generated endpoint extension methods and classes
-- **Example:** Setting `ProjectName = "Products"` generates:
-  - `MapProductsEndpoints()` extension method
-  - `MediatorEndpointExtensions_Products` class
-  - `MediatorEndpointResultMapper_Products` class
-- **Use Case:** Meaningful endpoint method names in modular monolith architectures
-- **See:** [Endpoints Guide](/guide/endpoints) for full documentation
-
 **`EnableGenerationCounter`** (`bool`)
 
 - **Default:** `false`

@@ -260,7 +260,6 @@ using Foundatio.Mediator;
     DisableAuthorization = false,                       // Disable inline auth checks and auth service DI
     HandlerDiscovery = HandlerDiscovery.All,            // All (convention + explicit) or Explicit only
     NotificationPublishStrategy = NotificationPublishStrategy.ForeachAwait, // Sequential, TaskWhenAll, or FireAndForget
-    ProjectName = "MyProject",                          // Custom suffix for generated endpoint methods
     EnableGenerationCounter = false,                    // Debug: add generation timestamp comment
     EndpointDiscovery = EndpointDiscovery.All,          // All (default), Explicit, None
     EndpointRoutePrefix = "api",                        // Global route prefix for all endpoints (default: "api")

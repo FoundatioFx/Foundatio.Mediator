@@ -45,16 +45,26 @@ public class ProductHandler
 
 ### 3. Map the Endpoints
 
-In your startup code, call the generated extension method:
+In your startup code, call the generated extension method to map all handler endpoints:
 
 ```csharp
 var app = builder.Build();
 
-// Map endpoints from all modules
-app.MapProductsEndpoints();      // From Products.Module
-app.MapOrdersEndpoints();        // From Orders.Module
+// Maps endpoints from all referenced assemblies automatically
+app.MapMediatorEndpoints();
 
 app.Run();
+```
+
+You can also select specific assemblies and enable endpoint logging:
+
+```csharp
+app.MapMediatorEndpoints(c =>
+{
+    c.AddAssembly<CreateProduct>();    // Products.Module
+    c.AddAssembly<CreateOrder>();      // Orders.Module
+    c.LogEndpoints();
+});
 ```
 
 ## HTTP Method Inference
@@ -571,23 +581,6 @@ No endpoints are generated:
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.None)]
 ```
 
-## Project Name Configuration
-
-Control the generated extension method name with the `ProjectName` property on `MediatorConfiguration`:
-
-```csharp
-[assembly: MediatorConfiguration(
-    ProjectName = "Products",
-    EndpointDiscovery = EndpointDiscovery.All
-)]
-```
-
-This generates:
-- `MapProductsEndpoints()` extension method
-- `MediatorEndpointExtensions_Products` class
-- `MediatorEndpointResultMapper_Products` class
-
-Without this setting, the assembly name is used (with dots/dashes converted to underscores).
 
 ## Generated Code Example
 
@@ -623,9 +616,14 @@ public class ProductHandler
 The generator produces:
 
 ```csharp
-public static class MediatorEndpointExtensions_Products
+public static partial class Products_Module_MediatorEndpoints
 {
-    public static IEndpointRouteBuilder MapProductsEndpoints(this IEndpointRouteBuilder endpoints)
+    public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)
+    {
+        MapEndpointsCore(endpoints, logEndpoints);
+    }
+
+    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)
     {
         var rootGroup = endpoints.MapGroup("api");
         var productsGroup = rootGroup.MapGroup("products").WithTags("Products");
@@ -635,7 +633,7 @@ public static class MediatorEndpointExtensions_Products
             IMediator mediator, CancellationToken ct) =>
         {
             var result = await ProductHandler_CreateProduct_Handler.HandleAsync(mediator, message, ct);
-            return MediatorEndpointResultMapper_Products.ToHttpResult(result);
+            return MediatorEndpointResultMapper_Products_Module.ToHttpResult(result);
         })
         .WithName("CreateProduct")
         .WithSummary("Creates a new product")
@@ -647,13 +645,11 @@ public static class MediatorEndpointExtensions_Products
         {
             var message = new GetProduct(productId);
             var result = ProductHandler_GetProduct_Handler.Handle(mediator, message, ct);
-            return MediatorEndpointResultMapper_Products.ToHttpResult(result);
+            return MediatorEndpointResultMapper_Products_Module.ToHttpResult(result);
         })
         .WithName("GetProduct")
         .WithSummary("Gets a product by ID")
         .Produces<Product>(200);
-
-        return endpoints;
     }
 }
 ```

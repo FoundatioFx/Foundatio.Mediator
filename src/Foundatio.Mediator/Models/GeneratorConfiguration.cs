@@ -8,5 +8,4 @@ internal record GeneratorConfiguration(
     bool AuthorizationEnabled,
     bool ConventionalDiscoveryDisabled,
     bool GenerationCounterEnabled,
-    string NotificationPublishStrategy,
-    string? ProjectName);
+    string NotificationPublishStrategy);

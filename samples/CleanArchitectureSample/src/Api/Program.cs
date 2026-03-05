@@ -1,17 +1,12 @@
 using System.Security.Claims;
 using Common.Module;
-using Common.Module.Events;
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Orders.Module;
-using Orders.Module.Messages;
 using Products.Module;
-using Products.Module.Messages;
 using Reports.Module;
-using Reports.Module.Messages;
 using Scalar.AspNetCore;
-using Api.Handlers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,16 +36,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// Add Foundatio.Mediator with assemblies from all modules
-builder.Services.AddMediator(c =>
-{
-    c.SetMediatorLifetime(ServiceLifetime.Scoped);
-    c.AddAssembly<OrderCreated>();         // Common.Module
-    c.AddAssembly<CreateOrder>();          // Orders.Module
-    c.AddAssembly<CreateProduct>();        // Products.Module
-    c.AddAssembly<GetDashboardReport>();   // Reports.Module
-    c.AddAssembly<ClientEventStreamHandler>(); // Api (for SSE streaming handler)
-});
+// Add Foundatio.Mediator — all referenced module assemblies are auto-discovered
+builder.Services.AddMediator();
 
 // Add module services
 // Order matters: Common.Module provides cross-cutting services that other modules may depend on
@@ -123,14 +110,10 @@ app.MapGet("/api/auth/me", (HttpContext http) =>
     return Results.Ok(new UserInfo(displayName, username, role));
 }).AllowAnonymous();
 
-// Map module endpoints - each module exposes its own API endpoints
+// Map module endpoints - discovers and maps all endpoint modules from referenced assemblies
 // All generated endpoints now require authentication via [assembly: MediatorConfiguration(AuthorizationRequired = true)]
 // Handlers marked with [AllowAnonymous] (e.g., HealthHandler) opt out of auth
-app.MapCommonEndpoints();
-app.MapOrdersEndpoints();
-app.MapProductsEndpoints();
-app.MapReportsEndpoints();
-app.MapApiEndpoints();
+app.MapMediatorEndpoints();
 
 // SPA fallback - serves index.html for client-side routing
 app.MapFallbackToFile("/index.html");

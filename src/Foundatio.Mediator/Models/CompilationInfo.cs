@@ -12,4 +12,5 @@ internal readonly record struct CompilationInfo(
     bool HasWithOpenApi,
     bool IsAspNetCore,
     bool HasLoggerFactory,
-    bool HasServerSentEvents);
+    bool HasServerSentEvents,
+    bool IsApplication);

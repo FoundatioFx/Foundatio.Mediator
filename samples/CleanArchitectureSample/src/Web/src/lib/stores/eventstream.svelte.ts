@@ -70,7 +70,7 @@ class EventStreamService {
   private connect() {
     this.eventSource = new EventSource('/events/stream');
 
-    this.eventSource.addEventListener('event', (e: MessageEvent) => {
+    this.eventSource.addEventListener('message', (e: MessageEvent) => {
       try {
         const clientEvent: ClientEvent = JSON.parse(e.data);
         this.dispatch(clientEvent);

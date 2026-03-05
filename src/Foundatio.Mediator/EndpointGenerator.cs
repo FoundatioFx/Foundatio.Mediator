@@ -27,53 +27,97 @@ internal static class EndpointGenerator
         if (endpointDefaults.Discovery is "None" or null)
             return;
 
-        var safeSuffix = !string.IsNullOrEmpty(configuration.ProjectName)
-            ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
-            : DeriveProjectNameFromAssembly(compilationInfo.AssemblyName);
+        var safeAssemblyName = compilationInfo.AssemblyName.ToIdentifier();
 
-        var source = new IndentedStringBuilder();
-
-        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.Api.g.cs");
-        source.AppendLine("""
+        // --- Per-module stub: {SafeAssemblyName}_MediatorEndpoints ---
+        var moduleSource = new IndentedStringBuilder();
+        moduleSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.Api.g.cs");
+        moduleSource.AppendLine("""
             using Microsoft.AspNetCore.Builder;
             using Microsoft.AspNetCore.Http;
             using Microsoft.AspNetCore.Routing;
+            using System.Diagnostics.CodeAnalysis;
+            """);
+
+        moduleSource.AppendLine();
+        moduleSource.AppendLine("namespace Foundatio.Mediator;");
+        moduleSource.AppendLine();
+        moduleSource.AddGeneratedCodeAttribute();
+        moduleSource.AppendLine("[ExcludeFromCodeCoverage]");
+        moduleSource.AppendLine($"public static partial class {safeAssemblyName}_MediatorEndpoints");
+        moduleSource.AppendLine("{");
+        moduleSource.IncrementIndent();
+
+        moduleSource.AppendLine("/// <summary>");
+        moduleSource.AppendLine("/// Maps this module's handler endpoints to the application.");
+        moduleSource.AppendLine("/// </summary>");
+        moduleSource.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        moduleSource.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup.</param>");
+        moduleSource.AppendLine("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
+        moduleSource.AppendLine("{");
+        moduleSource.IncrementIndent();
+        moduleSource.AppendLine("MapEndpointsCore(endpoints, logEndpoints);");
+        moduleSource.DecrementIndent();
+        moduleSource.AppendLine("}");
+        moduleSource.AppendLine();
+        moduleSource.AppendLine("/// <summary>");
+        moduleSource.AppendLine("/// Core endpoint registration, implemented by the source generator at compile time.");
+        moduleSource.AppendLine("/// At design time this is a no-op so IntelliSense works before the first build.");
+        moduleSource.AppendLine("/// </summary>");
+        moduleSource.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);");
+
+        moduleSource.DecrementIndent();
+        moduleSource.AppendLine("}");
+
+        context.AddSource("_MediatorEndpoints.Api.g.cs", moduleSource.ToString());
+
+        // --- Aggregator stub: MapMediatorEndpoints() (app projects only) ---
+        if (!compilationInfo.IsApplication)
+            return;
+
+        var aggSource = new IndentedStringBuilder();
+        aggSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpointAggregator.Api.g.cs");
+        aggSource.AppendLine("""
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+            using System;
             using System.Diagnostics.CodeAnalysis;
 
             namespace Foundatio.Mediator;
             """);
 
-        source.AppendLine();
-        source.AddGeneratedCodeAttribute();
-        source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine($"public static partial class MediatorEndpointExtensions_{safeSuffix}");
-        source.AppendLine("{");
-        source.IncrementIndent();
+        aggSource.AppendLine();
+        aggSource.AddGeneratedCodeAttribute();
+        aggSource.AppendLine("[ExcludeFromCodeCoverage]");
+        aggSource.AppendLine("public static partial class MediatorEndpointExtensions");
+        aggSource.AppendLine("{");
+        aggSource.IncrementIndent();
 
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Maps all discovered handler endpoints to the application.");
-        source.AppendLine("/// </summary>");
-        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
-        source.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup using ILogger or Console.</param>");
-        source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
-        source.AppendLine($"public static IEndpointRouteBuilder Map{safeSuffix}Endpoints(this IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
-        source.AppendLine("{");
-        source.IncrementIndent();
-        source.AppendLine("MapEndpointsCore(endpoints, logEndpoints);");
-        source.AppendLine("return endpoints;");
-        source.DecrementIndent();
-        source.AppendLine("}");
-        source.AppendLine();
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Core endpoint registration, implemented by the source generator at compile time.");
-        source.AppendLine("/// At design time this is a no-op so IntelliSense works before the first build.");
-        source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);");
+        aggSource.AppendLine("/// <summary>");
+        aggSource.AppendLine("/// Maps all discovered mediator handler endpoints from all referenced assemblies.");
+        aggSource.AppendLine("/// Discovers endpoint modules automatically via <see cref=\"FoundatioModuleAttribute\"/> and naming convention.");
+        aggSource.AppendLine("/// </summary>");
+        aggSource.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        aggSource.AppendLine("/// <param name=\"configure\">Optional configuration to select assemblies and enable logging.</param>");
+        aggSource.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
+        aggSource.AppendLine("public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)");
+        aggSource.AppendLine("{");
+        aggSource.IncrementIndent();
+        aggSource.AppendLine("MapMediatorEndpointsCore(endpoints, configure);");
+        aggSource.AppendLine("return endpoints;");
+        aggSource.DecrementIndent();
+        aggSource.AppendLine("}");
+        aggSource.AppendLine();
+        aggSource.AppendLine("/// <summary>");
+        aggSource.AppendLine("/// Core aggregator implementation, filled in at compile time by the source generator.");
+        aggSource.AppendLine("/// </summary>");
+        aggSource.AppendLine("static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure);");
 
-        source.DecrementIndent();
-        source.AppendLine("}");
+        aggSource.DecrementIndent();
+        aggSource.AppendLine("}");
 
-        context.AddSource("_MediatorEndpoints.Api.g.cs", source.ToString());
+        context.AddSource("_MediatorEndpointAggregator.Api.g.cs", aggSource.ToString());
     }
 
     /// <summary>
@@ -93,15 +137,25 @@ internal static class EndpointGenerator
         // Filter handlers that should generate endpoints based on discovery mode
         var endpointHandlers = GetEndpointHandlers(handlers, endpointDefaults);
 
-        if (endpointHandlers.Count == 0)
+        if (endpointHandlers.Count == 0 && !compilationInfo.IsApplication)
             return;
 
-        // Validate endpoint configurations and emit diagnostics
-        ValidateEndpoints(context, endpointHandlers, endpointDefaults);
+        if (endpointHandlers.Count > 0)
+        {
+            // Validate endpoint configurations and emit diagnostics
+            ValidateEndpoints(context, endpointHandlers, endpointDefaults);
 
-        // Generate the endpoint registration code
-        var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
-        context.AddSource("_MediatorEndpoints.g.cs", source);
+            // Generate the per-module endpoint registration code
+            var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
+            context.AddSource("_MediatorEndpoints.g.cs", source);
+        }
+
+        // Generate the aggregator implementation in application projects
+        if (compilationInfo.IsApplication)
+        {
+            var aggSource = GenerateAggregatorCode(configuration, compilationInfo);
+            context.AddSource("_MediatorEndpointAggregator.g.cs", aggSource);
+        }
     }
 
     /// <summary>
@@ -204,10 +258,10 @@ internal static class EndpointGenerator
         bool hasFromBodyAttribute = compilationInfo.HasFromBodyAttribute;
         bool hasWithOpenApi = compilationInfo.HasWithOpenApi;
 
-        // Get suffix from configuration or fall back to a cleaned-up assembly name
-        var safeSuffix = !string.IsNullOrEmpty(configuration.ProjectName)
-            ? configuration.ProjectName!.Replace(".", "_").Replace("-", "_").ToIdentifier()
-            : DeriveProjectNameFromAssembly(compilationInfo.AssemblyName);
+        var safeAssemblyName = compilationInfo.AssemblyName.ToIdentifier();
+
+        // The result mapper still uses a per-assembly suffix to avoid collisions
+        var assemblySuffix = safeAssemblyName;
 
         // Check if any handler uses SSE streaming
         bool hasAnySseEndpoints = handlers.Any(h => h.Endpoint is { IsStreaming: true, StreamingFormat: "ServerSentEvents" });
@@ -230,24 +284,26 @@ internal static class EndpointGenerator
             source.AppendLine("using Microsoft.Extensions.Logging;");
         }
 
-        source.AppendLine();
-        source.AppendLine($"namespace Foundatio.Mediator;");
+
 
         source.AppendLine();
-        source.AppendLine($"public static partial class MediatorEndpointExtensions_{safeSuffix}");
+        source.AppendLine("namespace Foundatio.Mediator;");
+
+        source.AppendLine();
+        source.AppendLine($"public static partial class {safeAssemblyName}_MediatorEndpoints");
         source.AppendLine("{");
         source.IncrementIndent();
 
         // Generate the core implementation as a static partial void method
         // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
-        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, safeSuffix, compilationInfo.HasLoggerFactory);
+        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
         source.AppendLine();
 
-        // Generate the result mapper class (only once per assembly, uses same suffix)
-        GenerateResultMapperClass(source, safeSuffix);
+        // Generate the result mapper class (uses assembly suffix to avoid collisions)
+        GenerateResultMapperClass(source, assemblySuffix);
 
         return source.ToString();
     }
@@ -1013,8 +1069,89 @@ internal static class EndpointGenerator
     /// in generated endpoint method names. Takes the last meaningful segment,
     /// strips common suffixes like Api/Web/Module/Service/Server, and sanitizes.
     /// </summary>
-    internal static string DeriveProjectNameFromAssembly(string assemblyName)
-        => AssemblyNameHelper.DeriveProjectNameFromAssembly(assemblyName);
+    /// <summary>
+    /// Generates the aggregator implementation that discovers and invokes all endpoint modules via reflection.
+    /// </summary>
+    private static string GenerateAggregatorCode(GeneratorConfiguration configuration, CompilationInfo compilationInfo)
+    {
+        var source = new IndentedStringBuilder();
+
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpointAggregator.g.cs");
+        source.AppendLine("""
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+            using System;
+            using System.Diagnostics.CodeAnalysis;
+            using System.Linq;
+            using System.Reflection;
+
+            namespace Foundatio.Mediator;
+            """);
+
+        source.AppendLine();
+        source.AppendLine("public static partial class MediatorEndpointExtensions");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine("/// <summary>");
+        source.AppendLine("/// Core aggregator implementation. Discovers all assemblies marked with");
+        source.AppendLine("/// <see cref=\"FoundatioModuleAttribute\"/> containing a class ending with _MediatorEndpoints.");
+        source.AppendLine("/// </summary>");
+        source.AppendLine("static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine("MediatorEndpointOptions? options = null;");
+        source.AppendLine("if (configure != null)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("var builder = new MediatorEndpointOptionsBuilder();");
+        source.AppendLine("configure(builder);");
+        source.AppendLine("options = builder.Build();");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("var logEndpoints = options?.LogEndpoints ?? false;");
+        source.AppendLine();
+        source.AppendLine("if (options?.Assemblies == null || options.Assemblies.Count == 0)");
+        source.AppendLine("    MediatorExtensions.EnsureReferencedAssembliesLoaded();");
+        source.AppendLine();
+        source.AppendLine("var assemblies = options?.Assemblies != null && options.Assemblies.Count > 0");
+        source.AppendLine("    ? options.Assemblies");
+        source.AppendLine("    : AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic).ToList();");
+        source.AppendLine();
+        source.AppendLine("foreach (var assembly in assemblies)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine("if (!assembly.GetCustomAttributes(typeof(FoundatioModuleAttribute), false).Any())");
+        source.AppendLine("    continue;");
+        source.AppendLine();
+        source.AppendLine("foreach (var type in assembly.GetExportedTypes())");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("if (!type.Name.EndsWith(\"_MediatorEndpoints\", StringComparison.Ordinal))");
+        source.AppendLine("    continue;");
+        source.AppendLine();
+        source.AppendLine("var method = type.GetMethod(\"MapEndpoints\", BindingFlags.Public | BindingFlags.Static);");
+        source.AppendLine("method?.Invoke(null, new object[] { endpoints, logEndpoints });");
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        return source.ToString();
+    }
+
+
 
     /// <summary>
     /// Escapes a string for use in C# source code.

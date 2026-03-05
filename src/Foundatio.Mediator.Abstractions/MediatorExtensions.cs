@@ -35,6 +35,7 @@ public static class MediatorExtensions
 
         if (options.Assemblies.Count == 0)
         {
+            EnsureReferencedAssembliesLoaded();
             options.Assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && a.FullName?.StartsWith("System.") != true).ToList();
         }
 
@@ -142,6 +143,56 @@ public static class MediatorExtensions
             sd.ServiceType.FullName == "Microsoft.AspNetCore.Hosting.IWebHostEnvironment");
 
         return isWebApp ? ServiceLifetime.Scoped : ServiceLifetime.Singleton;
+    }
+
+    /// <summary>
+    /// Walks the reference graph from the entry assembly and forces any not-yet-loaded assemblies
+    /// into the AppDomain. This ensures that project-referenced assemblies (which .NET loads lazily)
+    /// are available for <see cref="FoundatioModuleAttribute"/> scanning.
+    /// </summary>
+    public static void EnsureReferencedAssembliesLoaded()
+    {
+        var loaded = new HashSet<string>(
+            AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic && a.GetName().Name != null)
+                .Select(a => a.GetName().Name!),
+            StringComparer.OrdinalIgnoreCase);
+
+        var queue = new Queue<AssemblyName>();
+
+        var entry = Assembly.GetEntryAssembly();
+        if (entry != null)
+        {
+            foreach (var r in entry.GetReferencedAssemblies())
+                queue.Enqueue(r);
+        }
+
+        while (queue.Count > 0)
+        {
+            var name = queue.Dequeue();
+            if (name.Name == null || loaded.Contains(name.Name))
+                continue;
+
+            loaded.Add(name.Name);
+
+            // Skip framework assemblies — they won't have FoundatioModule markers
+            if (name.Name.StartsWith("System", StringComparison.Ordinal) ||
+                name.Name.StartsWith("Microsoft", StringComparison.Ordinal) ||
+                name.Name.StartsWith("runtime.", StringComparison.OrdinalIgnoreCase) ||
+                name.Name == "mscorlib" || name.Name == "netstandard")
+                continue;
+
+            try
+            {
+                var asm = Assembly.Load(name);
+                foreach (var r in asm.GetReferencedAssemblies())
+                    queue.Enqueue(r);
+            }
+            catch
+            {
+                // Assembly couldn't be loaded — skip it
+            }
+        }
     }
 
     private static Type[] GetLoadableTypes(Assembly assembly)

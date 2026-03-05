@@ -95,7 +95,7 @@ public class TodoHandler
 
 ```csharp
 // Program.cs
-app.MapMyAppEndpoints(); // generated extension method based on project name
+app.MapMediatorEndpoints();
 ```
 
 This generates:

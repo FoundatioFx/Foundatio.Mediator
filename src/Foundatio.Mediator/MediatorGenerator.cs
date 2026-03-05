@@ -116,7 +116,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         bool conventionalDiscoveryDisabled = false;
         bool generationCounterEnabled = false;
         string notificationPublishStrategy = "ForeachAwait";
-        string? projectName = null;
 
         // Endpoint defaults
         string discovery = "All";
@@ -157,9 +156,6 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                         break;
                     case "NotificationPublishStrategy" when arg.Value.Value is int v:
                         notificationPublishStrategy = v switch { 1 => "TaskWhenAll", 2 => "FireAndForget", _ => "ForeachAwait" };
-                        break;
-                    case "ProjectName" when arg.Value.Value is string s:
-                        projectName = s;
                         break;
                     case "EnableGenerationCounter" when arg.Value.Value is bool b:
                         generationCounterEnabled = b;
@@ -205,7 +201,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var authorizationEnabled = !disableAuthorization;
 
         var configuration = new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
-            openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy, projectName);
+            openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy);
 
         var endpointDefaults = new EndpointDefaultsInfo
         {
@@ -235,7 +231,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             HasWithOpenApi: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Builder.OpenApiRouteHandlerBuilderExtensions") != null,
             IsAspNetCore: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IHttpContextAccessor") != null,
             HasLoggerFactory: compilation.GetTypeByMetadataName("Microsoft.Extensions.Logging.ILoggerFactory") != null,
-            HasServerSentEvents: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.TypedResults")?.GetMembers("ServerSentEvents").Any() == true);
+            HasServerSentEvents: compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.TypedResults")?.GetMembers("ServerSentEvents").Any() == true,
+            IsApplication: compilation.Options.OutputKind is OutputKind.ConsoleApplication or OutputKind.WindowsApplication);
     }
 
     private static void Execute(

@@ -105,7 +105,7 @@ The source generator automatically creates:
 **No controller classes. No endpoint registrations. No boilerplate.** Just map them in your startup:
 
 ```csharp
-app.MapOrdersEndpoints();
+app.MapMediatorEndpoints();
 ```
 
 The generator infers HTTP methods from message names (`Create*` → POST, `Get*` → GET), generates routes from ID properties, maps `Result<T>` to HTTP status codes, and pulls OpenAPI metadata from XML doc comments.

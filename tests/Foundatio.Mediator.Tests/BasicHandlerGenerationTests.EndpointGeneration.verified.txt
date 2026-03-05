@@ -114,18 +114,16 @@ namespace Foundatio.Mediator;
 
 [global::System.CodeDom.Compiler.GeneratedCode("Foundatio.Mediator", "<version>")]
 [ExcludeFromCodeCoverage]
-public static partial class MediatorEndpointExtensions_Tests
+public static partial class Tests_MediatorEndpoints
 {
     /// <summary>
-    /// Maps all discovered handler endpoints to the application.
+    /// Maps this module's handler endpoints to the application.
     /// </summary>
     /// <param name="endpoints">The endpoint route builder.</param>
-    /// <param name="logEndpoints">When true, logs all mapped endpoints at startup using ILogger or Console.</param>
-    /// <returns>The endpoint route builder for chaining.</returns>
-    public static IEndpointRouteBuilder MapTestsEndpoints(this IEndpointRouteBuilder endpoints, bool logEndpoints = false)
+    /// <param name="logEndpoints">When true, logs all mapped endpoints at startup.</param>
+    public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)
     {
         MapEndpointsCore(endpoints, logEndpoints);
-        return endpoints;
     }
 
     /// <summary>
@@ -153,7 +151,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Foundatio.Mediator;
 
-public static partial class MediatorEndpointExtensions_Tests
+public static partial class Tests_MediatorEndpoints
 {
     /// <summary>
     /// Core endpoint registration implementation.

@@ -426,7 +426,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var stubSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.Api.g.cs").Source;
         Assert.NotNull(stubSource);
         Assert.Contains("public static partial class", stubSource);
-        Assert.Contains("MapTestsEndpoints", stubSource);
+        Assert.Contains("Tests_MediatorEndpoints", stubSource);
         Assert.Contains("static partial void MapEndpointsCore", stubSource);
 
         // Implementation file should also be generated (compile-time only in real IDE, but test runs both)
@@ -434,6 +434,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(implSource);
         Assert.Contains("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)", implSource);
         Assert.Contains("MapGet", implSource);
+        Assert.DoesNotContain("MediatorEndpointModule", implSource);
     }
 
     [Fact]
@@ -1064,21 +1065,6 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // CompleteTodo — entity "Todo" matches category "Todos"
         // should use clean action: /{todoId}/complete
         Assert.Contains("{todoId}/complete\"", endpointSource);
-    }
-
-    [Theory]
-    [InlineData("MyApp.Orders.Api", "Orders")]
-    [InlineData("Products.Module", "Products")]
-    [InlineData("MyWebApp", "MyWebApp")]
-    [InlineData("my-cool-api", "my_cool_api")]
-    [InlineData("Api", "Api")]
-    [InlineData("Company.Platform.Billing.Service", "Billing")]
-    [InlineData("Web", "Web")]
-    public void DeriveProjectNameFromAssembly_ProducesExpectedName(string assemblyName, string expected)
-    {
-        // Source-imported from src/Foundatio.Mediator/Utility/AssemblyNameHelper.cs
-        var result = TestAssemblyNameHelper.DeriveProjectNameFromAssembly(assemblyName);
-        Assert.Equal(expected, result);
     }
 
     [Fact]
@@ -1763,45 +1749,3 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 }
 
-/// <summary>
-/// Mirrors <c>AssemblyNameHelper.DeriveProjectNameFromAssembly</c> from the generator project
-/// so we can unit-test the algorithm without exposing internal types across a strong-name boundary.
-/// Source of truth: src/Foundatio.Mediator/Utility/AssemblyNameHelper.cs
-/// </summary>
-file static class TestAssemblyNameHelper
-{
-    internal static string DeriveProjectNameFromAssembly(string assemblyName)
-    {
-        var segments = assemblyName.Split('.');
-        string[] stripSuffixes = ["Api", "Web", "Module", "Service", "Server", "Host", "App"];
-
-        for (int i = segments.Length - 1; i >= 0; i--)
-        {
-            var segment = segments[i].Trim();
-            if (string.IsNullOrEmpty(segment))
-                continue;
-
-            bool isSuffix = false;
-            foreach (var suffix in stripSuffixes)
-            {
-                if (string.Equals(segment, suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    isSuffix = true;
-                    break;
-                }
-            }
-
-            if (!isSuffix)
-                return Sanitize(segment.Replace("-", "_"));
-        }
-
-        return Sanitize(assemblyName.Replace(".", "_").Replace("-", "_"));
-    }
-
-    private static string Sanitize(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return string.Empty;
-        var id = new string(name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray());
-        return id.Length > 0 && char.IsDigit(id[0]) ? "_" + id : id;
-    }
-}

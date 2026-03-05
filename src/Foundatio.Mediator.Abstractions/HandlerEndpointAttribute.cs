@@ -15,18 +15,18 @@ public sealed class HandlerEndpointAttribute : Attribute
     }
 
     /// <summary>
-    /// Gets or sets the HTTP method (GET, POST, PUT, DELETE, PATCH).
-    /// When null, the HTTP method is inferred from the message type name:
-    /// Get*/Find*/Search*/List*/Query* -> GET, Create*/Add*/New* -> POST,
-    /// Update*/Edit*/Modify*/Set* -> PUT, Delete*/Remove* -> DELETE, Patch* -> PATCH.
+    /// Gets or sets the HTTP method for this endpoint.
+    /// When <see cref="EndpointHttpMethod.Default"/>, the HTTP method is inferred from the message type name:
+    /// Get*/Find*/Search*/List*/Query* → GET, Create*/Add*/New* → POST,
+    /// Update*/Edit*/Modify*/Set* → PUT, Delete*/Remove* → DELETE, Patch* → PATCH.
     /// </summary>
-    public string? HttpMethod { get; set; }
+    public EndpointHttpMethod HttpMethod { get; set; }
 
     /// <summary>
     /// Gets or sets the route template for this endpoint.
     /// Use {propertyName} for route parameters that match message properties.
-    /// Use a leading <c>/</c> to create an absolute route that bypasses both the global and category prefixes (e.g., <c>"/status"</c> routes to <c>/status</c>).
-    /// When null, the route is generated from the category's RoutePrefix and message properties.
+    /// Use a leading <c>/</c> to create an absolute route that bypasses both the global and group prefixes (e.g., <c>"/status"</c> routes to <c>/status</c>).
+    /// When null, the route is generated from the group's RoutePrefix and message properties.
     /// </summary>
     public string? Route { get; set; }
 
@@ -49,7 +49,7 @@ public sealed class HandlerEndpointAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the tags for grouping endpoints in OpenAPI.
-    /// When null, uses the HandlerCategory attribute's Name property.
+    /// When null, uses the HandlerEndpointGroup attribute's Name property.
     /// </summary>
     public string[]? Tags { get; set; }
 
@@ -62,7 +62,7 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// <summary>
     /// Gets or sets the endpoint filter types for this endpoint.
     /// Each type must implement <c>Microsoft.AspNetCore.Http.IEndpointFilter</c>.
-    /// These filters are additive to any global or category-level filters.
+    /// These filters are additive to any global or group-level filters.
     /// </summary>
     public Type[]? EndpointFilters { get; set; }
 

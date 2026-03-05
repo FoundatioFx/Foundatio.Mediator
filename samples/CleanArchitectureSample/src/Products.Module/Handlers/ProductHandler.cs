@@ -14,7 +14,7 @@ namespace Products.Module.Handlers;
 /// Following Clean Architecture, this handler orchestrates use cases
 /// and delegates persistence to the IProductRepository abstraction.
 /// </summary>
-[HandlerCategory("Products")]
+[HandlerEndpointGroup("Products")]
 public class ProductHandler(IProductRepository repository)
 {
     /// <summary>

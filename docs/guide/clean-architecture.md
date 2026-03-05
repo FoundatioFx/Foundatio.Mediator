@@ -66,7 +66,7 @@ The mediator pattern is the perfect complement to Clean Architecture because it 
 With Foundatio Mediator's source generator, you can **eliminate the presentation layer boilerplate entirely**. HTTP endpoints are automatically generated from your handlers:
 
 ```csharp
-[HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+[HandlerEndpointGroup("Orders", RoutePrefix = "/api/orders")]
 public class OrderHandler
 {
     /// <summary>
@@ -388,7 +388,7 @@ public class OrdersController : ControllerBase
 }
 
 // Foundatio Mediator - handlers ARE the API
-[HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+[HandlerEndpointGroup("Orders", RoutePrefix = "/api/orders")]
 public class OrderHandler
 {
     public async Task<Result<Order>> HandleAsync(CreateOrder cmd, IOrderRepository repo, CancellationToken ct)

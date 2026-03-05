@@ -38,9 +38,14 @@ internal readonly record struct EndpointInfo
     public string? Description { get; init; }
 
     /// <summary>
-    /// The category name for API grouping (from HandlerCategoryAttribute).
+    /// The category name for API grouping (from HandlerEndpointGroupAttribute).
     /// </summary>
     public string? Category { get; init; }
+
+    /// <summary>
+    /// OpenAPI tags for the group. When non-empty, used instead of <see cref="Category"/> for <c>.WithTags()</c>.
+    /// </summary>
+    public EquatableArray<string> CategoryTags { get; init; }
 
     /// <summary>
     /// The route prefix from the category (e.g., "/api/products").
@@ -112,7 +117,7 @@ internal readonly record struct EndpointInfo
     public EquatableArray<string> Filters { get; init; }
 
     /// <summary>
-    /// Category-level endpoint filter type names (fully qualified) from [HandlerCategory].
+    /// Category-level endpoint filter type names (fully qualified) from [HandlerEndpointGroup].
     /// Kept separate so the generator can emit them on the MapGroup rather than individual endpoints.
     /// </summary>
     public EquatableArray<string> CategoryFilters { get; init; }

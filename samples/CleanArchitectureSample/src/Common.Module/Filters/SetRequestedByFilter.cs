@@ -17,7 +17,7 @@ namespace Common.Module.Filters;
 /// Wire this filter at any level of the three-tier hierarchy:
 /// <list type="bullet">
 ///   <item><description>Global: <c>[assembly: MediatorConfiguration(EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
-///   <item><description>Category: <c>[HandlerCategory("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
+///   <item><description>Group: <c>[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
 ///   <item><description>Endpoint: <c>[HandlerEndpoint(EndpointFilters = [typeof(SetRequestedByFilter)])]</c></description></item>
 /// </list>
 /// </summary>

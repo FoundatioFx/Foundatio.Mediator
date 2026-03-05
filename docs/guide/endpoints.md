@@ -1,224 +1,329 @@
-# Automatic Endpoint Generation
+# Endpoint Generation
 
-Foundatio Mediator can automatically generate ASP.NET Core Minimal API endpoints from your handlers. This eliminates boilerplate code and keeps your API definitions in sync with your handler logic.
+Foundatio Mediator automatically generates ASP.NET Core Minimal API endpoints from your handlers. Write your handlers as plain message-in/result-out methods, call `.MapMediatorEndpoints()`, and you have a fully functional API — with smart route conventions, HTTP method inference, and OpenAPI metadata — all without writing a single controller or endpoint definition.
 
-## Overview
+Because your handler logic is completely decoupled from HTTP, it's trivially testable: just send a message through the mediator and assert the result. The endpoint layer is a thin, generated projection that you never maintain by hand.
 
-When your project references ASP.NET Core, the source generator automatically creates endpoint registration code that:
-- Maps handlers to HTTP endpoints based on conventions
-- Binds request parameters from route, query string, or body
-- Maps `Result<T>` return types to appropriate HTTP status codes
-- Generates OpenAPI metadata from XML documentation comments
+## Quick Start
 
-## Getting Started
-
-### 1. Enable XML Documentation
-
-To get endpoint summaries from your handler's XML doc comments, enable documentation generation:
-
-```xml
-<PropertyGroup>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-</PropertyGroup>
-```
-
-### 2. Add Category to Handlers
-
-Use `[HandlerCategory]` to group endpoints and set route prefixes:
+Write a handler:
 
 ```csharp
-[HandlerCategory("Products", RoutePrefix = "products")]
 public class ProductHandler
 {
-    /// <summary>
-    /// Creates a new product in the catalog.
-    /// </summary>
     public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
+    public Result<Product> Handle(GetProduct query) { ... }
+    public Result<List<Product>> Handle(GetProducts query) { ... }
+    public Task<Result<Product>> HandleAsync(UpdateProduct command) { ... }
+    public Task<Result> HandleAsync(DeleteProduct command) { ... }
+}
+```
 
-    /// <summary>
-    /// Retrieves a product by ID.
-    /// </summary>
+Map it in your startup:
+
+```csharp
+var app = builder.Build();
+app.MapMediatorEndpoints();
+app.Run();
+```
+
+That's it. You now have:
+
+```text
+POST   /api/product          → CreateProduct
+GET    /api/product/{productId}  → GetProduct
+GET    /api/product           → GetProducts
+PUT    /api/product/{productId}  → UpdateProduct
+DELETE /api/product/{productId}  → DeleteProduct
+```
+
+No attributes required. The source generator infers everything from your message names and properties:
+
+- **HTTP method** — from the message name prefix (`Get*` → GET, `Create*` → POST, `Update*` → PUT, `Delete*` → DELETE, etc.)
+- **Route** — from the class name (minus the `Handler`/`Consumer` suffix) and message properties (names ending in `Id` become route parameters)
+- **Parameter binding** — ID properties go in the route, other properties become query parameters (GET/DELETE) or body (POST/PUT/PATCH)
+- **OpenAPI metadata** — operation names, status codes, and even error responses are auto-detected from your `Result` factory calls
+- **Result mapping** — `Result<T>` return values are automatically converted to the correct HTTP status codes
+
+### Why This Matters
+
+This architecture gives you a **loosely coupled, message-oriented application** with close to zero boilerplate. Your handlers don't know they're behind HTTP — they receive a message and return a result. This means:
+
+- **Testing is trivial** — handlers are plain methods with no framework code, so you can call them directly in a unit test. No mediator, no `HttpClient`, no test server, no request serialization.
+- **Transport-agnostic** — the same handler works through HTTP endpoints, direct mediator calls, background jobs, or SignalR — the handler doesn't care.
+- **Always in sync** — endpoints are generated from your handler code, so your API can never drift from your business logic.
+
+## Streaming Endpoints & Server-Sent Events
+
+Handlers that return `IAsyncEnumerable<T>` automatically become streaming HTTP endpoints. Combined with `SubscribeAsync`, you can push real-time domain events to the browser in just a few lines:
+
+```csharp
+public record GetStream;
+public record ClientEvent(string EventType, object Data);
+
+public class EventHandler(IMediator mediator)
+{
+    [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
+    public async IAsyncEnumerable<ClientEvent> Handle(
+        GetStream message,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var evt in mediator.SubscribeAsync<INotification>(
+            cancellationToken: cancellationToken))
+        {
+            yield return new ClientEvent(evt.GetType().Name, evt);
+        }
+    }
+}
+```
+
+That generates `GET /api/event/stream` as an SSE endpoint. Any browser client can subscribe:
+
+```javascript
+const source = new EventSource('/api/event/stream');
+source.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+    console.log(event.eventType, event.data);
+};
+```
+
+Whenever any handler publishes a notification, every connected SSE client receives it instantly. Zero polling, zero WebSocket infrastructure.
+
+### JSON Array Streaming
+
+Without the SSE attribute, streaming handlers return a JSON array streamed incrementally — useful for large datasets that you don't want to buffer in memory:
+
+```csharp
+public class ReportHandler
+{
+    public async IAsyncEnumerable<SalesRecord> HandleAsync(
+        GetSalesStream query,
+        ISalesRepository repository,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var record in repository.GetSalesAsync(query.Year, cancellationToken))
+        {
+            yield return record;
+        }
+    }
+}
+```
+
+This generates a `GET /api/report/sales-stream` endpoint that streams results as they're produced — ASP.NET Core sends each item to the client without waiting for the full result set.
+
+| `Streaming` Value | Behavior |
+| --- | --- |
+| `EndpointStreaming.Default` | JSON array streaming (default for `IAsyncEnumerable<T>` handlers) |
+| `EndpointStreaming.ServerSentEvents` | SSE via `TypedResults.ServerSentEvents()` (.NET 10+) |
+
+| `SseEventType` | Behavior |
+| --- | --- |
+| `null` (default) | Browser `EventSource` fires the default `message` event |
+| `"event"` | Clients listen with `addEventListener('event', ...)` |
+
+::: tip
+For a complete guide on streaming patterns including `SubscribeAsync`, dynamic subscriptions, buffering, and real-world examples, see [Streaming Handlers](./streaming-handlers.md).
+:::
+
+## Customization Attributes
+
+Everything works out of the box with smart defaults. Attributes are only needed when you want to change a default behavior — group endpoints with a shared route prefix, override a route, change an HTTP method, or exclude a handler from generation.
+
+### `[HandlerEndpointGroup]` — Group Endpoints
+
+`[HandlerEndpointGroup]` is applied to a handler **class** and controls all endpoints in that class as a group. Use it to set a shared route prefix, OpenAPI tag, or endpoint filters for every handler method on the class.
+
+```csharp
+[HandlerEndpointGroup("Products")]
+public class ProductHandler
+{
+    public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
     public Result<Product> Handle(GetProduct query) { ... }
 }
 ```
 
-### 3. Map the Endpoints
+This changes the routes from the default (derived from the class name) to use the group name:
 
-In your startup code, call the generated extension method to map all handler endpoints:
-
-```csharp
-var app = builder.Build();
-
-// Maps endpoints from all referenced assemblies automatically
-app.MapMediatorEndpoints();
-
-app.Run();
+```text
+POST  /api/products              → CreateProduct
+GET   /api/products/{productId}  → GetProduct
 ```
 
-You can also select specific assemblies and enable endpoint logging:
+**When do you need `[HandlerEndpointGroup]`?**
+
+- To set a **custom route prefix** different from the class name: `[HandlerEndpointGroup("Products", RoutePrefix = "v2/products")]`
+- To set a **shared OpenAPI tag** for grouping in Swagger UI
+- To apply **endpoint filters** to all endpoints in the class: `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(AuditFilter)])]`
+- To share auth, filter, or routing configuration across all handler methods in one place
+
+**Properties:**
+
+| Property | Purpose |
+| --- | --- |
+| `Name` (constructor) | Group name used as the OpenAPI tag and default route prefix (lowercased) |
+| `RoutePrefix` | Override the route prefix (relative to global prefix; use leading `/` for absolute) |
+| `Tags` | Override the OpenAPI tags (defaults to `Name` as a single tag) |
+| `EndpointFilters` | `IEndpointFilter` types applied to all endpoints in this group |
+
+### `[HandlerEndpoint]` — Customize Individual Endpoints
+
+`[HandlerEndpoint]` is applied to a handler **method** (or class to set defaults for all methods) and controls a single endpoint. Use it to override the route, HTTP method, OpenAPI metadata, or exclude a handler from endpoint generation.
 
 ```csharp
-app.MapMediatorEndpoints(c =>
+public class TodoHandler
 {
-    c.AddAssembly<CreateProduct>();    // Products.Module
-    c.AddAssembly<CreateOrder>();      // Orders.Module
-    c.LogEndpoints();
-});
+    // Override route and HTTP method for an action endpoint
+    [HandlerEndpoint(Route = "{todoId}/complete", HttpMethod = EndpointHttpMethod.Post)]
+    public Task<Result> HandleAsync(CompleteTodo command) { ... }
+
+    // Custom OpenAPI metadata
+    [HandlerEndpoint(Name = "BulkCreateTodos", Summary = "Creates multiple todos at once")]
+    public Task<Result<List<Todo>>> HandleAsync(BulkCreateTodos command) { ... }
+
+    // Exclude from endpoint generation
+    [HandlerEndpoint(Exclude = true)]
+    public Task<Result> HandleAsync(InternalCleanup command) { ... }
+}
+```
+
+**When do you need `[HandlerEndpoint]`?**
+
+- To set a **custom route** different from what's auto-generated
+- To override the **HTTP method** when conventions don't match (e.g., an action verb that should be POST)
+- To add **OpenAPI metadata** (summary, description, operation ID, tags)
+- To **exclude** a handler from endpoint generation
+- To set a specific **success status code** or explicit **error status codes**
+- To configure **SSE streaming** on a streaming handler
+- To apply **endpoint filters** to a specific endpoint
+
+**Properties:**
+
+| Property | Purpose |
+| --- | --- |
+| `HttpMethod` | Override inferred HTTP method (`EndpointHttpMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`) |
+| `Route` | Custom route template (relative to group prefix; leading `/` for absolute) |
+| `Name` | OpenAPI operation ID |
+| `Summary` | Override XML doc summary for OpenAPI |
+| `Description` | OpenAPI description |
+| `Tags` | Override the group tags |
+| `Exclude` | `true` to skip endpoint generation entirely |
+| `EndpointFilters` | `IEndpointFilter` types for this endpoint |
+| `SuccessStatusCode` | Override auto-detected success status code (200, 201, etc.) |
+| `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
+| `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
+| `SseEventType` | SSE `event:` field name for `addEventListener` |
+
+**Class-level defaults:** When applied to a class, settings apply to all methods unless a method-level attribute overrides them:
+
+```csharp
+[HandlerEndpoint(ProducesStatusCodes = [400, 500])]
+public class ProductHandler
+{
+    // Inherits [400, 500] from class
+    public Result<Product> Handle(CreateProduct command) { ... }
+
+    // Overrides with its own set
+    [HandlerEndpoint(ProducesStatusCodes = [404, 409])]
+    public Result<Product> Handle(UpdateProduct command) { ... }
+}
 ```
 
 ## HTTP Method Inference
 
-The HTTP method is inferred from the message type name:
+The HTTP method is inferred from the message type name prefix:
 
 | Message Name Pattern | HTTP Method |
-|---------------------|-------------|
+| ------------------- | ----------- |
 | `Get*`, `Find*`, `Search*`, `List*`, `Query*` | GET |
 | `Create*`, `Add*`, `New*` | POST |
 | `Update*`, `Edit*`, `Modify*`, `Set*`, `Change*` | PUT |
 | `Delete*`, `Remove*` | DELETE |
 | `Patch*` | PATCH |
-| Default | POST |
+
+**Action verbs** — prefixes like `Complete*`, `Approve*`, `Cancel*`, `Submit*`, `Archive*`, `Publish*`, etc., default to **POST** and produce an action route suffix:
+
+```csharp
+// POST /api/todos/{todoId}/complete
+public Task<Result> HandleAsync(CompleteTodo command) { ... }
+
+// POST /api/orders/{orderId}/cancel
+public Task<Result> HandleAsync(CancelOrder command) { ... }
+```
+
+Any unrecognized prefix defaults to **POST**.
 
 ## Route Generation
 
-Routes are generated based on:
-1. The `[HandlerEndpoint(Route = "...")]` attribute if specified
-2. Otherwise: category route prefix + route parameters from message properties
+The final route for every endpoint is built by concatenating up to three levels. Each level is **relative** to its parent by default — but any level that starts with `/` becomes **absolute** and discards everything above it.
 
-### Route Prefix Architecture
-
-Endpoint routes are composed from three levels, using ASP.NET Core's nested `MapGroup()` pattern:
-
-| Level | Source | Default | Example |
-| ----- | ------ | ------- | ------- |
-| Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` | `"api"` |
-| Category prefix | `[HandlerCategory("Products", RoutePrefix = "...")]` | Derived from class name | `"products"` |
-| Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated from message properties | Auto-generated | `"/{productId}"` |
-
-The generator creates nested route groups, and ASP.NET Core concatenates them into the final path:
+| Level | Source | Default |
+| ----- | ------ | ------- |
+| 1. Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` |
+| 2. Group prefix | `[HandlerEndpointGroup("Products")]` or auto-derived from class name | Class name minus `Handler`/`Consumer` suffix, lowercased |
+| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | ID properties as route params, action verb suffix |
 
 ```text
-endpoints.MapGroup("api")           // Global prefix
-    → rootGroup.MapGroup("products")    // Category prefix
-        → productsGroup.MapGet("/{productId}", ...)  // Endpoint route
+/api/products/{productId}
+ ↑      ↑           ↑
+ │      │           └─ 3. Endpoint route (auto-generated from GetProduct's ProductId property)
+ │      └─ 2. Group prefix (from [HandlerEndpointGroup("Products")] or class name "ProductHandler")
+ └─ 1. Global prefix (default "api")
 ```
 
-This produces the final route: **`/api/products/{productId}`**
+### How Prefixes Concatenate
 
-Here are examples of how the global and category prefixes combine:
+When all three levels are **relative** (no leading `/`), they concatenate left to right:
 
 ```text
-EndpointRoutePrefix = "api"   +  RoutePrefix = "products"     →  /api/products
-EndpointRoutePrefix = "api"   +  RoutePrefix = "v2/products"  →  /api/v2/products
-EndpointRoutePrefix = ""      +  RoutePrefix = "products"     →  /products
-EndpointRoutePrefix = "api"   +  RoutePrefix = "api/products" →  /api/api/products  ⚠️ Wrong!
+Global("api")  +  Group("products")  +  Endpoint("{productId}")  →  /api/products/{productId}
+Global("api")  +  Group("v2/items")  +  Endpoint("{itemId}")     →  /api/v2/items/{itemId}
+Global("")     +  Group("products")  +  Endpoint("{productId}")  →  /products/{productId}
 ```
 
-> **Important:** Category `RoutePrefix` values without a leading `/` are **relative** — they nest under the global `EndpointRoutePrefix`. Don't repeat the global prefix in category prefixes (e.g. `"api/products"` when the global is already `"api"`) or you'll get doubled paths like `/api/api/...`. The compiler emits warning **FMED015** if it detects this mistake.
+### Absolute Override with Leading `/`
 
-### Absolute Routes (Bypassing Prefixes)
+A leading `/` on any prefix makes it **absolute** — it replaces everything above it in the hierarchy:
 
-Use a leading `/` to create an absolute route that bypasses parent prefixes, matching ASP.NET Core MVC's attribute routing convention where `[Route("/health")]` is absolute:
-
-**Category-level bypass** — skip the global `EndpointRoutePrefix`:
+**Group-level override** — a `/` on the group prefix discards the global prefix:
 
 ```csharp
-[assembly: MediatorConfiguration(EndpointRoutePrefix = "api")]
-
-// Routes to /health, NOT /api/health (leading / = absolute)
-[HandlerCategory("Health", RoutePrefix = "/health")]
-public class HealthHandler { ... }
+// Global prefix is "api", but this group bypasses it
+[HandlerEndpointGroup("Health", RoutePrefix = "/health")]
+public class HealthHandler
+{
+    public Result<Status> Handle(GetHealthCheck query) { ... }
+}
+// → GET /health  (not /api/health)
 ```
 
-**Endpoint-level bypass** — skip both the global and category prefixes:
+**Endpoint-level override** — a `/` on the endpoint route discards both the global and group prefix:
 
 ```csharp
-[assembly: MediatorConfiguration(EndpointRoutePrefix = "api")]
-
-[HandlerCategory("Products", RoutePrefix = "products")]
+[HandlerEndpointGroup("Products")]
 public class ProductHandler
 {
-    // Routes to /status, NOT /api/products/status (leading / = absolute)
     [HandlerEndpoint(Route = "/status")]
-    public string Handle(GetStatus query) => "ok";
+    public Result<string> Handle(GetStatus query) { ... }
 }
+// → GET /status  (not /api/products/status)
 ```
 
-This is useful for health checks, status endpoints, or any route that should live outside the normal API hierarchy.
+**Summary:**
 
-To disable the global prefix entirely, set `EndpointRoutePrefix = ""`:
-
-```csharp
-[assembly: MediatorConfiguration(
-    EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRoutePrefix = ""  // No global prefix
-)]
-```
-
-### Custom Routes and HTTP Methods
-
-Use `[HandlerEndpoint]` to override the generated route and/or HTTP method for individual handlers:
-
-```csharp
-[HandlerCategory("Todos", RoutePrefix = "todos")]
-public class TodoHandler
-{
-    // POST /api/todos/{todoId}/complete
-    [HandlerEndpoint(Route = "{todoId}/complete", HttpMethod = "POST")]
-    public Task<Result> HandleAsync(CompleteTodo command) { ... }
-
-    // PATCH /api/todos/{todoId}
-    [HandlerEndpoint(HttpMethod = "PATCH")]
-    public Task<Result<Todo>> HandleAsync(PatchTodo command) { ... }
-
-    // GET /api/todos/search (custom route, inferred GET from name)
-    [HandlerEndpoint(Route = "search")]
-    public Task<Result<List<Todo>>> HandleAsync(SearchTodos query) { ... }
-}
-```
-
-The `Route` property is relative to the category's `RoutePrefix`. The `HttpMethod` property accepts `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, or `"PATCH"`.
-
-### Excluding Handlers from Endpoint Generation
-
-Use `[HandlerEndpoint(Exclude = true)]` to prevent endpoint generation for specific handlers:
-
-```csharp
-public class ProductHandler
-{
-    // This handler will NOT have an endpoint generated
-    [HandlerEndpoint(Exclude = true)]
-    public Task<Result> HandleAsync(InternalSync command) { ... }
-
-    // This handler gets a normal endpoint
-    public Task<Result<Product>> HandleAsync(GetProduct query) { ... }
-}
-```
-
-Apply at the class level to exclude all methods in a handler:
-
-```csharp
-[HandlerEndpoint(Exclude = true)]
-public class InternalHandler
-{
-    // No endpoints generated for any method
-    public Task<Result> HandleAsync(ProcessBatch command) { ... }
-    public Task<Result> HandleAsync(CleanupOldData command) { ... }
-}
-```
-
-> **Tip:** If you manually map endpoints for some handlers using `app.MapGet(...)` etc., exclude them from auto-generation with `[HandlerEndpoint(Exclude = true)]` to avoid route conflicts at startup.
+| Group `RoutePrefix` | Endpoint `Route` | Result (global = `"api"`) |
+| --- | --- | --- |
+| `"products"` (relative) | `"{productId}"` (relative) | `/api/products/{productId}` |
+| `"/health"` (absolute) | `""` (relative) | `/health` |
+| `"products"` (relative) | `"/status"` (absolute) | `/status` |
+| `"/v2/products"` (absolute) | `"{productId}"` (relative) | `/v2/products/{productId}` |
 
 ### Route Parameters
 
 Properties named `Id` or ending with `Id` automatically become route parameters:
 
 ```csharp
-// Message
 public record GetProduct(string ProductId);
-
-// Generated route: GET /api/products/{productId}
+// → GET /api/products/{productId}
 ```
 
 ### Query Parameters
@@ -226,70 +331,61 @@ public record GetProduct(string ProductId);
 For GET/DELETE requests, non-ID properties become query parameters:
 
 ```csharp
-// Message
 public record SearchProducts(string? Category, int? MinPrice, int? MaxPrice);
-
-// Generated: GET /api/products?category=...&minPrice=...&maxPrice=...
+// → GET /api/products?category=...&minPrice=...&maxPrice=...
 ```
+
+### Avoiding Doubled Prefixes
+
+A common mistake is repeating the global prefix inside the group prefix:
+
+```text
+Global("api")  +  Group("api/products")  →  /api/api/products  ⚠️ Wrong!
+```
+
+The group prefix `"api/products"` is relative, so it nests under the global `"api"` — producing a doubled path. Use `"products"` instead, or use an absolute path `"/api/products"` if you want to spell out the full path explicitly.
+
+> The compiler emits warning **FMED015** if it detects a group `RoutePrefix` that duplicates the global prefix.
 
 ## Parameter Binding
 
 ### GET/DELETE Requests
 
-The generator supports two binding patterns:
+**`[AsParameters]` binding** (message has a parameterless constructor):
 
-**`[AsParameters]` binding** (when message has a parameterless constructor):
 ```csharp
-// Message with parameterless constructor
-public record GetProducts
+public record SearchProducts
 {
     public string? Category { get; init; }
     public int Page { get; init; } = 1;
 }
-
-// Generated endpoint uses [AsParameters]
-productsGroup.MapGet("/", async ([AsParameters] GetProducts message, ...) => ...);
+// → MapGet("/", async ([AsParameters] SearchProducts message, ...) => ...)
 ```
 
-**Constructor binding** (when message only has parameterized constructor):
-```csharp
-// Message with required constructor parameters
-public record GetProduct(string ProductId);
+**Constructor binding** (message has required constructor parameters):
 
-// Generated endpoint constructs the message
-productsGroup.MapGet("/{productId}", async (string productId, ...) =>
-{
-    var message = new GetProduct(productId);
-    ...
-});
+```csharp
+public record GetProduct(string ProductId);
+// → MapGet("/{productId}", async (string productId, ...) =>
+//   { var message = new GetProduct(productId); ... })
 ```
 
 ### POST/PUT/PATCH Requests
 
-Request body is bound using `[FromBody]`:
-```csharp
-productsGroup.MapPost("/", async ([FromBody] CreateProduct message, ...) => ...);
-```
+Request body is bound using `[FromBody]`. For PUT/PATCH with route parameters, the body is merged with route values:
 
-For PUT/PATCH with route parameters, the body is merged with route values:
 ```csharp
-// Message
 public record UpdateProduct(string ProductId, string? Name, decimal? Price);
-
-// Generated endpoint
-productsGroup.MapPut("/{productId}", async (string productId, [FromBody] UpdateProduct message, ...) =>
-{
-    var mergedMessage = message with { ProductId = productId };
-    ...
-});
+// → MapPut("/{productId}", async (string productId, [FromBody] UpdateProduct message, ...) =>
+//   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
 
 ## Result to HTTP Status Mapping
 
-When handlers return `Result<T>` or `Result`, the status is automatically mapped:
+`Result<T>` and `Result` return values are automatically mapped to HTTP responses:
 
 | ResultStatus | HTTP Status |
-|--------------|-------------|
+| ------------ | ----------- |
 | `Success` | 200 OK |
 | `Created` | 201 Created |
 | `NoContent` | 204 No Content |
@@ -305,12 +401,12 @@ When handlers return `Result<T>` or `Result`, the status is automatically mapped
 
 ### File Downloads
 
-When a handler returns `Result<FileResult>`, the endpoint automatically uses `Results.File()` instead of `Results.Ok()`:
+`Result<FileResult>` automatically produces a file response:
 
 ```csharp
 public class ReportHandler
 {
-    [HandlerEndpoint(HttpMethod = "GET", Route = "/reports/{id}")]
+    [HandlerEndpoint(HttpMethod = EndpointHttpMethod.Get, Route = "/reports/{id}")]
     public async Task<Result<FileResult>> HandleAsync(
         GetReport query, IReportService reports, CancellationToken ct)
     {
@@ -320,57 +416,9 @@ public class ReportHandler
 }
 ```
 
-The generated endpoint maps the `FileResult` to a file response with the correct content type and optional `Content-Disposition: attachment` header (when `FileName` is set).
-
-## Customization Attributes
-
-### `[HandlerCategory]`
-
-Groups handlers and sets route prefixes:
-
-```csharp
-[HandlerCategory("Products", RoutePrefix = "products")]
-public class ProductHandler { ... }
-```
-
-Properties:
-- `Name` (constructor) - Category name for OpenAPI tags
-- `RoutePrefix` - Route prefix for all handlers in this class (relative to global prefix; use leading `/` for absolute)
-
-### `[HandlerEndpoint]`
-
-Customizes individual endpoint behavior:
-
-```csharp
-public class ProductHandler
-{
-    [HandlerEndpoint(
-        HttpMethod = "POST",
-        Route = "bulk",
-        Name = "BulkCreateProducts",
-        Summary = "Creates multiple products at once")]
-    public Task<Result<List<Product>>> HandleAsync(BulkCreateProducts command) { ... }
-
-    [HandlerEndpoint(Exclude = true)]  // Not exposed as endpoint
-    public Task<Result> HandleAsync(InternalProductSync command) { ... }
-}
-```
-
-Properties:
-- `HttpMethod` - Override the inferred HTTP method
-- `Route` - Custom route template (relative to category prefix; use leading `/` for absolute)
-- `Name` - OpenAPI operation ID
-- `Summary` - Override XML doc summary
-- `Description` - OpenAPI description
-- `Tags` - Override category tags
-- `Exclude` - Exclude from endpoint generation
-- `EndpointFilters` - Endpoint filter types
-- `ProducesStatusCodes` - Additional error status codes (4xx/5xx) for OpenAPI documentation
-- `SuccessStatusCode` - Override the auto-detected success status code (e.g., 200, 201)
-
 ### OpenAPI Error Responses
 
-When a handler returns `Result<T>` or `Result`, the generator automatically scans the method body for `Result` factory method calls (`Result.NotFound()`, `Result.Invalid()`, etc.) and emits matching `.ProducesProblem()` metadata — no configuration needed:
+The generator scans your handler body for `Result` factory calls and emits matching `.ProducesProblem()` metadata automatically:
 
 ```csharp
 public class OrderHandler
@@ -385,130 +433,30 @@ public class OrderHandler
 
         return new OrderView(query.Id, "Test");
     }
-    // Auto-generates:
-    //   .Produces<OrderView>(200)
-    //   .ProducesProblem(404)
-    //   .ProducesProblem(400)
+    // Auto-generates: .Produces<OrderView>(200), .ProducesProblem(404), .ProducesProblem(400)
 }
 ```
-
-The following `Result` factory methods are detected:
-
-| Method | Status Code |
-| --- | --- |
-| `BadRequest()` | 400 |
-| `Unauthorized()` | 401 |
-| `Forbidden()` | 403 |
-| `NotFound()` | 404 |
-| `Conflict()` | 409 |
-| `Invalid()` | 400 |
-| `Error()` / `CriticalError()` | 500 |
-| `Unavailable()` | 503 |
-| `Created()` | 201 (success) |
 
 ### Success Status Codes
 
-The success status code (`.Produces<T>(200)` vs `.Produces<T>(201)`) is also auto-detected. If a handler body contains `Result.Created()`, the endpoint is generated with **201 Created**; otherwise it defaults to **200 OK**:
-
-```csharp
-public class ProductHandler
-{
-    // Returns Result.Created() → .Produces<Product>(201)
-    public Result<Product> Handle(CreateProduct cmd)
-    {
-        var product = new Product(cmd.Name);
-        return Result.Created(product);
-    }
-
-    // No Result.Created() → .Produces<Product>(200)
-    public Result<Product> Handle(GetProduct query)
-    {
-        return new Product(query.Id, "Widget");
-    }
-}
-```
-
-To override auto-detection, use `SuccessStatusCode`:
-
-```csharp
-// Force 200 even though handler uses Result.Created()
-[HandlerEndpoint(SuccessStatusCode = 200)]
-public Result<Product> Handle(CreateProduct cmd) => Result.Created(product);
-
-// Force 201 even though handler doesn't use Result.Created()
-[HandlerEndpoint(SuccessStatusCode = 201)]
-public Result<Product> Handle(ImportProduct cmd) => product;
-```
-
-#### Explicit Error Override
-
-To override auto-detection (e.g., when error results come from injected services), use `ProducesStatusCodes`:
-
-```csharp
-public class OrderHandler
-{
-    [HandlerEndpoint(ProducesStatusCodes = [404, 400])]
-    public Result<OrderView> Handle(GetOrder query) => ...;
-    // Uses only the explicitly declared codes, ignoring method body analysis
-}
-```
-
-Class-level settings apply to all methods unless overridden at method level:
-
-```csharp
-[HandlerEndpoint(ProducesStatusCodes = [400, 500])]
-public class ProductHandler
-{
-    // Inherits [400, 500] from class
-    public Result<ProductView> Handle(CreateProduct command) => ...;
-
-    // Overrides with its own set
-    [HandlerEndpoint(ProducesStatusCodes = [404, 409, 400])]
-    public Result<ProductView> Handle(UpdateProduct command) => ...;
-}
-```
+If a handler body contains `Result.Created()`, the endpoint is generated with **201 Created**; otherwise it defaults to **200 OK**. Override with `[HandlerEndpoint(SuccessStatusCode = 201)]`.
 
 ## Authentication & Authorization
 
-Foundatio.Mediator provides unified authorization that works for **both** HTTP endpoints and direct `mediator.InvokeAsync()` calls. Authorization is configured via `[HandlerAuthorize]` and `[HandlerAllowAnonymous]` attributes, or globally via the assembly attribute.
-
-### Handler-Level Authorization
-
-Use `[HandlerAuthorize]` on a handler class or method to require authorization:
+Authorization works for **both** HTTP endpoints and direct `mediator.InvokeAsync()` calls, configured via `[HandlerAuthorize]` and `[HandlerAllowAnonymous]`:
 
 ```csharp
-[HandlerAuthorize]
-public class SecureHandler
-{
-    public Task<Result<Secret>> HandleAsync(GetSecret query) { ... }
-}
-
-// With roles and policies
-[HandlerAuthorize(Roles = ["Admin", "Manager"], Policies = ["CanEditProducts"])]
+// Require auth on a handler
+[HandlerAuthorize(Roles = ["Admin", "Manager"])]
 public class AdminHandler
 {
     public Task<Result> HandleAsync(DeleteProduct command) { ... }
 }
-```
 
-For Result-returning handlers, unauthorized requests receive `Result.Unauthorized()` or `Result.Forbidden()`. For non-Result handlers, an `UnauthorizedAccessException` is thrown.
+// Require auth globally
+[assembly: MediatorConfiguration(AuthorizationRequired = true)]
 
-### Global Default
-
-Set a default auth requirement for all handlers using the assembly attribute:
-
-```csharp
-[assembly: MediatorConfiguration(
-    EndpointDiscovery = EndpointDiscovery.All,
-    AuthorizationRequired = true
-)]
-```
-
-### Opting Out
-
-Use `[HandlerAllowAnonymous]` to bypass authorization on specific handlers when global auth is enabled:
-
-```csharp
+// Opt out specific handlers
 [HandlerAllowAnonymous]
 public class PublicHandler
 {
@@ -516,142 +464,22 @@ public class PublicHandler
 }
 ```
 
-ASP.NET Core's `[AllowAnonymous]` attribute is also recognized.
+Authorization cascades: assembly defaults → group level → method level. For Result-returning handlers, unauthorized requests receive `Result.Unauthorized()` or `Result.Forbidden()`. For non-Result handlers, an `UnauthorizedAccessException` is thrown.
 
-### Category Level
-
-Override at the category level:
-
-```csharp
-[HandlerCategory("Admin", RoutePrefix = "admin")]
-[HandlerAuthorize(Policies = ["AdminOnly"])]
-public class AdminHandler { ... }
-
-[HandlerCategory("Public", RoutePrefix = "public")]
-[HandlerAllowAnonymous]
-public class PublicHandler { ... }
-```
-
-### Endpoint Level
-
-Use `[HandlerAuthorize]` on individual handler methods for endpoint-specific authorization:
-
-```csharp
-[HandlerAuthorize(Roles = ["Admin", "Manager"])]
-public Task<Result> HandleAsync(DeleteProduct command) { ... }
-```
-
-### Custom Authorization Services
-
-The authorization system is extensible via two interfaces:
-
-- **`IAuthorizationContextProvider`** — Provides the `ClaimsPrincipal` for the current request. In ASP.NET Core apps, this is auto-registered to read from `HttpContext.User`.
-- **`IHandlerAuthorizationService`** — Performs the authorization check. The default implementation checks roles and policies against the principal's claims.
-
-You can replace either service via DI to customize behavior.
+The authorization system is extensible via `IAuthorizationContextProvider` (provides the `ClaimsPrincipal`) and `IHandlerAuthorizationService` (performs the auth check). ASP.NET Core apps get automatic registration that reads from `HttpContext.User`.
 
 ## Discovery Modes
 
-Control which handlers generate endpoints using the assembly attribute:
+Control which handlers generate endpoints:
 
-### All Mode (Default)
-
-All handlers with valid endpoint info generate endpoints. This is the default — no `MediatorConfiguration` attribute is needed:
-
-```csharp
-// Optional — this is already the default
-[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
-```
-
-Use `[HandlerEndpoint(Exclude = true)]` to opt out specific handlers.
-
-### Explicit Mode
-
-Only handlers with `[HandlerEndpoint]` or `[HandlerCategory]` attributes generate endpoints:
+| Mode | Behavior |
+| --- | --- |
+| `EndpointDiscovery.All` (default) | All handlers get endpoints; use `[HandlerEndpoint(Exclude = true)]` to opt out |
+| `EndpointDiscovery.Explicit` | Only handlers with `[HandlerEndpoint]` or `[HandlerEndpointGroup]` get endpoints |
+| `EndpointDiscovery.None` | No endpoints generated |
 
 ```csharp
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.Explicit)]
-```
-
-### None Mode
-
-No endpoints are generated:
-
-```csharp
-[assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.None)]
-```
-
-
-## Generated Code Example
-
-For a handler like this:
-
-```csharp
-[assembly: MediatorConfiguration(
-    EndpointDiscovery = EndpointDiscovery.All
-)]
-
-[HandlerCategory("Products")]
-public class ProductHandler
-{
-    /// <summary>
-    /// Creates a new product
-    /// </summary>
-    public Task<Result<Product>> HandleAsync(CreateProduct command)
-    {
-        var product = new Product(command.Name);
-        return Task.FromResult(Result.Created(product));
-    }
-
-    /// <summary>
-    /// Gets a product by ID
-    /// </summary>
-    public Result<Product> Handle(GetProduct query)
-    {
-        return new Product(query.ProductId, "Widget");
-    }
-}
-```
-
-The generator produces:
-
-```csharp
-public static partial class Products_Module_MediatorEndpoints
-{
-    public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)
-    {
-        MapEndpointsCore(endpoints, logEndpoints);
-    }
-
-    static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)
-    {
-        var rootGroup = endpoints.MapGroup("api");
-        var productsGroup = rootGroup.MapGroup("products").WithTags("Products");
-
-        // POST /api/products - CreateProduct
-        productsGroup.MapPost("/", async ([FromBody] CreateProduct message,
-            IMediator mediator, CancellationToken ct) =>
-        {
-            var result = await ProductHandler_CreateProduct_Handler.HandleAsync(mediator, message, ct);
-            return MediatorEndpointResultMapper_Products_Module.ToHttpResult(result);
-        })
-        .WithName("CreateProduct")
-        .WithSummary("Creates a new product")
-        .Produces<Product>(201);
-
-        // GET /api/products/{productId} - GetProduct
-        productsGroup.MapGet("/{productId}", (string productId,
-            IMediator mediator, CancellationToken ct) =>
-        {
-            var message = new GetProduct(productId);
-            var result = ProductHandler_GetProduct_Handler.Handle(mediator, message, ct);
-            return MediatorEndpointResultMapper_Products_Module.ToHttpResult(result);
-        })
-        .WithName("GetProduct")
-        .WithSummary("Gets a product by ID")
-        .Produces<Product>(200);
-    }
-}
 ```
 
 ## Events and Notifications
@@ -660,79 +488,50 @@ Handlers for event/notification types are automatically excluded from endpoint g
 
 - Types implementing `INotification`, `IEvent`, `IDomainEvent`, or `IIntegrationEvent`
 - Handler classes named `*EventHandler` or `*NotificationHandler`
-- Types with names ending in common event suffixes: `Created`, `Updated`, `Deleted`, `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`, `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`, `Expired`
+- Types with names ending in event suffixes: `Created`, `Updated`, `Deleted`, `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`, `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`, `Expired`
 
 ::: info INotification Is Not Required
-The `INotification` interface is **not required** for events to be excluded from endpoints or for cascading/publishing to work. Events are excluded based on naming conventions (suffixes like `Created`, `Deleted`, etc.) regardless of interface implementation. `INotification` is a classification tool — use it when you want a handler that can receive all notification-type messages, or simply as self-documentation.
+Events are excluded based on naming conventions regardless of interface implementation. `INotification` is a classification tool — use it when you want a handler that can receive all notification-type messages, or simply as self-documentation.
 :::
 
-## Streaming Handlers
+## OpenAPI / XML Documentation
 
-Foundatio Mediator supports handlers that return `IAsyncEnumerable<T>` for streaming data incrementally — useful for large datasets, real-time feeds, or progressive processing. These work through both the mediator and generated endpoints:
+To get endpoint summaries from your handler's XML doc comments, enable documentation generation:
 
-```csharp
-public class ProductStreamHandler
-{
-    public async IAsyncEnumerable<Product> HandleAsync(
-        GetProductStream query,
-        IProductRepository repository,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await foreach (var product in repository.GetProductsAsync(
-            query.CategoryId, cancellationToken))
-        {
-            yield return product;
-        }
-    }
-}
+```xml
+<PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+</PropertyGroup>
 ```
 
-Consume streaming results through the mediator:
+XML doc `<summary>` comments on handler methods automatically become the OpenAPI summary for the generated endpoint.
+
+## Advanced Configuration
+
+### Assembly Endpoint Options
 
 ```csharp
-await foreach (var product in mediator.InvokeStreamAsync<Product>(
-    new GetProductStream("electronics"), cancellationToken))
+app.MapMediatorEndpoints(c =>
 {
-    Console.WriteLine(product.Name);
-}
+    c.AddAssembly<CreateProduct>();    // Products.Module
+    c.AddAssembly<CreateOrder>();      // Orders.Module
+    c.LogEndpoints();                  // Log all mapped routes at startup
+});
 ```
 
-When endpoint generation is enabled, streaming handlers automatically generate HTTP endpoints that return the `IAsyncEnumerable<T>` directly — ASP.NET Core streams items as a JSON array without buffering.
-
-### Server-Sent Events (SSE)
-
-For real-time push scenarios, set `Streaming = EndpointStreaming.ServerSentEvents` on the endpoint to use Server-Sent Events instead of JSON array streaming:
+### Global Settings
 
 ```csharp
-[Handler]
-public class EventStreamHandler(IMediator mediator)
-{
-    [HandlerEndpoint(
-        Route = "/events/stream",
-        Streaming = EndpointStreaming.ServerSentEvents,
-        SseEventType = "event",
-        Summary = "Subscribe to real-time events via SSE")]
-    public async IAsyncEnumerable<ClientEvent> Handle(
-        SubscribeToEvents message,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
-            cancellationToken: cancellationToken))
-        {
-            yield return new ClientEvent(evt.GetType().Name, evt);
-        }
-    }
-}
+[assembly: MediatorConfiguration(
+    EndpointDiscovery = EndpointDiscovery.All,
+    EndpointRoutePrefix = "api",          // Global route prefix (default: "api")
+    AuthorizationRequired = false,         // Require auth for all endpoints
+    EndpointFilters = [typeof(MyFilter)]  // Global endpoint filters
+)]
 ```
 
-| Property       | Purpose |
-| ---            | --- |
-| `Streaming`    | `EndpointStreaming.ServerSentEvents` wraps the result with `TypedResults.ServerSentEvents()` (requires .NET 10+). `Default` streams as a JSON array. |
-| `SseEventType` | Sets the `event:` field in the SSE stream. When set, clients listen with `addEventListener('event-name', ...)`. When `null`, the browser `EventSource` fires the default `message` event. |
-
-::: tip
-For a complete guide on streaming patterns including `SubscribeAsync`, error handling, and real-world examples, see [Streaming Handlers](./streaming-handlers.md#streaming-endpoints).
-:::
+Set `EndpointRoutePrefix = ""` to disable the global prefix entirely.
 
 ## Troubleshooting
 
@@ -740,7 +539,7 @@ For a complete guide on streaming patterns including `SubscribeAsync`, error han
 
 1. Ensure your project references ASP.NET Core (has `Microsoft.AspNetCore.Routing`)
 2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default is `All`. Make sure it hasn't been set to `None` or `Explicit`.
-3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or `[HandlerCategory]`
+3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or `[HandlerEndpointGroup]`
 4. Verify the handler isn't excluded via `[HandlerEndpoint(Exclude = true)]`
 
 ### XML Summaries Not Appearing

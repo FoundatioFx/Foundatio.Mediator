@@ -19,7 +19,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetWidget(string Id);
 
-            [HandlerCategory("Widgets")]
+            [HandlerEndpointGroup("Widgets")]
             public class WidgetHandler
             {
                 public string Handle(GetWidget query) => "widget";
@@ -90,7 +90,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetThing(string Id);
 
-            [HandlerCategory("Things", EndpointFilters = [typeof(CategoryFilter)])]
+            [HandlerEndpointGroup("Things", EndpointFilters = [typeof(CategoryFilter)])]
             public class ThingHandler
             {
                 public string Handle(GetThing query) => "thing";
@@ -434,7 +434,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record CreateBar(string Name);
 
-            [HandlerCategory("Bars", EndpointFilters = [typeof(CategoryLevelFilter)])]
+            [HandlerEndpointGroup("Bars", EndpointFilters = [typeof(CategoryLevelFilter)])]
             public class BarHandler
             {
                 [HandlerEndpoint(EndpointFilters = [typeof(EndpointLevelFilter)])]
@@ -500,7 +500,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetProduct(string Id);
 
-            [HandlerCategory("Products")]
+            [HandlerEndpointGroup("Products")]
             public class ProductHandler
             {
                 public string Handle(GetProduct query) => "product";
@@ -778,7 +778,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void DiscoveryExplicit_HandlerCategoryTriggersEndpointGeneration()
+    public void DiscoveryExplicit_HandlerEndpointGroupTriggersEndpointGeneration()
     {
         var source = """
             using Foundatio.Mediator;
@@ -788,7 +788,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public record GetAlpha(string Id);
             public record GetBeta(string Id);
 
-            [HandlerCategory("Widgets")]
+            [HandlerEndpointGroup("Widgets")]
             public class ExplicitCatHandler
             {
                 public string Handle(GetAlpha query) => "alpha";
@@ -807,7 +807,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // The [HandlerCategory] handler should be included in Explicit mode
+        // The [HandlerEndpointGroup] handler should be included in Explicit mode
         Assert.Contains("GetAlpha", endpointSource);
         // The handler without any explicit attribute should NOT be included
         Assert.DoesNotContain("GetBeta", endpointSource);
@@ -889,7 +889,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public record ArchiveTodo(string TodoId);
             public record CreateTodo(string Name);
 
-            [HandlerCategory("Todos")]
+            [HandlerEndpointGroup("Todos")]
             public class TodoHandler
             {
                 public Result Handle(CompleteTodo command) => Result.Success();
@@ -924,7 +924,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record ResetCounters;
 
-            [HandlerCategory("Counters")]
+            [HandlerEndpointGroup("Counters")]
             public class CounterHandler
             {
                 public Result Handle(ResetCounters command) => Result.Success();
@@ -953,7 +953,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record RejectOrder(string OrderId, string Reason);
 
-            [HandlerCategory("Orders")]
+            [HandlerEndpointGroup("Orders")]
             public class OrderHandler
             {
                 public Result Handle(RejectOrder command) => Result.Success();
@@ -984,7 +984,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public record CompleteSomething(string SomethingId);
             public record CompleteTodo(string TodoId);
 
-            [HandlerCategory("Todos")]
+            [HandlerEndpointGroup("Todos")]
             public class TodoHandler
             {
                 public Result Handle(CompleteSomething command) => Result.Success();
@@ -1299,7 +1299,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetOrder(string Id);
 
-            [HandlerCategory("Orders", RoutePrefix = "api/orders")]
+            [HandlerEndpointGroup("Orders", RoutePrefix = "api/orders")]
             public class OrderHandler
             {
                 public string Handle(GetOrder query) => "order";
@@ -1332,7 +1332,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetOrder(string Id);
 
-            [HandlerCategory("Orders", RoutePrefix = "/orders")]
+            [HandlerEndpointGroup("Orders", RoutePrefix = "/orders")]
             public class OrderHandler
             {
                 public string Handle(GetOrder query) => "order";
@@ -1361,7 +1361,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetOrder(string Id);
 
-            [HandlerCategory("Orders", RoutePrefix = "/api/orders")]
+            [HandlerEndpointGroup("Orders", RoutePrefix = "/api/orders")]
             public class OrderHandler
             {
                 public string Handle(GetOrder query) => "order";
@@ -1392,7 +1392,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetOrder(string Id);
 
-            [HandlerCategory("Orders", RoutePrefix = "/api")]
+            [HandlerEndpointGroup("Orders", RoutePrefix = "/api")]
             public class OrderHandler
             {
                 public string Handle(GetOrder query) => "order";
@@ -1421,7 +1421,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetHealth();
 
-            [HandlerCategory("Health", RoutePrefix = "/health")]
+            [HandlerEndpointGroup("Health", RoutePrefix = "/health")]
             public class HealthHandler
             {
                 public string Handle(GetHealth query) => "ok";
@@ -1456,7 +1456,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetStatus();
 
-            [HandlerCategory("Products", RoutePrefix = "products")]
+            [HandlerEndpointGroup("Products", RoutePrefix = "products")]
             public class ProductHandler
             {
                 [HandlerEndpoint(Route = "/status")]
@@ -1489,7 +1489,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetHealth();
 
-            [HandlerCategory("Health", RoutePrefix = "health")]
+            [HandlerEndpointGroup("Health", RoutePrefix = "health")]
             public class HealthHandler
             {
                 public string Handle(GetHealth query) => "ok";
@@ -1614,7 +1614,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record CreateTodo(string Title);
 
-            [HandlerCategory("Todos")]
+            [HandlerEndpointGroup("Todos")]
             public class TodoHandler
             {
                 public string Handle(CreateTodo cmd) => "done";
@@ -1644,7 +1644,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record CreateTodo(string Title);
 
-            [HandlerCategory("Todos")]
+            [HandlerEndpointGroup("Todos")]
             public class TodoHandler
             {
                 public string Handle(CreateTodo cmd) => "done";
@@ -1672,7 +1672,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record GetProductDetails(string Id);
 
-            [HandlerCategory("Products")]
+            [HandlerEndpointGroup("Products")]
             public class ProductHandler
             {
                 public string Handle(GetProductDetails query) => "product";

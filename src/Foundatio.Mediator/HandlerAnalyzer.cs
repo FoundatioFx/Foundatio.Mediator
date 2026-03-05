@@ -392,9 +392,9 @@ internal static class HandlerAnalyzer
         var classEndpointAttr = classSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointAttribute);
 
-        // Get [HandlerCategory] attribute from class
+        // Get [HandlerEndpointGroup] attribute from class
         var categoryAttr = classSymbol.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerCategoryAttribute);
+            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
 
         // Check if explicitly excluded via attribute
         bool isExcluded = GetBoolProperty(methodEndpointAttr, "Exclude") ??
@@ -415,6 +415,7 @@ internal static class HandlerAnalyzer
         // Extract category info
         string? categoryName = null;
         string? categoryRoutePrefix = null;
+        string[]? categoryTags = null;
 
         if (categoryAttr != null)
         {
@@ -423,6 +424,7 @@ internal static class HandlerAnalyzer
                 categoryName = categoryAttr.ConstructorArguments[0].Value as string;
 
             categoryRoutePrefix = GetStringProperty(categoryAttr, "RoutePrefix");
+            categoryTags = GetStringArrayProperty(categoryAttr, "Tags");
             // If no explicit RoutePrefix, use the category name as the prefix (lowercase, no leading / = relative)
             if (string.IsNullOrEmpty(categoryRoutePrefix) && !string.IsNullOrEmpty(categoryName))
             {
@@ -466,9 +468,17 @@ internal static class HandlerAnalyzer
             isStreaming = false;
         }
 
-        var httpMethod = GetStringProperty(methodEndpointAttr, "HttpMethod") ??
-                         GetStringProperty(classEndpointAttr, "HttpMethod") ??
-                         (isStreaming ? "GET" : InferHttpMethod(messageType.Name));
+        var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod") ??
+                             GetIntProperty(classEndpointAttr, "HttpMethod") ?? 0;
+        var httpMethod = httpMethodEnum switch
+        {
+            1 => "GET",
+            2 => "POST",
+            3 => "PUT",
+            4 => "DELETE",
+            5 => "PATCH",
+            _ => isStreaming ? "GET" : InferHttpMethod(messageType.Name)
+        };
 
         var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
                             GetStringProperty(classEndpointAttr, "Route");
@@ -602,6 +612,7 @@ internal static class HandlerAnalyzer
             Summary = summary,
             Description = description,
             Category = categoryName ?? tags?.FirstOrDefault(),
+            CategoryTags = new(categoryTags ?? []),
             CategoryRoutePrefix = categoryRoutePrefix,
             CategoryBypassGlobalPrefix = categoryBypassGlobalPrefix,
             RouteBypassPrefixes = routeBypassPrefixes,

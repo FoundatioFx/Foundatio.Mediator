@@ -207,7 +207,7 @@ internal static class EndpointGenerator
                         new DiagnosticDescriptor(
                             "FMED015",
                             "Category route prefix duplicates global endpoint prefix",
-                            "HandlerCategory RoutePrefix '{0}' starts with the global EndpointRoutePrefix '{1}' content, which will produce a doubled path. " +
+                            "HandlerEndpointGroup RoutePrefix '{0}' starts with the global EndpointRoutePrefix '{1}' content, which will produce a doubled path. " +
                             "Remove the duplicated portion (e.g. use '{2}' instead), or prefix with '/' for an absolute path that bypasses the global prefix.",
                             "Foundatio.Mediator",
                             DiagnosticSeverity.Warning,
@@ -436,7 +436,16 @@ internal static class EndpointGenerator
             // Only add tag if category is explicitly defined (not "Default")
             if (category != "Default")
             {
-                source.Append($".WithTags(\"{category}\")");
+                var categoryTags = firstEndpoint.CategoryTags;
+                if (categoryTags.Any())
+                {
+                    var tagsArgs = string.Join(", ", categoryTags.Select(t => $"\"{t}\""));
+                    source.Append($".WithTags({tagsArgs})");
+                }
+                else
+                {
+                    source.Append($".WithTags(\"{category}\")");
+                }
             }
 
             // Add category-level auth if the category requires auth (and global doesn't already)

@@ -30,17 +30,17 @@ app.Run();
 That's it. You now have:
 
 ```text
-POST   /api/product          → CreateProduct
-GET    /api/product/{productId}  → GetProduct
-GET    /api/product           → GetProducts
-PUT    /api/product/{productId}  → UpdateProduct
-DELETE /api/product/{productId}  → DeleteProduct
+POST   /api/products              → CreateProduct
+GET    /api/products/{productId}  → GetProduct
+GET    /api/products              → GetProducts
+PUT    /api/products/{productId}  → UpdateProduct
+DELETE /api/products/{productId}  → DeleteProduct
 ```
 
 No attributes required. The source generator infers everything from your message names and properties:
 
 - **HTTP method** — from the message name prefix (`Get*` → GET, `Create*` → POST, `Update*` → PUT, `Delete*` → DELETE, etc.)
-- **Route** — from the class name (minus the `Handler`/`Consumer` suffix) and message properties (names ending in `Id` become route parameters)
+- **Route** — from the message name (minus the verb prefix), **auto-pluralized** to follow REST conventions, with message properties (names ending in `Id` become route parameters)
 - **Parameter binding** — ID properties go in the route, other properties become query parameters (GET/DELETE) or body (POST/PUT/PATCH)
 - **OpenAPI metadata** — operation names, status codes, and even error responses are auto-detected from your `Result` factory calls
 - **Result mapping** — `Result<T>` return values are automatically converted to the correct HTTP status codes
@@ -316,6 +316,30 @@ public class ProductHandler
 | `"/health"` (absolute) | `""` (relative) | `/health` |
 | `"products"` (relative) | `"/status"` (absolute) | `/status` |
 | `"/v2/products"` (absolute) | `"{productId}"` (relative) | `/v2/products/{productId}` |
+
+### Route Pluralization
+
+Entity names in convention-based routes are **automatically pluralized** to follow REST conventions. The entity name is extracted from the message name by removing the verb prefix (e.g., `GetProduct` → `Product`), then pluralized before being converted to kebab-case.
+
+| Message Name | Entity | Pluralized Route |
+| ------------ | ------ | ---------------- |
+| `GetProduct` | Product | `/products/{productId}` |
+| `GetProducts` | Products | `/products` (already plural) |
+| `CreateTodo` | Todo | `/todos` |
+| `GetCategory` | Category | `/categories/{categoryId}` |
+| `GetPerson` | Person | `/people/{personId}` |
+| `GetHealth` | Health | `/health` (uncountable) |
+
+**Irregular nouns** are handled automatically: `Person` → `People`, `Child` → `Children`, `Index` → `Indices`, `Criterion` → `Criteria`, etc.
+
+**Uncountable nouns** are not pluralized: `Health`, `Status`, `Data`, `Info`, `Auth`, `Config`, `Feedback`, `Metadata`, `Settings`, `Media`, `Cache`, `Analytics`, `Telemetry`, `Search`, `Content`, `Access`.
+
+To override auto-pluralization, use an explicit route:
+
+```csharp
+[HandlerEndpoint(Route = "/custom-path/{id}")]
+public Result<Item> Handle(GetItem query) { ... }
+```
 
 ### Route Parameters
 

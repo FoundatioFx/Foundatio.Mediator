@@ -123,4 +123,69 @@ internal static class Helpers
         }
         return result.ToString();
     }
+
+    private static readonly HashSet<string> _uncountableNouns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Health", "Status", "Data", "Info", "Auth", "Config", "Feedback",
+        "Metadata", "Settings", "Media", "Cache", "Analytics", "Telemetry",
+        "Search", "Content", "Access"
+    };
+
+    private static readonly Dictionary<string, string> _irregularNouns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Person"] = "People",
+        ["Child"] = "Children",
+        ["Man"] = "Men",
+        ["Woman"] = "Women",
+        ["Mouse"] = "Mice",
+        ["Goose"] = "Geese",
+        ["Tooth"] = "Teeth",
+        ["Foot"] = "Feet",
+        ["Ox"] = "Oxen",
+        ["Index"] = "Indices",
+        ["Matrix"] = "Matrices",
+        ["Vertex"] = "Vertices",
+        ["Criterion"] = "Criteria",
+        ["Datum"] = "Data",
+        ["Curriculum"] = "Curricula"
+    };
+
+    /// <summary>
+    /// Simple English pluralization for route generation.
+    /// Handles common suffix rules, irregular nouns, and uncountable nouns.
+    /// </summary>
+    public static string SimplePluralize(this string name)
+    {
+        if (String.IsNullOrEmpty(name))
+            return name;
+
+        if (_uncountableNouns.Contains(name))
+            return name;
+
+        if (_irregularNouns.TryGetValue(name, out var irregular))
+            return irregular;
+
+        // Already ends with 's' — assume already plural
+        if (name.EndsWith("s", StringComparison.OrdinalIgnoreCase))
+            return name;
+
+        // Consonant + y → ies (e.g., Category → Categories)
+        if (name.EndsWith("y", StringComparison.OrdinalIgnoreCase) && name.Length >= 2)
+        {
+            var preceding = name[name.Length - 2];
+            if (!"aeiouAEIOU".Contains(preceding))
+                return name.Substring(0, name.Length - 1) + "ies";
+        }
+
+        // s, x, z, ch, sh → es
+        if (name.EndsWith("x", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith("z", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith("ch", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith("sh", StringComparison.OrdinalIgnoreCase))
+        {
+            return name + "es";
+        }
+
+        return name + "s";
+    }
 }

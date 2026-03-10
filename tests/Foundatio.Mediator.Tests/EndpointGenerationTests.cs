@@ -871,8 +871,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Should be POST (action verb "Approve" implies write operation)
         Assert.Contains("MapPost", endpointSource);
         // Route should include entity name, ID route param, and action verb suffix
-        // ApproveOrder(string OrderId) → POST /order/{orderId}/approve
-        Assert.Contains("/order/{orderId}/approve", endpointSource);
+        // ApproveOrder(string OrderId) → POST /orders/{orderId}/approve
+        Assert.Contains("/orders/{orderId}/approve", endpointSource);
         // All properties covered by route — no body binding
         Assert.DoesNotContain("FromBody", endpointSource);
     }
@@ -1686,6 +1686,175 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         Assert.NotNull(endpointSource);
         Assert.Contains(".WithSummary(\"GetProductDetails\")", endpointSource);
+    }
+
+    [Fact]
+    public void SingularAndPluralMessages_ProduceSamePluralRoute()
+    {
+        // GetTodo and GetTodos should both generate routes under /todos
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodo(string Id);
+            public record GetTodos();
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodo query) => "one";
+                public string[] Handle(GetTodos query) => [];
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetTodo should pluralize to /todos/{id}
+        Assert.Contains("/todos/{id}", endpointSource);
+        // GetTodos is already plural → /todos
+        Assert.Contains("MapGet(\"/todos\"", endpointSource);
+    }
+
+    [Fact]
+    public void UncountableNoun_RouteNotPluralized()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetHealth();
+
+            public class HealthHandler
+            {
+                public string Handle(GetHealth query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Health is uncountable — should stay /health, not /healths
+        Assert.Contains("\"/health\"", endpointSource);
+        Assert.DoesNotContain("healths", endpointSource);
+    }
+
+    [Fact]
+    public void IrregularNoun_RoutePluralizesCorrectly()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetPerson(string Id);
+
+            public class PersonHandler
+            {
+                public string Handle(GetPerson query) => "person";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Person → People (irregular)
+        Assert.Contains("/people/{id}", endpointSource);
+        Assert.DoesNotContain("/persons", endpointSource);
+    }
+
+    [Fact]
+    public void ConsonantY_PluralizesToIes()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetCategory(string Id);
+
+            public class CategoryHandler
+            {
+                public string Handle(GetCategory query) => "cat";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Category → Categories (consonant + y → ies)
+        Assert.Contains("/categories/{id}", endpointSource);
+    }
+
+    [Fact]
+    public void VowelY_PluralizesWithS()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetKey(string Id);
+
+            public class KeyHandler
+            {
+                public string Handle(GetKey query) => "key";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Key → Keys (vowel + y → just s)
+        Assert.Contains("/keys/{id}", endpointSource);
+    }
+
+    [Fact]
+    public void SibilantEnding_PluralizesWithEs()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetBatch(string Id);
+
+            public class BatchHandler
+            {
+                public string Handle(GetBatch query) => "batch";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Batch → Batches (ch → es)
+        Assert.Contains("/batches/{id}", endpointSource);
     }
 }
 

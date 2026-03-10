@@ -100,8 +100,8 @@ app.MapMediatorEndpoints();
 
 This generates:
 
-- `POST /api/todo` → `TodoHandler.Handle(CreateTodo)`
-- `GET /api/todo/{id}` → `TodoHandler.Handle(GetTodo)`
+- `POST /api/todos` → `TodoHandler.Handle(CreateTodo)`
+- `GET /api/todos/{id}` → `TodoHandler.Handle(GetTodo)`
 
 <!-- -->
 

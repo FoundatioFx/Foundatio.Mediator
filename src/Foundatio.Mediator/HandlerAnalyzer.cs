@@ -811,8 +811,8 @@ internal static class HandlerAnalyzer
         // Otherwise, we need to include the entity name in the route
         if (string.IsNullOrEmpty(categoryRoutePrefix))
         {
-            // No category prefix - include entity name in route
-            var kebabEntity = entityName.ToKebabCase();
+            // No category prefix - include pluralized entity name in route
+            var kebabEntity = entityName.SimplePluralize().ToKebabCase();
             if (!string.IsNullOrEmpty(kebabEntity))
             {
                 parts.Add(kebabEntity);
@@ -844,7 +844,7 @@ internal static class HandlerAnalyzer
             else
             {
                 // Entity doesn't match category — include it to avoid ambiguity
-                parts.Add(actionVerb + "-" + entityName.ToKebabCase());
+                parts.Add(actionVerb + "-" + entityName.SimplePluralize().ToKebabCase());
             }
         }
 

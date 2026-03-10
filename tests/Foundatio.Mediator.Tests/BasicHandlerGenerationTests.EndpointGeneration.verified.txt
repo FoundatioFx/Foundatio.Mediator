@@ -166,8 +166,8 @@ public static partial class Tests_MediatorEndpoints
         // Default endpoints
         var defaultGroup = rootGroup.MapGroup("");
 
-        // GET /widget/{id} - GetWidget
-        defaultGroup.MapGet("/widget/{id}", (string id, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
+        // GET /widgets/{id} - GetWidget
+        defaultGroup.MapGet("/widgets/{id}", (string id, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
         {
             var message = new GetWidget(Id: id);
             var result = global::Foundatio.Mediator.Generated.WidgetHandler_GetWidget_Handler.Handle(mediator, message, cancellationToken);
@@ -184,7 +184,7 @@ public static partial class Tests_MediatorEndpoints
         {
             System.Action<string> writeLog = System.Console.WriteLine;
             writeLog("Foundatio.Mediator mapped 1 endpoint(s):");
-            writeLog("  GET  /api/widget/{id}  → WidgetHandler.Handle(GetWidget) (convention)");
+            writeLog("  GET  /api/widgets/{id}  → WidgetHandler.Handle(GetWidget) (convention)");
         }
         else
         {

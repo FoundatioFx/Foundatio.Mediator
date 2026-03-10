@@ -1856,5 +1856,383 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Batch → Batches (ch → es)
         Assert.Contains("/batches/{id}", endpointSource);
     }
+
+    [Fact]
+    public void GetAllTodos_NormalizesToTodosRoute()
+    {
+        // GetAllTodos should strip "All" qualifier and produce /todos, not /all-todos
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetAllTodos();
+            public record GetTodo(string Id);
+
+            public class TodoHandler
+            {
+                public string[] Handle(GetAllTodos query) => [];
+                public string Handle(GetTodo query) => "todo";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetAllTodos → strip Get → AllTodos → strip All → Todos → /todos
+        Assert.Contains("MapGet(\"/todos\"", endpointSource);
+        // GetTodo → strip Get → Todo → pluralize → Todos → /todos/{id}
+        Assert.Contains("/todos/{id}", endpointSource);
+        // Should NOT produce /all-todos
+        Assert.DoesNotContain("all-todos", endpointSource);
+    }
+
+    [Fact]
+    public void GetTodoById_NormalizesToTodosRoute()
+    {
+        // GetTodoById should strip "ById" suffix and produce /todos/{id}
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodoById(string Id);
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodoById query) => "todo";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetTodoById → strip Get → TodoById → strip ById → Todo → pluralize → /todos/{id}
+        Assert.Contains("/todos/{id}", endpointSource);
+        Assert.DoesNotContain("todo-by-id", endpointSource);
+    }
+
+    [Fact]
+    public void GetTodoByName_NormalizesToTodosRoute()
+    {
+        // GetTodoByName should strip "ByName" suffix
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodoByName(string Name);
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodoByName query) => "todo";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetTodoByName → strip Get → TodoByName → extract By<Property> → entity "Todo", suffix "by-name"
+        // → pluralize entity → /todos/by-name
+        Assert.Contains("/todos/by-name", endpointSource);
+    }
+
+    [Fact]
+    public void GetOrderDetails_NormalizesToOrdersRoute()
+    {
+        // GetOrderDetails should strip "Details" suffix
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrderDetails(string Id);
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrderDetails query) => "order";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetOrderDetails → strip Get → OrderDetails → strip Details → Order → pluralize → /orders/{id}
+        Assert.Contains("/orders/{id}", endpointSource);
+        Assert.DoesNotContain("order-details", endpointSource);
+    }
+
+    [Fact]
+    public void FMED016_DivergentRoutes_EmitsWarning()
+    {
+        // When a handler class without [HandlerEndpointGroup] produces different route prefixes,
+        // emit FMED016 warning
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodo(string Id);
+            public record GetStatus();
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodo query) => "todo";
+                public string Handle(GetStatus query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED016");
+        Assert.NotNull(warning);
+        Assert.Equal(DiagnosticSeverity.Warning, warning!.Severity);
+        Assert.Contains("TodoHandler", warning.GetMessage());
+    }
+
+    [Fact]
+    public void FMED016_ConsistentRoutes_NoWarning()
+    {
+        // Handlers with consistent entity names should not trigger FMED016
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodo(string Id);
+            public record CreateTodo(string Title);
+            public record GetAllTodos();
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodo query) => "todo";
+                public string Handle(CreateTodo cmd) => "created";
+                public string[] Handle(GetAllTodos query) => [];
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED016");
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void FMED016_WithExplicitGroup_NoWarning()
+    {
+        // Handlers with [HandlerEndpointGroup] should not trigger FMED016 even with different message names
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodo(string Id);
+            public record GetStatus();
+
+            [HandlerEndpointGroup("Todos")]
+            public class TodoHandler
+            {
+                public string Handle(GetTodo query) => "todo";
+                public string Handle(GetStatus query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, _) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED016");
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void GetTodoItemsWithPagination_StripsWithFeature()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodoItemsWithPagination(int Page, int PageSize);
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodoItemsWithPagination query) => "todos";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetTodoItemsWithPagination → strip Get → TodoItemsWithPagination → strip With... → TodoItems → /todo-items
+        Assert.Contains("/todo-items", endpointSource);
+        Assert.DoesNotContain("pagination", endpointSource);
+    }
+
+    [Fact]
+    public void GetProductsPaged_StripsPagedSuffix()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetProductsPaged(int Page);
+
+            public class ProductHandler
+            {
+                public string Handle(GetProductsPaged query) => "products";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetProductsPaged → strip Get → ProductsPaged → strip Paged → Products → /products
+        Assert.Contains("/products", endpointSource);
+        Assert.DoesNotContain("paged", endpointSource);
+    }
+
+    [Fact]
+    public void GetOrderCount_ProducesCountRouteSuffix()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrderCount();
+
+            public class OrderHandler
+            {
+                public int Handle(GetOrderCount query) => 42;
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetOrderCount → strip Get → OrderCount → entity "Order", suffix "count" → /orders/count
+        Assert.Contains("/orders/count", endpointSource);
+    }
+
+    [Fact]
+    public void GetOrdersForCustomer_ProducesForRouteSuffix()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrdersForCustomer(string CustomerId);
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrdersForCustomer query) => "orders";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetOrdersForCustomer → strip Get → OrdersForCustomer → entity "Orders", suffix "for-customer"
+        // → /orders/for-customer/{customerId}
+        Assert.Contains("/orders/for-customer", endpointSource);
+    }
+
+    [Fact]
+    public void GetOrdersFromUser_ProducesFromRouteSuffix()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrdersFromUser(string UserId);
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrdersFromUser query) => "orders";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // GetOrdersFromUser → strip Get → OrdersFromUser → entity "Orders", suffix "from-user"
+        // → /orders/from-user/{userId}
+        Assert.Contains("/orders/from-user", endpointSource);
+    }
+
+    [Fact]
+    public void ExportOrders_ProducesActionRoute()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record ExportOrders();
+
+            public class OrderHandler
+            {
+                public string Handle(ExportOrders command) => "csv";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // ExportOrders → action verb "export", entity "Orders" → POST /orders/export
+        Assert.Contains("/orders/export", endpointSource);
+        Assert.Contains("MapPost", endpointSource);
+    }
 }
 

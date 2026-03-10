@@ -240,7 +240,7 @@ The HTTP method is inferred from the message type name prefix:
 | `Delete*`, `Remove*` | DELETE |
 | `Patch*` | PATCH |
 
-**Action verbs** — prefixes like `Complete*`, `Approve*`, `Cancel*`, `Submit*`, `Archive*`, `Publish*`, etc., default to **POST** and produce an action route suffix:
+**Action verbs** — prefixes like `Complete*`, `Approve*`, `Cancel*`, `Submit*`, `Archive*`, `Publish*`, `Export*`, `Import*`, `Download*`, `Upload*`, etc., default to **POST** and produce an action route suffix:
 
 ```csharp
 // POST /api/todos/{todoId}/complete
@@ -340,6 +340,61 @@ To override auto-pluralization, use an explicit route:
 [HandlerEndpoint(Route = "/custom-path/{id}")]
 public Result<Item> Handle(GetItem query) { ... }
 ```
+
+### Message Naming Conventions
+
+Routes are derived from the **message type name**. The generator strips a verb prefix, normalizes common qualifiers, pluralizes the entity, and converts to kebab-case. Understanding this pipeline helps you write message names that produce clean, consistent routes.
+
+**The golden path** — these naming patterns produce RESTful routes automatically:
+
+```csharp
+public record GetTodo(string Id);      // → GET    /api/todos/{id}
+public record GetTodos();              // → GET    /api/todos
+public record CreateTodo(string Name); // → POST   /api/todos
+public record UpdateTodo(string Id);   // → PUT    /api/todos/{id}
+public record DeleteTodo(string Id);   // → DELETE /api/todos/{id}
+public record CompleteTodo(string Id); // → POST   /api/todos/{id}/complete
+public record ExportTodos();           // → POST   /api/todos/export
+```
+
+**Common qualifiers are normalized automatically.** The generator handles a variety of CQRS naming conventions, extracting the entity name and producing clean routes:
+
+| Pattern | Example | Route |
+| ------- | ------- | ----- |
+| **`All` prefix** | `GetAllTodos` | `GET /api/todos` |
+| **`ById` suffix** | `GetTodoById` | `GET /api/todos/{id}` |
+| **`Details`/`Summary`** | `GetOrderDetails` | `GET /api/orders/{id}` |
+| **`Paged`/`Paginated`** | `GetProductsPaged` | `GET /api/products` |
+| **`With<Feature>`** | `GetTodoItemsWithPagination` | `GET /api/todo-items` |
+| **`By<Property>`** | `GetTodoByName` | `GET /api/todos/by-name` |
+| **`For<Entity>`** | `GetOrdersForCustomer` | `GET /api/orders/for-customer/{customerId}` |
+| **`From<Entity>`** | `GetOrdersFromUser` | `GET /api/orders/from-user/{userId}` |
+| **`Count` suffix** | `GetOrderCount` | `GET /api/orders/count` |
+| **Action verbs** | `ExportOrders` | `POST /api/orders/export` |
+
+**Stripped entirely** (query modifiers, not resource identity): `All`, `ById`, `Details`, `Detail`, `Summary`, `List`, `Paged`, `Paginated`, `With<Feature>`
+
+**Converted to route segments** (distinct sub-resources): `By<Property>`, `For<Entity>`, `From<Entity>`, `Count`
+
+**Action prefixes** (produce POST with action suffix): `Complete`, `Approve`, `Cancel`, `Submit`, `Export`, `Import`, `Download`, `Upload`, and [others](./handler-conventions.md)
+
+::: tip
+`By<Property>`, `For<Entity>`, and `From<Entity>` produce route segments under the entity, keeping all routes grouped. For example, `GetTodoByName(string Name)` generates `GET /api/todos/by-name?name=...` — no conflict with the list route `GET /api/todos`.
+:::
+
+**What to avoid.** Message names that don't reduce to a common entity will produce separate routes. If you see unexpected routes, check your message names:
+
+```csharp
+// ❌ These produce different route prefixes — probably not what you want
+public record GetTodo(string Id);          // → /api/todos/{id}
+public record GetActiveTodoCount();        // → /api/active-todo-counts  (different prefix!)
+
+// ✅ Better: use consistent entity root, differentiate with parameters
+public record GetTodo(string Id);          // → /api/todos/{id}
+public record GetTodos(bool? Active);      // → /api/todos?active=true
+```
+
+The generator emits diagnostic **FMED016** when handlers in the same class produce routes with different base paths, alerting you to naming inconsistencies. Use `[HandlerEndpointGroup("Todos")]` to force a shared prefix when message names don't naturally align.
 
 ### Route Parameters
 

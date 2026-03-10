@@ -105,7 +105,7 @@ This generates:
 
 <!-- -->
 
-HTTP methods, routes, and parameter binding are all inferred from message names and properties. See [Endpoints](./endpoints) for route customization, OpenAPI metadata, authorization, and more.
+HTTP methods, routes, and parameter binding are all inferred from message names and properties. Routes derive from the message name, are auto-pluralized, and common qualifiers like `All` and `ById` are normalized. See [Endpoints](./endpoints) for route customization, naming conventions, and more.
 
 ## Result Types
 

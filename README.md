@@ -29,6 +29,62 @@ Foundatio Mediator is a high-performance mediator library for .NET that uses sou
 dotnet add package Foundatio.Mediator
 ```
 
+Define a message and a handler — no interfaces or base classes required:
+
+```csharp
+public record Ping(string Text);
+
+public static class PingHandler
+{
+    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
+}
+```
+
+Wire up DI and call it:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddMediator();
+
+var app = builder.Build();
+
+app.MapGet("/ping", (IMediator mediator) =>
+    mediator.Invoke<string>(new Ping("Hello")));
+
+app.Run();
+```
+
+That's it. The source generator discovers handlers by naming convention at compile time — zero registration, zero reflection, near-direct-call performance.
+
+### Generate API endpoints
+
+Handlers can automatically become API endpoints. Return `Result<T>` for rich HTTP status mapping:
+
+```csharp
+public record CreateTodo(string Title);
+public record GetTodo(int Id);
+
+public class TodoHandler
+{
+    public Result<Todo> Handle(CreateTodo command) =>
+        Result<Todo>.Created(new Todo(1, command.Title));
+
+    public Result<Todo> Handle(GetTodo query) =>
+        query.Id > 0 ? new Todo(query.Id, "Sample") : Result.NotFound();
+}
+```
+
+```csharp
+app.MapMediatorEndpoints();
+```
+
+```
+POST /api/todos       → 201 Created
+GET  /api/todos/{id}  → 200 OK / 404 Not Found
+```
+
+Routes, HTTP methods, parameter binding, and OpenAPI metadata are all inferred from your message names and `Result` factory calls.
+
 **👉 [Getting Started Guide](https://mediator.foundatio.dev/guide/getting-started.html)** — step-by-step setup with code samples for ASP.NET Core and console apps.
 
 **📖 [Complete Documentation](https://mediator.foundatio.dev)**

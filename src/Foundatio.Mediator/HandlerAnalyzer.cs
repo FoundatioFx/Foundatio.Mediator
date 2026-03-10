@@ -805,7 +805,7 @@ internal static class HandlerAnalyzer
         string? actionVerb = null)
     {
         var parts = new List<string>();
-        var entityName = RemoveVerbPrefix(messageTypeName);
+        var (entityName, lookupSuffix) = NormalizeEntityName(RemoveVerbPrefix(messageTypeName));
 
         // If we have a category with a route prefix, the route is relative to that prefix
         // Otherwise, we need to include the entity name in the route
@@ -817,6 +817,15 @@ internal static class HandlerAnalyzer
             {
                 parts.Add(kebabEntity);
             }
+        }
+
+        // Add lookup suffix for By<Property>, For<Entity>, From<Entity>, Count patterns
+        // e.g., GetTodoByName in "Todos" → /todos/by-name
+        //        GetOrdersForCustomer → /orders/for-customer/{customerId}
+        // Placed before route params so the suffix reads naturally: /for-customer/{id}
+        if (lookupSuffix != null)
+        {
+            parts.Add(lookupSuffix);
         }
 
         // Add route parameters
@@ -874,7 +883,8 @@ internal static class HandlerAnalyzer
         "Complete", "Approve", "Cancel", "Submit", "Process",
         "Execute", "Activate", "Deactivate", "Archive", "Restore",
         "Publish", "Unpublish", "Enable", "Disable", "Reset",
-        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen"
+        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen",
+        "Export", "Import", "Download", "Upload"
     ];
 
     /// <summary>
@@ -917,6 +927,86 @@ internal static class HandlerAnalyzer
         }
 
         return name;
+    }
+
+    /// <summary>
+    /// Common suffixes stripped from entity names to normalize routes.
+    /// For example, "TodoById" → "Todo", "OrderDetails" → "Order".
+    /// Ordered longest-first so "Details" is checked before "Detail".
+    /// </summary>
+    private static readonly string[] EntitySuffixes =
+    [
+        "Paginated", "Details", "Detail", "Summary", "ById", "Paged", "List"
+    ];
+
+    /// <summary>
+    /// Normalizes an entity name by removing common qualifiers that break route grouping.
+    /// Returns the normalized entity name and an optional route suffix for lookup patterns.
+    /// Examples:
+    ///   "AllTodos" → ("Todos", null)
+    ///   "TodoById" → ("Todo", null)                   — ById stripped, Id becomes route param
+    ///   "TodoByName" → ("Todo", "by-name")            — entity extracted, "by-name" becomes route segment
+    ///   "TodoDetails" → ("Todo", null)
+    ///   "TodoItemsWithPagination" → ("TodoItems", null) — With&lt;Feature&gt; stripped
+    ///   "OrderCount" → ("Order", "count")              — count becomes route segment
+    ///   "OrdersForCustomer" → ("Orders", "for-customer") — For&lt;Entity&gt; becomes route segment
+    ///   "OrdersFromUser" → ("Orders", "from-user")     — From&lt;Entity&gt; becomes route segment
+    /// </summary>
+    private static (string entityName, string? routeSuffix) NormalizeEntityName(string entityName)
+    {
+        if (string.IsNullOrEmpty(entityName))
+            return (entityName, null);
+
+        // Strip leading "All" prefix (e.g., AllTodos → Todos)
+        if (entityName.StartsWith("All", StringComparison.Ordinal) && entityName.Length > 3 && char.IsUpper(entityName[3]))
+        {
+            entityName = entityName.Substring(3);
+        }
+
+        // Strip known suffixes (e.g., TodoById → Todo, OrderDetails → Order, ProductsPaged → Products)
+        foreach (var suffix in EntitySuffixes)
+        {
+            if (entityName.EndsWith(suffix, StringComparison.Ordinal) && entityName.Length > suffix.Length)
+            {
+                entityName = entityName.Substring(0, entityName.Length - suffix.Length);
+                return (entityName, null);
+            }
+        }
+
+        // Strip With<Feature> suffix entirely (e.g., TodoItemsWithPagination → TodoItems)
+        // These are query modifiers (pagination, includes, filters) — not part of the resource identity.
+        var withIndex = entityName.IndexOf("With", StringComparison.Ordinal);
+        if (withIndex > 0 && withIndex + 4 < entityName.Length && char.IsUpper(entityName[withIndex + 4]))
+        {
+            entityName = entityName.Substring(0, withIndex);
+            return (entityName, null);
+        }
+
+        // Detect Count suffix (e.g., OrderCount → entity "Order", suffix "count")
+        // This is a well-established REST convention: GET /api/orders/count
+        if (entityName.EndsWith("Count", StringComparison.Ordinal) && entityName.Length > 5)
+        {
+            entityName = entityName.Substring(0, entityName.Length - 5);
+            return (entityName, "count");
+        }
+
+        // Detect For<Entity>/From<Entity>/By<Property> patterns — extract entity + route suffix.
+        // e.g., OrdersForCustomer → ("Orders", "for-customer")
+        //        OrdersFromUser → ("Orders", "from-user")
+        //        TodoByName → ("Todo", "by-name")
+        // "ById" is already handled above via EntitySuffixes.
+        foreach (var keyword in new[] { "For", "From", "By" })
+        {
+            var idx = entityName.IndexOf(keyword, StringComparison.Ordinal);
+            if (idx > 0 && idx + keyword.Length < entityName.Length && char.IsUpper(entityName[idx + keyword.Length]))
+            {
+                var suffix = entityName.Substring(idx);    // e.g., "ForCustomer"
+                entityName = entityName.Substring(0, idx); // e.g., "Orders"
+                return (entityName, suffix.ToKebabCase());  // e.g., "for-customer"
+            }
+        }
+
+        return (entityName, null);
     }
 
     #region Event Detection

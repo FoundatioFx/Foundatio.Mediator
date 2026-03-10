@@ -247,6 +247,48 @@ internal static class EndpointGenerator
                     endpoint.Route));
             }
         }
+
+        // FMED016: Handlers in the same class produce routes with different base paths.
+        // Only check handlers without an explicit [HandlerEndpointGroup] category,
+        // since categorized handlers already have a shared group prefix.
+        var uncategorizedByClass = handlers
+            .Where(h => string.IsNullOrEmpty(h.Endpoint!.Value.CategoryRoutePrefix) && !h.Endpoint!.Value.HasExplicitRoute)
+            .GroupBy(h => h.Identifier);
+
+        foreach (var group in uncategorizedByClass)
+        {
+            var routePrefixes = group
+                .Select(h =>
+                {
+                    var route = h.Endpoint!.Value.Route.TrimStart('/');
+                    var slashIndex = route.IndexOf('/');
+                    return slashIndex > 0 ? route.Substring(0, slashIndex) : route;
+                })
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (routePrefixes.Count > 1)
+            {
+                var handlerName = group.Key;
+                var prefixList = string.Join(", ", routePrefixes.Select(p => "/" + p));
+                context.ReportDiagnostic(Diagnostic.Create(
+                    new DiagnosticDescriptor(
+                        "FMED016",
+                        "Handler methods generate routes with different base paths",
+                        "Handler methods on '{0}' generate endpoints with different route prefixes ({1}). " +
+                        "This usually means message names don't share a common entity root. " +
+                        "Consider renaming messages to use a consistent noun (e.g., GetTodo instead of GetTodoById), " +
+                        "or use [HandlerEndpointGroup(\"{2}\")] to group them under a shared prefix.",
+                        "Foundatio.Mediator",
+                        DiagnosticSeverity.Warning,
+                        isEnabledByDefault: true),
+                    Location.None,
+                    handlerName,
+                    prefixList,
+                    handlerName.Replace("Handler", "").Replace("Consumer", "") + "s"));
+            }
+        }
     }
 
     /// <summary>

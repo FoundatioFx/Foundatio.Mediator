@@ -161,8 +161,8 @@ Subscribe to published notifications as an async stream — and combine with a s
 ```csharp
 public class EventStreamHandler(IMediator mediator)
 {
-    [HandlerEndpoint(Route = "/events/stream", Streaming = EndpointStreaming.ServerSentEvents)]
-    public async IAsyncEnumerable<object> Handle(SubscribeToEvents message, [EnumeratorCancellation] CancellationToken ct)
+    [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
+    public async IAsyncEnumerable<object> Handle(GetEventStream message, [EnumeratorCancellation] CancellationToken ct)
     {
         await foreach (var evt in mediator.SubscribeAsync<INotification>(cancellationToken: ct))
             yield return evt;

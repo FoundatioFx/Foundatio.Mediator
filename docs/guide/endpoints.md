@@ -122,7 +122,7 @@ This generates a `GET /api/report/sales-stream` endpoint that streams results as
 | `"event"` | Clients listen with `addEventListener('event', ...)` |
 
 ::: tip
-For a complete guide on streaming patterns including `SubscribeAsync`, dynamic subscriptions, buffering, and real-world examples, see [Streaming Handlers](./streaming-handlers.md).
+For `SubscribeAsync`, dynamic subscriptions, and SSE details, see [Streaming Handlers](./streaming-handlers.md).
 :::
 
 ## Customization Attributes

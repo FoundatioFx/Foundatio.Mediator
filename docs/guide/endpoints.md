@@ -259,8 +259,12 @@ The final route for every endpoint is built by concatenating up to three levels.
 | Level | Source | Default |
 | ----- | ------ | ------- |
 | 1. Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` |
-| 2. Group prefix | `[HandlerEndpointGroup("Products")]` or auto-derived from class name | Class name minus `Handler`/`Consumer` suffix, lowercased |
-| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | ID properties as route params, action verb suffix |
+| 2. Group prefix | `[HandlerEndpointGroup("Products")]` or auto-derived from message name | Entity name (message minus verb prefix), **pluralized** and kebab-cased |
+| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | ID properties as route params, lookup/action suffix |
+
+::: tip Routes are pluralized
+The group prefix is automatically pluralized: `TodoHandler` handling `GetTodo` produces `/api/todos`, not `/api/todo`. To see the exact routes generated, call `c.LogEndpoints()` in `MapMediatorEndpoints`.
+:::
 
 ```text
 /api/products/{productId}

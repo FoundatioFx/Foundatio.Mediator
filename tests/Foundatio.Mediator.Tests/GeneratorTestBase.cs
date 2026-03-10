@@ -286,6 +286,102 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
         return refs.ToArray();
     }
 
+    protected string? GenerateEndpointSource(string source)
+    {
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return null;
+
+        var (_, _, trees) = RunGenerator(source, [new MediatorGenerator()], additionalReferences: refs);
+        return trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+    }
+
+    /// <summary>
+    /// Asserts the generated source contains an endpoint with the given HTTP method and full route.
+    /// Parses the generated log lines which have the format:
+    ///   writeLog("  GET  /api/todos/{todoId}  → Handler.Method(Message) (convention)");
+    /// This validates the fully composed path including route prefix and category.
+    /// </summary>
+    protected static void AssertEndpoint(string endpointSource, string httpMethod, string fullRoute)
+    {
+        var endpoints = ParseEndpointLogEntries(endpointSource);
+
+        Assert.True(endpoints.Any(e => e.Method == httpMethod && e.Route == fullRoute),
+            $"Expected {httpMethod} {fullRoute} not found.\n" +
+            $"Found endpoints:\n{string.Join("\n", endpoints.Select(e => $"  {e.Method} {e.Route}"))}\n\n" +
+            $"Generated source:\n{endpointSource}");
+    }
+
+    /// <summary>
+    /// Asserts the generated source does NOT contain the given route segment in any endpoint route.
+    /// Parses the generated log lines for the fully composed routes.
+    /// </summary>
+    protected static void AssertNoRouteContains(string endpointSource, string routeSegment)
+    {
+        var endpoints = ParseEndpointLogEntries(endpointSource);
+
+        foreach (var (method, route) in endpoints)
+        {
+            Assert.False(route.Contains(routeSegment),
+                $"Route '{route}' unexpectedly contains '{routeSegment}'.\nEndpoint: {method} {route}");
+        }
+    }
+
+    /// <summary>
+    /// Parses the writeLog lines in generated endpoint source to extract (HttpMethod, FullRoute) pairs.
+    /// Log line format: writeLog("  GET  /api/todos/{todoId}  → Handler.Method(Msg) (convention)");
+    /// </summary>
+    protected static List<(string Method, string Route)> ParseEndpointLogEntries(string endpointSource)
+    {
+        var results = new List<(string Method, string Route)>();
+        foreach (var line in endpointSource.Split('\n'))
+        {
+            var trimmed = line.Trim();
+
+            // Match: writeLog("  GET  /api/route  → Handler (convention|explicit)");
+            if (!trimmed.StartsWith("writeLog(\"  "))
+                continue;
+
+            // Strip writeLog(" and trailing ");
+            var inner = trimmed.Substring("writeLog(\"".Length);
+            var closeIdx = inner.LastIndexOf("\");", StringComparison.Ordinal);
+            if (closeIdx < 0)
+                continue;
+            inner = inner.Substring(0, closeIdx).Trim();
+
+            // Format: "METHOD  /route  → handler (source)"
+            var arrowIdx = inner.IndexOf("→", StringComparison.Ordinal);
+            if (arrowIdx < 0)
+                continue;
+
+            var methodAndRoute = inner.Substring(0, arrowIdx).Trim();
+            var firstSpace = methodAndRoute.IndexOf(' ');
+            if (firstSpace < 0)
+                continue;
+
+            var method = methodAndRoute.Substring(0, firstSpace).Trim();
+            var route = methodAndRoute.Substring(firstSpace).Trim();
+            results.Add((method, route));
+        }
+        return results;
+    }
+
+    protected static string ToKebabCase(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+
+        var result = new System.Text.StringBuilder();
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (char.IsUpper(c) && i > 0)
+            {
+                result.Append('-');
+            }
+            result.Append(char.ToLowerInvariant(c));
+        }
+        return result.ToString();
+    }
+
     private sealed class SimpleOptionsProvider : AnalyzerConfigOptionsProvider
     {
         private readonly ImmutableDictionary<string, string> _globals;

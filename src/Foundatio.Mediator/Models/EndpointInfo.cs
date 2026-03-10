@@ -85,6 +85,12 @@ internal readonly record struct EndpointInfo
     public bool GenerateEndpoint { get; init; }
 
     /// <summary>
+    /// Reason this handler was excluded from endpoint generation, if applicable.
+    /// Null when the handler is not excluded.
+    /// </summary>
+    public string? ExcludeReason { get; init; }
+
+    /// <summary>
     /// Whether this handler has an explicit [HandlerEndpoint] attribute on the method or class.
     /// Used by "Explicit" discovery mode to distinguish explicitly marked handlers.
     /// </summary>

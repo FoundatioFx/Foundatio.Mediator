@@ -403,13 +403,14 @@ internal static class HandlerAnalyzer
 
         if (isExcluded)
         {
-            return new EndpointInfo { GenerateEndpoint = false };
+            return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = "excluded by attribute" };
         }
 
         // Auto-exclude events/notifications from endpoint generation
-        if (ShouldExcludeAsEvent(classSymbol, messageType))
+        var eventExcludeReason = GetEventExcludeReason(classSymbol, messageType);
+        if (eventExcludeReason != null)
         {
-            return new EndpointInfo { GenerateEndpoint = false };
+            return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
         }
 
         // Extract category info
@@ -934,30 +935,42 @@ internal static class HandlerAnalyzer
     /// Determines if a handler/message should be excluded from endpoint generation because it's an event.
     /// </summary>
     private static bool ShouldExcludeAsEvent(INamedTypeSymbol classSymbol, INamedTypeSymbol messageType)
+        => GetEventExcludeReason(classSymbol, messageType) != null;
+
+    /// <summary>
+    /// Returns a human-readable reason string if the handler/message should be excluded from endpoint generation
+    /// because it's an event, or null if it should not be excluded.
+    /// </summary>
+    private static string? GetEventExcludeReason(INamedTypeSymbol classSymbol, INamedTypeSymbol messageType)
     {
         // 1. Check if message implements INotification (MediatR-style)
-        if (messageType.AllInterfaces.Any(i =>
+        var notificationInterface = messageType.AllInterfaces.FirstOrDefault(i =>
             i.Name == "INotification" ||
             i.ToDisplayString() == "Foundatio.Mediator.INotification" ||
-            i.ToDisplayString() == "MediatR.INotification"))
+            i.ToDisplayString() == "MediatR.INotification");
+        if (notificationInterface != null)
         {
-            return true;
+            return $"implements {notificationInterface.Name}";
         }
 
         // 2. Check if message implements common event marker interfaces
-        if (messageType.AllInterfaces.Any(i =>
+        var eventInterface = messageType.AllInterfaces.FirstOrDefault(i =>
             i.Name == "IEvent" ||
             i.Name == "IDomainEvent" ||
-            i.Name == "IIntegrationEvent"))
+            i.Name == "IIntegrationEvent");
+        if (eventInterface != null)
         {
-            return true;
+            return $"implements {eventInterface.Name}";
         }
 
         // 3. Check if handler class name ends with "EventHandler" or "NotificationHandler"
-        if (classSymbol.Name.EndsWith("EventHandler") ||
-            classSymbol.Name.EndsWith("NotificationHandler"))
+        if (classSymbol.Name.EndsWith("EventHandler"))
         {
-            return true;
+            return "handler name ends with 'EventHandler'";
+        }
+        if (classSymbol.Name.EndsWith("NotificationHandler"))
+        {
+            return "handler name ends with 'NotificationHandler'";
         }
 
         // 4. Check if message type name has common event suffixes
@@ -966,11 +979,11 @@ internal static class HandlerAnalyzer
         {
             if (messageName.EndsWith(suffix, StringComparison.Ordinal))
             {
-                return true;
+                return $"message name ends with '{suffix}'";
             }
         }
 
-        return false;
+        return null;
     }
 
     #endregion

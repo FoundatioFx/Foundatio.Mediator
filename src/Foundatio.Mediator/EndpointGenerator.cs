@@ -137,6 +137,11 @@ internal static class EndpointGenerator
         // Filter handlers that should generate endpoints based on discovery mode
         var endpointHandlers = GetEndpointHandlers(handlers, endpointDefaults);
 
+        // Collect handlers that were skipped from endpoint generation (with reasons)
+        var skippedHandlers = handlers
+            .Where(h => h.Endpoint is { GenerateEndpoint: false, ExcludeReason: not null } && !h.MessageType.IsInterface && !h.IsGenericHandlerClass)
+            .ToList();
+
         if (endpointHandlers.Count == 0 && !compilationInfo.IsApplication)
             return;
 
@@ -146,7 +151,7 @@ internal static class EndpointGenerator
             ValidateEndpoints(context, endpointHandlers, endpointDefaults);
 
             // Generate the per-module endpoint registration code
-            var source = GenerateEndpointCode(endpointHandlers, endpointDefaults, configuration, compilationInfo);
+            var source = GenerateEndpointCode(endpointHandlers, skippedHandlers, endpointDefaults, configuration, compilationInfo);
             context.AddSource("_MediatorEndpoints.g.cs", source);
         }
 
@@ -247,7 +252,7 @@ internal static class EndpointGenerator
     /// <summary>
     /// Generates the complete endpoint registration source code.
     /// </summary>
-    private static string GenerateEndpointCode(List<HandlerInfo> handlers, EndpointDefaultsInfo endpointDefaults, GeneratorConfiguration configuration, CompilationInfo compilationInfo)
+    private static string GenerateEndpointCode(List<HandlerInfo> handlers, List<HandlerInfo> skippedHandlers, EndpointDefaultsInfo endpointDefaults, GeneratorConfiguration configuration, CompilationInfo compilationInfo)
     {
         var source = new IndentedStringBuilder();
 
@@ -297,7 +302,7 @@ internal static class EndpointGenerator
 
         // Generate the core implementation as a static partial void method
         // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
-        GenerateMapMediatorEndpointsCoreMethod(source, handlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
+        GenerateMapMediatorEndpointsCoreMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -316,6 +321,7 @@ internal static class EndpointGenerator
     private static void GenerateMapMediatorEndpointsCoreMethod(
         IndentedStringBuilder source,
         List<HandlerInfo> handlers,
+        List<HandlerInfo> skippedHandlers,
         EndpointDefaultsInfo endpointDefaults,
         GeneratorConfiguration configuration,
         bool hasAsParametersAttribute,
@@ -409,7 +415,7 @@ internal static class EndpointGenerator
             .ToList();
 
         // Collect endpoint info for startup logging
-        var endpointLogEntries = new List<(string HttpMethod, string FullRoute, string HandlerInfo)>();
+        var endpointLogEntries = new List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)>();
 
         foreach (var categoryGroup in handlersByCategory)
         {
@@ -493,12 +499,22 @@ internal static class EndpointGenerator
                 endpointLogEntries.Add((
                     handler.Endpoint!.Value.HttpMethod,
                     fullRoute,
-                    $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})"));
+                    $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})",
+                    handler.Endpoint!.Value.HasExplicitRoute));
             }
         }
 
+        // Collect skipped handler info for logging
+        var skippedLogEntries = new List<(string HandlerInfo, string Reason)>();
+        foreach (var handler in skippedHandlers)
+        {
+            skippedLogEntries.Add((
+                $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})",
+                handler.Endpoint!.Value.ExcludeReason!));
+        }
+
         // Emit endpoint logging block
-        EmitEndpointLogging(source, endpointLogEntries, hasLoggerFactory);
+        EmitEndpointLogging(source, endpointLogEntries, skippedLogEntries, hasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -509,14 +525,15 @@ internal static class EndpointGenerator
     /// </summary>
     private static void EmitEndpointLogging(
         IndentedStringBuilder source,
-        List<(string HttpMethod, string FullRoute, string HandlerInfo)> entries,
+        List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)> entries,
+        List<(string HandlerInfo, string Reason)> skippedEntries,
         bool hasLoggerFactory)
     {
-        if (entries.Count == 0)
+        if (entries.Count == 0 && skippedEntries.Count == 0)
             return;
 
-        var maxMethodLen = entries.Max(e => e.HttpMethod.Length);
-        var maxRouteLen = entries.Max(e => e.FullRoute.Length);
+        var maxMethodLen = entries.Count > 0 ? entries.Max(e => e.HttpMethod.Length) : 0;
+        var maxRouteLen = entries.Count > 0 ? entries.Max(e => e.FullRoute.Length) : 0;
 
         source.AppendLine();
         source.AppendLine("// Log mapped endpoints when requested");
@@ -540,11 +557,21 @@ internal static class EndpointGenerator
 
         source.AppendLine($"writeLog(\"Foundatio.Mediator mapped {entries.Count} endpoint(s):\");");
 
-        foreach (var (httpMethod, fullRoute, handlerInfo) in entries)
+        foreach (var (httpMethod, fullRoute, handlerInfo, isExplicitRoute) in entries)
         {
             var paddedMethod = httpMethod.PadRight(maxMethodLen);
             var paddedRoute = fullRoute.PadRight(maxRouteLen);
-            source.AppendLine($"writeLog(\"  {paddedMethod}  {paddedRoute}  \u2192 {handlerInfo}\");");
+            var routeSource = isExplicitRoute ? "explicit" : "convention";
+            source.AppendLine($"writeLog(\"  {paddedMethod}  {paddedRoute}  \u2192 {handlerInfo} ({routeSource})\");");
+        }
+
+        if (skippedEntries.Count > 0)
+        {
+            source.AppendLine($"writeLog(\"Foundatio.Mediator skipped {skippedEntries.Count} handler(s) from endpoint generation:\");");
+            foreach (var (handlerInfo, reason) in skippedEntries)
+            {
+                source.AppendLine($"writeLog(\"  SKIP  {handlerInfo} ({reason})\");");
+            }
         }
 
         source.DecrementIndent();

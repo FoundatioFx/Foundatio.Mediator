@@ -184,7 +184,7 @@ public static partial class Tests_MediatorEndpoints
         {
             System.Action<string> writeLog = System.Console.WriteLine;
             writeLog("Foundatio.Mediator mapped 1 endpoint(s):");
-            writeLog("  GET  /api/widget/{id}  → WidgetHandler.Handle(GetWidget)");
+            writeLog("  GET  /api/widget/{id}  → WidgetHandler.Handle(GetWidget) (convention)");
         }
         else
         {

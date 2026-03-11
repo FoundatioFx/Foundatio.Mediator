@@ -49,7 +49,8 @@ export default withMermaid(defineConfig({
             { text: 'Middleware', link: '/guide/middleware' },
             { text: 'Authorization', link: '/guide/authorization' },
             { text: 'Endpoints', link: '/guide/endpoints' },
-            { text: 'Clean Architecture', link: '/guide/clean-architecture' }
+            { text: 'Clean Architecture', link: '/guide/clean-architecture' },
+            { text: 'Testing', link: '/guide/testing' }
           ]
         },
         {

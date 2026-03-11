@@ -1516,11 +1516,11 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
 
-            public record SubscribeToEvents;
+            public record GetEventStream;
 
             public class EventStreamHandler
             {
-                public async IAsyncEnumerable<string> HandleAsync(SubscribeToEvents query) { yield return "event"; }
+                public async IAsyncEnumerable<string> HandleAsync(GetEventStream query) { yield return "event"; }
             }
             """;
 
@@ -1545,12 +1545,12 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
 
-            public record SubscribeToEvents;
+            public record GetEventStream;
 
             public class EventStreamHandler
             {
                 [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents, SseEventType = "event")]
-                public async IAsyncEnumerable<string> HandleAsync(SubscribeToEvents query) { yield return "event"; }
+                public async IAsyncEnumerable<string> HandleAsync(GetEventStream query) { yield return "event"; }
             }
             """;
 

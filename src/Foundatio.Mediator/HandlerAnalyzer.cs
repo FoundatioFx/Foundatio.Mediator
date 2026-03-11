@@ -936,7 +936,7 @@ internal static class HandlerAnalyzer
     /// </summary>
     private static readonly string[] EntitySuffixes =
     [
-        "Paginated", "Details", "Detail", "Summary", "ById", "Paged", "List"
+        "Paginated", "Details", "Detail", "Summary", "ById", "Paged", "Stream", "List"
     ];
 
     /// <summary>

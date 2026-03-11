@@ -454,6 +454,29 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
     }
 
     [Fact]
+    public void EntitySuffix_Stream_StrippedFromEntityName()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetEventStream();
+
+            public class EventHandler
+            {
+                public string Handle(GetEventStream query) => "stream";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", "/api/events");
+        AssertNoRouteContains(endpointSource, "stream");
+    }
+
+    [Fact]
     public void EntitySuffix_Paginated_StrippedFromEntityName()
     {
         var source = """

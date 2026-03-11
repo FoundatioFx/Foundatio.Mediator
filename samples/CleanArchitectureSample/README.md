@@ -369,16 +369,11 @@ You can create your own attributes following the same pattern — define an attr
 A streaming handler uses `IAsyncEnumerable<T>` to push domain events to clients in real time via Server-Sent Events. The mediator's built-in `SubscribeAsync<T>` yields events as they're published anywhere in the system:
 
 ```csharp
-[Handler]
 public class ClientEventStreamHandler(IMediator mediator)
 {
-    [HandlerEndpoint(
-        Route = "/events/stream",
-        Streaming = EndpointStreaming.ServerSentEvents,
-        Summary = "Subscribe to real-time domain events via Server-Sent Events")]
-    [HandlerAllowAnonymous]
+    [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
     public async IAsyncEnumerable<ClientEvent> Handle(
-        SubscribeToClientEvents message,
+        GetEventStream message,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken: cancellationToken))

@@ -137,11 +137,11 @@ public interface IMediator
     /// <remarks>
     /// Typical usage is in streaming SSE endpoints that push domain events to connected clients:
     /// <code>
-    /// public IAsyncEnumerable&lt;IDispatchToClient&gt; Handle(
-    ///     SubscribeToClientEvents message,
+    /// public IAsyncEnumerable&lt;INotification&gt; Handle(
+    ///     GetEventStream message,
     ///     CancellationToken ct)
     /// {
-    ///     return mediator.SubscribeAsync&lt;IDispatchToClient&gt;(cancellationToken: ct);
+    ///     return mediator.SubscribeAsync&lt;INotification&gt;(cancellationToken: ct);
     /// }
     /// </code>
     /// </remarks>

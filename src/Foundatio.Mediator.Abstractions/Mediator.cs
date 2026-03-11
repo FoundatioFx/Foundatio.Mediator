@@ -83,8 +83,8 @@ public sealed class Mediator : IMediator, IServiceProvider
     }
 
     /// <inheritdoc />
-    public IAsyncEnumerable<T> SubscribeAsync<T>(int maxCapacity = 100, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<T> SubscribeAsync<T>(CancellationToken cancellationToken = default, SubscriberOptions? options = null)
     {
-        return _registry.SubscribeAsync<T>(maxCapacity, cancellationToken);
+        return _registry.SubscribeAsync<T>(cancellationToken, options);
     }
 }

@@ -41,7 +41,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
             {
                 received.Add(item);
             }
@@ -77,7 +77,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<ITestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<ITestEvent>(cts.Token))
             {
                 received.Add(item);
             }
@@ -113,7 +113,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
             {
                 received.Add(item);
             }
@@ -149,13 +149,13 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var sub1 = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
                 received1.Add(item);
         });
 
         var sub2 = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
                 received2.Add(item);
         });
 
@@ -192,7 +192,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
             {
                 received.Add(item);
                 if (received.Count == 2)
@@ -233,7 +233,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
         // Use a tiny buffer (capacity 2) so we can verify drop behavior.
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var item in mediator.SubscribeAsync<TestEvent>(maxCapacity: 2, cancellationToken: cts.Token))
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token, new SubscriberOptions { MaxCapacity = 2 }))
             {
                 received.Add(item);
             }
@@ -279,7 +279,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         var subscriberTask = Task.Run(async () =>
         {
-            await foreach (var _ in mediator.SubscribeAsync<TestEvent>(cancellationToken: cts.Token))
+            await foreach (var _ in mediator.SubscribeAsync<TestEvent>(cts.Token))
             { }
         });
 

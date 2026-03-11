@@ -128,11 +128,8 @@ public interface IMediator
     /// The notification type to subscribe to. Can be a concrete type, base class, or interface.
     /// Messages are matched at runtime using <see cref="Type.IsAssignableFrom"/>.
     /// </typeparam>
-    /// <param name="maxCapacity">
-    /// Maximum number of items buffered per subscriber. When full, the oldest item is dropped.
-    /// Default is 100.
-    /// </param>
     /// <param name="cancellationToken">Token that ends the subscription when cancelled.</param>
+    /// <param name="options">Optional settings controlling buffer capacity and other subscription behavior.</param>
     /// <returns>An async stream of matching notifications.</returns>
     /// <remarks>
     /// Typical usage is in streaming SSE endpoints that push domain events to connected clients:
@@ -141,9 +138,9 @@ public interface IMediator
     ///     GetEventStream message,
     ///     CancellationToken ct)
     /// {
-    ///     return mediator.SubscribeAsync&lt;INotification&gt;(cancellationToken: ct);
+    ///     return mediator.SubscribeAsync&lt;INotification&gt;(ct);
     /// }
     /// </code>
     /// </remarks>
-    IAsyncEnumerable<T> SubscribeAsync<T>(int maxCapacity = 100, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<T> SubscribeAsync<T>(CancellationToken cancellationToken = default, SubscriberOptions? options = null);
 }

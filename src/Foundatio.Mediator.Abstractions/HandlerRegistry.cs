@@ -430,22 +430,20 @@ public sealed class HandlerRegistry : IDisposable
     /// The notification type to subscribe to. Can be a concrete type, base class, or interface.
     /// Messages are matched using <see cref="Type.IsAssignableFrom"/>.
     /// </typeparam>
-    /// <param name="maxCapacity">
-    /// Maximum number of items buffered per subscriber. When full, the oldest item is dropped.
-    /// Default is 100.
-    /// </param>
     /// <param name="cancellationToken">Token that ends the subscription when cancelled.</param>
+    /// <param name="options">Optional settings controlling buffer capacity and other subscription behavior.</param>
     /// <returns>An async stream of matching notifications.</returns>
     public async IAsyncEnumerable<T> SubscribeAsync<T>(
-        int maxCapacity = 100,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        SubscriberOptions? options = null)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(HandlerRegistry));
 
+        var maxCapacity = options?.MaxCapacity ?? 100;
         var channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maxCapacity)
         {
-            FullMode = BoundedChannelFullMode.DropOldest,
+            FullMode = options?.FullMode ?? BoundedChannelFullMode.DropOldest,
             SingleWriter = false,
             SingleReader = true
         });

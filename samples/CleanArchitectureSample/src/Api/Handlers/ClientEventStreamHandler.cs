@@ -28,7 +28,7 @@ public class ClientEventStreamHandler(IMediator mediator)
         GetEventStream message,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken: cancellationToken))
+        await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken))
         {
             yield return new ClientEvent(evt.GetType().Name, evt);
         }

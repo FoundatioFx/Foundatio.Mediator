@@ -75,7 +75,7 @@ public class EventStreamHandler(IMediator mediator)
 SSE endpoints are consumed using the browser's built-in `EventSource` API:
 
 ```javascript
-const source = new EventSource('/api/events/stream');
+const source = new EventSource('/api/events');
 
 source.onmessage = (e) => {
     const data = JSON.parse(e.data);

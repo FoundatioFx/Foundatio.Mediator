@@ -58,14 +58,14 @@ This architecture gives you a **loosely coupled, message-oriented application** 
 Handlers that return `IAsyncEnumerable<T>` automatically become streaming HTTP endpoints. Combined with `SubscribeAsync`, you can push real-time domain events to the browser in just a few lines:
 
 ```csharp
-public record GetStream;
+public record GetEventStream;
 public record ClientEvent(string EventType, object Data);
 
-public class EventHandler(IMediator mediator)
+public class EventStreamHandler(IMediator mediator)
 {
     [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
     public async IAsyncEnumerable<ClientEvent> Handle(
-        GetStream message,
+        GetEventStream message,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var evt in mediator.SubscribeAsync<INotification>(
@@ -77,10 +77,10 @@ public class EventHandler(IMediator mediator)
 }
 ```
 
-That generates `GET /api/event/stream` as an SSE endpoint. Any browser client can subscribe:
+That generates `GET /api/events` as an SSE endpoint. Any browser client can subscribe:
 
 ```javascript
-const source = new EventSource('/api/event/stream');
+const source = new EventSource('/api/events');
 source.onmessage = (e) => {
     const event = JSON.parse(e.data);
     console.log(event.eventType, event.data);
@@ -94,7 +94,7 @@ Whenever any handler publishes a notification, every connected SSE client receiv
 Without the SSE attribute, streaming handlers return a JSON array streamed incrementally — useful for large datasets that you don't want to buffer in memory:
 
 ```csharp
-public class ReportHandler
+public class SalesHandler
 {
     public async IAsyncEnumerable<SalesRecord> HandleAsync(
         GetSalesStream query,
@@ -109,7 +109,7 @@ public class ReportHandler
 }
 ```
 
-This generates a `GET /api/report/sales-stream` endpoint that streams results as they're produced — ASP.NET Core sends each item to the client without waiting for the full result set.
+This generates a `GET /api/sales` endpoint that streams results as they're produced — ASP.NET Core sends each item to the client without waiting for the full result set.
 
 | `Streaming` Value | Behavior |
 | --- | --- |

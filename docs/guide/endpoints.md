@@ -2,7 +2,7 @@
 
 Foundatio Mediator automatically generates ASP.NET Core Minimal API endpoints from your handlers. Write your handlers as plain message-in/result-out methods, call `.MapMediatorEndpoints()`, and you have a fully functional API — with smart route conventions, HTTP method inference, and OpenAPI metadata — all without writing a single controller or endpoint definition.
 
-Because your handler logic is completely decoupled from HTTP, it's trivially testable: just send a message through the mediator and assert the result. The endpoint layer is a thin, generated projection that you never maintain by hand.
+Because your handler logic is completely decoupled from HTTP, it's trivially testable: just call the handler directly and assert the result. The endpoint layer is a thin, generated projection that you never maintain by hand.
 
 ## Quick Start
 

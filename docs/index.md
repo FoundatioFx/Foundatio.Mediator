@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: Foundatio Mediator
-  text: Blazingly Fast C# Mediator
-  tagline: Convention-based mediator powered by source generators and interceptors
+  text: Build Loosely Coupled .NET Apps — Without the Tradeoffs
+  tagline: Easy to maintain, easy to test, and blazingly fast — a convention-based mediator powered by source generators and interceptors
   image:
     src: https://raw.githubusercontent.com/FoundatioFx/Foundatio/main/media/foundatio-icon.png
     alt: Foundatio Mediator
@@ -17,21 +17,29 @@ hero:
       link: https://github.com/FoundatioFx/Foundatio.Mediator
 
 features:
+  - icon: 🧩
+    title: Loosely Coupled by Default
+    details: Every interaction flows through messages, so components never call each other directly. Change, replace, or remove any handler without ripple effects across your codebase.
+    link: /guide/what-is-foundatio-mediator
+  - icon: 🔗
+    title: Compose with Events
+    details: Publish an event and any number of handlers react — without knowing about each other. Add new behavior to your app without modifying existing code.
+    link: /guide/events-and-notifications
+  - icon: 🧪
+    title: Easy to Test
+    details: Handlers are plain classes with no framework base types. Unit test them like any other object — no mediator mocking, no DI container, no ceremony.
+    link: /guide/testing
   - icon: ⚡
-    title: Near-Direct Call Performance
-    details: Zero runtime reflection with source generators and C# interceptors for blazing fast execution.
+    title: No Performance Tax
+    details: Source generators and C# interceptors compile your mediator calls into near-direct method calls. You get the architecture benefits without the runtime overhead.
     link: /guide/performance
   - icon: 🎯
-    title: Convention-Based Discovery
-    details: No interfaces or base classes required. Just name your classes and methods following simple conventions.
-    link: /guide/handler-conventions
-  - icon: 🧩
-    title: Plain Handler Classes
-    details: Use regular classes or static methods. Sync or async, any signature, multiple handlers per class. No framework coupling.
+    title: Convention-Based, Zero Boilerplate
+    details: No interfaces, no base classes, no manual registration. Just name your classes and methods following simple conventions — the source generator handles all the wiring.
     link: /guide/handler-conventions
   - icon: 🌐
     title: Auto-Generated API Endpoints
-    details: Full Minimal API endpoints generated from your handlers — routes, methods, parameter binding, OpenAPI metadata, and authorization all inferred automatically. No boilerplate.
+    details: Full Minimal API endpoints generated from your handlers — routes, methods, parameter binding, OpenAPI metadata, and authorization all inferred automatically.
     link: /guide/endpoints
   - icon: 📡
     title: Real-Time Streaming
@@ -54,15 +62,8 @@ features:
     details: Return tuples to automatically publish additional messages in sequence — ideal for event-driven workflows.
     link: /guide/cascading-messages
   - icon: 🔒
-    title: Compile-Time Safety
-    details: Comprehensive compile-time diagnostics and validation to catch errors early.
-    link: /guide/troubleshooting
-  - icon: 🧪
-    title: Easy Testing
-    details: Handlers are plain objects, making unit testing straightforward without framework mocking.
-  - icon: 🐛
-    title: Superior Debugging
-    details: Short, simple call stacks with minimal indirection for excellent debugging experience.
+    title: Compile-Time Safety & Debugging
+    details: Comprehensive diagnostics catch errors early. Short, simple call stacks with minimal indirection make debugging straightforward.
 ---
 
 ## Quick Example
@@ -72,9 +73,9 @@ Create a simple handler by following naming conventions:
 ```csharp
 public record Ping(string Text);
 
-public static class PingHandler
+public class PingHandler
 {
-    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
+    public string Handle(Ping msg) => $"Pong: {msg.Text}";
 }
 ```
 

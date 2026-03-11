@@ -1,10 +1,22 @@
 # What is Foundatio Mediator?
 
-Foundatio Mediator is a high-performance, convention-based mediator pattern implementation for .NET applications. It leverages modern C# features like source generators and interceptors to deliver near-direct call performance while maintaining the benefits of the mediator pattern.
+Foundatio Mediator is a convention-based mediator library for .NET that makes it easy to build loosely coupled, maintainable, and testable applications — without sacrificing performance or drowning in boilerplate. It leverages source generators and C# interceptors to deliver near-direct call performance at runtime while giving your team clean architectural boundaries at design time.
 
-## What is the Mediator Pattern?
+## The Problem: How Codebases Become Unmaintainable
 
-The mediator pattern defines how a set of objects interact with each other. Instead of objects communicating directly, they communicate through a central mediator. This promotes loose coupling and makes your code more maintainable and testable.
+Every application starts clean. A controller calls a service, the service calls a repository, and everything is easy to follow. But as the application grows, things get tangled:
+
+- **Services call other services**, creating a web of direct dependencies that's hard to trace and harder to change
+- **Business logic spreads** across controllers, services, and helpers with no clear boundaries
+- **Testing becomes painful** — to test one class, you need to mock a chain of dependencies it was never designed to work without
+- **Changes ripple unpredictably** — a small modification in one service breaks three others that depend on it directly
+- **New team members struggle** to understand what calls what and where a feature actually lives
+
+This is the **big ball of mud** — and it's the natural outcome when components communicate directly instead of through clear, well-defined boundaries.
+
+## The Mediator Pattern: A Way Out
+
+The mediator pattern solves this by introducing a simple rule: **components never call each other directly**. Instead, they send messages through a central mediator, and handlers pick them up on the other side.
 
 ```mermaid
 graph TD
@@ -16,6 +28,16 @@ graph TD
     M --> H3[Email Handler]
     M --> MW[Middleware]
 ```
+
+This single change has profound effects:
+
+- **Loose coupling** — The sender doesn't know (or care) who handles the message. You can change, replace, or remove handlers without touching callers.
+- **Compose with events** — Publish an event like `OrderCreated` and any number of handlers react — sending emails, updating inventory, writing audit logs — without knowing about each other. Add new behavior without modifying existing code.
+- **Clear boundaries** — Each handler does one thing. Business logic has an obvious home.
+- **Easy testing** — Handlers are self-contained. Test them in isolation with real assertions, not mock verification chains.
+- **Safe refactoring** — Rename, split, or reorganize handlers without breaking the rest of the app.
+
+The catch? Traditional mediator libraries make you pay for these benefits with boilerplate interfaces, runtime reflection overhead, and framework lock-in. Foundatio Mediator eliminates those costs.
 
 ## Key Benefits
 
@@ -134,16 +156,28 @@ public class LoggingMiddleware
 }
 ```
 
+## What This Means for Your Team
+
+The features above aren't just technical checkboxes — they translate directly into a healthier codebase and a more productive team:
+
+- **Avoid the big ball of mud** — Message-based communication enforces boundaries that prevent the tight coupling that makes large codebases unmaintainable. Your code stays organized as it grows.
+- **Compose logic through events** — When an order is created, the email handler, audit handler, and inventory handler all react independently. None of them know about each other. Need a new reaction? Add a handler — no existing code changes.
+- **Ship changes confidently** — When handlers are self-contained and loosely coupled, you can modify one feature without worrying about breaking others. Refactoring goes from scary to routine.
+- **Test without fighting the framework** — Handlers are plain classes. Write focused unit tests that assert on real behavior, not mock setups. No mediator fakes, no DI container in tests.
+- **Onboard developers faster** — Clear conventions mean new team members learn the pattern once and can navigate the entire codebase. Every feature follows the same structure: message in, handler processes, result out.
+- **No performance penalty for good architecture** — Unlike other mediator libraries that add measurable overhead per call, Foundatio Mediator compiles away the indirection. You get a well-structured codebase that runs as fast as hand-wired code.
+- **No boilerplate tax** — No marker interfaces, no base classes, no manual DI registration. The source generator handles the wiring so you can focus on business logic.
+
 ## When to Use Foundatio Mediator
 
 ### ✅ Great For
 
+- **Any app that needs to stay maintainable** as it grows beyond a handful of services
 - **Clean Architecture** applications with command/query separation
 - **Microservices** with clear request/response boundaries
 - **Event-driven** architectures with publish/subscribe patterns
-- **High-performance** scenarios where every nanosecond matters
 - **Large teams** needing consistent patterns and conventions
-- **Testing** scenarios requiring isolated, mockable handlers
+- **High-performance** scenarios where mediator overhead is usually accepted as a cost of good architecture
 
 ### ⚠️ Consider Alternatives For
 

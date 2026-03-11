@@ -1,6 +1,26 @@
 # Why Choose Foundatio Mediator?
 
-Foundatio Mediator stands out from other mediator implementations by combining exceptional performance with developer-friendly conventions. Here's why it might be the right choice for your project.
+## The Problem: Complexity That Creeps In
+
+Every .NET application starts clean. But as features accumulate, services start calling other services, dependencies multiply, and before long you have a tightly-coupled codebase that’s hard to test, hard to change, and hard for new team members to navigate. This is the **big ball of mud**, and it’s the default outcome when there’s nothing enforcing boundaries between components.
+
+The mediator pattern solves this: route all interactions through messages instead of direct calls, and your components stay decoupled by design. Need something to happen when an order is created? Publish an `OrderCreated` event — email, audit, and inventory handlers each react independently, without knowing about each other. Adding new behavior means adding a handler, not modifying existing code.
+
+But traditional mediator libraries make you pay for this architecture with boilerplate interfaces, runtime reflection overhead, and framework lock-in.
+
+**Foundatio Mediator gives you the architecture benefits without the costs.**
+
+## What You Actually Get
+
+| Benefit | How |
+| ------- | --- |
+| **Loose coupling without ceremony** | No interfaces, no base classes — just naming conventions. Components communicate through messages, never directly. |
+| **Compose logic through events** | Publish an event and any number of handlers react independently. Add new behavior without touching existing code — the ultimate open/closed principle. |
+| **Testability by default** | Handlers are plain classes. Unit test them like any other object — no mediator mocking, no DI container setup. |
+| **Maintainability at scale** | Clear command/query/event boundaries prevent your codebase from growing into an unmaintainable mess. Every feature follows the same pattern. |
+| **No performance penalty** | Source generators and C# interceptors compile mediator calls into near-direct method calls. The pattern pays for itself. |
+| **No boilerplate tax** | The source generator handles all DI registration, dispatch wiring, and endpoint generation. You write business logic, nothing else. |
+| **Faster onboarding** | New developers learn the conventions once and can navigate the entire codebase. Message in, handler processes, result out. |
 
 ## Performance That Matters
 
@@ -287,11 +307,11 @@ Compare this to complex reflection-based call stacks in other libraries.
 
 ### ✅ Ideal For
 
-- **High-performance applications** where every nanosecond matters
+- **Any app that needs to stay maintainable** as it grows — the mediator pattern prevents the big ball of mud
 - **Clean architecture** implementations with CQRS patterns
 - **Event-driven systems** with publish/subscribe needs
-- **Teams preferring conventions** over explicit interfaces
-- **Applications requiring robust error handling** without exceptions
+- **Teams that value consistency** — conventions mean everyone follows the same patterns
+- **High-performance applications** where other mediator libraries add unacceptable overhead
 - **Projects wanting excellent testing experience** without framework coupling
 
 ### ⚠️ Consider Alternatives When
@@ -336,4 +356,4 @@ Ready to experience the benefits of Foundatio Mediator?
 1. [Installation & Setup](./getting-started) - Get running in minutes
 2. [Simple Examples](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples) - See the patterns in action
 
-The combination of exceptional performance, developer-friendly conventions, and robust error handling makes Foundatio Mediator an excellent choice for modern .NET applications.
+The combination of loose coupling, testability, maintainability, and exceptional performance — without the usual boilerplate tax — makes Foundatio Mediator an excellent choice for modern .NET applications.

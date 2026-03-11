@@ -34,9 +34,9 @@ Define a message and a handler — no interfaces or base classes required:
 ```csharp
 public record Ping(string Text);
 
-public static class PingHandler
+public class PingHandler
 {
-    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
+    public string Handle(Ping msg) => $"Pong: {msg.Text}";
 }
 ```
 

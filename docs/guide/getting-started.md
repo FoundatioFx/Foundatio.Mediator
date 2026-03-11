@@ -1,6 +1,8 @@
 # Getting Started
 
-Build a completely message-oriented, loosely coupled app that's easy to test — with near-direct-call performance and zero boilerplate. Get up and running in under a minute.
+Most .NET apps start simple and gradually become a tangled web of services calling services. Foundatio Mediator helps you avoid that from day one. Instead of components calling each other directly, every interaction flows through messages — so your code stays loosely coupled, easy to test, and easy to understand as it grows.
+
+You get all of this with near-direct-call performance and zero boilerplate. Get up and running in under a minute.
 
 ## Quick Start
 
@@ -17,9 +19,9 @@ dotnet add package Foundatio.Mediator
 public record Ping(string Text);
 
 // Any class ending in "Handler" is discovered automatically
-public static class PingHandler
+public class PingHandler
 {
-    public static string Handle(Ping msg) => $"Pong: {msg.Text}";
+    public string Handle(Ping msg) => $"Pong: {msg.Text}";
 }
 ```
 
@@ -209,6 +211,8 @@ See [Clean Architecture](./clean-architecture) for a complete modular monolith e
 | Topic | Description |
 | ----- | ----------- |
 | [Handler Conventions](./handler-conventions) | All discovery rules, method names, static handlers, explicit attributes |
+| [Events & Notifications](./events-and-notifications) | Publish/subscribe, cascading messages, dynamic subscriptions |
+| [Authorization](./authorization) | Built-in auth for endpoints and direct mediator calls, policies, roles |
 | [Dependency Injection](./dependency-injection) | Lifetimes, parameter injection, constructor vs method injection |
 | [Result Types](./result-types) | `Result<T>` API, status codes, validation errors |
 | [Middleware](./middleware) | Pipeline hooks, ordering, state passing, short-circuiting |
@@ -216,6 +220,7 @@ See [Clean Architecture](./clean-architecture) for a complete modular monolith e
 | [Configuration](./configuration) | All compile-time and runtime options |
 | [Streaming Handlers](./streaming-handlers) | `IAsyncEnumerable<T>` support and dynamic subscriptions |
 | [Performance](./performance) | Benchmarks and how interceptors work |
+| [Clean Architecture](./clean-architecture) | Modular monolith example with cross-assembly handlers |
 | [Troubleshooting](./troubleshooting) | Common issues and solutions |
 
 ::: info LLM-Friendly Docs

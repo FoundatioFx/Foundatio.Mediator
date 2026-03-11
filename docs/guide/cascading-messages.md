@@ -524,4 +524,17 @@ Api (handlers here are NOT called - wrong direction)
 
 See the [Troubleshooting Guide](./troubleshooting.md#event-handlers-not-being-called) for more details.
 
+## Dynamic Subscriptions as an Alternative
+
+Cascading messages are handled by **static handlers** discovered at compile time. If you need to consume events **dynamically at runtime** — for example, streaming events to connected browser clients via SSE — use `SubscribeAsync` instead:
+
+```csharp
+await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken))
+{
+    Console.WriteLine($"Order created: {evt.OrderId}");
+}
+```
+
+Each subscriber gets its own buffered channel and can filter by concrete type or interface. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+
 Cascading messages enable powerful event-driven architectures while maintaining clean, focused handler code. Use them to decouple business logic and create reactive systems that respond to domain events naturally.

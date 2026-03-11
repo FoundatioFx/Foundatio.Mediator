@@ -43,6 +43,7 @@ export default withMermaid(defineConfig({
           text: 'Core Concepts',
           items: [
             { text: 'Handler Conventions', link: '/guide/handler-conventions' },
+            { text: 'Events & Notifications', link: '/guide/events-and-notifications' },
             { text: 'Dependency Injection', link: '/guide/dependency-injection' },
             { text: 'Result Types', link: '/guide/result-types' },
             { text: 'Middleware', link: '/guide/middleware' },

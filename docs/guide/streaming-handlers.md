@@ -62,7 +62,7 @@ public class EventStreamHandler(IMediator mediator)
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
-            cancellationToken: cancellationToken))
+            cancellationToken))
         {
             yield return new ClientEvent(evt.GetType().Name, evt);
         }
@@ -113,7 +113,7 @@ Foundatio Mediator supports **dynamic subscriptions** — receive published noti
 Call `mediator.SubscribeAsync<T>()` to create a subscription that yields every notification assignable to `T`:
 
 ```csharp
-await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken: ct))
+await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(ct))
 {
     Console.WriteLine($"Order created: {evt.OrderId}");
 }
@@ -131,7 +131,7 @@ public record OrderCreated(string OrderId) : IDispatchToClient;
 public record ProductUpdated(string ProductId) : IDispatchToClient;
 
 // Receives both OrderCreated and ProductUpdated
-await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken: ct))
+await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(ct))
 {
     var eventType = evt.GetType().Name; // "OrderCreated" or "ProductUpdated"
 }
@@ -155,7 +155,7 @@ public class ClientEventStreamHandler(IMediator mediator)
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
-            cancellationToken: cancellationToken))
+            cancellationToken))
         {
             yield return new ClientEvent(evt.GetType().Name, evt);
         }
@@ -167,15 +167,17 @@ When any handler publishes a notification that implements `IDispatchToClient`, e
 
 ### Buffer Configuration
 
-Each subscriber has a bounded buffer (default: 100 items). When full, the oldest unread item is dropped:
+Each subscriber has a bounded buffer (default: 100 items). When full, the oldest unread item is dropped. You can customize buffer behavior via `SubscriberOptions`:
 
 ```csharp
 await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(
-    maxCapacity: 10, cancellationToken: ct))
+    ct, new SubscriberOptions { MaxCapacity = 10 }))
 {
     // ...
 }
 ```
+
+`SubscriberOptions` also exposes `FullMode` (`BoundedChannelFullMode`) to control what happens when the buffer is full — the default is `DropOldest`.
 
 ### Lifecycle
 

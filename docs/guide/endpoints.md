@@ -69,7 +69,7 @@ public class EventStreamHandler(IMediator mediator)
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var evt in mediator.SubscribeAsync<INotification>(
-            cancellationToken: cancellationToken))
+            cancellationToken))
         {
             yield return new ClientEvent(evt.GetType().Name, evt);
         }

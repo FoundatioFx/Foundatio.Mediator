@@ -152,7 +152,7 @@ public class AuditHandler
 await mediator.PublishAsync(new OrderCreated("ORD-001", DateTime.UtcNow));
 ```
 
-Handlers can even return cascading events as tuple results — see [Cascading Messages](./cascading-messages).
+By default, `PublishAsync` waits for all handlers to complete — so you can reliably add event handlers knowing they'll run before the publisher continues. See [Events & Notifications](./events-and-notifications) for the full story on publish strategies, error handling, and dynamic subscriptions.
 
 ### Dynamic Subscriptions
 
@@ -164,7 +164,7 @@ public class EventStreamHandler(IMediator mediator)
     [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
     public async IAsyncEnumerable<object> Handle(GetEventStream message, [EnumeratorCancellation] CancellationToken ct)
     {
-        await foreach (var evt in mediator.SubscribeAsync<INotification>(cancellationToken: ct))
+        await foreach (var evt in mediator.SubscribeAsync<INotification>(ct))
             yield return evt;
     }
 }

@@ -1355,6 +1355,7 @@ internal static class HandlerGenerator
             }
 
             source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
+            source.AppendLine($"if (((global::Foundatio.Mediator.Mediator)mediator).Registry.HasSubscribers) ((global::Foundatio.Mediator.Mediator)mediator).Registry.TryWriteSubscription({access});");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.IncrementIndent();
@@ -1396,6 +1397,7 @@ internal static class HandlerGenerator
             }
 
             source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
+            source.AppendLine($"if (((global::Foundatio.Mediator.Mediator)mediator).Registry.HasSubscribers) ((global::Foundatio.Mediator.Mediator)mediator).Registry.TryWriteSubscription({access});");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.AppendLine($"    allCascadeTasks.Add(cascadeHandlers_{publishItem.Name}[i_{publishItem.Name}](mediator, {access}, cancellationToken));");
@@ -1435,6 +1437,7 @@ internal static class HandlerGenerator
             }
 
             source.AppendLine($"var cascadeHandlers_{publishItem.Name} = ((global::Foundatio.Mediator.Mediator)mediator).Registry.GetPublishHandlersForType(typeof({typeFullName}));");
+            source.AppendLine($"if (((global::Foundatio.Mediator.Mediator)mediator).Registry.HasSubscribers) ((global::Foundatio.Mediator.Mediator)mediator).Registry.TryWriteSubscription({access});");
             source.AppendLine($"for (int i_{publishItem.Name} = 0; i_{publishItem.Name} < cascadeHandlers_{publishItem.Name}.Length; i_{publishItem.Name}++)");
             source.AppendLine("{");
             source.IncrementIndent();

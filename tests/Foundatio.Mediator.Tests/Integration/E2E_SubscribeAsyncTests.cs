@@ -17,6 +17,14 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
     public record OtherEvent(string Name) : ITestEvent;
     public record UnrelatedEvent(string Name);
 
+    public record CascadeCommand(string Name);
+
+    public class CascadeHandler
+    {
+        public (Result, TestEvent) Handle(CascadeCommand cmd)
+            => (Result.Success(), new TestEvent(cmd.Name));
+    }
+
     /// <summary>Polls until <paramref name="condition"/> returns true or the timeout expires.</summary>
     private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 2000)
     {
@@ -354,5 +362,40 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
             await foreach (var _ in mediator.SubscribeAsync<TestEvent>())
             { }
         });
+    }
+
+    [Fact]
+    public async Task SubscribeAsync_ReceivesCascadingEvents()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
+        services.AddMediator(b => b.AddAssembly<TestEvent>());
+
+        await using var provider = services.BuildServiceProvider();
+        var registry = provider.GetRequiredService<HandlerRegistry>();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        using var cts = new CancellationTokenSource();
+        var received = new List<TestEvent>();
+
+        var subscriberTask = Task.Run(async () =>
+        {
+            await foreach (var item in mediator.SubscribeAsync<TestEvent>(cts.Token))
+            {
+                received.Add(item);
+            }
+        });
+
+        await WaitUntilAsync(() => registry.HasSubscribers);
+
+        // Invoke a command whose handler returns a cascading TestEvent via tuple
+        await mediator.InvokeAsync<Result>(new CascadeCommand("from-cascade"));
+
+        await WaitUntilAsync(() => received.Count >= 1);
+        cts.Cancel();
+        await subscriberTask;
+
+        Assert.Single(received);
+        Assert.Equal("from-cascade", received[0].Name);
     }
 }

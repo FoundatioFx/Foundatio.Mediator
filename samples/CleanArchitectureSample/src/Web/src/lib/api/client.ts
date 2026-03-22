@@ -5,5 +5,8 @@ import { FetchClient } from '@foundatiofx/fetchclient';
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
 export const api = new FetchClient({
-  baseUrl
+  baseUrl,
+  defaultRequestOptions: {
+    headers: { 'Api-Version': '2025-01-15' }
+  }
 });

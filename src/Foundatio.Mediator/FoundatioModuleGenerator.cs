@@ -10,7 +10,7 @@ internal static class FoundatioModuleGenerator
     /// This attribute is used by MetadataMiddlewareScanner to discover middleware in referenced assemblies.
     /// Also generates the AddHandlers extension method for DI registration.
     /// </summary>
-    public static void Execute(SourceProductionContext context, CompilationInfo compilationInfo, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration)
+    public static void Execute(SourceProductionContext context, CompilationInfo compilationInfo, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration, EndpointDefaultsInfo? endpointDefaults = null)
     {
         var assemblyName = compilationInfo.AssemblyName;
         var safeAssemblyName = assemblyName.ToIdentifier();
@@ -29,15 +29,17 @@ internal static class FoundatioModuleGenerator
 
         if (hasHandlers || hasMiddlewareToRegister)
         {
-            source.AppendLine();
-            source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
-            source.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
-            source.AppendLine("using System;");
-            source.AppendLine("using System.Diagnostics;");
-            source.AppendLine("using System.Diagnostics.CodeAnalysis;");
-            source.AppendLine("using System.Threading;");
-            source.AppendLine("using System.Threading.Tasks;");
-            source.AppendLine("using Foundatio.Mediator.Generated;");
+            source.AppendLines("""
+
+                using Microsoft.Extensions.DependencyInjection;
+                using Microsoft.Extensions.DependencyInjection.Extensions;
+                using System;
+                using System.Diagnostics;
+                using System.Diagnostics.CodeAnalysis;
+                using System.Threading;
+                using System.Threading.Tasks;
+                using Foundatio.Mediator.Generated;
+                """);
         }
 
         source.AppendLine();
@@ -192,15 +194,30 @@ internal static class FoundatioModuleGenerator
                 }
             }
 
+            // Register API version matcher policy when ASP.NET Core application project has versioning enabled
+            if (compilationInfo.IsApplication && compilationInfo.IsAspNetCore && endpointDefaults != null && endpointDefaults.Value.ApiVersions.Any())
+            {
+                source.AppendLines("""
+                    // Register API version context and matcher policy for endpoint disambiguation
+                    services.TryAddScoped<Foundatio.Mediator.ApiVersionContext>();
+                    services.TryAddScoped<Foundatio.Mediator.IApiVersionContext>(sp => sp.GetRequiredService<Foundatio.Mediator.ApiVersionContext>());
+                    services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Routing.MatcherPolicy, ApiVersionMatcherPolicy>());
+                    services.TryAddEnumerable(ServiceDescriptor.Transient<Microsoft.AspNetCore.Mvc.ApiExplorer.IApiDescriptionProvider, ApiVersionOpenApiProvider>());
+                    """);
+                source.AppendLine();
+            }
+
             // Register HttpContext-based authorization context provider when ASP.NET Core is available
             // and at least one handler actually requires authorization
             bool anyHandlerRequiresAuth = handlers.Any(h => h.RequiresAuthorization);
             if (configuration.AuthorizationEnabled && compilationInfo.IsAspNetCore && anyHandlerRequiresAuth)
             {
-                source.AppendLine("// Ensure IHttpContextAccessor is available for the authorization context provider");
-                source.AppendLine("services.AddHttpContextAccessor();");
-                source.AppendLine("// Register HttpContext-based authorization context provider for ASP.NET Core");
-                source.AppendLine("services.TryAddSingleton<Foundatio.Mediator.IAuthorizationContextProvider, HttpContextAuthorizationContextProvider>();");
+                source.AppendLines("""
+                    // Ensure IHttpContextAccessor is available for the authorization context provider
+                    services.AddHttpContextAccessor();
+                    // Register HttpContext-based authorization context provider for ASP.NET Core
+                    services.TryAddSingleton<Foundatio.Mediator.IAuthorizationContextProvider, HttpContextAuthorizationContextProvider>();
+                    """);
             }
 
             source.DecrementIndent();

@@ -35,7 +35,7 @@ if (!fs.existsSync(certFilePath) || !fs.existsSync(keyFilePath)) {
 
 // Backend URL - uses ASPNETCORE_HTTPS_PORT or ASPNETCORE_URLS environment variable
 const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
-    env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:58702';
+    env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:5702';
 
 export default defineConfig({
     plugins: [tailwindcss(), sveltekit()],
@@ -59,11 +59,6 @@ export default defineConfig({
             },
             // Proxy Scalar API reference
             '^/scalar': {
-                target,
-                secure: false
-            },
-            // Proxy SSE event stream
-            '^/events/stream': {
                 target,
                 secure: false
             }

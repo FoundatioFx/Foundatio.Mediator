@@ -1239,7 +1239,21 @@ internal static class HandlerGenerator
 
     public static string GetHandlerClassName(HandlerInfo handler)
     {
-        return $"{handler.Identifier}_{handler.MessageType.Identifier}_Handler";
+        // Use namespace-qualified identifier when the handler is declared in a namespace
+        // to avoid hint-name collisions for same-named classes in different namespaces
+        // (e.g., date-based API versioning with same handler names).
+        // FullName comes from ISymbol.ToDisplayString() which includes the namespace when present
+        // and uses dots for both namespace separators and nested types. Both cases benefit from
+        // qualification in the generated class name, so the dot check handles both correctly.
+        // Strip generic suffix before checking to avoid matching dots inside type arguments.
+        var nameBeforeGeneric = handler.FullName.Split('<')[0];
+        var isQualified = nameBeforeGeneric.Contains('.');
+
+        var handlerName = isQualified
+            ? handler.FullName.ToIdentifier()
+            : handler.Identifier;
+
+        return $"{handlerName}_{handler.MessageType.Identifier}_Handler";
     }
 
     public static string GetHandlerFullName(HandlerInfo handler, string? handlerNamespace = null, string? assemblyName = null)

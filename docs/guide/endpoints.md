@@ -133,13 +133,16 @@ Everything works out of the box with smart defaults. Attributes are only needed 
 
 `[HandlerEndpointGroup]` is applied to a handler **class** and controls all endpoints in that class as a group. Use it to set a shared route prefix, OpenAPI tag, or endpoint filters for every handler method on the class.
 
+The group name is optional — when omitted, it's derived from the class name (e.g., `ProductHandler` → `Products`):
+
 ```csharp
+// Explicit name
 [HandlerEndpointGroup("Products")]
-public class ProductHandler
-{
-    public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
-    public Result<Product> Handle(GetProduct query) { ... }
-}
+public class ProductHandler { ... }
+
+// Derived name — equivalent to above
+[HandlerEndpointGroup]
+public class ProductHandler { ... }
 ```
 
 This changes the routes from the default (derived from the class name) to use the group name:
@@ -589,6 +592,135 @@ To get endpoint summaries from your handler's XML doc comments, enable documenta
 ```
 
 XML doc `<summary>` comments on handler methods automatically become the OpenAPI summary for the generated endpoint.
+
+## API Versioning
+
+Foundatio Mediator supports Stripe-style header-based API versioning. Routes stay the same across all versions — the client sends an `Api-Version` header to select which version they want. When no header is sent, the latest declared version is used by default.
+
+### Declaring Versions
+
+Declare your API versions at the assembly level:
+
+```csharp
+[assembly: MediatorConfiguration(
+    ApiVersions = ["1", "2"],           // All declared versions
+    ApiVersionHeader = "Api-Version"    // Header name (default)
+)]
+```
+
+When `ApiVersions` is not set, no versioning logic is generated — everything works exactly as before (backward-compatible).
+
+### Basic Usage — Unversioned Handlers
+
+Most handlers need zero versioning boilerplate. Handlers without `ApiVersion` serve all versions automatically:
+
+```csharp
+[HandlerEndpointGroup("Products")]
+public class ProductHandler
+{
+    // Available in ALL versions — no annotation needed
+    public Result<Product> Handle(GetProduct query) { ... }
+    public Result<Product> Handle(CreateProduct command) { ... }
+}
+```
+
+### Version-Specific Handlers
+
+When a breaking change is needed, create a separate handler class with an explicit `ApiVersion`. It overrides the default handler for that version on the same route:
+
+```csharp
+[HandlerEndpointGroup("Products", ApiVersion = "2")]
+public class ProductV2Handler
+{
+    // Overrides GetProduct for version 2 only — returns a different DTO
+    public Result<ProductDto> Handle(GetProduct query) { ... }
+}
+```
+
+The generator detects that both `ProductHandler` and `ProductV2Handler` handle `GetProduct` on the same route, and emits a single endpoint with header-based dispatch:
+
+```text
+GET /api/products/{productId}
+  → Api-Version: 1  → ProductHandler.Handle(GetProduct)
+  → Api-Version: 2  → ProductV2Handler.Handle(GetProduct)  (default, latest)
+  → No header       → ProductV2Handler.Handle(GetProduct)  (defaults to latest)
+```
+
+Non-overridden endpoints (like `CreateProduct`) are served by the unversioned handler regardless of the version header.
+
+### Method-Level Version Override
+
+Override the group version on individual methods:
+
+```csharp
+[HandlerEndpointGroup("Widgets", ApiVersion = "1")]
+public class WidgetHandler
+{
+    // Inherits v1 from the group
+    public string Handle(GetWidgetV1 query) => "v1";
+
+    // Override to v2 for this method only
+    [HandlerEndpoint(ApiVersion = "2")]
+    public string Handle(GetWidgetV2 query) => "v2";
+}
+```
+
+### Multi-Version Handlers
+
+Expose a handler in specific versions without creating separate classes:
+
+```csharp
+[HandlerEndpointGroup("Products", ApiVersions = ["1", "2"])]
+public class ProductHandler
+{
+    public Result<Product> Handle(GetProduct query) { ... }
+}
+```
+
+### Deprecating Versions
+
+Mark a version as deprecated to signal consumers it will be removed:
+
+```csharp
+[HandlerEndpointGroup("Products", ApiVersion = "1", Deprecated = true)]
+public class ProductHandlerV1
+{
+    public Result<Product> Handle(GetProduct query) { ... }
+}
+```
+
+Deprecated endpoints emit `[Obsolete]` metadata in the generated OpenAPI specification.
+
+### Custom Version Header
+
+Change the header name used for version selection:
+
+```csharp
+[assembly: MediatorConfiguration(
+    ApiVersions = ["2024-01-15", "2025-03-01"],
+    ApiVersionHeader = "X-Api-Version"    // Custom header name
+)]
+```
+
+### Mixed Versioned and Unversioned Endpoints
+
+Handlers without `ApiVersion` serve all versions automatically. Versioned handlers override specific routes for their version. Both coexist naturally:
+
+```csharp
+// No version — serves all versions at /api/health
+public class HealthHandler
+{
+    public string Handle(GetHealth query) => "ok";
+}
+
+// Serves all versions at /api/products (default)
+[HandlerEndpointGroup("Products")]
+public class ProductHandler { ... }
+
+// Overrides specific routes for version 2 at /api/products
+[HandlerEndpointGroup("Products", ApiVersion = "2")]
+public class ProductV2Handler { ... }
+```
 
 ## Advanced Configuration
 

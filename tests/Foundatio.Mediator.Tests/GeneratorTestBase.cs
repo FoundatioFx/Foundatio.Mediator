@@ -259,6 +259,7 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             "Microsoft.AspNetCore.Http.Abstractions.dll",
             "Microsoft.AspNetCore.Http.dll",
             "Microsoft.AspNetCore.Http.Extensions.dll",
+            "Microsoft.AspNetCore.Http.Features.dll",
             "Microsoft.AspNetCore.Http.Results.dll",
             "Microsoft.AspNetCore.Metadata.dll",
             "Microsoft.AspNetCore.Routing.dll",

@@ -291,8 +291,6 @@ internal static class HandlerAnalyzer
         return true;
     }
 
-
-
     #region Endpoint Extraction
 
     /// <summary>
@@ -393,7 +391,7 @@ internal static class HandlerAnalyzer
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointAttribute);
 
         // Get [HandlerEndpointGroup] attribute from class
-        var categoryAttr = classSymbol.GetAttributes()
+        var groupAttr = classSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
 
         // Check if explicitly excluded via attribute
@@ -413,42 +411,67 @@ internal static class HandlerAnalyzer
             return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
         }
 
-        // Extract category info
-        string? categoryName = null;
-        string? categoryRoutePrefix = null;
-        string[]? categoryTags = null;
+        // Extract group info
+        string? groupName = null;
+        string? groupRoutePrefix = null;
+        string[]? groupTags = null;
 
-        if (categoryAttr != null)
+        if (groupAttr != null)
         {
-            // Category name is the constructor argument
-            if (categoryAttr.ConstructorArguments.Length > 0)
-                categoryName = categoryAttr.ConstructorArguments[0].Value as string;
+            // Group name from constructor argument or named property
+            if (groupAttr.ConstructorArguments.Length > 0)
+                groupName = groupAttr.ConstructorArguments[0].Value as string;
 
-            categoryRoutePrefix = GetStringProperty(categoryAttr, "RoutePrefix");
-            categoryTags = GetStringArrayProperty(categoryAttr, "Tags");
-            // If no explicit RoutePrefix, use the category name as the prefix (lowercase, no leading / = relative)
-            if (string.IsNullOrEmpty(categoryRoutePrefix) && !string.IsNullOrEmpty(categoryName))
+            groupName ??= GetStringProperty(groupAttr, "Name");
+
+            groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
+            groupTags = GetStringArrayProperty(groupAttr, "Tags");
+            // If no explicit RoutePrefix, use the group name as the prefix (lowercase, no leading / = relative)
+            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
             {
-                categoryRoutePrefix = categoryName!.ToLowerInvariant();
+                groupRoutePrefix = groupName!.ToLowerInvariant();
             }
         }
 
-        // A leading / on the category RoutePrefix means absolute (bypass global prefix),
+        // A leading / on the group RoutePrefix means absolute (bypass global prefix),
         // matching ASP.NET Core MVC's attribute routing convention.
         // No leading / means relative (nested under global prefix).
-        bool categoryBypassGlobalPrefix = false;
-        if (!string.IsNullOrEmpty(categoryRoutePrefix) && categoryRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
+        bool groupBypassGlobalPrefix = false;
+        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
         {
-            categoryBypassGlobalPrefix = true;
+            groupBypassGlobalPrefix = true;
         }
-        else if (!string.IsNullOrEmpty(categoryRoutePrefix))
+        else if (!string.IsNullOrEmpty(groupRoutePrefix))
         {
             // Ensure relative prefixes don't start with / in the generated MapGroup call
             // (they're relative to the parent group)
-            categoryRoutePrefix = categoryRoutePrefix!.TrimStart('/');
+            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
         }
 
         // Extract endpoint info (method takes precedence over class)
+        // Extract API versioning configuration (method → class group cascade)
+        var methodApiVersions = GetStringArrayProperty(methodEndpointAttr, "ApiVersions");
+        var methodApiVersion = GetStringProperty(methodEndpointAttr, "ApiVersion");
+        var classApiVersions = GetStringArrayProperty(classEndpointAttr, "ApiVersions");
+        var classApiVersion = GetStringProperty(classEndpointAttr, "ApiVersion");
+        var groupApiVersions = GetStringArrayProperty(groupAttr, "ApiVersions");
+        var groupApiVersion = GetStringProperty(groupAttr, "ApiVersion");
+
+        // Cascade: method ApiVersions > method ApiVersion > class ApiVersions > class ApiVersion > group ApiVersions > group ApiVersion
+        var resolvedApiVersions = methodApiVersions
+            ?? (methodApiVersion != null ? new[] { methodApiVersion } : null)
+            ?? classApiVersions
+            ?? (classApiVersion != null ? new[] { classApiVersion } : null)
+            ?? groupApiVersions
+            ?? (groupApiVersion != null ? new[] { groupApiVersion } : null)
+            ?? Array.Empty<string>();
+
+        // Deprecation: method overrides class overrides group
+        var deprecated = GetBoolProperty(methodEndpointAttr, "Deprecated")
+                      ?? GetBoolProperty(classEndpointAttr, "Deprecated")
+                      ?? GetBoolProperty(groupAttr, "Deprecated")
+                      ?? false;
+
         // Extract streaming configuration
         var streamingEnumValue = GetIntProperty(methodEndpointAttr, "Streaming") ??
                                  GetIntProperty(classEndpointAttr, "Streaming") ?? 0;
@@ -515,11 +538,11 @@ internal static class HandlerAnalyzer
         var roles = authorizationInfo.Roles.ToArray();
         var allPolicies = authorizationInfo.Policies.ToArray();
 
-        // Extract endpoint filters (method -> class -> merge; category is separate)
+        // Extract endpoint filters (method -> class -> merge; group is separate)
         var methodFilters = GetTypeArrayProperty(methodEndpointAttr, "EndpointFilters");
         var classFilters = GetTypeArrayProperty(classEndpointAttr, "EndpointFilters");
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
-        var categoryFilters = GetTypeArrayProperty(categoryAttr, "EndpointFilters") ?? [];
+        var groupFilters = GetTypeArrayProperty(groupAttr, "EndpointFilters") ?? [];
 
         // Extract ProducesStatusCodes from [HandlerEndpoint] attribute (method -> class)
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
@@ -548,7 +571,7 @@ internal static class HandlerAnalyzer
         // Generate route if not explicitly specified
         if (string.IsNullOrEmpty(route))
         {
-            route = GenerateRoute(messageType.Name, categoryRoutePrefix, categoryName, routeParams, httpMethod, actionVerb);
+            route = GenerateRoute(messageType.Name, groupRoutePrefix, groupName, routeParams, httpMethod, actionVerb);
         }
 
         // Determine binding strategy
@@ -612,10 +635,10 @@ internal static class HandlerAnalyzer
             Name = name,
             Summary = summary,
             Description = description,
-            Category = categoryName ?? tags?.FirstOrDefault(),
-            CategoryTags = new(categoryTags ?? []),
-            CategoryRoutePrefix = categoryRoutePrefix,
-            CategoryBypassGlobalPrefix = categoryBypassGlobalPrefix,
+            GroupName = groupName ?? tags?.FirstOrDefault(),
+            GroupTags = new(groupTags ?? []),
+            GroupRoutePrefix = groupRoutePrefix,
+            GroupBypassGlobalPrefix = groupBypassGlobalPrefix,
             RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
@@ -623,13 +646,13 @@ internal static class HandlerAnalyzer
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
             GenerateEndpoint = true,
-            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null || categoryAttr != null,
+            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null || groupAttr != null,
             AllowAnonymous = allowAnonymous,
             RequireAuth = requireAuth,
             Roles = new(roles),
             Policies = new(allPolicies),
             Filters = new(endpointFilters),
-            CategoryFilters = new(categoryFilters),
+            GroupFilters = new(groupFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
             UsesResultCreated = usesResultCreated,
@@ -638,6 +661,8 @@ internal static class HandlerAnalyzer
             StreamingFormat = streamingFormat,
             StreamingItemType = streamingItemType,
             SseEventType = sseEventType,
+            ApiVersions = new(resolvedApiVersions),
+            Deprecated = deprecated,
         };
     }
 
@@ -798,8 +823,8 @@ internal static class HandlerAnalyzer
     /// </summary>
     private static string GenerateRoute(
         string messageTypeName,
-        string? categoryRoutePrefix,
-        string? categoryName,
+        string? groupRoutePrefix,
+        string? groupName,
         EndpointParameterInfo[] routeParams,
         string httpMethod,
         string? actionVerb = null)
@@ -807,11 +832,11 @@ internal static class HandlerAnalyzer
         var parts = new List<string>();
         var (entityName, lookupSuffix) = NormalizeEntityName(RemoveVerbPrefix(messageTypeName));
 
-        // If we have a category with a route prefix, the route is relative to that prefix
+        // If we have a group with a route prefix, the route is relative to that prefix
         // Otherwise, we need to include the entity name in the route
-        if (string.IsNullOrEmpty(categoryRoutePrefix))
+        if (string.IsNullOrEmpty(groupRoutePrefix))
         {
-            // No category prefix - include pluralized entity name in route
+            // No group prefix - include pluralized entity name in route
             var kebabEntity = entityName.SimplePluralize().ToKebabCase();
             if (!string.IsNullOrEmpty(kebabEntity))
             {
@@ -839,20 +864,20 @@ internal static class HandlerAnalyzer
         //        CompleteSomething in "Todos" → /{somethingId}/complete-something
         if (actionVerb != null)
         {
-            // When entity matches category (or no category), use just the verb: /complete
+            // When entity matches group (or no group), use just the verb: /complete
             // When entity doesn't match, preserve entity in action segment: /complete-something
-            bool entityMatchesCategory = !string.IsNullOrEmpty(categoryName) &&
+            bool entityMatchesGroup = !string.IsNullOrEmpty(groupName) &&
                 entityName.Length >= 2 &&
-                (categoryName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
-                 entityName.StartsWith(categoryName, StringComparison.OrdinalIgnoreCase));
+                (groupName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
+                 entityName.StartsWith(groupName, StringComparison.OrdinalIgnoreCase));
 
-            if (entityMatchesCategory || string.IsNullOrEmpty(categoryRoutePrefix))
+            if (entityMatchesGroup || string.IsNullOrEmpty(groupRoutePrefix))
             {
                 parts.Add(actionVerb);
             }
             else
             {
-                // Entity doesn't match category — include it to avoid ambiguity
+                // Entity doesn't match group — include it to avoid ambiguity
                 parts.Add(actionVerb + "-" + entityName.SimplePluralize().ToKebabCase());
             }
         }

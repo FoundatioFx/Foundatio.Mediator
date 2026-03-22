@@ -46,7 +46,7 @@ export type ClientEvent = {
 type EventCallback<T> = (event: T) => void;
 
 /**
- * SSE-based event service. Connects to the server's /events/stream endpoint
+ * SSE-based event service. Connects to the server's /api/events endpoint
  * using the EventSource API and dispatches domain events to registered callbacks.
  * Replaces the previous SignalR-based implementation.
  */
@@ -68,7 +68,7 @@ class EventStreamService {
   }
 
   private connect() {
-    this.eventSource = new EventSource('/events/stream');
+    this.eventSource = new EventSource('/api/events');
 
     this.eventSource.addEventListener('message', (e: MessageEvent) => {
       try {

@@ -9,8 +9,6 @@ namespace Foundatio.Mediator;
 /// </summary>
 internal static class CrossAssemblyHandlerScanner
 {
-
-
     /// <summary>
     /// Scans referenced assemblies for handler classes that can be called cross-assembly.
     /// </summary>

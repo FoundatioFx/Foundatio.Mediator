@@ -134,4 +134,27 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// Default: <see cref="EndpointSummaryStyle.Exact"/>.
     /// </summary>
     public EndpointSummaryStyle EndpointSummaryStyle { get; set; }
+
+    /// <summary>
+    /// Declares the API versions available for the entire API. When set, Stripe-style
+    /// header-based versioning is enabled: routes stay the same across all versions and
+    /// clients select a version via the <see cref="ApiVersionHeader"/> request header.
+    /// Handlers without an explicit <see cref="HandlerEndpointGroupAttribute.ApiVersion"/>
+    /// are available in all declared versions. Version-specific handlers override
+    /// the default handler for their declared version(s).
+    /// When null, versioning is disabled (backward-compatible).
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// [assembly: MediatorConfiguration(ApiVersions = ["1", "2"])]
+    /// </code>
+    /// </example>
+    public string[]? ApiVersions { get; set; }
+
+    /// <summary>
+    /// The HTTP request header used to select the API version.
+    /// Default: <c>"Api-Version"</c>.
+    /// Only applies when <see cref="ApiVersions"/> is set.
+    /// </summary>
+    public string ApiVersionHeader { get; set; } = "Api-Version";
 }

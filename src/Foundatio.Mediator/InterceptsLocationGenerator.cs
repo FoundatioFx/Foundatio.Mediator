@@ -18,34 +18,38 @@ internal static class InterceptsLocationGenerator
         source.AppendLine();
         source.AppendLine("namespace System.Runtime.CompilerServices;");
         source.AppendLine();
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Indicates that a method is an interceptor and provides the location of the intercepted call.");
-        source.AppendLine("/// </summary>");
+        source.AppendLines("""
+            /// <summary>
+            /// Indicates that a method is an interceptor and provides the location of the intercepted call.
+            /// </summary>
+            """);
         source.AddGeneratedCodeAttribute();
-        source.AppendLine("[global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = true)]");
-        source.AppendLine("internal sealed class InterceptsLocationAttribute : global::System.Attribute");
-        source.AppendLine("{");
-        source.AppendLine("    /// <summary>");
-        source.AppendLine("    /// Initializes a new instance of the <see cref=\"InterceptsLocationAttribute\"/> class.");
-        source.AppendLine("    /// </summary>");
-        source.AppendLine("    /// <param name=\"version\">The version of the location encoding.</param>");
-        source.AppendLine("    /// <param name=\"data\">The encoded location data.</param>");
-        source.AppendLine("    public InterceptsLocationAttribute(int version, string data)");
-        source.AppendLine("    {");
-        source.AppendLine("        Version = version;");
-        source.AppendLine("        Data = data;");
-        source.AppendLine("    }");
-        source.AppendLine();
-        source.AppendLine("    /// <summary>");
-        source.AppendLine("    /// Gets the version of the location encoding.");
-        source.AppendLine("    /// </summary>");
-        source.AppendLine("    public int Version { get; }");
-        source.AppendLine();
-        source.AppendLine("    /// <summary>");
-        source.AppendLine("    /// Gets the encoded location data.");
-        source.AppendLine("    /// </summary>");
-        source.AppendLine("    public string Data { get; }");
-        source.AppendLine("}");
+        source.AppendLines("""
+            [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = true)]
+            internal sealed class InterceptsLocationAttribute : global::System.Attribute
+            {
+                /// <summary>
+                /// Initializes a new instance of the <see cref="InterceptsLocationAttribute"/> class.
+                /// </summary>
+                /// <param name="version">The version of the location encoding.</param>
+                /// <param name="data">The encoded location data.</param>
+                public InterceptsLocationAttribute(int version, string data)
+                {
+                    Version = version;
+                    Data = data;
+                }
+
+                /// <summary>
+                /// Gets the version of the location encoding.
+                /// </summary>
+                public int Version { get; }
+
+                /// <summary>
+                /// Gets the encoded location data.
+                /// </summary>
+                public string Data { get; }
+            }
+            """);
 
         context.AddSource(hintName, source.ToString());
     }

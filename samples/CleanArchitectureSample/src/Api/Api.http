@@ -1,4 +1,4 @@
-@baseUrl = https://localhost:58702
+@baseUrl = https://localhost:5702
 
 ###############################################################################
 # CLEAN ARCHITECTURE DEMO - Key Features

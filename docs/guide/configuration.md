@@ -16,7 +16,9 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(
     HandlerLifetime = MediatorLifetime.Scoped,
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRoutePrefix = "api"
+    EndpointRoutePrefix = "api",
+    ApiVersions = ["1", "2"],
+    ApiVersionHeader = "Api-Version"
 )]
 ```
 
@@ -180,6 +182,19 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 - **Effect:** Sets a global route prefix that all category groups nest under. Categories auto-derive their route from their name (e.g., `[HandlerEndpointGroup("Products")]` → `products`), composing with the global prefix to produce `/api/products`. Convention-based entity routes are auto-pluralized (e.g., `GetProduct` → `/products/{productId}`).
 - **Important:** Category-level `RoutePrefix` values without a leading `/` are **relative** to this global prefix. Don't include `api` in your category prefixes when using the default global prefix, or you'll get `/api/api/...`. Use a leading `/` on a category prefix to make it absolute (bypasses the global prefix).
 - **To disable:** Set `EndpointRoutePrefix = ""` to remove the global prefix entirely, then use full paths in category prefixes.
+
+**`ApiVersions`** (`string[]?`)
+
+- **Default:** `null` (versioning disabled)
+- **Effect:** Declares the set of API versions your application supports. When specified, handlers annotated with `ApiVersion` are dispatched based on a request header rather than URL path segments. Routes stay flat (e.g., `/api/products`) regardless of version.
+- **Example:** `ApiVersions = ["1", "2"]` — the last entry is treated as the latest (default) version
+- **See:** [Endpoints Guide — API Versioning](/guide/endpoints#api-versioning) for full documentation
+
+**`ApiVersionHeader`** (`string`)
+
+- **Default:** `"Api-Version"`
+- **Effect:** Sets the HTTP request header used to select the API version at runtime. Only used when `ApiVersions` is set.
+- **Example:** `ApiVersionHeader = "X-Api-Version"` — clients send `X-Api-Version: 2` to request version 2
 
 **`AuthorizationRequired`** (`bool`)
 

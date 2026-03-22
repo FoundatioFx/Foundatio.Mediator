@@ -52,7 +52,7 @@
         {/if}
 
         <a
-          href="/scalar/v1"
+          href="/scalar"
           target="_blank"
           rel="noopener noreferrer"
           class="inline-flex items-center gap-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-900 transition-colors"

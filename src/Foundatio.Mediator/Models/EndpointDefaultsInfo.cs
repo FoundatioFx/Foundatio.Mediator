@@ -47,6 +47,17 @@ internal readonly record struct EndpointDefaultsInfo
     public string SummaryStyle { get; init; }
 
     /// <summary>
+    /// The declared API versions for the entire API (e.g., ["1", "2"]).
+    /// When non-empty, header-based versioning is enabled.
+    /// </summary>
+    public EquatableArray<string> ApiVersions { get; init; }
+
+    /// <summary>
+    /// The HTTP request header name used to select the API version.
+    /// </summary>
+    public string ApiVersionHeader { get; init; }
+
+    /// <summary>
     /// Whether the [assembly: MediatorConfiguration] attribute was found.
     /// </summary>
     public bool IsConfigured { get; init; }
@@ -60,6 +71,8 @@ internal readonly record struct EndpointDefaultsInfo
         Policies = EquatableArray<string>.Empty,
         Roles = EquatableArray<string>.Empty,
         SummaryStyle = "Exact",
+        ApiVersions = EquatableArray<string>.Empty,
+        ApiVersionHeader = "Api-Version",
         IsConfigured = false
     };
 }

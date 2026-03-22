@@ -458,12 +458,16 @@ internal static class HandlerAnalyzer
         var groupApiVersion = GetStringProperty(groupAttr, "ApiVersion");
 
         // Cascade: method ApiVersions > method ApiVersion > class ApiVersions > class ApiVersion > group ApiVersions > group ApiVersion
+        var methodApiVersionArray = methodApiVersion is not null ? new[] { methodApiVersion } : null;
+        var classApiVersionArray = classApiVersion is not null ? new[] { classApiVersion } : null;
+        var groupApiVersionArray = groupApiVersion is not null ? new[] { groupApiVersion } : null;
+
         var resolvedApiVersions = methodApiVersions
-            ?? (methodApiVersion != null ? new[] { methodApiVersion } : null)
+            ?? methodApiVersionArray
             ?? classApiVersions
-            ?? (classApiVersion != null ? new[] { classApiVersion } : null)
+            ?? classApiVersionArray
             ?? groupApiVersions
-            ?? (groupApiVersion != null ? new[] { groupApiVersion } : null)
+            ?? groupApiVersionArray
             ?? Array.Empty<string>();
 
         // Deprecation: method overrides class overrides group

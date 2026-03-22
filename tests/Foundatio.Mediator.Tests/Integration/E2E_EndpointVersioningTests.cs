@@ -271,7 +271,7 @@ public class E2E_EndpointVersioningTests(ITestOutputHelper output) : TestWithLog
     [Fact]
     public async Task ApiVersionContext_IsRegistered()
     {
-        var (app, client) = await StartApp();
+        var (app, _) = await StartApp();
         await using var _ = app;
 
         // Verify the version context service is registered

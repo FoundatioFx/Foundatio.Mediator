@@ -468,7 +468,7 @@ The SPA Proxy starts the Vite dev server automatically.
 | --- | ----------- |
 | `https://localhost:5173` | SvelteKit frontend |
 | `https://localhost:5702/api/*` | Backend API |
-| `https://localhost:5702/scalar/v1` | API docs (Scalar) |
+| `https://localhost:5702/scalar` | API docs (Scalar, latest) |
 
 ### Try the API
 

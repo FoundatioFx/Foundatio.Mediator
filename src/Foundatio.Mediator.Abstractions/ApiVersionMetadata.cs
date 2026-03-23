@@ -65,12 +65,15 @@ public sealed class ApiVersionMetadata
             if (versions.Length > 0)
             {
                 hasVersioned = true;
-                for (var v = 0; v < versions.Length; v++)
+                if (matchingVersioned < 0)
                 {
-                    if (string.Equals(versions[v], requestedVersion, StringComparison.OrdinalIgnoreCase))
+                    for (var v = 0; v < versions.Length; v++)
                     {
-                        matchingVersioned = i;
-                        break;
+                        if (string.Equals(versions[v], requestedVersion, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchingVersioned = i;
+                            break;
+                        }
                     }
                 }
             }

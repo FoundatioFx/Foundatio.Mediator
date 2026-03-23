@@ -4,7 +4,7 @@ namespace Foundatio.Mediator;
 
 /// <summary>
 /// Default implementation of <see cref="IApiVersionContext"/>. Registered as a scoped service
-/// and populated by generated middleware that reads the API version request header.
+/// and populated by the generated <c>ApiVersionMatcherPolicy</c> that reads the API version request header.
 /// </summary>
 public sealed class ApiVersionContext : IApiVersionContext
 {

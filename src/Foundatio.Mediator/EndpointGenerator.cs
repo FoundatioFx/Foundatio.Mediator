@@ -250,6 +250,53 @@ internal static class EndpointGenerator
             }
         }
 
+        // FMED017: Overlapping API versions on the same route.
+        // When versioning is enabled, multiple endpoints sharing a route+method must not
+        // serve the same API version — that would make routing nondeterministic.
+        if (endpointDefaults.ApiVersions.Any())
+        {
+            var byRouteMethod = handlers
+                .Where(h => h.Endpoint!.Value.ApiVersions.Any())
+                .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant());
+
+            foreach (var group in byRouteMethod)
+            {
+                var endpointsInGroup = group.ToList();
+                if (endpointsInGroup.Count < 2)
+                    continue;
+
+                // Collect all versions per handler and find overlaps
+                for (var i = 0; i < endpointsInGroup.Count; i++)
+                {
+                    var versionsA = endpointsInGroup[i].Endpoint!.Value.ApiVersions;
+                    for (var j = i + 1; j < endpointsInGroup.Count; j++)
+                    {
+                        var versionsB = endpointsInGroup[j].Endpoint!.Value.ApiVersions;
+                        var overlap = versionsA.Intersect(versionsB, StringComparer.OrdinalIgnoreCase).ToList();
+                        if (overlap.Count > 0)
+                        {
+                            context.ReportDiagnostic(Diagnostic.Create(
+                                new DiagnosticDescriptor(
+                                    "FMED017",
+                                    "Ambiguous API version on endpoint route",
+                                    "Handlers '{0}' and '{1}' both serve version(s) {2} on {3} {4}. " +
+                                    "Each version must map to exactly one handler for a given route. " +
+                                    "Remove the overlapping version from one of the handlers.",
+                                    "Foundatio.Mediator",
+                                    DiagnosticSeverity.Error,
+                                    isEnabledByDefault: true),
+                                Location.None,
+                                endpointsInGroup[i].Identifier + "." + endpointsInGroup[i].MethodName,
+                                endpointsInGroup[j].Identifier + "." + endpointsInGroup[j].MethodName,
+                                string.Join(", ", overlap),
+                                endpointsInGroup[i].Endpoint!.Value.HttpMethod,
+                                endpointsInGroup[i].Endpoint!.Value.Route));
+                        }
+                    }
+                }
+            }
+        }
+
         // FMED016: Handlers in the same class produce routes with different base paths.
         // Only check handlers without an explicit [HandlerEndpointGroup] group,
         // since grouped handlers already have a shared group prefix.
@@ -810,7 +857,9 @@ internal static class EndpointGenerator
         // Append version suffix to endpoint name for versioned handlers
         if (versioningEnabled && handlerHasVersions)
         {
-            var versionSuffix = endpoint.ApiVersions[0];
+            var versionSuffix = endpoint.ApiVersions.Length == 1
+                ? endpoint.ApiVersions[0]
+                : string.Join("_", endpoint.ApiVersions);
             endpointName = $"{endpointName}_v{versionSuffix}";
         }
 
@@ -1349,14 +1398,14 @@ internal static class EndpointGenerator
                         }
                     }
 
-                    var (winner, hasVersioned) = ApiVersionMetadata.ResolveWinner(candidateVersions, requestedVersion, s_allVersions);
-
-                    if (!hasVersioned) return Task.CompletedTask;
-
                     // Set version context for downstream middleware and handlers
                     var versionContext = httpContext.RequestServices.GetService<Foundatio.Mediator.ApiVersionContext>();
                     if (versionContext != null)
                         versionContext.Current = requestedVersion;
+
+                    var (winner, hasVersioned) = ApiVersionMetadata.ResolveWinner(candidateVersions, requestedVersion, s_allVersions);
+
+                    if (!hasVersioned) return Task.CompletedTask;
 
                     // Invalidate non-winning candidates
                     for (var i = 0; i < candidates.Count; i++)

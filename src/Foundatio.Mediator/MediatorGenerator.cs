@@ -334,8 +334,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             // Always generate diagnostics related to call sites, including cross-assembly handler validation
             HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerList);
 
-            // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
-            if (handlersWithInfo.Count > 0 || middleware.Length > 0)
+            // Generate assembly attribute and handlers registration if there are handlers, middleware, or versioning is enabled (enables cross-assembly discovery)
+            bool versioningEnabled = endpointDefaults.ApiVersions.Any();
+            if (handlersWithInfo.Count > 0 || middleware.Length > 0 || (versioningEnabled && compilationInfo.IsApplication && compilationInfo.IsAspNetCore))
             {
                 FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration, endpointDefaults);
             }

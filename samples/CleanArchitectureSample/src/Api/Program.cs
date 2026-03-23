@@ -6,10 +6,8 @@ using Reports.Module;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var apiVersions = new[] { "2025-01-15", "2025-06-01" };
-
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddOpenApiDocs(apiVersions);
+builder.Services.AddOpenApiDocs(ApiConstants.AllVersions);
 builder.Services.AddDemoAuthentication();
 
 // Add Foundatio.Mediator — all referenced module assemblies are auto-discovered
@@ -27,7 +25,7 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.MapStaticAssets();
 
-app.MapOpenApiDocs("Modular Monolith API", apiVersions);
+app.MapOpenApiDocs("Modular Monolith API", ApiConstants.AllVersions);
 
 app.UseHttpsRedirection();
 

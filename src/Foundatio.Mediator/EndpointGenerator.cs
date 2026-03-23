@@ -257,11 +257,11 @@ internal static class EndpointGenerator
         {
             var byRouteMethod = handlers
                 .Where(h => h.Endpoint!.Value.ApiVersions.Any())
-                .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant());
+                .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant())
+                .Select(g => g.ToList());
 
-            foreach (var group in byRouteMethod)
+            foreach (var endpointsInGroup in byRouteMethod)
             {
-                var endpointsInGroup = group.ToList();
                 if (endpointsInGroup.Count < 2)
                     continue;
 

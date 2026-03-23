@@ -1,3 +1,4 @@
+using Common.Module;
 using Foundatio.Mediator;
 using Products.Module.Data;
 using Products.Module.Domain;
@@ -8,7 +9,7 @@ namespace Products.Module.Versions.V2025_06_01;
 /// 2025-06-01 product endpoints — returns a simplified product DTO without internal status fields.
 /// Demonstrates date-based API versioning: same "Products" group, different API version.
 /// </summary>
-[HandlerEndpointGroup("Products", ApiVersion = "2025-06-01")]
+[HandlerEndpointGroup("Products", ApiVersion = ApiConstants.V2)]
 public class ProductHandler(IProductRepository repository)
 {
     /// <summary>

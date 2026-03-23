@@ -258,13 +258,11 @@ internal static class EndpointGenerator
             var byRouteMethod = handlers
                 .Where(h => h.Endpoint!.Value.ApiVersions.Any())
                 .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant())
-                .Select(g => g.ToList());
+                .Select(g => g.ToList())
+                .Where(endpointsInGroup => endpointsInGroup.Count >= 2);
 
             foreach (var endpointsInGroup in byRouteMethod)
             {
-                if (endpointsInGroup.Count < 2)
-                    continue;
-
                 // Collect all versions per handler and find overlaps
                 for (var i = 0; i < endpointsInGroup.Count; i++)
                 {

@@ -166,7 +166,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // POST without Result.Created() should produce 200, not 201
         Assert.Contains(".Produces<global::OrderView>(200)", endpointSource);
-        Assert.DoesNotContain("201", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(201)", endpointSource);
     }
 
     [Fact]

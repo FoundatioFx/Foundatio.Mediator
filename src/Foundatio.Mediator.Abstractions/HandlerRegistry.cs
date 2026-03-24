@@ -2,10 +2,8 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Foundatio.Mediator;
 
@@ -16,6 +14,8 @@ namespace Foundatio.Mediator;
 public sealed class HandlerRegistry : IDisposable
 {
     private readonly Dictionary<string, List<HandlerRegistration>> _handlersByMessageType = new();
+    private readonly Dictionary<string, List<HandlerRegistration>> _handlersByAttributeType = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HandlerRegistration> _handlersByDescriptorId = new(StringComparer.Ordinal);
     private readonly List<OpenGenericHandlerDescriptor> _openGenericDescriptors = new();
     private readonly List<HandlerRegistration> _allRegistrations = new();
     private readonly List<MiddlewareRegistration> _allMiddleware = new();
@@ -51,6 +51,25 @@ public sealed class HandlerRegistry : IDisposable
 
         list.Add(registration);
         _allRegistrations.Add(registration);
+
+        if (!string.IsNullOrWhiteSpace(registration.DescriptorId) && !_handlersByDescriptorId.ContainsKey(registration.DescriptorId))
+            _handlersByDescriptorId[registration.DescriptorId] = registration;
+
+        if (registration.AttributeMetadata.Count > 0)
+        {
+            foreach (var attributeTypeName in registration.AttributeMetadata
+                .Select(a => a.AttributeTypeName)
+                .Distinct(StringComparer.Ordinal))
+            {
+                if (!_handlersByAttributeType.TryGetValue(attributeTypeName, out var attributeList))
+                {
+                    attributeList = new List<HandlerRegistration>();
+                    _handlersByAttributeType[attributeTypeName] = attributeList;
+                }
+
+                attributeList.Add(registration);
+            }
+        }
     }
 
     /// <summary>
@@ -98,6 +117,56 @@ public sealed class HandlerRegistry : IDisposable
     /// Gets all middleware registrations in the registry.
     /// </summary>
     public IReadOnlyList<MiddlewareRegistration> MiddlewareRegistrations => _allMiddleware;
+
+    /// <summary>
+    /// Gets all handler registrations with the specified attribute type.
+    /// </summary>
+    public IReadOnlyList<HandlerRegistration> GetHandlersWithAttribute(Type attributeType)
+    {
+        if (attributeType == null)
+            throw new ArgumentNullException(nameof(attributeType));
+
+        var attributeTypeName = attributeType.FullName;
+        if (string.IsNullOrWhiteSpace(attributeTypeName))
+            throw new ArgumentException("Attribute type must have a full name.", nameof(attributeType));
+
+        return _handlersByAttributeType.TryGetValue(attributeTypeName, out var handlers)
+            ? handlers.ToArray()
+            : Array.Empty<HandlerRegistration>();
+    }
+
+    /// <summary>
+    /// Gets all handler registrations with the specified attribute type.
+    /// </summary>
+    public IReadOnlyList<HandlerRegistration> GetHandlersWithAttribute<TAttribute>() where TAttribute : Attribute
+    {
+        return GetHandlersWithAttribute(typeof(TAttribute));
+    }
+
+    /// <summary>
+    /// Tries to get a handler registration by descriptor id.
+    /// </summary>
+    public bool TryGetHandlerByDescriptorId(string descriptorId, out HandlerRegistration? registration)
+    {
+        if (string.IsNullOrWhiteSpace(descriptorId))
+        {
+            registration = null;
+            return false;
+        }
+
+        return _handlersByDescriptorId.TryGetValue(descriptorId, out registration);
+    }
+
+    /// <summary>
+    /// Gets registrations for the provided message type.
+    /// </summary>
+    public IReadOnlyList<HandlerRegistration> GetRegistrationsForMessageType(Type messageType)
+    {
+        if (messageType == null)
+            throw new ArgumentNullException(nameof(messageType));
+
+        return GetHandlersForType(messageType);
+    }
 
     /// <summary>
     /// Logs all registered handlers in an aligned, diagnostic-friendly format.

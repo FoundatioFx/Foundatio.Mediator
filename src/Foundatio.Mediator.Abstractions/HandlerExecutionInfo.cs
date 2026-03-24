@@ -12,7 +12,7 @@ public sealed class HandlerExecutionInfo
     /// <param name="handlerType">The type of the handler.</param>
     /// <param name="handlerMethod">The method being invoked on the handler.</param>
     public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod)
-        : this(handlerType, handlerMethod, AuthorizationRequirements.Default)
+        : this(handlerType, handlerMethod, AuthorizationRequirements.Default, null)
     {
     }
 
@@ -22,11 +22,13 @@ public sealed class HandlerExecutionInfo
     /// <param name="handlerType">The type of the handler.</param>
     /// <param name="handlerMethod">The method being invoked on the handler.</param>
     /// <param name="authorization">The authorization requirements for this handler.</param>
-    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod, AuthorizationRequirements authorization)
+    /// <param name="descriptorId">Stable descriptor id for this handler registration.</param>
+    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod, AuthorizationRequirements authorization, string? descriptorId = null)
     {
         HandlerType = handlerType ?? throw new ArgumentNullException(nameof(handlerType));
         HandlerMethod = handlerMethod ?? throw new ArgumentNullException(nameof(handlerMethod));
         Authorization = authorization ?? AuthorizationRequirements.Default;
+        DescriptorId = descriptorId;
     }
 
     /// <summary>
@@ -44,4 +46,9 @@ public sealed class HandlerExecutionInfo
     /// Always non-null; uses <see cref="AuthorizationRequirements.Default"/> when no authorization is configured.
     /// </summary>
     public AuthorizationRequirements Authorization { get; }
+
+    /// <summary>
+    /// Stable descriptor id for this handler registration, if provided by generated code.
+    /// </summary>
+    public string? DescriptorId { get; }
 }

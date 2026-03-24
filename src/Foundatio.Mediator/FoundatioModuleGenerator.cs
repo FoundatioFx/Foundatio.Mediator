@@ -186,7 +186,17 @@ internal static class FoundatioModuleGenerator
                         var returnDisplay = handler.HasReturnValue ? handler.ReturnType.UnwrappedFullName : "";
                         source.AppendLine($"        sourceHandlerName: \"{handler.Identifier}\",");
                         source.AppendLine($"        methodName: \"{handler.MethodName}\",");
-                        source.AppendLine($"        returnTypeName: \"{returnDisplay}\"));");
+                        if (handler.AttributeMetadata.Length > 0)
+                        {
+                            source.AppendLine($"        sourceHandlerTypeName: \"{EscapeStringLiteral(handler.FullName)}\",");
+                            source.AppendLine($"        sourceMethodParameterTypeNames: {FormatStringArray(handler.Parameters.Select(p => p.Type.QualifiedName))},");
+                            source.AppendLine($"        returnTypeName: \"{returnDisplay}\",");
+                            source.AppendLine($"        attributeMetadata: {FormatAttributeMetadata(handler)}));");
+                        }
+                        else
+                        {
+                            source.AppendLine($"        returnTypeName: \"{returnDisplay}\"));");
+                        }
                         source.AppendLine();
                     }
                 }
@@ -261,7 +271,52 @@ internal static class FoundatioModuleGenerator
         if (values.Count == 0)
             return "null";
 
-        var escaped = string.Join(", ", values.Select(v => $"\"{v}\""));
+        var escaped = string.Join(", ", values.Select(v => $"\"{EscapeStringLiteral(v)}\""));
         return $"new[] {{ {escaped} }}";
+    }
+
+    private static string EscapeStringLiteral(string value)
+    {
+        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+    private static string FormatAttributeMetadata(HandlerInfo handler)
+    {
+        var attributes = handler.AttributeMetadata;
+        if (attributes.Length == 0)
+            return "System.Array.Empty<Foundatio.Mediator.HandlerAttributeMetadata>()";
+
+        var sourceHandlerTypeName = EscapeStringLiteral(handler.FullName);
+        var sourceMethodName = EscapeStringLiteral(handler.MethodName);
+        var sourceMethodParameterTypeNames = FormatStringArray(handler.Parameters.Select(p => p.Type.QualifiedName));
+
+        var entries = attributes.Select(a =>
+        {
+            string target = a.IsMethodLevel
+                ? "Foundatio.Mediator.HandlerAttributeTarget.HandlerMethod"
+                : "Foundatio.Mediator.HandlerAttributeTarget.HandlerType";
+
+            string constructorArgs = a.ConstructorArguments.Length == 0
+                ? "System.Array.Empty<string?>()"
+                : $"new string?[] {{ {string.Join(", ", a.ConstructorArguments.Select(v => FormatNullableStringLiteral(v.Value)))} }}";
+
+            string namedArgs = a.NamedArguments.Length == 0
+                ? "new System.Collections.Generic.Dictionary<string, string?>(System.StringComparer.Ordinal)"
+                : $"new System.Collections.Generic.Dictionary<string, string?>(System.StringComparer.Ordinal) {{ {string.Join(", ", a.NamedArguments.Select(FormatNamedAttributeArgument))} }}";
+
+            return $"new Foundatio.Mediator.HandlerAttributeMetadata(\"{EscapeStringLiteral(a.AttributeTypeName)}\", {target}, {constructorArgs}, {namedArgs}, sourceHandlerTypeName: \"{sourceHandlerTypeName}\", sourceMethodName: \"{sourceMethodName}\", sourceMethodParameterTypeNames: {sourceMethodParameterTypeNames})";
+        });
+
+        return $"new Foundatio.Mediator.HandlerAttributeMetadata[] {{ {string.Join(", ", entries)} }}";
+    }
+
+    private static string FormatNamedAttributeArgument(NamedAttributeArgumentInfo arg)
+    {
+        return $"{{ \"{EscapeStringLiteral(arg.Name)}\", {FormatNullableStringLiteral(arg.Value)} }}";
+    }
+
+    private static string FormatNullableStringLiteral(string? value)
+    {
+        return value is null ? "null" : $"\"{EscapeStringLiteral(value)}\"";
     }
 }

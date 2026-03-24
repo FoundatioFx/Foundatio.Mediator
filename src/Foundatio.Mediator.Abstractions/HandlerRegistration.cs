@@ -56,7 +56,7 @@ public sealed class HandlerRegistration
         AttributeMetadata = attributeMetadata ?? Array.Empty<HandlerAttributeMetadata>();
         foreach (var attribute in AttributeMetadata)
             attribute.BindRegistration(this);
-        _lazySourceHandlerType = new Lazy<Type?>(() => ResolveType(SourceHandlerTypeName), LazyThreadSafetyMode.ExecutionAndPublication);
+        _lazySourceHandlerType = new Lazy<Type?>(() => TypeNameResolver.Resolve(SourceHandlerTypeName), LazyThreadSafetyMode.ExecutionAndPublication);
         _lazyHandlerMethod = new Lazy<MethodInfo?>(ResolveHandlerMethod, LazyThreadSafetyMode.ExecutionAndPublication);
         // If no publish delegate provided, create a wrapper that discards the result
         PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
@@ -186,7 +186,7 @@ public sealed class HandlerRegistration
             return Array.Empty<HandlerAttributeMetadata>();
 
         return AttributeMetadata
-            .Where(a => string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal))
+            .Where(a => string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) || TypeNameResolver.Matches(attributeType, a.AttributeTypeName))
             .ToArray();
     }
 
@@ -215,14 +215,14 @@ public sealed class HandlerRegistration
             return null;
 
         var methodAttribute = AttributeMetadata.FirstOrDefault(a =>
-            string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) &&
+            (string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) || TypeNameResolver.Matches(attributeType, a.AttributeTypeName)) &&
             a.Target == HandlerAttributeTarget.HandlerMethod);
 
         if (methodAttribute != null)
             return methodAttribute;
 
         return AttributeMetadata.FirstOrDefault(a =>
-            string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) &&
+            (string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) || TypeNameResolver.Matches(attributeType, a.AttributeTypeName)) &&
             a.Target == HandlerAttributeTarget.HandlerType);
     }
 
@@ -244,7 +244,7 @@ public sealed class HandlerRegistration
         if (SourceMethodParameterTypeNames.Count > 0)
         {
             var parameterTypes = SourceMethodParameterTypeNames
-                .Select(ResolveType)
+                .Select(TypeNameResolver.Resolve)
                 .ToArray();
 
             if (parameterTypes.All(t => t != null))
@@ -262,7 +262,7 @@ public sealed class HandlerRegistration
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Where(m => string.Equals(m.Name, MethodName, StringComparison.Ordinal));
 
-        var messageType = ResolveType(MessageTypeName);
+        var messageType = TypeNameResolver.Resolve(MessageTypeName);
         if (messageType != null)
         {
             methods = methods.Where(m =>
@@ -275,67 +275,8 @@ public sealed class HandlerRegistration
         return methods.FirstOrDefault();
     }
 
-    private static Type? ResolveType(string? typeName)
-    {
-        if (string.IsNullOrWhiteSpace(typeName))
-            return null;
-
-        var resolvedTypeName = typeName!;
-
-        var type = Type.GetType(resolvedTypeName, throwOnError: false);
-        if (type != null)
-            return type;
-
-        type = TryResolveNestedTypeName(resolvedTypeName);
-        if (type != null)
-            return type;
-
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            type = assembly.GetType(resolvedTypeName, throwOnError: false);
-            if (type != null)
-                return type;
-
-            type = TryResolveNestedTypeName(resolvedTypeName, assembly);
-            if (type != null)
-                return type;
-        }
-
-        return null;
-    }
-
-    private static Type? TryResolveNestedTypeName(string typeName, Assembly? assembly = null)
-    {
-        // Roslyn display names for nested types use '.', but reflection expects '+'.
-        // Try progressively replacing rightmost dots with '+' to find nested runtime names.
-        var dotPositions = new List<int>();
-        for (int i = 0; i < typeName.Length; i++)
-        {
-            if (typeName[i] == '.')
-                dotPositions.Add(i);
-        }
-
-        if (dotPositions.Count == 0)
-            return null;
-
-        for (int start = dotPositions.Count - 1; start >= 0; start--)
-        {
-            var chars = typeName.ToCharArray();
-            for (int i = start; i < dotPositions.Count; i++)
-                chars[dotPositions[i]] = '+';
-
-            var candidate = new string(chars);
-            var resolved = assembly == null
-                ? Type.GetType(candidate, throwOnError: false)
-                : assembly.GetType(candidate, throwOnError: false);
-
-            if (resolved != null)
-                return resolved;
-        }
-
-        return null;
-    }
 }
+
 
 /// <summary>
 /// Delegate type for asynchronous handler dispatch. Used by source-generated handler wrappers.

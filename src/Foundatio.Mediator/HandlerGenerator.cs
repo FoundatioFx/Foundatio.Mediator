@@ -625,6 +625,8 @@ internal static class HandlerGenerator
             authorizationExpression = "Foundatio.Mediator.AuthorizationRequirements.Default";
         }
 
+                var descriptorId = GetHandlerDescriptorId(handler);
+
                 source.AppendLine()
               .AppendLines($$"""
                 private static Foundatio.Mediator.HandlerExecutionInfo? _cachedHandlerExecutionInfo;
@@ -635,7 +637,7 @@ internal static class HandlerGenerator
                 {
                     if (_cachedHandlerExecutionInfo is { } cached)
                         return cached;
-                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!, {{authorizationExpression}});
+                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!, {{authorizationExpression}}, "{{descriptorId}}");
                     return Interlocked.CompareExchange(ref _cachedHandlerExecutionInfo, instance, null) ?? instance;
                 }
                 """);

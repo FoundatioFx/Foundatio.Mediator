@@ -1,5 +1,6 @@
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
+using System.Globalization;
 
 namespace Foundatio.Mediator;
 
@@ -235,6 +236,8 @@ internal static class HandlerAnalyzer
                 handlerMethod,
                 context.SemanticModel.Compilation);
 
+            var attributeMetadata = ExtractAttributeMetadata(classSymbol, handlerMethod, context.SemanticModel.Compilation);
+
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
@@ -254,6 +257,7 @@ internal static class HandlerAnalyzer
                 Parameters = new(parameterInfos.ToArray()),
                 CallSites = [],
                 Middleware = [],
+                AttributeMetadata = new(attributeMetadata.ToArray()),
                 HandlerMiddlewareReferences = new(handlerMiddlewareRefs.ToArray()),
                 IsExplicitlyDeclared = methodIsExplicitlyDeclared,
                 Order = order,
@@ -268,6 +272,103 @@ internal static class HandlerAnalyzer
         }
 
         return handlers;
+    }
+
+    private static List<HandlerAttributeMetadataInfo> ExtractAttributeMetadata(INamedTypeSymbol classSymbol, IMethodSymbol handlerMethod, Compilation compilation)
+    {
+        var metadata = new List<HandlerAttributeMetadataInfo>();
+
+        foreach (var attr in classSymbol.GetAttributes())
+        {
+            var entry = CreateAttributeMetadata(attr, isMethodLevel: false, compilation);
+            if (entry.HasValue)
+                metadata.Add(entry.Value);
+        }
+
+        foreach (var attr in handlerMethod.GetAttributes())
+        {
+            var entry = CreateAttributeMetadata(attr, isMethodLevel: true, compilation);
+            if (entry.HasValue)
+                metadata.Add(entry.Value);
+        }
+
+        return metadata;
+    }
+
+    private static HandlerAttributeMetadataInfo? CreateAttributeMetadata(AttributeData attributeData, bool isMethodLevel, Compilation compilation)
+    {
+        var attributeClass = attributeData.AttributeClass;
+        if (attributeClass == null)
+            return null;
+
+        // Capture extension attribute metadata only when the attribute type comes from
+        // a referenced assembly. This avoids churn from app-local attributes while
+        // enabling external middleware packages to project their own metadata.
+        if (string.Equals(attributeClass.ContainingAssembly?.Name, compilation.AssemblyName, StringComparison.Ordinal))
+            return null;
+
+        var attributeNamespace = attributeClass.ContainingNamespace?.ToDisplayString();
+        if (attributeNamespace != null && attributeNamespace.StartsWith("Foundatio.Mediator", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var attributeTypeNameRaw = attributeClass
+            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            .Replace("global::", string.Empty);
+        if (string.IsNullOrWhiteSpace(attributeTypeNameRaw))
+            return null;
+
+        var attributeTypeName = attributeTypeNameRaw!;
+
+        var constructorArguments = attributeData.ConstructorArguments
+            .Select(value => new AttributeValueInfo { Value = FormatTypedConstant(value) })
+            .ToArray();
+
+        var namedArguments = attributeData.NamedArguments
+            .Select(na => new NamedAttributeArgumentInfo
+            {
+                Name = na.Key,
+                Value = FormatTypedConstant(na.Value)
+            })
+            .ToArray();
+
+        return new HandlerAttributeMetadataInfo
+        {
+            AttributeTypeName = attributeTypeName,
+            IsMethodLevel = isMethodLevel,
+            ConstructorArguments = new(constructorArguments),
+            NamedArguments = new(namedArguments)
+        };
+    }
+
+    private static string? FormatTypedConstant(TypedConstant constant)
+    {
+        if (constant.IsNull)
+            return null;
+
+        if (constant.Kind == TypedConstantKind.Array)
+        {
+            var values = constant.Values
+                .Select(FormatTypedConstant)
+                .Select(v => v ?? "null")
+                .ToArray();
+            return "[" + string.Join(",", values) + "]";
+        }
+
+        if (constant.Value is ITypeSymbol typeSymbol)
+            return typeSymbol.ToDisplayString();
+
+        if (constant.Value is INamedTypeSymbol namedType)
+            return namedType.ToDisplayString();
+
+        if (constant.Value is bool boolean)
+            return boolean ? "true" : "false";
+
+        if (constant.Value is IFormattable formattable)
+            return formattable.ToString(null, CultureInfo.InvariantCulture);
+
+        return constant.Value?.ToString();
     }
 
     private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation, bool treatAsHandlerClass)

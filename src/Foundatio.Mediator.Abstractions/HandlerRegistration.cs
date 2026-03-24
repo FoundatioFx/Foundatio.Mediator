@@ -7,6 +7,9 @@ namespace Foundatio.Mediator;
 /// </summary>
 public sealed class HandlerRegistration
 {
+    private readonly Lazy<Type?> _lazySourceHandlerType;
+    private readonly Lazy<MethodInfo?> _lazyHandlerMethod;
+
     /// <summary>
     /// Creates a new handler registration
     /// </summary>
@@ -22,8 +25,20 @@ public sealed class HandlerRegistration
     /// <param name="sourceHandlerName">The short name of the original handler class (e.g., "OrderHandler"). Used for diagnostic logging.</param>
     /// <param name="methodName">The handler method name (e.g., "HandleAsync"). Used for diagnostic logging.</param>
     /// <param name="returnTypeName">The display name of the handler return type (e.g., "Result&lt;Order&gt;"). Used for diagnostic logging.</param>
-    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null, string? sourceHandlerName = null, string? methodName = null, string? returnTypeName = null)
+    /// <param name="sourceHandlerTypeName">The fully qualified type name of the original handler class. Used by extension packages for reflection-based metadata access.</param>
+    /// <param name="sourceMethodParameterTypeNames">Fully qualified source handler method parameter type names in declaration order.</param>
+    /// <param name="descriptorId">Stable descriptor id for the registration. Defaults to the generated handler class name when not provided.</param>
+    /// <param name="attributeMetadata">Feature-agnostic metadata for attributes discovered on the handler type/method.</param>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null, string? sourceHandlerName = null, string? methodName = null, string? returnTypeName = null, string? sourceHandlerTypeName = null, IReadOnlyList<string>? sourceMethodParameterTypeNames = null, string? descriptorId = null, IReadOnlyList<HandlerAttributeMetadata>? attributeMetadata = null)
     {
+        if (string.IsNullOrWhiteSpace(messageTypeName))
+            throw new ArgumentException("Message type name is required.", nameof(messageTypeName));
+        if (string.IsNullOrWhiteSpace(handlerClassName))
+            throw new ArgumentException("Handler class name is required.", nameof(handlerClassName));
+        if (handleAsync == null)
+            throw new ArgumentNullException(nameof(handleAsync));
+
         MessageTypeName = messageTypeName;
         HandlerClassName = handlerClassName;
         HandleAsync = handleAsync;
@@ -35,6 +50,14 @@ public sealed class HandlerRegistration
         SourceHandlerName = sourceHandlerName;
         MethodName = methodName;
         ReturnTypeName = returnTypeName;
+        SourceHandlerTypeName = sourceHandlerTypeName;
+        SourceMethodParameterTypeNames = sourceMethodParameterTypeNames ?? Array.Empty<string>();
+        DescriptorId = !string.IsNullOrWhiteSpace(descriptorId) ? descriptorId! : handlerClassName;
+        AttributeMetadata = attributeMetadata ?? Array.Empty<HandlerAttributeMetadata>();
+        foreach (var attribute in AttributeMetadata)
+            attribute.BindRegistration(this);
+        _lazySourceHandlerType = new Lazy<Type?>(() => ResolveType(SourceHandlerTypeName), LazyThreadSafetyMode.ExecutionAndPublication);
+        _lazyHandlerMethod = new Lazy<MethodInfo?>(ResolveHandlerMethod, LazyThreadSafetyMode.ExecutionAndPublication);
         // If no publish delegate provided, create a wrapper that discards the result
         PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
     }
@@ -102,11 +125,6 @@ public sealed class HandlerRegistration
     public IReadOnlyList<string> OrderAfter { get; }
 
     /// <summary>
-    /// The short name of the original handler class (e.g., "OrderHandler"). Used for diagnostic logging.
-    /// </summary>
-    public string? SourceHandlerName { get; }
-
-    /// <summary>
     /// The handler method name (e.g., "HandleAsync"). Used for diagnostic logging.
     /// </summary>
     public string? MethodName { get; }
@@ -115,6 +133,208 @@ public sealed class HandlerRegistration
     /// The display name of the handler return type (e.g., "Result&lt;Order&gt;"). Used for diagnostic logging.
     /// </summary>
     public string? ReturnTypeName { get; }
+
+    /// <summary>
+    /// The short name of the original handler class (e.g., "OrderHandler"). Used for diagnostic logging.
+    /// </summary>
+    public string? SourceHandlerName { get; }
+
+    /// <summary>
+    /// Fully qualified type name of the original handler class.
+    /// </summary>
+    public string? SourceHandlerTypeName { get; }
+
+    /// <summary>
+    /// Fully qualified source handler method parameter type names in declaration order.
+    /// </summary>
+    public IReadOnlyList<string> SourceMethodParameterTypeNames { get; }
+
+    /// <summary>
+    /// Resolved handler type, loaded lazily when first requested.
+    /// </summary>
+    public Type? SourceHandlerType => _lazySourceHandlerType.Value;
+
+    /// <summary>
+    /// Resolved handler method, loaded lazily when first requested.
+    /// </summary>
+    public MethodInfo? HandlerMethod => _lazyHandlerMethod.Value;
+
+    /// <summary>
+    /// Stable descriptor id for this handler registration.
+    /// Used by middleware and extension packages for metadata lookups.
+    /// </summary>
+    public string DescriptorId { get; }
+
+    /// <summary>
+    /// Generic attribute metadata captured for the handler type/method.
+    /// </summary>
+    public IReadOnlyList<HandlerAttributeMetadata> AttributeMetadata { get; }
+
+    /// <summary>
+    /// Gets all attribute metadata entries with the specified attribute type.
+    /// </summary>
+    public IReadOnlyList<HandlerAttributeMetadata> GetAttributes(Type attributeType)
+    {
+        if (attributeType == null)
+            throw new ArgumentNullException(nameof(attributeType));
+
+        var attributeTypeName = attributeType.FullName;
+        if (string.IsNullOrWhiteSpace(attributeTypeName))
+            throw new ArgumentException("Attribute type must have a full name.", nameof(attributeType));
+
+        if (AttributeMetadata.Count == 0)
+            return Array.Empty<HandlerAttributeMetadata>();
+
+        return AttributeMetadata
+            .Where(a => string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Gets all attribute metadata entries with the specified attribute type.
+    /// </summary>
+    public IReadOnlyList<HandlerAttributeMetadata> GetAttributes<TAttribute>() where TAttribute : Attribute
+    {
+        return GetAttributes(typeof(TAttribute));
+    }
+
+    /// <summary>
+    /// Gets the preferred attribute entry for the specified type.
+    /// Method-level attributes are preferred over type-level attributes.
+    /// </summary>
+    public HandlerAttributeMetadata? GetPreferredAttribute(Type attributeType)
+    {
+        if (attributeType == null)
+            throw new ArgumentNullException(nameof(attributeType));
+
+        var attributeTypeName = attributeType.FullName;
+        if (string.IsNullOrWhiteSpace(attributeTypeName))
+            throw new ArgumentException("Attribute type must have a full name.", nameof(attributeType));
+
+        if (AttributeMetadata.Count == 0)
+            return null;
+
+        var methodAttribute = AttributeMetadata.FirstOrDefault(a =>
+            string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) &&
+            a.Target == HandlerAttributeTarget.HandlerMethod);
+
+        if (methodAttribute != null)
+            return methodAttribute;
+
+        return AttributeMetadata.FirstOrDefault(a =>
+            string.Equals(a.AttributeTypeName, attributeTypeName, StringComparison.Ordinal) &&
+            a.Target == HandlerAttributeTarget.HandlerType);
+    }
+
+    /// <summary>
+    /// Gets the preferred attribute entry for the specified type.
+    /// Method-level attributes are preferred over type-level attributes.
+    /// </summary>
+    public HandlerAttributeMetadata? GetPreferredAttribute<TAttribute>() where TAttribute : Attribute
+    {
+        return GetPreferredAttribute(typeof(TAttribute));
+    }
+
+    private MethodInfo? ResolveHandlerMethod()
+    {
+        var handlerType = SourceHandlerType;
+        if (handlerType == null || string.IsNullOrWhiteSpace(MethodName))
+            return null;
+
+        if (SourceMethodParameterTypeNames.Count > 0)
+        {
+            var parameterTypes = SourceMethodParameterTypeNames
+                .Select(ResolveType)
+                .ToArray();
+
+            if (parameterTypes.All(t => t != null))
+            {
+                return handlerType.GetMethod(
+                    MethodName,
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly,
+                    binder: null,
+                    types: parameterTypes!,
+                    modifiers: null);
+            }
+        }
+
+        var methods = handlerType
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(m => string.Equals(m.Name, MethodName, StringComparison.Ordinal));
+
+        var messageType = ResolveType(MessageTypeName);
+        if (messageType != null)
+        {
+            methods = methods.Where(m =>
+            {
+                var firstParam = m.GetParameters().FirstOrDefault();
+                return firstParam != null && firstParam.ParameterType == messageType;
+            });
+        }
+
+        return methods.FirstOrDefault();
+    }
+
+    private static Type? ResolveType(string? typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+            return null;
+
+        var resolvedTypeName = typeName!;
+
+        var type = Type.GetType(resolvedTypeName, throwOnError: false);
+        if (type != null)
+            return type;
+
+        type = TryResolveNestedTypeName(resolvedTypeName);
+        if (type != null)
+            return type;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            type = assembly.GetType(resolvedTypeName, throwOnError: false);
+            if (type != null)
+                return type;
+
+            type = TryResolveNestedTypeName(resolvedTypeName, assembly);
+            if (type != null)
+                return type;
+        }
+
+        return null;
+    }
+
+    private static Type? TryResolveNestedTypeName(string typeName, Assembly? assembly = null)
+    {
+        // Roslyn display names for nested types use '.', but reflection expects '+'.
+        // Try progressively replacing rightmost dots with '+' to find nested runtime names.
+        var dotPositions = new List<int>();
+        for (int i = 0; i < typeName.Length; i++)
+        {
+            if (typeName[i] == '.')
+                dotPositions.Add(i);
+        }
+
+        if (dotPositions.Count == 0)
+            return null;
+
+        for (int start = dotPositions.Count - 1; start >= 0; start--)
+        {
+            var chars = typeName.ToCharArray();
+            for (int i = start; i < dotPositions.Count; i++)
+                chars[dotPositions[i]] = '+';
+
+            var candidate = new string(chars);
+            var resolved = assembly == null
+                ? Type.GetType(candidate, throwOnError: false)
+                : assembly.GetType(candidate, throwOnError: false);
+
+            if (resolved != null)
+                return resolved;
+        }
+
+        return null;
+    }
 }
 
 /// <summary>

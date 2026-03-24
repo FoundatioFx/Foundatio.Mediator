@@ -607,8 +607,8 @@ internal static class HandlerGenerator
         var paramTypes = string.Join(", ", handler.Parameters.Select(p => $"typeof({p.Type.FullName})"));
         string paramTypesArray = string.IsNullOrEmpty(paramTypes) ? "System.Type.EmptyTypes" : $"new[] {{ {paramTypes} }}";
 
-        // Build AuthorizationRequirements constructor if handler has auth requirements
-        string authArg;
+        // Build AuthorizationRequirements constructor expression
+        string authorizationExpression;
         if (handler.RequiresAuthorization)
         {
             var auth = handler.Authorization;
@@ -618,14 +618,16 @@ internal static class HandlerGenerator
             var policiesArray = auth.Policies.Any()
                 ? $"new string[] {{ {string.Join(", ", auth.Policies.Select(p => $"\"{p}\""))} }}"
                 : "System.Array.Empty<string>()";
-            authArg = $", new Foundatio.Mediator.AuthorizationRequirements({auth.Required.ToString().ToLower()}, {rolesArray}, {policiesArray}, {auth.AllowAnonymous.ToString().ToLower()})";
+            authorizationExpression = $"new Foundatio.Mediator.AuthorizationRequirements({auth.Required.ToString().ToLower()}, {rolesArray}, {policiesArray}, {auth.AllowAnonymous.ToString().ToLower()})";
         }
         else
         {
-            authArg = "";
+            authorizationExpression = "Foundatio.Mediator.AuthorizationRequirements.Default";
         }
 
-        source.AppendLine()
+                var descriptorId = GetHandlerDescriptorId(handler);
+
+                source.AppendLine()
               .AppendLines($$"""
                 private static Foundatio.Mediator.HandlerExecutionInfo? _cachedHandlerExecutionInfo;
 
@@ -635,7 +637,7 @@ internal static class HandlerGenerator
                 {
                     if (_cachedHandlerExecutionInfo is { } cached)
                         return cached;
-                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!{{authArg}});
+                    var instance = new Foundatio.Mediator.HandlerExecutionInfo(typeof({{handler.FullName}}), typeof({{handler.FullName}}).GetMethod("{{handler.MethodName}}", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance, null, {{paramTypesArray}}, null)!, {{authorizationExpression}}, "{{descriptorId}}");
                     return Interlocked.CompareExchange(ref _cachedHandlerExecutionInfo, instance, null) ?? instance;
                 }
                 """);
@@ -1266,6 +1268,11 @@ internal static class HandlerGenerator
     public static string GetHandlerMethodName(HandlerInfo handler)
     {
         return handler.IsAsync || handler.ReturnType.IsTuple ? "HandleAsync" : "Handle";
+    }
+
+    public static string GetHandlerDescriptorId(HandlerInfo handler)
+    {
+        return GetHandlerClassName(handler);
     }
 
     /// <summary>

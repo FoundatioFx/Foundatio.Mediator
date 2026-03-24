@@ -17,6 +17,7 @@ internal readonly record struct HandlerInfo
     public EquatableArray<ParameterInfo> Parameters { get; init; }
     public EquatableArray<CallSiteInfo> CallSites { get; init; }
     public EquatableArray<MiddlewareInfo> Middleware { get; init; }
+    public EquatableArray<HandlerAttributeMetadataInfo> AttributeMetadata { get; init; }
 
     /// <summary>
     /// Authorization metadata for this handler, resolved from [HandlerAuthorize], [HandlerAllowAnonymous],

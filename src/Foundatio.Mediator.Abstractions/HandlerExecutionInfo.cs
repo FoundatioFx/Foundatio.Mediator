@@ -11,8 +11,9 @@ public sealed class HandlerExecutionInfo
     /// </summary>
     /// <param name="handlerType">The type of the handler.</param>
     /// <param name="handlerMethod">The method being invoked on the handler.</param>
-    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod)
-        : this(handlerType, handlerMethod, AuthorizationRequirements.Default)
+    /// <param name="descriptorId">Stable descriptor id for this handler registration.</param>
+    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod, string descriptorId)
+        : this(handlerType, handlerMethod, AuthorizationRequirements.Default, descriptorId)
     {
     }
 
@@ -22,11 +23,15 @@ public sealed class HandlerExecutionInfo
     /// <param name="handlerType">The type of the handler.</param>
     /// <param name="handlerMethod">The method being invoked on the handler.</param>
     /// <param name="authorization">The authorization requirements for this handler.</param>
-    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod, AuthorizationRequirements authorization)
+    /// <param name="descriptorId">Stable descriptor id for this handler registration.</param>
+    public HandlerExecutionInfo(Type handlerType, MethodInfo handlerMethod, AuthorizationRequirements authorization, string descriptorId)
     {
         HandlerType = handlerType ?? throw new ArgumentNullException(nameof(handlerType));
         HandlerMethod = handlerMethod ?? throw new ArgumentNullException(nameof(handlerMethod));
         Authorization = authorization ?? AuthorizationRequirements.Default;
+        DescriptorId = !string.IsNullOrWhiteSpace(descriptorId)
+            ? descriptorId
+            : throw new ArgumentException("Descriptor id is required.", nameof(descriptorId));
     }
 
     /// <summary>
@@ -44,4 +49,9 @@ public sealed class HandlerExecutionInfo
     /// Always non-null; uses <see cref="AuthorizationRequirements.Default"/> when no authorization is configured.
     /// </summary>
     public AuthorizationRequirements Authorization { get; }
+
+    /// <summary>
+    /// Stable descriptor id for this handler registration.
+    /// </summary>
+    public string DescriptorId { get; }
 }

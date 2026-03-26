@@ -154,7 +154,7 @@ var result = await mediator.InvokeAsync<Result<Order>>(new GetOrder("123"));
 
 var message = result.Status switch
 {
-    ResultStatus.Success => $"Order: {result.Value.Description}",
+    ResultStatus.Ok => $"Order: {result.Value.Description}",
     ResultStatus.NotFound => "Order not found",
     ResultStatus.Forbidden => "Access denied",
     _ => $"Error: {result.Message}"
@@ -218,7 +218,7 @@ public class OrdersController : ControllerBase
 
         return result.Status switch
         {
-            ResultStatus.Success => Ok(result.Value),
+            ResultStatus.Ok => Ok(result.Value),
             ResultStatus.NotFound => NotFound(result.ErrorMessage),
             ResultStatus.Forbidden => Forbid(),
             _ => BadRequest(result.ErrorMessage)
@@ -253,7 +253,7 @@ public static class ResultExtensions
     {
         return result.Status switch
         {
-            ResultStatus.Success => new OkObjectResult(result.Value),
+            ResultStatus.Ok => new OkObjectResult(result.Value),
             ResultStatus.Created => new CreatedResult("", result.Value),
             ResultStatus.NoContent => new NoContentResult(),
             ResultStatus.NotFound => new NotFoundObjectResult(result.ErrorMessage),
@@ -310,7 +310,7 @@ if (result.IsSuccess)
 // ✅ Pattern matching all cases
 return result.Status switch
 {
-    ResultStatus.Success => result.Value,
+    ResultStatus.Ok => result.Value,
     ResultStatus.NotFound => throw new NotFoundException(result.Message),
     _ => throw new InvalidOperationException(result.Message)
 };

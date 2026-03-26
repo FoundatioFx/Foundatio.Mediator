@@ -8,7 +8,7 @@ public class ResultTests
         var result = Result.Success();
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Empty(result.ValidationErrors);
@@ -22,14 +22,14 @@ public class ResultTests
         var result = Result.Success(message);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(message, result.Message);
         Assert.Equal(string.Empty, result.Location);
         Assert.Empty(result.ValidationErrors);
     }
 
     [Theory]
-    [InlineData(ResultStatus.Success, true)]
+    [InlineData(ResultStatus.Ok, true)]
     [InlineData(ResultStatus.Created, true)]
     [InlineData(ResultStatus.NoContent, true)]
     [InlineData(ResultStatus.Error, false)]
@@ -45,7 +45,7 @@ public class ResultTests
     {
         var result = status switch
         {
-            ResultStatus.Success => Result.Success(),
+            ResultStatus.Ok => Result.Success(),
             ResultStatus.Created => Result.Created(),
             ResultStatus.NoContent => Result.NoContent(),
             ResultStatus.Error => Result.Error("Error"),
@@ -65,7 +65,7 @@ public class ResultTests
     }
 
     [Theory]
-    [InlineData(ResultStatus.Success, true)]
+    [InlineData(ResultStatus.Ok, true)]
     [InlineData(ResultStatus.Created, true)]
     [InlineData(ResultStatus.NoContent, true)]
     [InlineData(ResultStatus.Error, false)]
@@ -81,7 +81,7 @@ public class ResultTests
     {
         var result = status switch
         {
-            ResultStatus.Success => Result<string>.Success("value"),
+            ResultStatus.Ok => Result<string>.Success("value"),
             ResultStatus.Created => Result<string>.Created("value"),
             ResultStatus.NoContent => Result<string>.NoContent(),
             ResultStatus.Error => Result<string>.Error("Error"),
@@ -174,7 +174,7 @@ public class ResultTests
         var result = Result<string>.Success(value);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -190,7 +190,7 @@ public class ResultTests
         var result = Result<int>.Success(value, message);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(message, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -204,7 +204,7 @@ public class ResultTests
         Result<string> result = value;
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -364,7 +364,7 @@ public class ResultTests
         var result = Result<int>.Success(value);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(value, result.Value);
         Assert.Equal(string.Empty, result.Message);
         Assert.Equal(string.Empty, result.Location);
@@ -378,7 +378,7 @@ public class ResultTests
         var result = Result<object>.Success(complexObject);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(complexObject, result.Value);
         Assert.Equal(complexObject, result.GetValue());
     }
@@ -389,7 +389,7 @@ public class ResultTests
         var result = Result<string?>.Success(null);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Null(result.Value);
         Assert.Null(result.GetValue());
     }
@@ -505,7 +505,7 @@ public class ResultTests
         var result = Result.File(stream, "text/csv", "report.csv");
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Same(stream, result.Value.Stream);
         Assert.Equal("text/csv", result.Value.ContentType);
         Assert.Equal("report.csv", result.Value.FileName);
@@ -530,7 +530,7 @@ public class ResultTests
         var result = Result.File(bytes, "application/octet-stream", "data.bin");
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(ResultStatus.Success, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal("application/octet-stream", result.Value.ContentType);
         Assert.Equal("data.bin", result.Value.FileName);
 

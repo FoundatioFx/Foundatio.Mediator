@@ -1079,7 +1079,7 @@ internal static class EndpointGenerator
         source.AppendLine("""
             return result.Status switch
             {
-                Foundatio.Mediator.ResultStatus.Success => result.GetValue() switch
+                Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
                 {
                     Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
                         file.Stream, file.ContentType, file.FileName),
@@ -1088,6 +1088,8 @@ internal static class EndpointGenerator
                 },
                 Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
                     result.Location ?? "", result.GetValue()),
+                Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
+                    null, result.GetValue()),
                 Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
                 Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
                     string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),

@@ -16,7 +16,7 @@ public sealed class Result<T> : IResult
     /// <param name="value">The value to convert.</param>
     public static implicit operator Result<T>(T value) => new()
     {
-        Status = ResultStatus.Success,
+        Status = ResultStatus.Ok,
         Value = value
     };
 
@@ -106,12 +106,12 @@ public sealed class Result<T> : IResult
     /// <summary>
     /// Gets the status of the result.
     /// </summary>
-    public ResultStatus Status { get; internal init; } = ResultStatus.Success;
+    public ResultStatus Status { get; internal init; } = ResultStatus.Ok;
 
     /// <summary>
     /// Gets a value indicating whether the result represents a successful operation.
     /// </summary>
-    public bool IsSuccess => Status == ResultStatus.Success || Status == ResultStatus.NoContent || Status == ResultStatus.Created;
+    public bool IsSuccess => Status == ResultStatus.Ok || Status == ResultStatus.NoContent || Status == ResultStatus.Created || Status == ResultStatus.Accepted;
 
     /// <summary>
     /// Gets the message associated with the result.
@@ -151,24 +151,39 @@ public sealed class Result<T> : IResult
     /// </summary>
     /// <param name="value">The result value.</param>
     /// <returns>A successful result.</returns>
-    public static Result<T> Success(T value) => new()
+    public static Result<T> Ok(T value) => new()
     {
-        Status = ResultStatus.Success,
+        Status = ResultStatus.Ok,
         Value = value
     };
 
     /// <summary>
-    /// Creates a successful result with a value and success message.
+    /// Creates a successful result with a value and message.
+    /// </summary>
+    /// <param name="value">The result value.</param>
+    /// <param name="message">The success message.</param>
+    /// <returns>A successful result.</returns>
+    public static Result<T> Ok(T value, string message) => new()
+    {
+        Status = ResultStatus.Ok,
+        Value = value,
+        Message = message
+    };
+
+    /// <summary>
+    /// Creates a successful result with a value. Alias for <see cref="Ok(T)"/>.
+    /// </summary>
+    /// <param name="value">The result value.</param>
+    /// <returns>A successful result.</returns>
+    public static Result<T> Success(T value) => Ok(value);
+
+    /// <summary>
+    /// Creates a successful result with a value and message. Alias for <see cref="Ok(T, string)"/>.
     /// </summary>
     /// <param name="value">The result value.</param>
     /// <param name="successMessage">The success message.</param>
     /// <returns>A successful result.</returns>
-    public static Result<T> Success(T value, string successMessage) => new()
-    {
-        Status = ResultStatus.Success,
-        Value = value,
-        Message = successMessage
-    };
+    public static Result<T> Success(T value, string successMessage) => Ok(value, successMessage);
 
     /// <summary>
     /// Creates a result indicating successful creation of a resource.
@@ -179,6 +194,26 @@ public sealed class Result<T> : IResult
     {
         Status = ResultStatus.Created,
         Value = value
+    };
+
+    /// <summary>
+    /// Creates a result indicating the request has been accepted for processing.
+    /// </summary>
+    /// <returns>A result with Accepted status.</returns>
+    public static Result<T> Accepted() => new()
+    {
+        Status = ResultStatus.Accepted
+    };
+
+    /// <summary>
+    /// Creates a result indicating the request has been accepted for processing with a message.
+    /// </summary>
+    /// <param name="message">A message describing the accepted request.</param>
+    /// <returns>A result with Accepted status.</returns>
+    public static Result<T> Accepted(string message) => new()
+    {
+        Status = ResultStatus.Accepted,
+        Message = message
     };
 
     /// <summary>

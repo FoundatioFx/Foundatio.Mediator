@@ -11,12 +11,12 @@ public sealed class Result : IResult
     /// <summary>
     /// Gets the status of the result.
     /// </summary>
-    public ResultStatus Status { get; internal init; } = ResultStatus.Success;
+    public ResultStatus Status { get; internal init; } = ResultStatus.Ok;
 
     /// <summary>
     /// Gets a value indicating whether the result represents a successful operation.
     /// </summary>
-    public bool IsSuccess => Status == ResultStatus.Success || Status == ResultStatus.NoContent || Status == ResultStatus.Created;
+    public bool IsSuccess => Status == ResultStatus.Ok || Status == ResultStatus.NoContent || Status == ResultStatus.Created || Status == ResultStatus.Accepted;
 
     /// <summary>
     /// Gets the message associated with the result, which can be a success message or an error message.
@@ -65,21 +65,34 @@ public sealed class Result : IResult
     /// Creates a successful result.
     /// </summary>
     /// <returns>A successful result.</returns>
-    public static Result Success() => new()
+    public static Result Ok() => new()
     {
-        Status = ResultStatus.Success
+        Status = ResultStatus.Ok
     };
 
     /// <summary>
-    /// Creates a successful result with a success message.
+    /// Creates a successful result with a message.
+    /// </summary>
+    /// <param name="message">The success message.</param>
+    /// <returns>A successful result with a message.</returns>
+    public static Result Ok(string message) => new()
+    {
+        Status = ResultStatus.Ok,
+        Message = message
+    };
+
+    /// <summary>
+    /// Creates a successful result. Alias for <see cref="Ok()"/>.
+    /// </summary>
+    /// <returns>A successful result.</returns>
+    public static Result Success() => Ok();
+
+    /// <summary>
+    /// Creates a successful result with a message. Alias for <see cref="Ok(string)"/>.
     /// </summary>
     /// <param name="successMessage">The success message.</param>
-    /// <returns>A successful result with a success message.</returns>
-    public static Result Success(string successMessage) => new()
-    {
-        Status = ResultStatus.Success,
-        Message = successMessage
-    };
+    /// <returns>A successful result with a message.</returns>
+    public static Result Success(string successMessage) => Ok(successMessage);
 
     /// <summary>
     /// Creates a result indicating successful creation of a resource.
@@ -88,6 +101,26 @@ public sealed class Result : IResult
     public static Result Created() => new()
     {
         Status = ResultStatus.Created
+    };
+
+    /// <summary>
+    /// Creates a result indicating the request has been accepted for processing.
+    /// </summary>
+    /// <returns>A result with Accepted status.</returns>
+    public static Result Accepted() => new()
+    {
+        Status = ResultStatus.Accepted
+    };
+
+    /// <summary>
+    /// Creates a result indicating the request has been accepted for processing with a message.
+    /// </summary>
+    /// <param name="message">A message describing the accepted request.</param>
+    /// <returns>A result with Accepted status.</returns>
+    public static Result Accepted(string message) => new()
+    {
+        Status = ResultStatus.Accepted,
+        Message = message
     };
 
     /// <summary>
@@ -335,7 +368,7 @@ public sealed class Result : IResult
     /// <returns>A <see cref="Result{T}"/> of <see cref="FileResult"/>.</returns>
     public static Result<FileResult> File(Stream stream, string contentType, string? fileName = null) => new()
     {
-        Status = ResultStatus.Success,
+        Status = ResultStatus.Ok,
         Value = new FileResult { Stream = stream, ContentType = contentType, FileName = fileName }
     };
 
@@ -348,7 +381,7 @@ public sealed class Result : IResult
     /// <returns>A <see cref="Result{T}"/> of <see cref="FileResult"/>.</returns>
     public static Result<FileResult> File(byte[] bytes, string contentType, string? fileName = null) => new()
     {
-        Status = ResultStatus.Success,
+        Status = ResultStatus.Ok,
         Value = new FileResult { Stream = new MemoryStream(bytes), ContentType = contentType, FileName = fileName }
     };
 }

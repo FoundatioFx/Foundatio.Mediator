@@ -2234,5 +2234,63 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.Contains("/orders/export", endpointSource);
         Assert.Contains("MapPost", endpointSource);
     }
+
+    [Fact]
+    public void FromHeaderOnMessageProperty_EmitsBindingParamAndMerge()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateItem(
+                string Name,
+                [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(CreateItem command) => command.Name;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Lambda should have [FromHeader(Name = "X-Tenant-Id")] as a separate param
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromHeader(Name = \"X-Tenant-Id\")]", endpointSource);
+        // Should merge the header param into the message
+        Assert.Contains("message with { TenantId = tenantId }", endpointSource);
+    }
+
+    [Fact]
+    public void FromHeaderOnGetMessage_ExcludedFromQueryParams()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(
+                string ItemId,
+                [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => query.ItemId;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Should have the header binding attribute on the lambda param
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromHeader(Name = \"X-Tenant-Id\")]", endpointSource);
+        // TenantId should NOT be a [FromQuery] param
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery] string tenantId", endpointSource);
+    }
 }
 

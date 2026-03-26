@@ -1,4 +1,4 @@
-﻿{
+{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -280,7 +280,7 @@ public static class EchoHandler_Echo_Handler
     {
         var typedMessage = (Echo)message;
         var serviceProvider = (System.IServiceProvider)mediator;
-        string? result = default;
+        string? result = default!;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         result = handlerInstance.Handle(typedMessage);
         if (responseType == null)

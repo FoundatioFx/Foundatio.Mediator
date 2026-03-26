@@ -1,4 +1,4 @@
-﻿{
+{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -282,7 +282,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
 
         System.Diagnostics.Stopwatch? loggingMiddlewareResult = null;
 
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try
@@ -319,7 +319,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
 
         System.Diagnostics.Stopwatch? loggingMiddlewareResult = null;
 
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try

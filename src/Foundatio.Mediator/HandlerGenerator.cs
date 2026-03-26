@@ -723,7 +723,8 @@ internal static class HandlerGenerator
             return;
 
         bool allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
-        source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {resultVar} = default;");
+        // Use default! to suppress CS8604 when result is passed to Finally middleware before handler assigns it
+        source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {resultVar} = default!;");
     }
 
     private static void EmitBeforeMiddlewareCalls(
@@ -896,7 +897,10 @@ internal static class HandlerGenerator
             {
                 foreach (var tupleItem in handler.ReturnType.TupleItems)
                 {
-                    variables[tupleItem.TypeFullName] = $"{resultVar}.{tupleItem.Name}";
+                    // Null-forgive reference-type tuple items to suppress CS8604
+                    // in Finally middleware (result may be default if handler threw)
+                    string nullForgive = tupleItem.IsReferenceType ? "!" : "";
+                    variables[tupleItem.TypeFullName] = $"{resultVar}.{tupleItem.Name}{nullForgive}";
 
                     if (tupleItem.TypeFullName.StartsWith(WellKnownTypes.ResultOfT.Replace("`1", "<")))
                     {

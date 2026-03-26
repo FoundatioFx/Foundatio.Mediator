@@ -63,6 +63,12 @@ internal readonly record struct EndpointInfo
     public EquatableArray<EndpointParameterInfo> QueryParameters { get; init; }
 
     /// <summary>
+    /// Parameters with explicit binding attributes ([FromHeader], [FromQuery], [FromRoute])
+    /// that must be extracted as separate endpoint lambda parameters and merged into the message.
+    /// </summary>
+    public EquatableArray<EndpointParameterInfo> BindingParameters { get; init; }
+
+    /// <summary>
     /// Whether the message should be bound from body (POST/PUT/PATCH).
     /// </summary>
     public bool BindFromBody { get; init; }
@@ -217,4 +223,11 @@ internal readonly record struct EndpointParameterInfo
     /// Whether this is a route parameter (vs query parameter).
     /// </summary>
     public bool IsRouteParameter { get; init; }
+
+    /// <summary>
+    /// The full attribute syntax to emit on the endpoint lambda parameter
+    /// (e.g., <c>[Microsoft.AspNetCore.Mvc.FromHeader(Name = "X-Tenant-Id")]</c>).
+    /// Null when the parameter uses default binding (route or query convention).
+    /// </summary>
+    public string? BindingAttributeSyntax { get; init; }
 }

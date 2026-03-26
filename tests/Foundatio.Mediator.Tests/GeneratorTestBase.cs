@@ -151,7 +151,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             assemblyName: assemblyName,
             syntaxTrees: [syntaxTree],
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
 
         using var ms = new MemoryStream();
         var emitResult = compilation.Emit(ms);
@@ -222,7 +223,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             assemblyName: assemblyName,
             syntaxTrees: [CSharpSyntaxTree.ParseText(source, parseOptions)],
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
     }
 
     public static AnalyzerConfigOptionsProvider CreateOptions(params (string Key, string Value)[] globalOptions)

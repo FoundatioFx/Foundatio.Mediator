@@ -643,7 +643,7 @@ internal static class HandlerAnalyzer
         var actionVerb = GetActionVerb(messageType.Name);
 
         // Analyze message type for parameters
-        var (routeParams, queryParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
+        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
 
         // Generate route if not explicitly specified
         if (string.IsNullOrEmpty(route))
@@ -719,6 +719,7 @@ internal static class HandlerAnalyzer
             RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
+            BindingParameters = new(bindingParams),
             BindFromBody = bindFromBody,
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
@@ -836,11 +837,12 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
-    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, bool supportsAsParameters, bool hasParameterlessConstructor)
+    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, bool supportsAsParameters, bool hasParameterlessConstructor)
         AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
+        var bindingParams = new List<EndpointParameterInfo>();
 
         // Check if message supports [AsParameters] binding
         // It needs a parameterless constructor or a record with optional parameters
@@ -871,6 +873,14 @@ internal static class HandlerAnalyzer
                              prop.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
             };
 
+            // Check for explicit binding attributes ([FromHeader], [FromQuery], [FromRoute])
+            var bindingAttrSyntax = GetBindingAttributeSyntax(prop);
+            if (bindingAttrSyntax != null)
+            {
+                bindingParams.Add(paramInfo with { BindingAttributeSyntax = bindingAttrSyntax });
+                continue;
+            }
+
             // Determine if this should be a route parameter
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
                                 prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
@@ -889,7 +899,55 @@ internal static class HandlerAnalyzer
             }
         }
 
-        return (routeParams.ToArray(), queryParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+        return (routeParams.ToArray(), queryParams.ToArray(), bindingParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+    }
+
+    /// <summary>
+    /// Checks a property for [FromHeader], [FromQuery], or [FromRoute] attributes
+    /// and returns the full attribute syntax string for emission, or null if none found.
+    /// </summary>
+    private static string? GetBindingAttributeSyntax(IPropertySymbol prop)
+    {
+        foreach (var attr in prop.GetAttributes())
+        {
+            var attrClass = attr.AttributeClass;
+            if (attrClass is null)
+                continue;
+
+            var fullName = attrClass.ToDisplayString();
+            if (fullName is not ("Microsoft.AspNetCore.Mvc.FromHeaderAttribute"
+                              or "Microsoft.AspNetCore.Mvc.FromQueryAttribute"
+                              or "Microsoft.AspNetCore.Mvc.FromRouteAttribute"))
+                continue;
+
+            // Strip "Attribute" suffix for emission: FromHeaderAttribute → FromHeader
+            var attrName = fullName.Substring(0, fullName.Length - "Attribute".Length);
+
+            // Reconstruct attribute arguments
+            var args = new List<string>();
+
+            foreach (var ctorArg in attr.ConstructorArguments)
+            {
+                if (ctorArg.Value is string s)
+                    args.Add($"\"{s}\"");
+                else if (ctorArg.Value is not null)
+                    args.Add(ctorArg.Value.ToString());
+            }
+
+            foreach (var namedArg in attr.NamedArguments)
+            {
+                if (namedArg.Value.Value is string s)
+                    args.Add($"{namedArg.Key} = \"{s}\"");
+                else if (namedArg.Value.Value is not null)
+                    args.Add($"{namedArg.Key} = {namedArg.Value.Value}");
+            }
+
+            return args.Count > 0
+                ? $"[{attrName}({string.Join(", ", args)})]"
+                : $"[{attrName}]";
+        }
+
+        return null;
     }
 
     /// <summary>

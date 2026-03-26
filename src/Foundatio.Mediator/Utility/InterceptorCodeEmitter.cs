@@ -79,8 +79,8 @@ internal static class InterceptorCodeEmitter
     {
         bool handlerMethodIsAsync = handler.IsAsync || handler.ReturnType.IsTuple;
         string methodCall = string.IsNullOrEmpty(wrapperClassPrefix)
-            ? $"{targetMethod}(mediator, typedMessage, cancellationToken)"
-            : $"{wrapperClassPrefix}.{targetMethod}(mediator, typedMessage, cancellationToken)";
+            ? $"{targetMethod}(mediator, typedMessage, null, cancellationToken)"
+            : $"{wrapperClassPrefix}.{targetMethod}(mediator, typedMessage, null, cancellationToken)";
 
         if (responseType.IsVoid)
         {

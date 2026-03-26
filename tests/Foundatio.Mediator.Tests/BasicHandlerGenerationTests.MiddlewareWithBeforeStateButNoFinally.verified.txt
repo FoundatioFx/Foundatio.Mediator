@@ -272,7 +272,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class ProcessOrderHandler_ProcessOrder_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         using var activity = MediatorActivitySource.Instance.StartActivity("ProcessOrder");

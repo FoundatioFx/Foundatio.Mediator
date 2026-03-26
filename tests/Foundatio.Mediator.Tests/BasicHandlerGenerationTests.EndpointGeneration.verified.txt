@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -167,10 +167,11 @@ public static partial class Tests_MediatorEndpoints
         var defaultGroup = rootGroup.MapGroup("");
 
         // GET /widgets/{id} - GetWidget
-        defaultGroup.MapGet("/widgets/{id}", (string id, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
+        defaultGroup.MapGet("/widgets/{id}", (string id, Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
         {
+            using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext);
             var message = new GetWidget(Id: id);
-            var result = global::Foundatio.Mediator.Generated.WidgetHandler_GetWidget_Handler.Handle(mediator, message, cancellationToken);
+            var result = global::Foundatio.Mediator.Generated.WidgetHandler_GetWidget_Handler.Handle(mediator, message, callContext, cancellationToken);
             return Microsoft.AspNetCore.Http.Results.Ok(result);
         })
             .WithName("GetWidget")
@@ -414,7 +415,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class WidgetHandler_GetWidget_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, GetWidget message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, GetWidget message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var handlerInstance = GetOrCreateHandler(serviceProvider);

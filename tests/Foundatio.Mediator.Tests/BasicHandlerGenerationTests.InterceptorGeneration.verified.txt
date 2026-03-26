@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -269,7 +269,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class EchoHandler_Echo_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
@@ -294,7 +294,7 @@ public static class EchoHandler_Echo_Handler
     public static System.Threading.Tasks.ValueTask<string> InterceptInvokeAsync0(this Foundatio.Mediator.IMediator mediator, object message, System.Threading.CancellationToken cancellationToken = default)
     {
         var typedMessage = (Echo)message;
-        return new System.Threading.Tasks.ValueTask<string>(Handle(mediator, typedMessage, cancellationToken));
+        return new System.Threading.Tasks.ValueTask<string>(Handle(mediator, typedMessage, null, cancellationToken));
     }
 
     private static EchoHandler? _cachedHandler;

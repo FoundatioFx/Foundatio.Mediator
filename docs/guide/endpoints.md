@@ -463,6 +463,56 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
 
+### Accessing HTTP Types in Handlers
+
+When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, and `HttpResponse` are automatically available as handler method parameters — no DI registration required:
+
+```csharp
+public class ProductHandler
+{
+    public Result<Product> Handle(
+        GetProduct query,
+        HttpContext httpContext)   // Auto-resolved from the endpoint
+    {
+        var userAgent = httpContext.Request.Headers.UserAgent;
+        // ...
+    }
+
+    public Result Handle(
+        ExportProducts query,
+        HttpResponse response)     // Also works with HttpRequest / HttpResponse directly
+    {
+        response.Headers.Append("X-Export-Id", Guid.NewGuid().ToString());
+        // ...
+    }
+}
+```
+
+The endpoint generator populates a `CallContext` with these values before calling the handler. When the same handler is invoked directly via `mediator.InvokeAsync()` (without an endpoint), these parameters fall back to normal DI resolution.
+
+::: warning Avoid HTTP types in handlers when possible
+Using `HttpContext`, `HttpRequest`, or `HttpResponse` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
+
+```csharp
+// ❌ Coupled to HTTP — hard to test, only works from endpoints
+public Result<Product> Handle(GetProduct query, HttpContext httpContext)
+{
+    var tenant = httpContext.Request.Headers["X-Tenant-Id"].ToString();
+    // ...
+}
+
+// ✅ Transport-agnostic — easy to test, works from anywhere
+public record GetProduct(string Id, string TenantId);
+
+public Result<Product> Handle(GetProduct query)
+{
+    // query.TenantId is populated by middleware or the endpoint binding
+}
+```
+
+Reserve HTTP type parameters for edge cases where you genuinely need low-level HTTP access (e.g., streaming a response body, reading raw headers that can't be modeled as message properties).
+:::
+
 ## Result to HTTP Status Mapping
 
 `Result<T>` and `Result` return values are automatically mapped to HTTP responses:

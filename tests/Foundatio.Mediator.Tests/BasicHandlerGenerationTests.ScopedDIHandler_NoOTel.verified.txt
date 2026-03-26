@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -270,7 +270,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class GetUserHandler_GetUser_Handler
 {
-    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, GetUser message, System.Threading.CancellationToken cancellationToken)
+    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, GetUser message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         string? result = default;

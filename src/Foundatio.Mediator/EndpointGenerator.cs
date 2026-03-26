@@ -880,10 +880,12 @@ internal static class EndpointGenerator
 
                 // Then add body parameter
                 source.Append($"{fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
+
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
                 // Merge route parameters into message
                 if (handler.MessageType.IsRecord)
@@ -912,10 +914,12 @@ internal static class EndpointGenerator
             {
                 // POST without route parameters - just bind from body
                 source.Append($"{asyncKeyword}({fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
+
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
                 GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -927,10 +931,12 @@ internal static class EndpointGenerator
         {
             // GET/DELETE with [AsParameters] - message type supports it
             source.Append($"{asyncKeyword}([Microsoft.AspNetCore.Http.AsParameters] {messageType} message, ");
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -967,10 +973,12 @@ internal static class EndpointGenerator
             if (allParams.Count > 0)
                 source.Append(", ");
 
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             // Construct the message from parameters
             if (allParams.Count > 0)
@@ -1008,17 +1016,17 @@ internal static class EndpointGenerator
         // Check if the return type is void - don't assign to variable
         if (handler.ReturnType.IsVoid)
         {
-            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok();");
         }
         else if (handler.ReturnType.IsFileResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 0)
@@ -1036,7 +1044,7 @@ internal static class EndpointGenerator
         {
             // Streaming endpoint — IAsyncEnumerable<T>
             var endpoint = handler.Endpoint.Value;
-            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             if (endpoint.StreamingFormat == "ServerSentEvents")
             {
                 // Wrap in TypedResults.ServerSentEvents() for SSE format
@@ -1053,7 +1061,7 @@ internal static class EndpointGenerator
         }
         else
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
         }
     }

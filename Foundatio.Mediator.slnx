@@ -21,6 +21,7 @@
   <Folder Name="/src/">
     <Project Path="src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj" />
     <Project Path="src/Foundatio.Mediator/Foundatio.Mediator.csproj" />
+    <Project Path="src/Foundatio.Mediator.Queues/Foundatio.Mediator.Queues.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />

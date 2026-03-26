@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Foundatio.Mediator.Queues</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
+    <PackageReference Include="SlimMessageBus" Version="3.0.0" />
+    <PackageReference Include="SlimMessageBus.Host" Version="3.0.0" />
+    <PackageReference Include="SlimMessageBus.Host.Memory" Version="3.0.0" />
+  </ItemGroup>
+
+</Project>

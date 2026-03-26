@@ -11,8 +11,14 @@ builder.Services.ConfigureServices();
 
 var host = builder.Build();
 
+// Start the host so background services (queue workers) run
+await host.StartAsync();
+
 // Get mediator and run samples
 var mediator = host.Services.GetRequiredService<IMediator>();
-var sampleRunner = new SampleRunner(mediator, host.Services);
+var sampleRunner = new SampleRunner(mediator);
 
 await sampleRunner.RunAllSamplesAsync();
+
+// Stop the host gracefully
+await host.StopAsync();

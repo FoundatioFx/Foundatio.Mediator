@@ -103,6 +103,22 @@ public static class MediatorExtensions
         return services.AddMediator(optionsBuilder.Build());
     }
 
+    /// <summary>
+    /// Gets the <see cref="HandlerRegistry"/> from the service collection at registration time.
+    /// This is available after <see cref="AddMediator(IServiceCollection, MediatorOptions?)"/> has been called.
+    /// </summary>
+    /// <remarks>
+    /// Use this in extension packages that need to inspect handler metadata during DI setup,
+    /// before the container is built (e.g. to discover handlers with a specific attribute).
+    /// </remarks>
+    /// <returns>The frozen <see cref="HandlerRegistry"/>, or <c>null</c> if AddMediator has not been called.</returns>
+    public static HandlerRegistry? GetHandlerRegistry(this IServiceCollection services)
+    {
+        return services
+            .FirstOrDefault(d => d.ServiceType == typeof(HandlerRegistry))
+            ?.ImplementationInstance as HandlerRegistry;
+    }
+
     private static NotificationPublishStrategy? GetPublishStrategyFromAssembly(Assembly assembly)
     {
         if (!IsAssemblyMarkedWithFoundatioModule(assembly))

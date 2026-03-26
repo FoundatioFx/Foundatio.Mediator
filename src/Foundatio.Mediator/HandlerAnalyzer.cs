@@ -307,11 +307,10 @@ internal static class HandlerAnalyzer
         if (string.Equals(attributeClass.ContainingAssembly?.Name, compilation.AssemblyName, StringComparison.Ordinal))
             return null;
 
-        var attributeNamespace = attributeClass.ContainingNamespace?.ToDisplayString();
-        if (attributeNamespace != null && attributeNamespace.StartsWith("Foundatio.Mediator", StringComparison.Ordinal))
-        {
+        // Exclude framework attributes defined in the Abstractions assembly —
+        // the generator already processes these internally.
+        if (string.Equals(attributeClass.ContainingAssembly?.Name, "Foundatio.Mediator.Abstractions", StringComparison.Ordinal))
             return null;
-        }
 
         var attributeTypeNameRaw = attributeClass
             .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)

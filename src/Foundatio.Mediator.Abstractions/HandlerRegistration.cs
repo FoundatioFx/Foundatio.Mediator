@@ -7,6 +7,7 @@ namespace Foundatio.Mediator;
 /// </summary>
 public sealed class HandlerRegistration
 {
+    private readonly Lazy<Type?> _lazyMessageType;
     private readonly Lazy<Type?> _lazySourceHandlerType;
     private readonly Lazy<MethodInfo?> _lazyHandlerMethod;
 
@@ -56,6 +57,7 @@ public sealed class HandlerRegistration
         AttributeMetadata = attributeMetadata ?? Array.Empty<HandlerAttributeMetadata>();
         foreach (var attribute in AttributeMetadata)
             attribute.BindRegistration(this);
+        _lazyMessageType = new Lazy<Type?>(() => TypeNameResolver.Resolve(MessageTypeName), LazyThreadSafetyMode.ExecutionAndPublication);
         _lazySourceHandlerType = new Lazy<Type?>(() => TypeNameResolver.Resolve(SourceHandlerTypeName), LazyThreadSafetyMode.ExecutionAndPublication);
         _lazyHandlerMethod = new Lazy<MethodInfo?>(ResolveHandlerMethod, LazyThreadSafetyMode.ExecutionAndPublication);
         // If no publish delegate provided, create a wrapper that discards the result
@@ -82,6 +84,11 @@ public sealed class HandlerRegistration
     /// The fully qualified type name of the message this handler processes
     /// </summary>
     public string MessageTypeName { get; }
+
+    /// <summary>
+    /// Resolved message type, loaded lazily when first requested.
+    /// </summary>
+    public Type? MessageType => _lazyMessageType.Value;
 
     /// <summary>
     /// The fully qualified type name of the generated handler wrapper class

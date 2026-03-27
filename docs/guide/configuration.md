@@ -177,9 +177,9 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
 **`EndpointRoutePrefix`** (`string?`)
 
 - **Default:** `"api"`
-- **Effect:** Sets a global route prefix that all category groups nest under. Categories auto-derive their route from their name (e.g., `[HandlerEndpointGroup("Products")]` → `products`), composing with the global prefix to produce `/api/products`. Convention-based entity routes are auto-pluralized (e.g., `GetProduct` → `/products/{productId}`).
-- **Important:** Category-level `RoutePrefix` values without a leading `/` are **relative** to this global prefix. Don't include `api` in your category prefixes when using the default global prefix, or you'll get `/api/api/...`. Use a leading `/` on a category prefix to make it absolute (bypasses the global prefix).
-- **To disable:** Set `EndpointRoutePrefix = ""` to remove the global prefix entirely, then use full paths in category prefixes.
+- **Effect:** Sets a global route prefix that all endpoint groups nest under. Groups auto-derive their route from their name (e.g., `[HandlerEndpointGroup("Products")]` → `products`), composing with the global prefix to produce `/api/products`. Convention-based entity routes are auto-pluralized (e.g., `GetProduct` → `/products/{productId}`).
+- **Important:** Group-level `RoutePrefix` values without a leading `/` are **relative** to this global prefix. Don't include `api` in your group prefixes when using the default global prefix, or you'll get `/api/api/...`. Use a leading `/` on a group prefix to make it absolute (bypasses the global prefix).
+- **To disable:** Set `EndpointRoutePrefix = ""` to remove the global prefix entirely, then use full paths in group prefixes.
 
 **`AuthorizationRequired`** (`bool`)
 

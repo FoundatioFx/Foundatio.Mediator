@@ -9,6 +9,13 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="HandlerEndpointGroupAttribute"/> class.
+    /// When no name is provided, the group name is auto-derived from the handler class name
+    /// (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
+    /// </summary>
+    public HandlerEndpointGroupAttribute() { }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="HandlerEndpointGroupAttribute"/> class.
     /// </summary>
     /// <param name="name">The group name used for API grouping (e.g., "Products", "Orders").</param>
     public HandlerEndpointGroupAttribute(string name)
@@ -17,9 +24,10 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
     }
 
     /// <summary>
-    /// Gets the group name used for API grouping and OpenAPI tags.
+    /// Gets or sets the group name used for API grouping and OpenAPI tags.
+    /// When null, auto-derived from the handler class name (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
     /// </summary>
-    public string Name { get; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// Gets or sets the route prefix for all endpoints in this group.

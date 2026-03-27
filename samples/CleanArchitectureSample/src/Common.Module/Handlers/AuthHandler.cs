@@ -13,11 +13,9 @@ namespace Common.Module.Handlers;
 /// These handlers use <c>HttpContext</c> as a parameter — automatically resolved from
 /// <c>CallContext</c> when invoked through generated endpoints.
 /// </summary>
-[HandlerEndpointGroup("Auth")]
 public class AuthHandler
 {
     [HandlerAllowAnonymous]
-    [HandlerEndpoint(Route = "login")]
     public async Task<Result<UserInfo>> HandleAsync(
         Login command,
         HttpContext httpContext,

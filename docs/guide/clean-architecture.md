@@ -406,7 +406,7 @@ public class OrderHandler
 - **Automatic route generation** - ID properties become route parameters
 - **Result-to-HTTP mapping** - `Result.NotFound()` → 404, `Result.Invalid()` → 400, etc.
 - **OpenAPI generation** - XML doc comments become endpoint summaries
-- **Authentication built-in** - Configure auth at category or endpoint level
+- **Authentication built-in** - Configure auth at group or endpoint level
 
 See [Automatic Endpoint Generation](./endpoints) for full documentation.
 

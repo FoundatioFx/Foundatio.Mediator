@@ -9,118 +9,6 @@ namespace Foundatio.Mediator;
 internal static class EndpointGenerator
 {
     /// <summary>
-    /// Generates the design-time API surface (stub) for endpoint extension methods.
-    /// Registered via RegisterSourceOutput so IntelliSense sees Map{X}Endpoints()
-    /// before the first build. Delegates to a static partial void core method
-    /// that is a no-op at design time.
-    /// </summary>
-    public static void ExecuteStub(
-        SourceProductionContext context,
-        GeneratorConfiguration configuration,
-        EndpointDefaultsInfo endpointDefaults,
-        CompilationInfo compilationInfo)
-    {
-        // Only generate stub when minimal APIs are available and endpoint discovery is enabled
-        if (!compilationInfo.SupportsMinimalApis)
-            return;
-
-        if (endpointDefaults.Discovery is "None" or null)
-            return;
-
-        var safeAssemblyName = compilationInfo.AssemblyName.ToIdentifier();
-
-        // --- Per-module stub: {SafeAssemblyName}_MediatorEndpoints ---
-        var moduleSource = new IndentedStringBuilder();
-        moduleSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.Api.g.cs");
-        moduleSource.AppendLine("""
-            using Microsoft.AspNetCore.Builder;
-            using Microsoft.AspNetCore.Http;
-            using Microsoft.AspNetCore.Routing;
-            using System.Diagnostics.CodeAnalysis;
-            """);
-
-        moduleSource.AppendLine();
-        moduleSource.AppendLine("namespace Foundatio.Mediator;");
-        moduleSource.AppendLine();
-        moduleSource.AddGeneratedCodeAttribute();
-        moduleSource.AppendLine("[ExcludeFromCodeCoverage]");
-        moduleSource.AppendLine($"public static partial class {safeAssemblyName}_MediatorEndpoints");
-        moduleSource.AppendLine("{");
-        moduleSource.IncrementIndent();
-
-        moduleSource.AppendLine("/// <summary>");
-        moduleSource.AppendLine("/// Maps this module's handler endpoints to the application.");
-        moduleSource.AppendLine("/// </summary>");
-        moduleSource.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
-        moduleSource.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup.</param>");
-        moduleSource.AppendLine("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
-        moduleSource.AppendLine("{");
-        moduleSource.IncrementIndent();
-        moduleSource.AppendLine("MapEndpointsCore(endpoints, logEndpoints);");
-        moduleSource.DecrementIndent();
-        moduleSource.AppendLine("}");
-        moduleSource.AppendLine();
-        moduleSource.AppendLine("/// <summary>");
-        moduleSource.AppendLine("/// Core endpoint registration, implemented by the source generator at compile time.");
-        moduleSource.AppendLine("/// At design time this is a no-op so IntelliSense works before the first build.");
-        moduleSource.AppendLine("/// </summary>");
-        moduleSource.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);");
-
-        moduleSource.DecrementIndent();
-        moduleSource.AppendLine("}");
-
-        context.AddSource("_MediatorEndpoints.Api.g.cs", moduleSource.ToString());
-
-        // --- Aggregator stub: MapMediatorEndpoints() (app projects only) ---
-        if (!compilationInfo.IsApplication)
-            return;
-
-        var aggSource = new IndentedStringBuilder();
-        aggSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpointAggregator.Api.g.cs");
-        aggSource.AppendLine("""
-            using Microsoft.AspNetCore.Builder;
-            using Microsoft.AspNetCore.Http;
-            using Microsoft.AspNetCore.Routing;
-            using System;
-            using System.Diagnostics.CodeAnalysis;
-
-            namespace Foundatio.Mediator;
-            """);
-
-        aggSource.AppendLine();
-        aggSource.AddGeneratedCodeAttribute();
-        aggSource.AppendLine("[ExcludeFromCodeCoverage]");
-        aggSource.AppendLine("public static partial class MediatorEndpointExtensions");
-        aggSource.AppendLine("{");
-        aggSource.IncrementIndent();
-
-        aggSource.AppendLine("/// <summary>");
-        aggSource.AppendLine("/// Maps all discovered mediator handler endpoints from all referenced assemblies.");
-        aggSource.AppendLine("/// Discovers endpoint modules automatically via <see cref=\"FoundatioModuleAttribute\"/> and naming convention.");
-        aggSource.AppendLine("/// </summary>");
-        aggSource.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
-        aggSource.AppendLine("/// <param name=\"configure\">Optional configuration to select assemblies and enable logging.</param>");
-        aggSource.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
-        aggSource.AppendLine("public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)");
-        aggSource.AppendLine("{");
-        aggSource.IncrementIndent();
-        aggSource.AppendLine("MapMediatorEndpointsCore(endpoints, configure);");
-        aggSource.AppendLine("return endpoints;");
-        aggSource.DecrementIndent();
-        aggSource.AppendLine("}");
-        aggSource.AppendLine();
-        aggSource.AppendLine("/// <summary>");
-        aggSource.AppendLine("/// Core aggregator implementation, filled in at compile time by the source generator.");
-        aggSource.AppendLine("/// </summary>");
-        aggSource.AppendLine("static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure);");
-
-        aggSource.DecrementIndent();
-        aggSource.AppendLine("}");
-
-        context.AddSource("_MediatorEndpointAggregator.Api.g.cs", aggSource.ToString());
-    }
-
-    /// <summary>
     /// Executes endpoint generation for handlers.
     /// </summary>
     public static void Execute(
@@ -185,40 +73,40 @@ internal static class EndpointGenerator
     /// </summary>
     private static void ValidateEndpoints(SourceProductionContext context, List<HandlerInfo> handlers, EndpointDefaultsInfo endpointDefaults)
     {
-        var warnedCategories = new HashSet<string>(StringComparer.Ordinal);
+        var warnedGroups = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var handler in handlers)
         {
             var endpoint = handler.Endpoint!.Value;
 
-            // FMED015: Category route prefix duplicates global endpoint prefix.
+            // FMED015: Group route prefix duplicates global endpoint prefix.
             // Only applies to relative prefixes (no leading /) since absolute prefixes bypass the global group.
             var globalPrefix = endpointDefaults.RoutePrefix;
-            var catPrefix = endpoint.CategoryRoutePrefix;
-            if (!endpoint.CategoryBypassGlobalPrefix
+            var grpPrefix = endpoint.GroupRoutePrefix;
+            if (!endpoint.GroupBypassGlobalPrefix
                 && !string.IsNullOrEmpty(globalPrefix)
-                && !string.IsNullOrEmpty(catPrefix))
+                && !string.IsNullOrEmpty(grpPrefix))
             {
                 // For relative prefixes, check if the prefix content duplicates the global prefix content.
-                // e.g. global = "/api", relative category = "api/products" → /api/api/products (wrong)
+                // e.g. global = "/api", relative group = "api/products" → /api/api/products (wrong)
                 var globalContent = globalPrefix!.TrimStart('/');
-                var catContent = catPrefix!.TrimStart('/');
-                if (catContent.StartsWith(globalContent, StringComparison.OrdinalIgnoreCase)
-                    && catContent.Length > globalContent.Length
-                    && warnedCategories.Add(catPrefix))
+                var grpContent = grpPrefix!.TrimStart('/');
+                if (grpContent.StartsWith(globalContent, StringComparison.OrdinalIgnoreCase)
+                    && grpContent.Length > globalContent.Length
+                    && warnedGroups.Add(grpPrefix))
                 {
-                    var suggested = catContent.Substring(globalContent.Length).TrimStart('/');
+                    var suggested = grpContent.Substring(globalContent.Length).TrimStart('/');
                     context.ReportDiagnostic(Diagnostic.Create(
                         new DiagnosticDescriptor(
                             "FMED015",
-                            "Category route prefix duplicates global endpoint prefix",
+                            "Group route prefix duplicates global endpoint prefix",
                             "HandlerEndpointGroup RoutePrefix '{0}' starts with the global EndpointRoutePrefix '{1}' content, which will produce a doubled path. " +
                             "Remove the duplicated portion (e.g. use '{2}' instead), or prefix with '/' for an absolute path that bypasses the global prefix.",
                             "Foundatio.Mediator",
                             DiagnosticSeverity.Warning,
                             isEnabledByDefault: true),
                         Location.None,
-                        catPrefix,
+                        grpPrefix,
                         globalPrefix,
                         suggested));
                 }
@@ -249,13 +137,13 @@ internal static class EndpointGenerator
         }
 
         // FMED016: Handlers in the same class produce routes with different base paths.
-        // Only check handlers without an explicit [HandlerEndpointGroup] category,
-        // since categorized handlers already have a shared group prefix.
-        var uncategorizedByClass = handlers
-            .Where(h => string.IsNullOrEmpty(h.Endpoint!.Value.CategoryRoutePrefix) && !h.Endpoint!.Value.HasExplicitRoute)
+        // Only check handlers without an explicit [HandlerEndpointGroup],
+        // since grouped handlers already have a shared group prefix.
+        var ungroupedByClass = handlers
+            .Where(h => string.IsNullOrEmpty(h.Endpoint!.Value.GroupRoutePrefix) && !h.Endpoint!.Value.HasExplicitRoute)
             .GroupBy(h => h.Identifier);
 
-        foreach (var group in uncategorizedByClass)
+        foreach (var group in ungroupedByClass)
         {
             var routePrefixes = group
                 .Select(h =>
@@ -338,13 +226,14 @@ internal static class EndpointGenerator
         source.AppendLine("namespace Foundatio.Mediator;");
 
         source.AppendLine();
-        source.AppendLine($"public static partial class {safeAssemblyName}_MediatorEndpoints");
+        source.AddGeneratedCodeAttribute();
+        source.AppendLine("[ExcludeFromCodeCoverage]");
+        source.AppendLine($"public static class {safeAssemblyName}_MediatorEndpoints");
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Generate the core implementation as a static partial void method
-        // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
-        GenerateMapMediatorEndpointsCoreMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
+        // Generate the MapEndpoints method
+        GenerateMapEndpointsMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -357,10 +246,9 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Generates the MapEndpointsCore static partial void implementation.
-    /// This provides the compile-time body for the stub declared in _MediatorEndpoints.Api.g.cs.
+    /// Generates the public MapEndpoints method for a per-module endpoint class.
     /// </summary>
-    private static void GenerateMapMediatorEndpointsCoreMethod(
+    private static void GenerateMapEndpointsMethod(
         IndentedStringBuilder source,
         List<HandlerInfo> handlers,
         List<HandlerInfo> skippedHandlers,
@@ -373,13 +261,15 @@ internal static class EndpointGenerator
         bool hasLoggerFactory)
     {
         source.AppendLine("/// <summary>");
-        source.AppendLine("/// Core endpoint registration implementation.");
+        source.AppendLine("/// Maps this module's handler endpoints to the application.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)");
+        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        source.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup.</param>");
+        source.AppendLine("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Determine the parent variable name for category groups
+        // Determine the parent variable name for endpoint groups
         string parentGroupVar = "endpoints";
 
         // Emit global root group if a global route prefix is configured
@@ -450,75 +340,75 @@ internal static class EndpointGenerator
             parentGroupVar = "rootGroup";
         }
 
-        // Group handlers by category
-        var handlersByCategory = handlers
-            .GroupBy(h => h.Endpoint?.Category ?? "Default")
+        // Group handlers by endpoint group
+        var handlersByGroup = handlers
+            .GroupBy(h => h.Endpoint?.Group ?? "Default")
             .OrderBy(g => g.Key)
             .ToList();
 
         // Collect endpoint info for startup logging
         var endpointLogEntries = new List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)>();
 
-        foreach (var categoryGroup in handlersByCategory)
+        foreach (var endpointGroup in handlersByGroup)
         {
-            var category = categoryGroup.Key;
-            var categoryHandlers = categoryGroup.ToList();
+            var groupName = endpointGroup.Key;
+            var groupHandlers = endpointGroup.ToList();
 
-            // Get category route prefix from first handler
-            var firstEndpoint = categoryHandlers.First().Endpoint!.Value;
-            var routePrefix = firstEndpoint.CategoryRoutePrefix ?? "";
+            // Get Group route prefix from first handler
+            var firstEndpoint = groupHandlers.First().Endpoint!.Value;
+            var routePrefix = firstEndpoint.GroupRoutePrefix ?? "";
 
-            // When the category uses an absolute prefix (leading /), bypass the global route prefix
-            var categoryParent = (firstEndpoint.CategoryBypassGlobalPrefix && hasGlobalGroup)
+            // When the group uses an absolute prefix (leading /), bypass the global route prefix
+            var groupParent = (firstEndpoint.GroupBypassGlobalPrefix && hasGlobalGroup)
                 ? "endpoints"
                 : parentGroupVar;
 
             source.AppendLine();
-            source.AppendLine($"// {category} endpoints");
+            source.AppendLine($"// {groupName} endpoints");
 
-            // Create route group for the category
-            var groupVarName = $"{category.ToCamelCase()}Group";
+            // Create route group for the group
+            var groupVarName = $"{groupName.ToCamelCase()}Group";
 
-            source.Append($"var {groupVarName} = {categoryParent}.MapGroup(\"{routePrefix}\")");
+            source.Append($"var {groupVarName} = {groupParent}.MapGroup(\"{routePrefix}\")");
 
-            // Only add tag if category is explicitly defined (not "Default")
-            if (category != "Default")
+            // Only add tag if group is explicitly defined (not "Default")
+            if (groupName != "Default")
             {
-                var categoryTags = firstEndpoint.CategoryTags;
-                if (categoryTags.Any())
+                var groupTags = firstEndpoint.GroupTags;
+                if (groupTags.Any())
                 {
-                    var tagsArgs = string.Join(", ", categoryTags.Select(t => $"\"{t}\""));
+                    var tagsArgs = string.Join(", ", groupTags.Select(t => $"\"{t}\""));
                     source.Append($".WithTags({tagsArgs})");
                 }
                 else
                 {
-                    source.Append($".WithTags(\"{category}\")");
+                    source.Append($".WithTags(\"{groupName}\")");
                 }
             }
 
-            // Add category-level auth if the category requires auth (and global doesn't already)
-            var categoryRequireAuth = firstEndpoint.RequireAuth && !endpointDefaults.RequireAuth;
-            if (categoryRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any())
+            // Add Group-level auth if the group requires auth (and global doesn't already)
+            var groupRequireAuth = firstEndpoint.RequireAuth && !endpointDefaults.RequireAuth;
+            if (groupRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any())
             {
                 source.Append(".RequireAuthorization()");
             }
 
             source.AppendLine(";");
 
-            // Apply category-level filters
-            var categoryFilters = firstEndpoint.CategoryFilters;
-            foreach (var filter in categoryFilters)
+            // Apply Group-level filters
+            var groupFilters = firstEndpoint.GroupFilters;
+            foreach (var filter in groupFilters)
             {
                 source.AppendLine($"{groupVarName}.AddEndpointFilter<{filter}>();");
             }
 
             source.AppendLine();
 
-            // Detect duplicate routes within this category and resolve conflicts
-            var routeOverrides = ResolveDuplicateRoutes(categoryHandlers);
+            // Detect duplicate routes within this group and resolve conflicts
+            var routeOverrides = ResolveDuplicateRoutes(groupHandlers);
 
-            // Generate endpoint for each handler in the category
-            foreach (var handler in categoryHandlers)
+            // Generate endpoint for each handler in the group
+            foreach (var handler in groupHandlers)
             {
                 // Check if this handler needs a route override due to conflict
                 // Use the unique handler key that includes message type
@@ -530,13 +420,13 @@ internal static class EndpointGenerator
                     ? "endpoints"
                     : groupVarName;
 
-                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, categoryRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
 
                 // Collect endpoint info for logging
                 var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
                 var fullRoute = ComputeFullDisplayRoute(
                     endpointDefaults.RoutePrefix, routePrefix, endpointRoute,
-                    firstEndpoint.CategoryBypassGlobalPrefix,
+                    firstEndpoint.GroupBypassGlobalPrefix,
                     handler.Endpoint!.Value.RouteBypassPrefixes);
                 endpointLogEntries.Add((
                     handler.Endpoint!.Value.HttpMethod,
@@ -563,7 +453,7 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Emits the endpoint logging block at the end of MapEndpointsCore.
+    /// Emits the endpoint logging block at the end of MapEndpoints.
     /// </summary>
     private static void EmitEndpointLogging(
         IndentedStringBuilder source,
@@ -643,37 +533,14 @@ internal static class EndpointGenerator
         source.AppendLine("}");
     }
 
-    /// <summary>
-    /// Computes the full display route path for logging by combining global prefix, category prefix, and endpoint route.
-    /// </summary>
-    private static string ComputeFullDisplayRoute(string? globalPrefix, string categoryPrefix, string endpointRoute, bool categoryBypassGlobalPrefix, bool routeBypassPrefixes)
-    {
-        string result;
-        if (routeBypassPrefixes)
-            result = endpointRoute;
-        else if (categoryBypassGlobalPrefix)
-            result = JoinRouteParts(categoryPrefix, endpointRoute);
-        else
-            result = JoinRouteParts(globalPrefix ?? "", JoinRouteParts(categoryPrefix, endpointRoute));
-
-        if (string.IsNullOrEmpty(result))
-            return "/";
-        if (!result.StartsWith("/"))
-            result = "/" + result;
-        return result;
-    }
+    private static string ComputeFullDisplayRoute(string? globalPrefix, string groupPrefix, string endpointRoute, bool groupBypassGlobalPrefix, bool routeBypassPrefixes)
+        => RouteConventions.ComputeFullDisplayRoute(globalPrefix, groupPrefix, endpointRoute, groupBypassGlobalPrefix, routeBypassPrefixes);
 
     private static string JoinRouteParts(string a, string b)
-    {
-        a = a.TrimEnd('/');
-        b = b.TrimStart('/');
-        if (string.IsNullOrEmpty(a)) return b;
-        if (string.IsNullOrEmpty(b)) return a;
-        return a + "/" + b;
-    }
+        => RouteConventions.JoinRouteParts(a, b);
 
     /// <summary>
-    /// Detects duplicate routes within a category and returns overrides for conflicting handlers.
+    /// Detects duplicate routes within a group and returns overrides for conflicting handlers.
     /// Only handlers without an explicitly-set route will be given an override.
     /// The first handler in each duplicate group keeps its original route.
     /// </summary>
@@ -721,7 +588,7 @@ internal static class EndpointGenerator
         bool hasAsParametersAttribute,
         bool hasFromBodyAttribute,
         bool hasWithOpenApi,
-        bool categoryRequireAuth,
+        bool groupRequireAuth,
         string assemblySuffix,
         string summaryStyle,
         string? routeOverride = null)
@@ -773,8 +640,8 @@ internal static class EndpointGenerator
             source.AppendLine(".AllowAnonymous()");
         }
 
-        // Add endpoint-specific auth if different from category
-        if (!endpoint.AllowAnonymous && endpoint.RequireAuth && !categoryRequireAuth)
+        // Add endpoint-specific auth if different from group
+        if (!endpoint.AllowAnonymous && endpoint.RequireAuth && !groupRequireAuth)
         {
             if (endpoint.Policies.Any())
             {
@@ -1214,15 +1081,20 @@ internal static class EndpointGenerator
             """);
 
         source.AppendLine();
-        source.AppendLine("public static partial class MediatorEndpointExtensions");
+        source.AddGeneratedCodeAttribute();
+        source.AppendLine("[ExcludeFromCodeCoverage]");
+        source.AppendLine("public static class MediatorEndpointExtensions");
         source.AppendLine("{");
         source.IncrementIndent();
 
         source.AppendLine("/// <summary>");
-        source.AppendLine("/// Core aggregator implementation. Discovers all assemblies marked with");
-        source.AppendLine("/// <see cref=\"FoundatioModuleAttribute\"/> containing a class ending with _MediatorEndpoints.");
+        source.AppendLine("/// Maps all discovered mediator handler endpoints from all referenced assemblies.");
+        source.AppendLine("/// Discovers endpoint modules automatically via <see cref=\"FoundatioModuleAttribute\"/> and naming convention.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure)");
+        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        source.AppendLine("/// <param name=\"configure\">Optional configuration to select assemblies and enable logging.</param>");
+        source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
+        source.AppendLine("public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)");
         source.AppendLine("{");
         source.IncrementIndent();
 
@@ -1266,6 +1138,7 @@ internal static class EndpointGenerator
         source.DecrementIndent();
         source.AppendLine("}");
 
+        source.AppendLine("return endpoints;");
         source.DecrementIndent();
         source.AppendLine("}");
 

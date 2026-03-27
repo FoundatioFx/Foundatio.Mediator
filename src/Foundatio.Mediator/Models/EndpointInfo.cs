@@ -38,19 +38,19 @@ internal readonly record struct EndpointInfo
     public string? Description { get; init; }
 
     /// <summary>
-    /// The category name for API grouping (from HandlerEndpointGroupAttribute).
+    /// The group name for API grouping (from HandlerEndpointGroupAttribute).
     /// </summary>
-    public string? Category { get; init; }
+    public string? Group { get; init; }
 
     /// <summary>
-    /// OpenAPI tags for the group. When non-empty, used instead of <see cref="Category"/> for <c>.WithTags()</c>.
+    /// OpenAPI tags for the group. When non-empty, used instead of <see cref="Group"/> for <c>.WithTags()</c>.
     /// </summary>
-    public EquatableArray<string> CategoryTags { get; init; }
+    public EquatableArray<string> GroupTags { get; init; }
 
     /// <summary>
-    /// The route prefix from the category (e.g., "/api/products").
+    /// The route prefix from the group (e.g., "/api/products").
     /// </summary>
-    public string? CategoryRoutePrefix { get; init; }
+    public string? GroupRoutePrefix { get; init; }
 
     /// <summary>
     /// Route parameters extracted from the message type properties.
@@ -129,10 +129,10 @@ internal readonly record struct EndpointInfo
     public EquatableArray<string> Filters { get; init; }
 
     /// <summary>
-    /// Category-level endpoint filter type names (fully qualified) from [HandlerEndpointGroup].
+    /// Group-level endpoint filter type names (fully qualified) from [HandlerEndpointGroup].
     /// Kept separate so the generator can emit them on the MapGroup rather than individual endpoints.
     /// </summary>
-    public EquatableArray<string> CategoryFilters { get; init; }
+    public EquatableArray<string> GroupFilters { get; init; }
 
     /// <summary>
     /// The fully qualified type name of the inner value type for Produces metadata.
@@ -149,13 +149,13 @@ internal readonly record struct EndpointInfo
     public EquatableArray<int> ProducesStatusCodes { get; init; }
 
     /// <summary>
-    /// When true, the category route prefix bypasses the global <c>EndpointRoutePrefix</c>.
-    /// Set when the category <c>RoutePrefix</c> starts with <c>/</c> (e.g., <c>"/health"</c>).
+    /// When true, the group route prefix bypasses the global <c>EndpointRoutePrefix</c>.
+    /// Set when the group <c>RoutePrefix</c> starts with <c>/</c> (e.g., <c>"/health"</c>).
     /// </summary>
-    public bool CategoryBypassGlobalPrefix { get; init; }
+    public bool GroupBypassGlobalPrefix { get; init; }
 
     /// <summary>
-    /// When true, the explicit route bypasses both the global and category prefixes.
+    /// When true, the explicit route bypasses both the global and group prefixes.
     /// Set when the <c>[HandlerEndpoint(Route = "/...")]</c> starts with <c>/</c>.
     /// </summary>
     public bool RouteBypassPrefixes { get; init; }

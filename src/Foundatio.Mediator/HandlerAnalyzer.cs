@@ -493,7 +493,7 @@ internal static class HandlerAnalyzer
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointAttribute);
 
         // Get [HandlerEndpointGroup] attribute from class
-        var categoryAttr = classSymbol.GetAttributes()
+        var groupAttr = classSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
 
         // Check if explicitly excluded via attribute
@@ -513,39 +513,48 @@ internal static class HandlerAnalyzer
             return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
         }
 
-        // Extract category info
-        string? categoryName = null;
-        string? categoryRoutePrefix = null;
-        string[]? categoryTags = null;
+        // Extract group info from [HandlerEndpointGroup]
+        string? groupName = null;
+        string? groupRoutePrefix = null;
+        string[]? groupTags = null;
 
-        if (categoryAttr != null)
+        if (groupAttr != null)
         {
-            // Category name is the constructor argument
-            if (categoryAttr.ConstructorArguments.Length > 0)
-                categoryName = categoryAttr.ConstructorArguments[0].Value as string;
+            // Group name from constructor argument or named property
+            if (groupAttr.ConstructorArguments.Length > 0)
+                groupName = groupAttr.ConstructorArguments[0].Value as string;
+            groupName ??= GetStringProperty(groupAttr, "Name");
 
-            categoryRoutePrefix = GetStringProperty(categoryAttr, "RoutePrefix");
-            categoryTags = GetStringArrayProperty(categoryAttr, "Tags");
-            // If no explicit RoutePrefix, use the category name as the prefix (lowercase, no leading / = relative)
-            if (string.IsNullOrEmpty(categoryRoutePrefix) && !string.IsNullOrEmpty(categoryName))
+            // Auto-derive group name from handler class when not specified
+            if (string.IsNullOrEmpty(groupName))
             {
-                categoryRoutePrefix = categoryName!.ToLowerInvariant();
+                var prefix = RouteConventions.GetHandlerPrefix(classSymbol.Name);
+                if (!string.IsNullOrEmpty(prefix))
+                    groupName = prefix;
+            }
+
+            groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
+            groupTags = GetStringArrayProperty(groupAttr, "Tags");
+            // If no explicit RoutePrefix, use the group name as the prefix (kebab-cased, no leading / = relative)
+            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
+            {
+                groupRoutePrefix = groupName!.ToKebabCase();
             }
         }
 
-        // A leading / on the category RoutePrefix means absolute (bypass global prefix),
+        // A leading / on the group RoutePrefix means absolute (bypass global prefix),
         // matching ASP.NET Core MVC's attribute routing convention.
         // No leading / means relative (nested under global prefix).
-        bool categoryBypassGlobalPrefix = false;
-        if (!string.IsNullOrEmpty(categoryRoutePrefix) && categoryRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
+        bool groupBypassGlobalPrefix = false;
+        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
         {
-            categoryBypassGlobalPrefix = true;
+            groupBypassGlobalPrefix = true;
         }
-        else if (!string.IsNullOrEmpty(categoryRoutePrefix))
+        else if (!string.IsNullOrEmpty(groupRoutePrefix))
         {
             // Ensure relative prefixes don't start with / in the generated MapGroup call
             // (they're relative to the parent group)
-            categoryRoutePrefix = categoryRoutePrefix!.TrimStart('/');
+            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
         }
 
         // Extract endpoint info (method takes precedence over class)
@@ -593,6 +602,19 @@ internal static class HandlerAnalyzer
             routeBypassPrefixes = true;
         }
 
+        // Auto-derive group from handler class name when an explicit relative route
+        // is set but no [HandlerEndpointGroup] is present. This ensures
+        // [HandlerEndpoint(Route = "me")] on AuthHandler produces /auth/me.
+        if (groupAttr == null && hasExplicitRoute && !routeBypassPrefixes)
+        {
+            var handlerPrefix = RouteConventions.GetHandlerPrefix(classSymbol.Name);
+            if (!string.IsNullOrEmpty(handlerPrefix))
+            {
+                groupName ??= handlerPrefix;
+                groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
+            }
+        }
+
         var route = explicitRoute;
 
         var name = GetStringProperty(methodEndpointAttr, "Name") ??
@@ -615,11 +637,11 @@ internal static class HandlerAnalyzer
         var roles = authorizationInfo.Roles.ToArray();
         var allPolicies = authorizationInfo.Policies.ToArray();
 
-        // Extract endpoint filters (method -> class -> merge; category is separate)
+        // Extract endpoint filters (method -> class -> merge; group is separate)
         var methodFilters = GetTypeArrayProperty(methodEndpointAttr, "EndpointFilters");
         var classFilters = GetTypeArrayProperty(classEndpointAttr, "EndpointFilters");
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
-        var categoryFilters = GetTypeArrayProperty(categoryAttr, "EndpointFilters") ?? [];
+        var groupFilters = GetTypeArrayProperty(groupAttr, "EndpointFilters") ?? [];
 
         // Extract ProducesStatusCodes from [HandlerEndpoint] attribute (method -> class)
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
@@ -648,7 +670,7 @@ internal static class HandlerAnalyzer
         // Generate route if not explicitly specified
         if (string.IsNullOrEmpty(route))
         {
-            route = GenerateRoute(messageType.Name, categoryRoutePrefix, categoryName, routeParams, httpMethod, actionVerb);
+            route = GenerateRoute(messageType.Name, groupRoutePrefix, groupName, routeParams, httpMethod, actionVerb, classSymbol.Name);
         }
 
         // Determine binding strategy
@@ -712,10 +734,10 @@ internal static class HandlerAnalyzer
             Name = name,
             Summary = summary,
             Description = description,
-            Category = categoryName ?? tags?.FirstOrDefault(),
-            CategoryTags = new(categoryTags ?? []),
-            CategoryRoutePrefix = categoryRoutePrefix,
-            CategoryBypassGlobalPrefix = categoryBypassGlobalPrefix,
+            Group = groupName ?? tags?.FirstOrDefault(),
+            GroupTags = new(groupTags ?? []),
+            GroupRoutePrefix = groupRoutePrefix,
+            GroupBypassGlobalPrefix = groupBypassGlobalPrefix,
             RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
@@ -724,13 +746,13 @@ internal static class HandlerAnalyzer
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
             GenerateEndpoint = true,
-            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null || categoryAttr != null,
+            HasExplicitEndpointAttribute = methodEndpointAttr != null || classEndpointAttr != null || groupAttr != null,
             AllowAnonymous = allowAnonymous,
             RequireAuth = requireAuth,
             Roles = new(roles),
             Policies = new(allPolicies),
             Filters = new(endpointFilters),
-            CategoryFilters = new(categoryFilters),
+            GroupFilters = new(groupFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
             UsesResultCreated = usesResultCreated,
@@ -803,36 +825,7 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Infers the HTTP method from the message type name.
     /// </summary>
-    private static string InferHttpMethod(string messageTypeName)
-    {
-        if (messageTypeName.StartsWith("Get", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Find", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Search", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("List", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Query", StringComparison.OrdinalIgnoreCase))
-            return "GET";
-
-        if (messageTypeName.StartsWith("Create", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Add", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("New", StringComparison.OrdinalIgnoreCase))
-            return "POST";
-
-        if (messageTypeName.StartsWith("Update", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Edit", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Modify", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Change", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Set", StringComparison.OrdinalIgnoreCase))
-            return "PUT";
-
-        if (messageTypeName.StartsWith("Delete", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Remove", StringComparison.OrdinalIgnoreCase))
-            return "DELETE";
-
-        if (messageTypeName.StartsWith("Patch", StringComparison.OrdinalIgnoreCase))
-            return "PATCH";
-
-        return "POST"; // Default
-    }
+    private static string InferHttpMethod(string messageTypeName) => RouteConventions.InferHttpMethod(messageTypeName);
 
     /// <summary>
     /// Analyzes message type properties to determine route and query parameters.
@@ -963,220 +956,26 @@ internal static class HandlerAnalyzer
 
     /// <summary>
     /// Generates a route template from message name and parameters.
-    /// This generates the relative route (what goes after the group prefix).
+    /// Thin wrapper that maps EndpointParameterInfo[] to string[] for the shared RouteConventions.
     /// </summary>
     private static string GenerateRoute(
         string messageTypeName,
-        string? categoryRoutePrefix,
-        string? categoryName,
+        string? groupRoutePrefix,
+        string? groupName,
         EndpointParameterInfo[] routeParams,
         string httpMethod,
-        string? actionVerb = null)
+        string? actionVerb = null,
+        string? handlerClassName = null)
     {
-        var parts = new List<string>();
-        var (entityName, lookupSuffix) = NormalizeEntityName(RemoveVerbPrefix(messageTypeName));
-
-        // If we have a category with a route prefix, the route is relative to that prefix
-        // Otherwise, we need to include the entity name in the route
-        if (string.IsNullOrEmpty(categoryRoutePrefix))
-        {
-            // No category prefix - include pluralized entity name in route
-            var kebabEntity = entityName.SimplePluralize().ToKebabCase();
-            if (!string.IsNullOrEmpty(kebabEntity))
-            {
-                parts.Add(kebabEntity);
-            }
-        }
-
-        // Add lookup suffix for By<Property>, For<Entity>, From<Entity>, Count patterns
-        // e.g., GetTodoByName in "Todos" → /todos/by-name
-        //        GetOrdersForCustomer → /orders/for-customer/{customerId}
-        // Placed before route params so the suffix reads naturally: /for-customer/{id}
-        if (lookupSuffix != null)
-        {
-            parts.Add(lookupSuffix);
-        }
-
-        // Add route parameters
-        foreach (var param in routeParams)
-        {
-            parts.Add($"{{{param.Name}}}");
-        }
-
-        // Add action verb suffix for action-style endpoints
-        // e.g., CompleteTodo in "Todos" → /{todoId}/complete
-        //        CompleteSomething in "Todos" → /{somethingId}/complete-something
-        if (actionVerb != null)
-        {
-            // When entity matches category (or no category), use just the verb: /complete
-            // When entity doesn't match, preserve entity in action segment: /complete-something
-            bool entityMatchesCategory = !string.IsNullOrEmpty(categoryName) &&
-                entityName.Length >= 2 &&
-                (categoryName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
-                 entityName.StartsWith(categoryName, StringComparison.OrdinalIgnoreCase));
-
-            if (entityMatchesCategory || string.IsNullOrEmpty(categoryRoutePrefix))
-            {
-                parts.Add(actionVerb);
-            }
-            else
-            {
-                // Entity doesn't match category — include it to avoid ambiguity
-                parts.Add(actionVerb + "-" + entityName.SimplePluralize().ToKebabCase());
-            }
-        }
-
-        // Build the route
-        if (parts.Count == 0)
-            return "/";
-
-        return "/" + string.Join("/", parts.Where(p => !string.IsNullOrEmpty(p)));
+        var paramNames = routeParams.Select(p => p.Name).ToArray();
+        return RouteConventions.GenerateRoute(messageTypeName, groupRoutePrefix, groupName, paramNames, httpMethod, actionVerb, handlerClassName);
     }
 
-    /// <summary>
-    /// All verb prefixes used for route and HTTP method inference.
-    /// CRUD verbs map to specific HTTP methods; action verbs default to POST
-    /// and generate an action route suffix (e.g., /complete, /archive).
-    /// </summary>
-    private static readonly string[] CrudPrefixes =
-    [
-        "Get", "Find", "Search", "List", "Query",
-        "Create", "Add", "New",
-        "Update", "Edit", "Modify", "Change", "Set",
-        "Delete", "Remove",
-        "Patch"
-    ];
+    private static string? GetActionVerb(string messageTypeName) => RouteConventions.GetActionVerb(messageTypeName);
 
-    private static readonly string[] ActionPrefixes =
-    [
-        "Complete", "Approve", "Cancel", "Submit", "Process",
-        "Execute", "Activate", "Deactivate", "Archive", "Restore",
-        "Publish", "Unpublish", "Enable", "Disable", "Reset",
-        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen",
-        "Export", "Import", "Download", "Upload"
-    ];
+    private static string RemoveVerbPrefix(string name) => RouteConventions.RemoveVerbPrefix(name);
 
-    /// <summary>
-    /// Returns the action verb (kebab-cased) if the message name starts with an action prefix,
-    /// or null for CRUD verbs. Action verbs produce a route suffix (e.g., "complete", "archive")
-    /// and promote ID properties to route parameters even for POST.
-    /// </summary>
-    private static string? GetActionVerb(string messageTypeName)
-    {
-        foreach (var prefix in ActionPrefixes)
-        {
-            if (messageTypeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && messageTypeName.Length > prefix.Length)
-            {
-                return prefix.ToKebabCase();
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Removes common verb prefixes from message type names.
-    /// </summary>
-    private static string RemoveVerbPrefix(string name)
-    {
-        foreach (var prefix in CrudPrefixes)
-        {
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
-            {
-                return name.Substring(prefix.Length);
-            }
-        }
-
-        foreach (var prefix in ActionPrefixes)
-        {
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
-            {
-                return name.Substring(prefix.Length);
-            }
-        }
-
-        return name;
-    }
-
-    /// <summary>
-    /// Common suffixes stripped from entity names to normalize routes.
-    /// For example, "TodoById" → "Todo", "OrderDetails" → "Order".
-    /// Ordered longest-first so "Details" is checked before "Detail".
-    /// </summary>
-    private static readonly string[] EntitySuffixes =
-    [
-        "Paginated", "Details", "Detail", "Summary", "ById", "Paged", "Stream", "List"
-    ];
-
-    /// <summary>
-    /// Normalizes an entity name by removing common qualifiers that break route grouping.
-    /// Returns the normalized entity name and an optional route suffix for lookup patterns.
-    /// Examples:
-    ///   "AllTodos" → ("Todos", null)
-    ///   "TodoById" → ("Todo", null)                   — ById stripped, Id becomes route param
-    ///   "TodoByName" → ("Todo", "by-name")            — entity extracted, "by-name" becomes route segment
-    ///   "TodoDetails" → ("Todo", null)
-    ///   "TodoItemsWithPagination" → ("TodoItems", null) — With&lt;Feature&gt; stripped
-    ///   "OrderCount" → ("Order", "count")              — count becomes route segment
-    ///   "OrdersForCustomer" → ("Orders", "for-customer") — For&lt;Entity&gt; becomes route segment
-    ///   "OrdersFromUser" → ("Orders", "from-user")     — From&lt;Entity&gt; becomes route segment
-    /// </summary>
-    private static (string entityName, string? routeSuffix) NormalizeEntityName(string entityName)
-    {
-        if (string.IsNullOrEmpty(entityName))
-            return (entityName, null);
-
-        // Strip leading "All" prefix (e.g., AllTodos → Todos)
-        if (entityName.StartsWith("All", StringComparison.Ordinal) && entityName.Length > 3 && char.IsUpper(entityName[3]))
-        {
-            entityName = entityName.Substring(3);
-        }
-
-        // Strip known suffixes (e.g., TodoById → Todo, OrderDetails → Order, ProductsPaged → Products)
-        foreach (var suffix in EntitySuffixes)
-        {
-            if (entityName.EndsWith(suffix, StringComparison.Ordinal) && entityName.Length > suffix.Length)
-            {
-                entityName = entityName.Substring(0, entityName.Length - suffix.Length);
-                return (entityName, null);
-            }
-        }
-
-        // Strip With<Feature> suffix entirely (e.g., TodoItemsWithPagination → TodoItems)
-        // These are query modifiers (pagination, includes, filters) — not part of the resource identity.
-        var withIndex = entityName.IndexOf("With", StringComparison.Ordinal);
-        if (withIndex > 0 && withIndex + 4 < entityName.Length && char.IsUpper(entityName[withIndex + 4]))
-        {
-            entityName = entityName.Substring(0, withIndex);
-            return (entityName, null);
-        }
-
-        // Detect Count suffix (e.g., OrderCount → entity "Order", suffix "count")
-        // This is a well-established REST convention: GET /api/orders/count
-        if (entityName.EndsWith("Count", StringComparison.Ordinal) && entityName.Length > 5)
-        {
-            entityName = entityName.Substring(0, entityName.Length - 5);
-            return (entityName, "count");
-        }
-
-        // Detect For<Entity>/From<Entity>/By<Property> patterns — extract entity + route suffix.
-        // e.g., OrdersForCustomer → ("Orders", "for-customer")
-        //        OrdersFromUser → ("Orders", "from-user")
-        //        TodoByName → ("Todo", "by-name")
-        // "ById" is already handled above via EntitySuffixes.
-        foreach (var keyword in new[] { "For", "From", "By" })
-        {
-            var idx = entityName.IndexOf(keyword, StringComparison.Ordinal);
-            if (idx > 0 && idx + keyword.Length < entityName.Length && char.IsUpper(entityName[idx + keyword.Length]))
-            {
-                var suffix = entityName.Substring(idx);    // e.g., "ForCustomer"
-                entityName = entityName.Substring(0, idx); // e.g., "Orders"
-                return (entityName, suffix.ToKebabCase());  // e.g., "for-customer"
-            }
-        }
-
-        return (entityName, null);
-    }
+    private static (string entityName, string? routeSuffix) NormalizeEntityName(string entityName) => RouteConventions.NormalizeEntityName(entityName);
 
     #region Event Detection
 

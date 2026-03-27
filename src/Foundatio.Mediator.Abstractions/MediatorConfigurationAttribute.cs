@@ -89,7 +89,7 @@ public sealed class MediatorConfigurationAttribute : Attribute
     public EndpointDiscovery EndpointDiscovery { get; set; }
 
     /// <summary>
-    /// Global route prefix prepended to all generated endpoints. Category-level prefixes
+    /// Global route prefix prepended to all generated endpoints. Group-level prefixes
     /// from <see cref="HandlerEndpointAttribute"/> are appended after this value
     /// (e.g. <c>"api"</c> + <c>"products"</c> → <c>"/api/products/..."</c>).
     /// Default: <c>"api"</c>.
@@ -99,7 +99,7 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// <summary>
     /// Endpoint filter types applied globally to all generated endpoints.
     /// Each type must implement <c>IEndpointFilter</c>. These run before any
-    /// category-level or endpoint-level filters.
+    /// group-level or endpoint-level filters.
     /// Default: <c>null</c> (no filters).
     /// </summary>
     public Type[]? EndpointFilters { get; set; }

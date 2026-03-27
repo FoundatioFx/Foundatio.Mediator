@@ -80,8 +80,8 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
 
         var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
-        Assert.Contains("MW1Middleware.After(message, result.Response)", wrapper.Source);
-        Assert.Contains("MW1Middleware.Finally(message, result.Response)", wrapper.Source);
+        Assert.Contains("MW1Middleware.After(message, result.Response!)", wrapper.Source);
+        Assert.Contains("MW1Middleware.Finally(message, result.Response!)", wrapper.Source);
     }
 
     [Fact]

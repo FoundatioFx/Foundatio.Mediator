@@ -314,6 +314,7 @@ These services are commonly injected into handler methods:
 - `ILogger<T>` - For logging
 - `CancellationToken` - For cancellation support
 - `IServiceProvider` - For service location
+- `HttpContext`, `HttpRequest`, `HttpResponse` - Automatically available when called from a [generated endpoint](./endpoints#accessing-http-types-in-handlers)
 - Repository interfaces
 - Business service interfaces
 - Configuration objects

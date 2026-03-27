@@ -863,40 +863,47 @@ internal static class EndpointGenerator
         if (endpoint.BindFromBody)
         {
             var routeParams = endpoint.RouteParameters;
+            var bindingParams = endpoint.BindingParameters;
             var fromBodyAttr = hasFromBodyAttribute ? "[Microsoft.AspNetCore.Mvc.FromBody] " : "";
+            var allMergeParams = routeParams.Concat(bindingParams).ToList();
 
-            if (routeParams.Any())
+            if (allMergeParams.Count > 0)
             {
-                // PUT/PATCH with route parameters - need to merge route params with body
+                // POST/PUT/PATCH with route and/or binding parameters - need to merge into message
                 source.Append($"{asyncKeyword}(");
 
                 // Add route parameters first
-                for (int i = 0; i < routeParams.Length; i++)
+                foreach (var param in routeParams)
                 {
-                    var param = routeParams[i];
-                    source.Append($"{param.Type.FullName} {param.Name}");
-                    source.Append(", ");
+                    source.Append($"{param.Type.FullName} {param.Name}, ");
                 }
 
                 // Then add body parameter
                 source.Append($"{fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+
+                // Add binding parameters (e.g., [FromHeader(Name = "X-Tenant-Id")] string tenantId)
+                foreach (var param in bindingParams)
+                {
+                    source.Append($"{param.BindingAttributeSyntax} {param.Type.FullName} {param.Name}, ");
+                }
+
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
 
-                // Merge route parameters into message
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+
+                // Merge route + binding parameters into message
                 if (handler.MessageType.IsRecord)
                 {
-                    // For records, use 'with' expression
                     source.Append("var mergedMessage = message with { ");
-                    source.Append(string.Join(", ", routeParams.Select(p => $"{p.PropertyName} = {p.Name}")));
+                    source.Append(string.Join(", ", allMergeParams.Select(p => $"{p.PropertyName} = {p.Name}")));
                     source.AppendLine(" };");
                 }
                 else
                 {
-                    // For classes, set properties directly (assumes they have setters)
-                    foreach (var param in routeParams)
+                    foreach (var param in allMergeParams)
                     {
                         source.AppendLine($"message.{param.PropertyName} = {param.Name};");
                     }
@@ -910,12 +917,14 @@ internal static class EndpointGenerator
             }
             else
             {
-                // POST without route parameters - just bind from body
+                // POST without route or binding parameters - just bind from body
                 source.Append($"{asyncKeyword}({fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
+
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
                 GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -926,11 +935,14 @@ internal static class EndpointGenerator
         else if (endpoint.SupportsAsParameters && hasAsParametersAttribute)
         {
             // GET/DELETE with [AsParameters] - message type supports it
+            // ASP.NET natively respects [FromHeader]/[FromQuery]/[FromRoute] on the type's properties
             source.Append($"{asyncKeyword}([Microsoft.AspNetCore.Http.AsParameters] {messageType} message, ");
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -942,19 +954,25 @@ internal static class EndpointGenerator
             // GET/DELETE with constructor binding - need to construct the message
             var routeParams = endpoint.RouteParameters;
             var queryParams = endpoint.QueryParameters;
-            var allParams = routeParams.Concat(queryParams).ToList();
+            var bindingParams = endpoint.BindingParameters;
+            var allParams = routeParams.Concat(queryParams).Concat(bindingParams).ToList();
 
             source.Append($"{asyncKeyword}(");
 
-            // Add route and query parameters
+            // Add route, query, and binding parameters
             for (int i = 0; i < allParams.Count; i++)
             {
                 var param = allParams[i];
                 var paramType = param.Type.FullName;
 
-                // Add FromQuery for query parameters
-                if (!param.IsRouteParameter)
+                if (param.BindingAttributeSyntax != null)
                 {
+                    // Use the explicit binding attribute (e.g., [FromHeader(Name = "X-Tenant-Id")])
+                    source.Append($"{param.BindingAttributeSyntax} ");
+                }
+                else if (!param.IsRouteParameter)
+                {
+                    // Default: query parameters get [FromQuery]
                     source.Append("[Microsoft.AspNetCore.Mvc.FromQuery] ");
                 }
 
@@ -967,10 +985,12 @@ internal static class EndpointGenerator
             if (allParams.Count > 0)
                 source.Append(", ");
 
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             // Construct the message from parameters
             if (allParams.Count > 0)
@@ -1008,17 +1028,17 @@ internal static class EndpointGenerator
         // Check if the return type is void - don't assign to variable
         if (handler.ReturnType.IsVoid)
         {
-            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok();");
         }
         else if (handler.ReturnType.IsFileResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 0)
@@ -1036,7 +1056,7 @@ internal static class EndpointGenerator
         {
             // Streaming endpoint — IAsyncEnumerable<T>
             var endpoint = handler.Endpoint.Value;
-            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             if (endpoint.StreamingFormat == "ServerSentEvents")
             {
                 // Wrap in TypedResults.ServerSentEvents() for SSE format
@@ -1053,7 +1073,7 @@ internal static class EndpointGenerator
         }
         else
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
         }
     }

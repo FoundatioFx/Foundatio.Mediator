@@ -23,6 +23,9 @@ public static class ServiceConfiguration
         services.AddSingleton<IAuditService, InMemoryAuditService>();
         services.AddSingleton<INotificationService, InMemoryNotificationService>();
 
+        // Demo user store for auth handlers
+        services.AddSingleton<IDemoUserService, DemoUserService>();
+
         return services;
     }
 }

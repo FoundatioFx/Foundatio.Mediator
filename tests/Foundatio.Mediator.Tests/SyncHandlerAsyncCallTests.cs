@@ -46,7 +46,7 @@ public class SyncHandlerAsyncCallTests(ITestOutputHelper output) : GeneratorTest
         // The interceptor should call Handle which contains logging/telemetry
         // and wrap the result in ValueTask since Handle returns string but interceptor must return ValueTask<string>
         // The test handler has no constructor params, so it qualifies for singleton fast path
-        Assert.Contains("return new System.Threading.Tasks.ValueTask<string>(Handle(mediator, typedMessage, cancellationToken));", wrapper.Source);
+        Assert.Contains("return new System.Threading.Tasks.ValueTask<string>(Handle(mediator, typedMessage, null, cancellationToken));", wrapper.Source);
     }
 
     [Fact]

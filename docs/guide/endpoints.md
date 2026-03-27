@@ -463,6 +463,122 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
 
+### Binding Attributes on Message Properties
+
+You can use `[FromHeader]`, `[FromQuery]`, and `[FromRoute]` on message properties to control how individual values are bound in endpoints. This is useful for values like tenant IDs, correlation IDs, or API keys that come from HTTP headers rather than the request body.
+
+**POST with a header-bound property:**
+
+```csharp
+public record CreateOrder(
+    string CustomerId,
+    decimal Amount,
+    [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+);
+```
+
+The generator extracts the attributed property as a separate endpoint parameter and merges it back into the message:
+
+```csharp
+// Generated:
+MapPost("/orders", ([FromBody] CreateOrder message,
+    [FromHeader(Name = "X-Tenant-Id")] string tenantId,
+    HttpContext httpContext, IMediator mediator, CancellationToken ct) =>
+{
+    var mergedMessage = message with { TenantId = tenantId };
+    // ...
+})
+```
+
+**GET with a header-bound property:**
+
+For GET/DELETE messages with a parameterless constructor, `[AsParameters]` binding handles header attributes natively — no extra work from the generator:
+
+```csharp
+public record SearchProducts
+{
+    public string? Category { get; init; }
+
+    [FromHeader(Name = "X-Tenant-Id")]
+    public string TenantId { get; init; } = "";
+}
+// → MapGet("/", ([AsParameters] SearchProducts message, ...) => ...)
+// ASP.NET binds Category from query string, TenantId from header
+```
+
+::: tip Record syntax
+C# records use positional parameters that default to **constructor** attribute targets. To place an attribute on the generated **property**, use the `property:` target prefix:
+
+```csharp
+public record MyMessage(
+    string Name,
+    [property: FromHeader(Name = "X-Custom")] string CustomValue
+);
+```
+
+:::
+
+::: info Transport-agnostic
+The message is still the contract. When calling via `mediator.InvokeAsync()`, you provide all values directly — the binding attributes are only used by the endpoint generator:
+
+```csharp
+// From an endpoint: TenantId comes from the X-Tenant-Id header automatically
+// From code: you provide it explicitly
+await mediator.InvokeAsync(new CreateOrder("cust-1", 99.99m, "tenant-42"));
+```
+
+:::
+
+### Accessing HTTP Types in Handlers
+
+When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, and `HttpResponse` are automatically available as handler method parameters — no DI registration required:
+
+```csharp
+public class ProductHandler
+{
+    public Result<Product> Handle(
+        GetProduct query,
+        HttpContext httpContext)   // Auto-resolved from the endpoint
+    {
+        var userAgent = httpContext.Request.Headers.UserAgent;
+        // ...
+    }
+
+    public Result Handle(
+        ExportProducts query,
+        HttpResponse response)     // Also works with HttpRequest / HttpResponse directly
+    {
+        response.Headers.Append("X-Export-Id", Guid.NewGuid().ToString());
+        // ...
+    }
+}
+```
+
+The endpoint generator populates a `CallContext` with these values before calling the handler. When the same handler is invoked directly via `mediator.InvokeAsync()` (without an endpoint), these parameters fall back to normal DI resolution.
+
+::: warning Avoid HTTP types in handlers when possible
+Using `HttpContext`, `HttpRequest`, or `HttpResponse` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
+
+```csharp
+// ❌ Coupled to HTTP — hard to test, only works from endpoints
+public Result<Product> Handle(GetProduct query, HttpContext httpContext)
+{
+    var tenant = httpContext.Request.Headers["X-Tenant-Id"].ToString();
+    // ...
+}
+
+// ✅ Transport-agnostic — easy to test, works from anywhere
+public record GetProduct(string Id, string TenantId);
+
+public Result<Product> Handle(GetProduct query)
+{
+    // query.TenantId is populated by middleware or the endpoint binding
+}
+```
+
+Reserve HTTP type parameters for edge cases where you genuinely need low-level HTTP access (e.g., streaming a response body, reading raw headers that can't be modeled as message properties).
+:::
+
 ## Result to HTTP Status Mapping
 
 `Result<T>` and `Result` return values are automatically mapped to HTTP responses:

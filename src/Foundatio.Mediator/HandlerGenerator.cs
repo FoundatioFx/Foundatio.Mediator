@@ -483,8 +483,9 @@ internal static class HandlerGenerator
             }
             else
             {
-                // DI parameter — check CallContext first, then fall back to DI
-                if (callContextVar != null)
+                // DI parameter — check CallContext first (reference types only), then fall back to DI.
+                // CallContext.Set<T> constrains T : class, so only reference types can be stored.
+                if (callContextVar != null && param.Type.IsReferenceType)
                 {
                     if (param.Type.IsNullable)
                         parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.UnwrappedFullName})) as {param.Type.UnwrappedFullName} ?? serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
@@ -1195,8 +1196,9 @@ internal static class HandlerGenerator
             }
             else
             {
-                // DI parameter — check CallContext first, then fall back to DI
-                if (callContextVar != null)
+                // DI parameter — check CallContext first (reference types only), then fall back to DI.
+                // CallContext.Set<T> constrains T : class, so only reference types can be stored.
+                if (callContextVar != null && param.Type.IsReferenceType)
                 {
                     if (param.Type.IsNullable)
                         parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.UnwrappedFullName})) as {param.Type.UnwrappedFullName} ?? serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");

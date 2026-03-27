@@ -877,7 +877,12 @@ internal static class HandlerAnalyzer
             var bindingAttrSyntax = GetBindingAttributeSyntax(prop);
             if (bindingAttrSyntax != null)
             {
-                bindingParams.Add(paramInfo with { BindingAttributeSyntax = bindingAttrSyntax });
+                // [FromRoute] properties must also be added as route parameters so the
+                // route template includes the {placeholder}; other binding attrs go to bindingParams.
+                if (IsFromRouteAttribute(prop))
+                    routeParams.Add(paramInfo with { IsRouteParameter = true, BindingAttributeSyntax = bindingAttrSyntax });
+                else
+                    bindingParams.Add(paramInfo with { BindingAttributeSyntax = bindingAttrSyntax });
                 continue;
             }
 
@@ -948,6 +953,12 @@ internal static class HandlerAnalyzer
         }
 
         return null;
+    }
+
+    private static bool IsFromRouteAttribute(IPropertySymbol prop)
+    {
+        return prop.GetAttributes().Any(a =>
+            a.AttributeClass?.ToDisplayString() == "Microsoft.AspNetCore.Mvc.FromRouteAttribute");
     }
 
     /// <summary>

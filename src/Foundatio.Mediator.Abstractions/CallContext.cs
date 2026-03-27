@@ -111,11 +111,14 @@ public sealed class CallContext : IDisposable
     public void Dispose()
     {
         _items?.Clear();
+        ReturnToPool(this);
+    }
 
-        // Return to pool if under capacity
+    private static void ReturnToPool(CallContext context)
+    {
         if (Interlocked.Increment(ref _poolSize) <= MaxPoolSize)
         {
-            Pool.Enqueue(this);
+            Pool.Enqueue(context);
         }
         else
         {

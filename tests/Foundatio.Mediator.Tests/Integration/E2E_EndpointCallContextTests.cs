@@ -82,7 +82,7 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
 
         var client = app.GetTestClient();
 
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/tenant-items")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/tenant-items")
         {
             Content = JsonContent.Create(new { Name = "Widget" })
         };
@@ -124,7 +124,7 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
 
         var client = app.GetTestClient();
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenant-infos");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/tenant-infos");
         request.Headers.Add("X-Tenant-Id", "tenant-99");
 
         var response = await client.SendAsync(request, TestCancellationToken);

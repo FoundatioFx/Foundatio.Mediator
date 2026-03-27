@@ -367,7 +367,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             var handlerPrefix = RouteConventions.GetHandlerPrefix(containingType.Name);
             if (!string.IsNullOrEmpty(handlerPrefix))
             {
-                groupName ??= handlerPrefix;
+                groupName = handlerPrefix;
                 groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
             }
         }

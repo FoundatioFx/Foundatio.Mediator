@@ -610,7 +610,7 @@ internal static class HandlerAnalyzer
             var handlerPrefix = RouteConventions.GetHandlerPrefix(classSymbol.Name);
             if (!string.IsNullOrEmpty(handlerPrefix))
             {
-                groupName ??= handlerPrefix;
+                groupName = handlerPrefix;
                 groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
             }
         }

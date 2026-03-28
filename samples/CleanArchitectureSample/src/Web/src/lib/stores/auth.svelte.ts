@@ -28,7 +28,7 @@ function createAuthStore() {
       loading = true;
       error = null;
       try {
-        const response = await authApi.me();
+        const response = await authApi.getCurrentUser();
         user = response.status === 200 ? (response.data ?? null) : null;
       } catch {
         user = null;

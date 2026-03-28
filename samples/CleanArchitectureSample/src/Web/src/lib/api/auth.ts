@@ -16,8 +16,8 @@ export const authApi = {
 
   logout: () => api.postJSON<void>('/api/auth/logout'),
 
-  me: () =>
-    api.getJSON<UserInfo>('/api/auth/me', {
+  getCurrentUser: () =>
+    api.getJSON<UserInfo>('/api/auth/current-user', {
       expectedStatusCodes: [401]
     })
 };

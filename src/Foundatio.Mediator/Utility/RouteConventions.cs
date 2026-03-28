@@ -92,10 +92,11 @@ internal static class RouteConventions
         }
 
         // For non-CRUD messages, split at the first PascalCase word boundary
-        // to separate the action verb from the entity (e.g., "CompleteTodo" → "Todo")
+        // to separate the action verb from the entity (e.g., "CompleteTodo" → "Todo").
+        // A boundary is a transition from a non-uppercase character to an uppercase one.
         for (int i = 1; i < name.Length; i++)
         {
-            if (char.IsUpper(name[i]))
+            if (char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
                 return name.Substring(i);
         }
 
@@ -119,13 +120,14 @@ internal static class RouteConventions
 
         // For non-CRUD messages, split at the first PascalCase word boundary.
         // The first word is the action verb (e.g., "CompleteTodo" → "complete").
+        // A boundary is a transition from a non-uppercase character to an uppercase one.
         for (int i = 1; i < messageTypeName.Length; i++)
         {
-            if (char.IsUpper(messageTypeName[i]))
+            if (char.IsUpper(messageTypeName[i]) && !char.IsUpper(messageTypeName[i - 1]))
                 return messageTypeName.Substring(0, i).ToKebabCase();
         }
 
-        return null; // Single word — bare action, not an action verb
+        return null; // Single word or no PascalCase boundary — bare action, not an action verb
     }
 
     /// <summary>

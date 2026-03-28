@@ -1386,14 +1386,7 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
             var msgName = parts[0];
             var msgProps = parts.Length > 1 ? parts[1] : "";
             recordDefs.AppendLine($"public record {msgName}({msgProps});");
-
-            // Use "Result" return for action verbs that start with action prefixes
-            var isAction = msgName.StartsWith("Complete") || msgName.StartsWith("Approve") ||
-                           msgName.StartsWith("Cancel") || msgName.StartsWith("Promote") ||
-                           msgName.StartsWith("Archive") || msgName.StartsWith("Export");
-            var returnType = isAction ? "Result" : "string";
-            var returnExpr = isAction ? "Result.Success()" : "\"ok\"";
-            handleMethods.AppendLine($"    public {returnType} Handle({msgName} msg) => {returnExpr};");
+            handleMethods.AppendLine($"    public string Handle({msgName} msg) => \"ok\";");
         }
 
         var source = $$"""
@@ -1433,13 +1426,6 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
     {
         var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
 
-        // Use "Result" return for action verbs
-        var isAction = messageName.StartsWith("Complete") || messageName.StartsWith("Approve") ||
-                       messageName.StartsWith("Cancel") || messageName.StartsWith("Promote") ||
-                       messageName.StartsWith("Archive");
-        var returnType = isAction ? "Result" : "string";
-        var returnExpr = isAction ? "Result.Success()" : "\"ok\"";
-
         var source = $$"""
             using Foundatio.Mediator;
 
@@ -1449,7 +1435,7 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
 
             public class {{handlerClassName}}
             {
-                public {{returnType}} Handle({{messageName}} msg) => {{returnExpr}};
+                public string Handle({{messageName}} msg) => "ok";
             }
             """;
 

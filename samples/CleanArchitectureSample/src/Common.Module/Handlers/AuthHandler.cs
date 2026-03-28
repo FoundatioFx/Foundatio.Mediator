@@ -50,7 +50,7 @@ public class AuthHandler
         return Result.Ok();
     }
 
-    public Result<UserInfo> Handle(GetMe query, HttpContext httpContext)
+    public Result<UserInfo> Handle(GetCurrentUser message, HttpContext httpContext)
     {
         if (httpContext.User.Identity?.IsAuthenticated != true)
             return Result.Unauthorized();

@@ -1706,10 +1706,10 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetTodo should pluralize to /todos/{id}
-        Assert.Contains("/todos/{id}", endpointSource);
-        // GetTodos is already plural → /todos
-        Assert.Contains("MapGet(\"/todos\"", endpointSource);
+        // With auto-grouping under "Todos", both routes use the group prefix
+        AssertEndpoint(endpointSource, "GET", "/api/todos/{id}");
+        AssertEndpoint(endpointSource, "GET", "/api/todos");
+        Assert.Contains(".WithTags(\"Todos\")", endpointSource);
     }
 
     [Fact]
@@ -1736,7 +1736,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         Assert.NotNull(endpointSource);
         // Health is uncountable — should stay /health, not /healths
-        Assert.Contains("\"/health\"", endpointSource);
+        // With auto-grouping, the group prefix is "health" (uncountable stays singular)
+        AssertEndpoint(endpointSource, "GET", "/api/health");
         Assert.DoesNotContain("healths", endpointSource);
     }
 
@@ -1875,10 +1876,11 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetAllTodos → strip Get → AllTodos → strip All → Todos → /todos
-        Assert.Contains("MapGet(\"/todos\"", endpointSource);
-        // GetTodo → strip Get → Todo → pluralize → Todos → /todos/{id}
-        Assert.Contains("/todos/{id}", endpointSource);
+        // With auto-grouping under "Todos", both routes use the group prefix
+        // GetAllTodos → strip Get → AllTodos → strip All → Todos → entity matches group → /
+        AssertEndpoint(endpointSource, "GET", "/api/todos");
+        // GetTodo → strip Get → Todo → entity matches group → /{id}
+        AssertEndpoint(endpointSource, "GET", "/api/todos/{id}");
         // Should NOT produce /all-todos
         Assert.DoesNotContain("all-todos", endpointSource);
     }
@@ -1974,7 +1976,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     public void FMED016_DivergentRoutes_EmitsWarning()
     {
         // When a handler class without [HandlerEndpointGroup] produces different route prefixes,
-        // emit FMED016 warning
+        // emit FMED016 warning. Use [Handler] attribute (no Handler suffix) to prevent auto-grouping.
         var source = """
             using Foundatio.Mediator;
 
@@ -1983,7 +1985,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public record GetTodo(string Id);
             public record GetStatus();
 
-            public class TodoHandler
+            [Handler]
+            public class TodoService
             {
                 public string Handle(GetTodo query) => "todo";
                 public string Handle(GetStatus query) => "ok";
@@ -1998,7 +2001,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED016");
         Assert.NotNull(warning);
         Assert.Equal(DiagnosticSeverity.Warning, warning!.Severity);
-        Assert.Contains("TodoHandler", warning.GetMessage());
+        Assert.Contains("TodoService", warning.GetMessage());
     }
 
     [Fact]
@@ -2083,8 +2086,9 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetTodoItemsWithPagination → strip Get → TodoItemsWithPagination → strip With... → TodoItems → /todo-items
-        Assert.Contains("/todo-items", endpointSource);
+        // With auto-grouping under "Todos", entity "TodoItems" shares prefix "Todo" →
+        // sub-route "items" within the group → full route /api/todos/items
+        AssertEndpoint(endpointSource, "GET", "/api/todos/items");
         Assert.DoesNotContain("pagination", endpointSource);
     }
 

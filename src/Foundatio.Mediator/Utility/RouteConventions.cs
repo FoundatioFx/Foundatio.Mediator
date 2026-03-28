@@ -4,6 +4,21 @@ namespace Foundatio.Mediator.Utility;
 /// Shared route convention logic used by both the source generator (<see cref="HandlerAnalyzer"/>)
 /// and the real-time diagnostic analyzer (<see cref="MediatorInfoAnalyzer"/>).
 /// All methods are pure functions operating on strings — no Roslyn symbol dependencies.
+///
+/// <para><b>Route generation algorithm (4 steps):</b></para>
+/// <list type="number">
+///   <item><b>Mode</b> — single-message mode (1 method, class name matches message) or group mode
+///     (multiple methods or class name ≠ message). Group mode auto-derives a route prefix from the
+///     handler class (e.g., <c>OrderHandler</c> → <c>/orders</c>).</item>
+///   <item><b>Entity</b> — in group mode, comes from the class name (<c>OrderHandler</c> → "Order");
+///     in single-message mode, extracted from the message name after stripping the verb prefix
+///     (<c>GetOrder</c> → "Order").</item>
+///   <item><b>HTTP method</b> — CRUD prefixes map to methods (<c>Get</c> → GET, <c>Create</c> → POST,
+///     <c>Update</c> → PUT, <c>Delete</c> → DELETE, <c>Patch</c> → PATCH). Everything else → POST.</item>
+///   <item><b>Route</b> — strip the entity from the message name; whatever remains is the action verb
+///     suffix (e.g., <c>CompleteTodo</c> − "Todo" = "complete" → <c>/todos/{id}/complete</c>).
+///     CRUD verbs produce no suffix. The entity is pluralized and kebab-cased.</item>
+/// </list>
 /// </summary>
 internal static class RouteConventions
 {
@@ -17,18 +32,6 @@ internal static class RouteConventions
         "Update", "Edit", "Modify", "Change", "Set",
         "Delete", "Remove",
         "Patch"
-    ];
-
-    /// <summary>
-    /// Action verb prefixes that default to POST and generate a route suffix.
-    /// </summary>
-    public static readonly string[] ActionPrefixes =
-    [
-        "Complete", "Approve", "Cancel", "Submit", "Process",
-        "Execute", "Activate", "Deactivate", "Archive", "Restore",
-        "Publish", "Unpublish", "Enable", "Disable", "Reset",
-        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen",
-        "Export", "Import", "Download", "Upload"
     ];
 
     /// <summary>
@@ -75,7 +78,10 @@ internal static class RouteConventions
     }
 
     /// <summary>
-    /// Removes common verb prefixes from message type names, returning the entity portion.
+    /// Removes the verb prefix from a message type name, returning the entity portion.
+    /// First tries known CRUD prefixes (Get, Create, Update, Delete, etc.).
+    /// For non-CRUD messages, splits at the first PascalCase word boundary to separate
+    /// the action verb from the entity (e.g., "CompleteTodo" → "Todo").
     /// </summary>
     public static string RemoveVerbPrefix(string name)
     {
@@ -85,28 +91,43 @@ internal static class RouteConventions
                 return name.Substring(prefix.Length);
         }
 
-        foreach (var prefix in ActionPrefixes)
+        // For non-CRUD messages, split at the first PascalCase word boundary
+        // to separate the action verb from the entity (e.g., "CompleteTodo" → "Todo").
+        // A boundary is a transition from a non-uppercase character to an uppercase one.
+        for (int i = 1; i < name.Length; i++)
         {
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
-                return name.Substring(prefix.Length);
+            if (char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
+                return name.Substring(i);
         }
 
         return name;
     }
 
     /// <summary>
-    /// Returns the action verb (kebab-cased) if the message name starts with an action prefix,
-    /// or null for CRUD verbs.
+    /// Returns the action verb (kebab-cased) if the message name has a non-CRUD verb prefix,
+    /// or null for CRUD verbs and single-word messages.
+    /// Uses the handler class entity context to detect the verb dynamically by splitting
+    /// at the first PascalCase word boundary (e.g., "CompleteTodo" → "complete").
     /// </summary>
     public static string? GetActionVerb(string messageTypeName)
     {
-        foreach (var prefix in ActionPrefixes)
+        // CRUD prefixes map to HTTP methods, not action verbs
+        foreach (var prefix in CrudPrefixes)
         {
             if (messageTypeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && messageTypeName.Length > prefix.Length)
-                return prefix.ToKebabCase();
+                return null;
         }
 
-        return null;
+        // For non-CRUD messages, split at the first PascalCase word boundary.
+        // The first word is the action verb (e.g., "CompleteTodo" → "complete").
+        // A boundary is a transition from a non-uppercase character to an uppercase one.
+        for (int i = 1; i < messageTypeName.Length; i++)
+        {
+            if (char.IsUpper(messageTypeName[i]) && !char.IsUpper(messageTypeName[i - 1]))
+                return messageTypeName.Substring(0, i).ToKebabCase();
+        }
+
+        return null; // Single word or no PascalCase boundary — bare action, not an action verb
     }
 
     /// <summary>
@@ -194,6 +215,38 @@ internal static class RouteConventions
     }
 
     /// <summary>
+    /// Determines whether this handler should use "message-only" mode (no endpoint group).
+    /// Message-only mode triggers when the handler class has exactly one handler method
+    /// AND the class name (minus Handler/Consumer suffix) matches the message type name.
+    /// In this mode, the route is derived entirely from the message name.
+    /// </summary>
+    public static bool IsMessageOnlyMode(string handlerClassName, string messageTypeName, int handlerMethodCount)
+    {
+        if (handlerMethodCount != 1)
+            return false;
+
+        var prefix = GetHandlerPrefix(handlerClassName);
+        return prefix != null && string.Equals(prefix, messageTypeName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Auto-derives an endpoint group name and route prefix from the handler class name.
+    /// Used for multi-handler classes (or single-handler classes where the name doesn't match the message).
+    /// The group name is the pluralized class prefix (e.g., "OrderHandler" → "Orders"),
+    /// and the route prefix is the kebab-cased version (e.g., "orders").
+    /// Returns null values if the class doesn't have a recognized Handler/Consumer suffix.
+    /// </summary>
+    public static (string? groupName, string? groupRoutePrefix) DeriveGroupFromHandlerClass(string handlerClassName)
+    {
+        var prefix = GetHandlerPrefix(handlerClassName);
+        if (string.IsNullOrEmpty(prefix))
+            return (null, null);
+
+        var pluralized = prefix!.SimplePluralize();
+        return (pluralized, pluralized.ToKebabCase());
+    }
+
+    /// <summary>
     /// Generates a route template from message name and parameters.
     /// This generates the relative route (what goes after the group prefix).
     /// </summary>
@@ -240,11 +293,48 @@ internal static class RouteConventions
             return "/" + string.Join("/", parts.Where(p => !string.IsNullOrEmpty(p)));
         }
 
+        // Determine if the entity derived from the message matches the auto-derived group.
+        // When it matches, the group prefix already represents the entity, so we omit it from the route.
+        // When it doesn't match, include it as a sub-route within the group.
+        var handlerPrefix = !string.IsNullOrEmpty(handlerClassName) ? GetHandlerPrefix(handlerClassName!) : null;
+        bool entityMatchesGroup = false;
+        string? entitySubRoute = null;
+
+        if (!string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(entityName))
+        {
+            var pluralEntity = entityName.SimplePluralize();
+            var pluralPrefix = handlerPrefix?.SimplePluralize() ?? groupName;
+
+            entityMatchesGroup = string.Equals(pluralEntity, pluralPrefix, StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(entityName, handlerPrefix, StringComparison.OrdinalIgnoreCase);
+
+            if (!entityMatchesGroup && handlerPrefix != null &&
+                entityName.StartsWith(handlerPrefix, StringComparison.OrdinalIgnoreCase) &&
+                entityName.Length > handlerPrefix.Length &&
+                char.IsUpper(entityName[handlerPrefix.Length]))
+            {
+                // Sub-entity: e.g., "TodoItems" in "Todo" group → add "items" sub-route
+                entityMatchesGroup = true;
+                entitySubRoute = entityName.Substring(handlerPrefix.Length).SimplePluralize().ToKebabCase();
+            }
+        }
+
         if (string.IsNullOrEmpty(groupRoutePrefix))
         {
             var kebabEntity = entityName.SimplePluralize().ToKebabCase();
             if (!string.IsNullOrEmpty(kebabEntity))
                 parts.Add(kebabEntity);
+        }
+        else if (!entityMatchesGroup && !string.IsNullOrEmpty(entityName))
+        {
+            // Entity doesn't match group — include it as a singular sub-resource (not pluralized)
+            var kebabEntity = entityName.ToKebabCase();
+            if (!string.IsNullOrEmpty(kebabEntity))
+                parts.Add(kebabEntity);
+        }
+        else if (entitySubRoute != null)
+        {
+            parts.Add(entitySubRoute);
         }
 
         if (lookupSuffix != null)
@@ -255,15 +345,10 @@ internal static class RouteConventions
 
         if (actionVerb != null)
         {
-            bool entityMatchesGroup = !string.IsNullOrEmpty(groupName) &&
-                entityName.Length >= 2 &&
-                (groupName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
-                 entityName.StartsWith(groupName, StringComparison.OrdinalIgnoreCase));
-
             if (entityMatchesGroup || string.IsNullOrEmpty(groupRoutePrefix))
                 parts.Add(actionVerb);
             else
-                parts.Add(actionVerb + "-" + entityName.SimplePluralize().ToKebabCase());
+                parts.Add(actionVerb + "-" + entityName.ToKebabCase());
         }
 
         if (parts.Count == 0)
@@ -302,5 +387,179 @@ internal static class RouteConventions
         if (string.IsNullOrEmpty(a)) return b;
         if (string.IsNullOrEmpty(b)) return a;
         return a + "/" + b;
+    }
+
+    /// <summary>
+    /// Input for the shared endpoint route computation.
+    /// Both HandlerAnalyzer (source generator) and MediatorInfoAnalyzer (diagnostic) extract
+    /// attribute values and call <see cref="RouteConventions.ComputeEndpointRouteInfo"/> with this data.
+    /// </summary>
+    internal readonly record struct EndpointRouteInput
+    {
+        /// <summary>Handler class name (e.g., "OrderHandler").</summary>
+        public string HandlerClassName { get; init; }
+
+        /// <summary>Message type name (e.g., "GetOrder").</summary>
+        public string MessageTypeName { get; init; }
+
+        /// <summary>Number of handler methods on the class.</summary>
+        public int HandlerMethodCount { get; init; }
+
+        /// <summary>Route parameter names (camelCase) extracted from the message type (ID properties, [FromRoute]).</summary>
+        public string[] RouteParamNames { get; init; }
+
+        /// <summary>Global route prefix from [assembly: MediatorConfiguration(EndpointRoutePrefix = "...")].</summary>
+        public string GlobalRoutePrefix { get; init; }
+
+        // ── From [HandlerEndpointGroup] ────────────────────────────
+
+        /// <summary>Whether [HandlerEndpointGroup] is present on the class.</summary>
+        public bool HasGroupAttribute { get; init; }
+
+        /// <summary>Group name from [HandlerEndpointGroup("Name")] constructor arg or Name property.</summary>
+        public string? GroupName { get; init; }
+
+        /// <summary>RoutePrefix from [HandlerEndpointGroup(RoutePrefix = "...")].</summary>
+        public string? GroupRoutePrefix { get; init; }
+
+        // ── From [HandlerEndpoint] ─────────────────────────────────
+
+        /// <summary>HTTP method override (1=GET,2=POST,3=PUT,4=DELETE,5=PATCH, 0=auto).</summary>
+        public int HttpMethodEnum { get; init; }
+
+        /// <summary>Explicit route from [HandlerEndpoint(Route = "...")].</summary>
+        public string? ExplicitRoute { get; init; }
+
+        /// <summary>Whether this is a streaming handler (IAsyncEnumerable return type).</summary>
+        public bool IsStreaming { get; init; }
+    }
+
+    /// <summary>
+    /// Output from the shared endpoint route computation.
+    /// </summary>
+    internal readonly record struct EndpointRouteOutput
+    {
+        public string HttpMethod { get; init; }
+        public string FullRoute { get; init; }
+        public string Route { get; init; }
+        public string? GroupName { get; init; }
+        public string? GroupRoutePrefix { get; init; }
+        public bool GroupBypassGlobalPrefix { get; init; }
+        public bool RouteBypassPrefixes { get; init; }
+        public bool HasExplicitRoute { get; init; }
+    }
+
+    /// <summary>
+    /// Shared endpoint route computation used by both the source generator (HandlerAnalyzer)
+    /// and the diagnostic analyzer (MediatorInfoAnalyzer). This is the single source of truth
+    /// for how handler methods map to endpoint routes.
+    /// </summary>
+    internal static EndpointRouteOutput ComputeEndpointRouteInfo(EndpointRouteInput input)
+    {
+        // ── HTTP method ────────────────────────────────────────────
+        var httpMethod = input.HttpMethodEnum switch
+        {
+            1 => "GET",
+            2 => "POST",
+            3 => "PUT",
+            4 => "DELETE",
+            5 => "PATCH",
+            _ => input.IsStreaming ? "GET" : InferHttpMethod(input.MessageTypeName)
+        };
+
+        // ── Group info from [HandlerEndpointGroup] ─────────────────
+        string? groupName = null;
+        string? groupRoutePrefix = null;
+
+        if (input.HasGroupAttribute)
+        {
+            groupName = input.GroupName;
+
+            // Auto-derive group name from handler class when not specified (pluralized, like auto-derive)
+            if (string.IsNullOrEmpty(groupName))
+            {
+                var prefix = GetHandlerPrefix(input.HandlerClassName);
+                if (!string.IsNullOrEmpty(prefix))
+                    groupName = prefix!.SimplePluralize();
+            }
+
+            groupRoutePrefix = input.GroupRoutePrefix;
+            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
+                groupRoutePrefix = groupName!.ToKebabCase();
+        }
+
+        // ── Absolute vs relative group prefix ──────────────────────
+        bool groupBypassGlobalPrefix = false;
+        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
+        {
+            groupBypassGlobalPrefix = true;
+        }
+        else if (!string.IsNullOrEmpty(groupRoutePrefix))
+        {
+            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
+        }
+
+        // ── Auto-derive group when no [HandlerEndpointGroup] ───────
+        if (!input.HasGroupAttribute)
+        {
+            bool isMessageOnlyMode = IsMessageOnlyMode(input.HandlerClassName, input.MessageTypeName, input.HandlerMethodCount);
+            if (!isMessageOnlyMode)
+            {
+                var (derivedGroupName, derivedGroupRoutePrefix) = DeriveGroupFromHandlerClass(input.HandlerClassName);
+                if (derivedGroupName != null)
+                {
+                    groupName = derivedGroupName;
+                    groupRoutePrefix = derivedGroupRoutePrefix;
+                }
+            }
+        }
+
+        // ── Explicit route ─────────────────────────────────────────
+        var explicitRoute = input.ExplicitRoute;
+        bool hasExplicitRoute = !string.IsNullOrEmpty(explicitRoute);
+        bool routeBypassPrefixes = false;
+        if (explicitRoute != null && explicitRoute.StartsWith("/", StringComparison.Ordinal))
+            routeBypassPrefixes = true;
+
+        // Auto-derive group when explicit relative route is set but no group was derived yet.
+        if (string.IsNullOrEmpty(groupName) && hasExplicitRoute && !routeBypassPrefixes)
+        {
+            var handlerPrefix = GetHandlerPrefix(input.HandlerClassName);
+            if (!string.IsNullOrEmpty(handlerPrefix))
+            {
+                groupName = handlerPrefix;
+                groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
+            }
+        }
+
+        // ── Route generation ───────────────────────────────────────
+        string route;
+        if (hasExplicitRoute)
+        {
+            route = explicitRoute!;
+        }
+        else
+        {
+            var actionVerb = GetActionVerb(input.MessageTypeName);
+            route = GenerateRoute(input.MessageTypeName, groupRoutePrefix, groupName,
+                input.RouteParamNames, httpMethod, actionVerb, input.HandlerClassName);
+        }
+
+        // ── Full display route ─────────────────────────────────────
+        var fullRoute = ComputeFullDisplayRoute(
+            input.GlobalRoutePrefix, groupRoutePrefix ?? "", route,
+            groupBypassGlobalPrefix, routeBypassPrefixes);
+
+        return new EndpointRouteOutput
+        {
+            HttpMethod = httpMethod,
+            FullRoute = fullRoute,
+            Route = route,
+            GroupName = groupName,
+            GroupRoutePrefix = groupRoutePrefix,
+            GroupBypassGlobalPrefix = groupBypassGlobalPrefix,
+            RouteBypassPrefixes = routeBypassPrefixes,
+            HasExplicitRoute = hasExplicitRoute,
+        };
     }
 }

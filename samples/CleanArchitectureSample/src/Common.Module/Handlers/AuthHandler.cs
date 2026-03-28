@@ -50,8 +50,7 @@ public class AuthHandler
         return Result.Ok();
     }
 
-    [HandlerEndpoint(Route = "me")]
-    public Result<UserInfo> Handle(GetCurrentUser query, HttpContext httpContext)
+    public Result<UserInfo> Handle(GetCurrentUser message, HttpContext httpContext)
     {
         if (httpContext.User.Identity?.IsAuthenticated != true)
             return Result.Unauthorized();

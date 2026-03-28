@@ -475,12 +475,12 @@ internal static class RouteConventions
         {
             groupName = input.GroupName;
 
-            // Auto-derive group name from handler class when not specified
+            // Auto-derive group name from handler class when not specified (pluralized, like auto-derive)
             if (string.IsNullOrEmpty(groupName))
             {
                 var prefix = GetHandlerPrefix(input.HandlerClassName);
                 if (!string.IsNullOrEmpty(prefix))
-                    groupName = prefix;
+                    groupName = prefix!.SimplePluralize();
             }
 
             groupRoutePrefix = input.GroupRoutePrefix;

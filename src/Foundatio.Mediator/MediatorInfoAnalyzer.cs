@@ -253,7 +253,9 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         bool isHandlerClass = IsHandlerClass(containingType, compilation);
         return containingType.GetMembers()
             .OfType<IMethodSymbol>()
-            .Count(m => IsHandlerMethod(m, compilation, isHandlerClass) && m.Parameters.Length > 0);
+            .Count(m => IsHandlerMethod(m, compilation, isHandlerClass)
+                        && !m.IsGenericMethod
+                        && m.Parameters.Length > 0);
     }
 
     #endregion
@@ -334,12 +336,15 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
         }
 
+        // Detect streaming from return type (IAsyncEnumerable)
+        bool isStreaming = method.ReturnType.IsAsyncEnumerable(compilation, out _);
+
         // Extract route param names from message type (action verb needed for ID promotion)
         var actionVerb = RouteConventions.GetActionVerb(messageType.Name);
         var inferredHttpMethod = httpMethodEnum switch
         {
             1 => "GET", 2 => "POST", 3 => "PUT", 4 => "DELETE", 5 => "PATCH",
-            _ => RouteConventions.InferHttpMethod(messageType.Name)
+            _ => isStreaming ? "GET" : RouteConventions.InferHttpMethod(messageType.Name)
         };
         var routeParamNames = GetRouteParameterNames(messageType, inferredHttpMethod, actionVerb != null);
 
@@ -356,6 +361,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             GroupRoutePrefix = groupRoutePrefix,
             HttpMethodEnum = httpMethodEnum,
             ExplicitRoute = explicitRoute,
+            IsStreaming = isStreaming,
         });
 
         return new RouteResult(result.HttpMethod, result.FullRoute);

@@ -96,6 +96,9 @@ internal static class HandlerAnalyzer
         if (handlerMethods.Count == 0)
             return [];
 
+        // Count only methods that will actually produce endpoints (exclude parameterless and generic methods)
+        int effectiveHandlerMethodCount = handlerMethods.Count(m => !m.IsGenericMethod && m.Parameters.Length > 0);
+
         var handlers = new List<HandlerInfo>();
 
         foreach (var handlerMethod in handlerMethods)
@@ -215,7 +218,7 @@ internal static class HandlerAnalyzer
 
             // Extract XML documentation summary (method first, then class if single handler)
             var xmlDocSummary = ExtractXmlDocSummary(handlerMethod)
-                ?? (handlerMethods.Count == 1 ? ExtractXmlDocSummary(classSymbol) : null);
+                ?? (effectiveHandlerMethodCount == 1 ? ExtractXmlDocSummary(classSymbol) : null);
 
             // Extract authorization metadata from [HandlerAuthorize], [HandlerAllowAnonymous], [AllowAnonymous]
             var authorizationInfo = ExtractAuthorizationInfo(classSymbol, handlerMethod, context.SemanticModel.Compilation);
@@ -229,7 +232,7 @@ internal static class HandlerAnalyzer
                 context.SemanticModel.Compilation,
                 handlerMethod.ReturnType,
                 authorizationInfo,
-                handlerMethods.Count);
+                effectiveHandlerMethodCount);
 
             // Extract handler-specific middleware references from [UseMiddleware] and custom attributes
             var handlerMiddlewareRefs = ExtractHandlerMiddlewareReferences(

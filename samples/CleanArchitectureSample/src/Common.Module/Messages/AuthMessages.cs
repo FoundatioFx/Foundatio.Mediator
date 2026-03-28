@@ -15,6 +15,6 @@ public record Logout;
 /// <summary>
 /// Returns the current authenticated user's info, or Unauthorized if not logged in.
 /// </summary>
-public record GetCurrentUser;
+public record GetMe;
 
 public record UserInfo(string DisplayName, string Username, string Role);

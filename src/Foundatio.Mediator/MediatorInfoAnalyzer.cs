@@ -248,6 +248,14 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         return true;
     }
 
+    private static int CountHandlerMethods(INamedTypeSymbol containingType, Compilation compilation)
+    {
+        bool isHandlerClass = IsHandlerClass(containingType, compilation);
+        return containingType.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Count(m => IsHandlerMethod(m, compilation, isHandlerClass) && m.Parameters.Length > 0);
+    }
+
     #endregion
 
     #region Event Detection
@@ -306,19 +314,14 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         var groupAttr = containingType.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
 
-        // HTTP method
+        // HTTP method enum override from attributes
         var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod")
                           ?? GetIntProperty(classEndpointAttr, "HttpMethod")
                           ?? 0;
-        var httpMethod = httpMethodEnum switch
-        {
-            1 => "GET",
-            2 => "POST",
-            3 => "PUT",
-            4 => "DELETE",
-            5 => "PATCH",
-            _ => RouteConventions.InferHttpMethod(messageType.Name)
-        };
+
+        // Explicit route from attributes
+        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route")
+                         ?? GetStringProperty(classEndpointAttr, "Route");
 
         // Group info from [HandlerEndpointGroup]
         string? groupName = null;
@@ -328,69 +331,34 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             if (groupAttr.ConstructorArguments.Length > 0)
                 groupName = groupAttr.ConstructorArguments[0].Value as string;
             groupName ??= GetStringProperty(groupAttr, "Name");
-
-            // Auto-derive group name from handler class when not specified
-            if (string.IsNullOrEmpty(groupName))
-            {
-                var prefix = RouteConventions.GetHandlerPrefix(containingType.Name);
-                if (!string.IsNullOrEmpty(prefix))
-                    groupName = prefix;
-            }
-
             groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
-            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
-                groupRoutePrefix = groupName!.ToKebabCase();
         }
 
-        bool groupBypassGlobalPrefix = false;
-        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/"))
+        // Extract route param names from message type (action verb needed for ID promotion)
+        var actionVerb = RouteConventions.GetActionVerb(messageType.Name);
+        var inferredHttpMethod = httpMethodEnum switch
         {
-            groupBypassGlobalPrefix = true;
-        }
-        else if (!string.IsNullOrEmpty(groupRoutePrefix))
+            1 => "GET", 2 => "POST", 3 => "PUT", 4 => "DELETE", 5 => "PATCH",
+            _ => RouteConventions.InferHttpMethod(messageType.Name)
+        };
+        var routeParamNames = GetRouteParameterNames(messageType, inferredHttpMethod, actionVerb != null);
+
+        // Delegate to shared computation
+        var result = RouteConventions.ComputeEndpointRouteInfo(new RouteConventions.EndpointRouteInput
         {
-            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
-        }
+            HandlerClassName = containingType.Name,
+            MessageTypeName = messageType.Name,
+            HandlerMethodCount = CountHandlerMethods(containingType, compilation),
+            RouteParamNames = routeParamNames,
+            GlobalRoutePrefix = config.RoutePrefix ?? "",
+            HasGroupAttribute = groupAttr != null,
+            GroupName = groupName,
+            GroupRoutePrefix = groupRoutePrefix,
+            HttpMethodEnum = httpMethodEnum,
+            ExplicitRoute = explicitRoute,
+        });
 
-        // Explicit route
-        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route")
-                         ?? GetStringProperty(classEndpointAttr, "Route");
-
-        bool routeBypassPrefixes = false;
-        if (explicitRoute != null && explicitRoute.StartsWith("/"))
-            routeBypassPrefixes = true;
-
-        // Auto-derive group from handler class name when an explicit relative route
-        // is set but no [HandlerEndpointGroup] is present.
-        if (groupAttr == null && !string.IsNullOrEmpty(explicitRoute) && !routeBypassPrefixes)
-        {
-            var handlerPrefix = RouteConventions.GetHandlerPrefix(containingType.Name);
-            if (!string.IsNullOrEmpty(handlerPrefix))
-            {
-                groupName = handlerPrefix;
-                groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
-            }
-        }
-
-        string route;
-        if (!string.IsNullOrEmpty(explicitRoute))
-        {
-            route = explicitRoute!;
-        }
-        else
-        {
-            // Compute route parameters (ID properties of the message type)
-            var actionVerb = RouteConventions.GetActionVerb(messageType.Name);
-            var routeParamNames = GetRouteParameterNames(messageType, httpMethod, actionVerb != null);
-            route = RouteConventions.GenerateRoute(messageType.Name, groupRoutePrefix, groupName, routeParamNames, httpMethod, actionVerb, containingType.Name);
-        }
-
-        // Compute full display route
-        var globalPrefix = config.RoutePrefix ?? "";
-        var fullRoute = RouteConventions.ComputeFullDisplayRoute(
-            globalPrefix, groupRoutePrefix ?? "", route, groupBypassGlobalPrefix, routeBypassPrefixes);
-
-        return new RouteResult(httpMethod, fullRoute);
+        return new RouteResult(result.HttpMethod, result.FullRoute);
     }
 
     /// <summary>
@@ -420,7 +388,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
                              || prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
 
-            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" || isActionVerb))
+            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
                 routeParams.Add(prop.Name.ToCamelCase());
         }
 

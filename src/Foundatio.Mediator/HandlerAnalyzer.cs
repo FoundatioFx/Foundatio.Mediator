@@ -228,7 +228,8 @@ internal static class HandlerAnalyzer
                 xmlDocSummary,
                 context.SemanticModel.Compilation,
                 handlerMethod.ReturnType,
-                authorizationInfo);
+                authorizationInfo,
+                handlerMethods.Count);
 
             // Extract handler-specific middleware references from [UseMiddleware] and custom attributes
             var handlerMiddlewareRefs = ExtractHandlerMiddlewareReferences(
@@ -481,7 +482,8 @@ internal static class HandlerAnalyzer
         string? xmlDocSummary,
         Compilation compilation,
         ITypeSymbol returnType,
-        AuthorizationInfo authorizationInfo)
+        AuthorizationInfo authorizationInfo,
+        int handlerMethodCount)
     {
         if (messageType == null)
             return null;
@@ -524,37 +526,8 @@ internal static class HandlerAnalyzer
             if (groupAttr.ConstructorArguments.Length > 0)
                 groupName = groupAttr.ConstructorArguments[0].Value as string;
             groupName ??= GetStringProperty(groupAttr, "Name");
-
-            // Auto-derive group name from handler class when not specified
-            if (string.IsNullOrEmpty(groupName))
-            {
-                var prefix = RouteConventions.GetHandlerPrefix(classSymbol.Name);
-                if (!string.IsNullOrEmpty(prefix))
-                    groupName = prefix;
-            }
-
             groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
             groupTags = GetStringArrayProperty(groupAttr, "Tags");
-            // If no explicit RoutePrefix, use the group name as the prefix (kebab-cased, no leading / = relative)
-            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
-            {
-                groupRoutePrefix = groupName!.ToKebabCase();
-            }
-        }
-
-        // A leading / on the group RoutePrefix means absolute (bypass global prefix),
-        // matching ASP.NET Core MVC's attribute routing convention.
-        // No leading / means relative (nested under global prefix).
-        bool groupBypassGlobalPrefix = false;
-        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
-        {
-            groupBypassGlobalPrefix = true;
-        }
-        else if (!string.IsNullOrEmpty(groupRoutePrefix))
-        {
-            // Ensure relative prefixes don't start with / in the generated MapGroup call
-            // (they're relative to the parent group)
-            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
         }
 
         // Extract endpoint info (method takes precedence over class)
@@ -580,6 +553,14 @@ internal static class HandlerAnalyzer
 
         var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod") ??
                              GetIntProperty(classEndpointAttr, "HttpMethod") ?? 0;
+
+        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
+                            GetStringProperty(classEndpointAttr, "Route");
+
+        // Detect action verb early (needed for route param extraction)
+        var actionVerb = GetActionVerb(messageType.Name);
+
+        // Compute HTTP method (needed for AnalyzeMessageParameters before calling shared route logic)
         var httpMethod = httpMethodEnum switch
         {
             1 => "GET",
@@ -590,32 +571,40 @@ internal static class HandlerAnalyzer
             _ => isStreaming ? "GET" : InferHttpMethod(messageType.Name)
         };
 
-        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
-                            GetStringProperty(classEndpointAttr, "Route");
-        var hasExplicitRoute = !string.IsNullOrEmpty(explicitRoute);
+        // Analyze message type for parameters (before route computation, since route params go into the shared input)
+        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
 
-        // A leading / on an explicit route means absolute (bypass all prefixes),
-        // matching ASP.NET Core MVC's attribute routing convention.
-        bool routeBypassPrefixes = false;
-        if (explicitRoute != null && explicitRoute.StartsWith("/", StringComparison.Ordinal))
+        // ── Shared route computation ───────────────────────────────
+        // Uses the same code path as MediatorInfoAnalyzer (FMED017 diagnostic).
+        var routeResult = RouteConventions.ComputeEndpointRouteInfo(new RouteConventions.EndpointRouteInput
         {
-            routeBypassPrefixes = true;
-        }
+            HandlerClassName = classSymbol.Name,
+            MessageTypeName = messageType.Name,
+            HandlerMethodCount = handlerMethodCount,
+            RouteParamNames = routeParams.Select(p => p.Name).ToArray(),
+            GlobalRoutePrefix = "",
+            HasGroupAttribute = groupAttr != null,
+            GroupName = groupName,
+            GroupRoutePrefix = groupRoutePrefix,
+            HttpMethodEnum = httpMethodEnum,
+            ExplicitRoute = explicitRoute,
+            IsStreaming = isStreaming,
+        });
 
-        // Auto-derive group from handler class name when an explicit relative route
-        // is set but no [HandlerEndpointGroup] is present. This ensures
-        // [HandlerEndpoint(Route = "me")] on AuthHandler produces /auth/me.
-        if (groupAttr == null && hasExplicitRoute && !routeBypassPrefixes)
+        // Apply shared results back to local variables used by downstream logic
+        httpMethod = routeResult.HttpMethod;
+        groupName = routeResult.GroupName;
+        groupRoutePrefix = routeResult.GroupRoutePrefix;
+        var groupBypassGlobalPrefix = routeResult.GroupBypassGlobalPrefix;
+        var hasExplicitRoute = routeResult.HasExplicitRoute;
+        var routeBypassPrefixes = routeResult.RouteBypassPrefixes;
+        var route = routeResult.Route;
+
+        // If no explicit group RoutePrefix, apply default kebab-case from groupName for tags
+        if (groupAttr != null && string.IsNullOrEmpty(GetStringProperty(groupAttr, "RoutePrefix")) && !string.IsNullOrEmpty(groupName))
         {
-            var handlerPrefix = RouteConventions.GetHandlerPrefix(classSymbol.Name);
-            if (!string.IsNullOrEmpty(handlerPrefix))
-            {
-                groupName = handlerPrefix;
-                groupRoutePrefix ??= handlerPrefix!.ToKebabCase();
-            }
+            // groupRoutePrefix already set by shared logic
         }
-
-        var route = explicitRoute;
 
         var name = GetStringProperty(methodEndpointAttr, "Name") ??
                    GetStringProperty(classEndpointAttr, "Name") ??
@@ -660,18 +649,6 @@ internal static class HandlerAnalyzer
 
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
-
-        // Detect action verb for route generation (e.g., CompleteTodo → "complete")
-        var actionVerb = GetActionVerb(messageType.Name);
-
-        // Analyze message type for parameters
-        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
-
-        // Generate route if not explicitly specified
-        if (string.IsNullOrEmpty(route))
-        {
-            route = GenerateRoute(messageType.Name, groupRoutePrefix, groupName, routeParams, httpMethod, actionVerb, classSymbol.Name);
-        }
 
         // Determine binding strategy
         bool bindFromBody = httpMethod is "POST" or "PUT" or "PATCH";
@@ -883,10 +860,10 @@ internal static class HandlerAnalyzer
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
                                 prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
 
-            // For GET/DELETE/PUT, ID properties become route parameters.
+            // For GET/DELETE/PUT/PATCH, ID properties become route parameters.
             // For action verbs (POST), IDs are also promoted to route params
             // (e.g., CompleteTodo(string TodoId) → POST /todos/{todoId}/complete)
-            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" || isActionVerb))
+            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
             {
                 routeParams.Add(paramInfo with { IsRouteParameter = true });
             }

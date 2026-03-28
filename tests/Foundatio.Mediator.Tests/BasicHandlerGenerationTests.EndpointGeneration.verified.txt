@@ -128,11 +128,11 @@ public static class Tests_MediatorEndpoints
         // Global route prefix
         var rootGroup = endpoints.MapGroup("/api");
 
-        // Default endpoints
-        var defaultGroup = rootGroup.MapGroup("");
+        // Widgets endpoints
+        var widgetsGroup = rootGroup.MapGroup("widgets").WithTags("Widgets");
 
-        // GET /widgets/{id} - GetWidget
-        defaultGroup.MapGet("/widgets/{id}", (string id, Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
+        // GET /{id} - GetWidget
+        widgetsGroup.MapGet("/{id}", (string id, Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
         {
             using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);
             var message = new GetWidget(Id: id);

@@ -1376,17 +1376,18 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
         string expectedRoutesSpec)
     {
         // Parse messagesSpec: "GetOrder:string OrderId;CreateOrder:string Name"
-        var messages = messagesSpec.Split(';');
-        var recordDefs = new System.Text.StringBuilder();
-        var handleMethods = new System.Text.StringBuilder();
-
-        foreach (var msg in messages)
+        var parsedMessages = messagesSpec.Split(';').Select(msg =>
         {
             var parts = msg.Split(':');
-            var msgName = parts[0];
-            var msgProps = parts.Length > 1 ? parts[1] : "";
-            recordDefs.AppendLine($"public record {msgName}({msgProps});");
-            handleMethods.AppendLine($"    public string Handle({msgName} msg) => \"ok\";");
+            return (Name: parts[0], Props: parts.Length > 1 ? parts[1] : "");
+        });
+
+        var recordDefs = new System.Text.StringBuilder();
+        var handleMethods = new System.Text.StringBuilder();
+        foreach (var (name, props) in parsedMessages)
+        {
+            recordDefs.AppendLine($"public record {name}({props});");
+            handleMethods.AppendLine($"    public string Handle({name} msg) => \"ok\";");
         }
 
         var source = $$"""
@@ -1471,43 +1472,19 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
         string messageProperties, string expectedRoute)
     {
         var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
-        // Determine handler method count: if class name minus suffix equals message name → single handler
-        // For the global prefix test, we use single-handler format for matching names, multi-handler for non-matching
-        var classPrefix = handlerClassName.Replace("Handler", "");
-        bool isSingleHandler = classPrefix == messageName;
 
-        string source;
-        if (isSingleHandler)
-        {
-            source = $$"""
-                using Foundatio.Mediator;
+        var source = $$"""
+            using Foundatio.Mediator;
 
-                [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointRoutePrefix = "{{routePrefix}}")]
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointRoutePrefix = "{{routePrefix}}")]
 
-                public record {{messageName}}({{propsPart}});
+            public record {{messageName}}({{propsPart}});
 
-                public class {{handlerClassName}}
-                {
-                    public string Handle({{messageName}} msg) => "ok";
-                }
-                """;
-        }
-        else
-        {
-            // Non-matching name: make a multi-handler to trigger group mode, or single non-matching
-            source = $$"""
-                using Foundatio.Mediator;
-
-                [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointRoutePrefix = "{{routePrefix}}")]
-
-                public record {{messageName}}({{propsPart}});
-
-                public class {{handlerClassName}}
-                {
-                    public string Handle({{messageName}} msg) => "ok";
-                }
-                """;
-        }
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
 
         var endpointSource = GenerateEndpointSource(source);
         if (endpointSource is null) return;
@@ -1523,46 +1500,18 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
     {
         var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
 
-        // Single-word messages need a second handler method to trigger group mode (unless handler matches)
-        var classPrefix = handlerClassName.Replace("Handler", "");
-        var classMatch = classPrefix == messageName;
+        var source = $$"""
+            using Foundatio.Mediator;
 
-        string source;
-        if (classMatch)
-        {
-            // PingHandler + Ping: single-handler, message-only mode, but bare action path applies
-            source = $$"""
-                using Foundatio.Mediator;
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
 
-                [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            public record {{messageName}}({{propsPart}});
 
-                public record {{messageName}}({{propsPart}});
-
-                public class {{handlerClassName}}
-                {
-                    public string Handle({{messageName}} msg) => "ok";
-                }
-                """;
-        }
-        else
-        {
-            // AuthHandler + Login/Logout: these are bare actions; need both to show grouping
-            // But we test them individually as single-handler non-matching cases.
-            // The AuthHandler with Login will get auto-grouped, and the bare action
-            // logic in GenerateRoute handles the handler prefix grouping.
-            source = $$"""
-                using Foundatio.Mediator;
-
-                [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
-
-                public record {{messageName}}({{propsPart}});
-
-                public class {{handlerClassName}}
-                {
-                    public string Handle({{messageName}} msg) => "ok";
-                }
-                """;
-        }
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
 
         var endpointSource = GenerateEndpointSource(source);
         if (endpointSource is null) return;

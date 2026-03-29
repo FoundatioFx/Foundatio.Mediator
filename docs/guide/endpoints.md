@@ -604,7 +604,7 @@ await mediator.InvokeAsync(new CreateOrder("cust-1", 99.99m, "tenant-42"));
 
 ### Accessing HTTP Types in Handlers
 
-When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, and `HttpResponse` are automatically available as handler method parameters — no DI registration required:
+When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, `HttpResponse`, and `ClaimsPrincipal` are automatically available as handler method parameters — no DI registration required:
 
 ```csharp
 public class ProductHandler
@@ -619,10 +619,17 @@ public class ProductHandler
 
     public Result Handle(
         ExportProducts query,
-        HttpResponse response)     // Also works with HttpRequest / HttpResponse directly
+        HttpResponse response)     // Also works with HttpRequest / HttpResponse / ClaimsPrincipal directly
     {
         response.Headers.Append("X-Export-Id", Guid.NewGuid().ToString());
         // ...
+    }
+
+    public Result<string> Handle(
+        GetCurrentUser query,
+        ClaimsPrincipal user)      // ClaimsPrincipal from HttpContext.User
+    {
+        return user.Identity?.Name ?? "anonymous";
     }
 }
 ```
@@ -630,7 +637,7 @@ public class ProductHandler
 The endpoint generator populates a `CallContext` with these values before calling the handler. When the same handler is invoked directly via `mediator.InvokeAsync()` (without an endpoint), these parameters fall back to normal DI resolution.
 
 ::: warning Avoid HTTP types in handlers when possible
-Using `HttpContext`, `HttpRequest`, or `HttpResponse` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
+Using `HttpContext`, `HttpRequest`, `HttpResponse`, or `ClaimsPrincipal` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
 
 ```csharp
 // ❌ Coupled to HTTP — hard to test, only works from endpoints

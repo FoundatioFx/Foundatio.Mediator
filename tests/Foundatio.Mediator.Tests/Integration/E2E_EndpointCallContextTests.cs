@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.TestHost;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
@@ -133,5 +134,45 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
 
         var result = await response.Content.ReadFromJsonAsync<string>(TestCancellationToken);
         Assert.Equal("tenant:tenant-99", result);
+    }
+
+    // ── GET with ClaimsPrincipal handler parameter ─────────────────────────
+
+    public record GetCurrentUser();
+
+    public class CurrentUserHandler
+    {
+        public string Handle(GetCurrentUser query, ClaimsPrincipal user)
+            => user.Identity?.Name ?? "anonymous";
+    }
+
+    [Fact]
+    public async Task Endpoint_HandlerReceivesClaimsPrincipal_FromCallContext()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddMediator(b => b.AddAssembly<CurrentUserHandler>());
+
+        await using var app = builder.Build();
+
+        // Add test middleware that sets a ClaimsPrincipal before the endpoint runs
+        app.Use(async (context, next) =>
+        {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, "test-user")], "TestScheme"));
+            await next();
+        });
+
+        app.MapMediatorEndpoints();
+        await app.StartAsync(TestCancellationToken);
+
+        var client = app.GetTestClient();
+
+        var response = await client.GetAsync("/api/current-users", TestCancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var result = await response.Content.ReadFromJsonAsync<string>(TestCancellationToken);
+        Assert.Equal("test-user", result);
     }
 }

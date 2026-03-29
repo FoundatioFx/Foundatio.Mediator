@@ -759,7 +759,7 @@ internal static class EndpointGenerator
                 source.AppendLine("{");
                 source.IncrementIndent();
 
-                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
                 // Merge route + binding parameters into message
                 if (handler.MessageType.IsRecord)
@@ -791,7 +791,7 @@ internal static class EndpointGenerator
                 source.AppendLine("{");
                 source.IncrementIndent();
 
-                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
                 GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -809,7 +809,7 @@ internal static class EndpointGenerator
             source.AppendLine("{");
             source.IncrementIndent();
 
-            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -857,7 +857,7 @@ internal static class EndpointGenerator
             source.AppendLine("{");
             source.IncrementIndent();
 
-            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
             // Construct the message from parameters
             if (allParams.Count > 0)

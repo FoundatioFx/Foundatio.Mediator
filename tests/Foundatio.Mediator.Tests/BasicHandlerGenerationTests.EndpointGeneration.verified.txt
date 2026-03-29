@@ -134,7 +134,7 @@ public static class Tests_MediatorEndpoints
         // GET /{id} - GetWidget
         widgetsGroup.MapGet("/{id}", (string id, Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>
         {
-            using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);
+            using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);
             var message = new GetWidget(Id: id);
             var result = global::Foundatio.Mediator.Generated.WidgetHandler_GetWidget_Handler.Handle(mediator, message, callContext, cancellationToken);
             return Microsoft.AspNetCore.Http.Results.Ok(result);

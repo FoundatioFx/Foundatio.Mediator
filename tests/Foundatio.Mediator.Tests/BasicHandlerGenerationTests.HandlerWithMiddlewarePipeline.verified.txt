@@ -272,7 +272,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class ProcessOrderHandler_ProcessOrder_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var timingMiddleware = GetOrCreateTimingMiddleware(serviceProvider);
@@ -280,7 +280,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         System.Diagnostics.Stopwatch? timingMiddlewareResult = null;
         bool timingMiddlewareBeforeRan = false;
 
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try
@@ -315,7 +315,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         System.Diagnostics.Stopwatch? timingMiddlewareResult = null;
         bool timingMiddlewareBeforeRan = false;
 
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try

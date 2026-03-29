@@ -9,8 +9,8 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="HandlerEndpointGroupAttribute"/> class.
-    /// When no name is provided, the group name is derived from the handler class name
-    /// (e.g., <c>ProductHandler</c> becomes <c>Products</c>).
+    /// When no name is provided, the group name is auto-derived from the handler class name
+    /// (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
     /// </summary>
     public HandlerEndpointGroupAttribute() { }
 
@@ -25,7 +25,7 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the group name used for API grouping and OpenAPI tags.
-    /// When null, derived from the handler class name (e.g., <c>ProductHandler</c> → <c>Products</c>).
+    /// When null, auto-derived from the handler class name (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
     /// </summary>
     public string? Name { get; set; }
 

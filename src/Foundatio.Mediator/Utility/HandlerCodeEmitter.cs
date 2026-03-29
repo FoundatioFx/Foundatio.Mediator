@@ -44,11 +44,11 @@ internal static class HandlerCodeEmitter
         source.AppendLine("{");
         if (isAsync)
         {
-            source.AppendLine($"    await {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, {cancellationTokenVar}).ConfigureAwait(false);");
+            source.AppendLine($"    await {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, {cancellationTokenVar}).ConfigureAwait(false);");
         }
         else
         {
-            source.AppendLine($"    {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, {cancellationTokenVar});");
+            source.AppendLine($"    {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, {cancellationTokenVar});");
         }
         source.AppendLine("}");
         EmitExceptionAggregation(source);
@@ -67,7 +67,7 @@ internal static class HandlerCodeEmitter
     {
         string wrapperClassName = GetWrapperClassName(handler);
         string methodName = HandlerGenerator.GetHandlerMethodName(handler);
-        source.AppendLine($"try {{ {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, {cancellationTokenVar}); }} catch (System.Exception ex) {{ exceptions ??= new System.Collections.Generic.List<System.Exception>(); exceptions.Add(ex); }}");
+        source.AppendLine($"try {{ {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, {cancellationTokenVar}); }} catch (System.Exception ex) {{ exceptions ??= new System.Collections.Generic.List<System.Exception>(); exceptions.Add(ex); }}");
     }
 
     /// <summary>
@@ -91,11 +91,11 @@ internal static class HandlerCodeEmitter
         source.AppendLine("{");
         if (isAsync)
         {
-            source.AppendLine($"    await {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, System.Threading.CancellationToken.None).ConfigureAwait(false);");
+            source.AppendLine($"    await {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, System.Threading.CancellationToken.None).ConfigureAwait(false);");
         }
         else
         {
-            source.AppendLine($"    {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, System.Threading.CancellationToken.None);");
+            source.AppendLine($"    {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, System.Threading.CancellationToken.None);");
         }
         source.AppendLine("}");
         source.AppendLine("catch");
@@ -149,7 +149,7 @@ internal static class HandlerCodeEmitter
         string wrapperClassName = GetWrapperClassName(handler);
         string methodName = HandlerGenerator.GetHandlerMethodName(handler);
         string varName = $"t{taskIndex}";
-        source.AppendLine($"var {varName} = {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, {cancellationTokenVar});");
+        source.AppendLine($"var {varName} = {wrapperClassName}.{methodName}({mediatorVar}, {messageVar}, null, {cancellationTokenVar});");
         return varName;
     }
 

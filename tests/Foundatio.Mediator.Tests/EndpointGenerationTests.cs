@@ -75,7 +75,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void CategoryFilters_EmittedOnCategoryGroup()
+    public void GroupFilters_EmittedOnEndpointGroup()
     {
         var source = """
             using Foundatio.Mediator;
@@ -83,14 +83,14 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
 
-            public class CategoryFilter : IEndpointFilter
+            public class GroupFilter : IEndpointFilter
             {
                 public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next) => next(context);
             }
 
             public record GetThing(string Id);
 
-            [HandlerEndpointGroup("Things", EndpointFilters = [typeof(CategoryFilter)])]
+            [HandlerEndpointGroup("Things", EndpointFilters = [typeof(GroupFilter)])]
             public class ThingHandler
             {
                 public string Handle(GetThing query) => "thing";
@@ -104,7 +104,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        Assert.Contains("thingsGroup.AddEndpointFilter<global::CategoryFilter>()", endpointSource);
+        Assert.Contains("thingsGroup.AddEndpointFilter<global::GroupFilter>()", endpointSource);
     }
 
     [Fact]
@@ -362,19 +362,13 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
 
-        // Stub file should be generated (this is what IntelliSense sees at design time)
-        var stubSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.Api.g.cs").Source;
-        Assert.NotNull(stubSource);
-        Assert.Contains("public static partial class", stubSource);
-        Assert.Contains("Tests_MediatorEndpoints", stubSource);
-        Assert.Contains("static partial void MapEndpointsCore", stubSource);
-
-        // Implementation file should also be generated (compile-time only in real IDE, but test runs both)
+        // Implementation file should be generated with a non-partial class and public MapEndpoints
         var implSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
         Assert.NotNull(implSource);
-        Assert.Contains("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)", implSource);
+        Assert.Contains("public static class Tests_MediatorEndpoints", implSource);
+        Assert.Contains("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)", implSource);
+        Assert.DoesNotContain("partial", implSource);
         Assert.Contains("MapGet", implSource);
-        Assert.DoesNotContain("MediatorEndpointModule", implSource);
     }
 
     [Fact]
@@ -399,9 +393,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
 
-        // Neither stub nor implementation should be generated when discovery is None
-        var stubSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.Api.g.cs");
-        Assert.Null(stubSource.Source);
+        // No endpoint files should be generated when discovery is None
         var implSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs");
         Assert.Null(implSource.Source);
     }
@@ -423,7 +415,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             {
                 public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next) => next(context);
             }
-            public class CategoryLevelFilter : IEndpointFilter
+            public class GroupLevelFilter : IEndpointFilter
             {
                 public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next) => next(context);
             }
@@ -434,7 +426,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public record CreateBar(string Name);
 
-            [HandlerEndpointGroup("Bars", EndpointFilters = [typeof(CategoryLevelFilter)])]
+            [HandlerEndpointGroup("Bars", EndpointFilters = [typeof(GroupLevelFilter)])]
             public class BarHandler
             {
                 [HandlerEndpoint(EndpointFilters = [typeof(EndpointLevelFilter)])]
@@ -451,8 +443,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // Global filter on root group
         Assert.Contains("rootGroup.AddEndpointFilter<global::GlobalFilter>()", endpointSource);
-        // Category filter on category group
-        Assert.Contains("barsGroup.AddEndpointFilter<global::CategoryLevelFilter>()", endpointSource);
+        // Group filter on endpoint group
+        Assert.Contains("barsGroup.AddEndpointFilter<global::GroupLevelFilter>()", endpointSource);
         // Endpoint filter on individual route
         Assert.Contains(".AddEndpointFilter<global::EndpointLevelFilter>()", endpointSource);
     }
@@ -488,7 +480,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void CategoryRoutePrefixAutoDerivesFromName()
+    public void GroupRoutePrefixAutoDerivesFromName()
     {
         var source = """
             using Foundatio.Mediator;
@@ -514,7 +506,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // Category name "Products" auto-derives to "products" (relative, no leading /)
+        // Group name "Products" auto-derives to "products" (relative, no leading /)
         Assert.Contains("MapGroup(\"products\")", endpointSource);
     }
 
@@ -878,7 +870,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void ActionVerbWithCategory_GeneratesActionRoute()
+    public void ActionVerbWithGroup_GeneratesActionRoute()
     {
         var source = """
             using Foundatio.Mediator;
@@ -938,7 +930,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // ResetCounters in "Counters" category → POST /api/counters/reset
+        // ResetCounters in "Counters" group → POST /api/counters/reset
         Assert.Contains("MapPost", endpointSource);
         Assert.Contains("/reset", endpointSource);
     }
@@ -999,10 +991,10 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // CompleteSomething — entity "Something" doesn't match category "Todos"
+        // CompleteSomething — entity "Something" doesn't match group "Todos"
         // should preserve entity: /{somethingId}/complete-something
         Assert.Contains("{somethingId}/complete-something", endpointSource);
-        // CompleteTodo — entity "Todo" matches category "Todos"
+        // CompleteTodo — entity "Todo" matches group "Todos"
         // should use clean action: /{todoId}/complete
         Assert.Contains("{todoId}/complete\"", endpointSource);
     }
@@ -1286,7 +1278,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void FMED015_CategoryPrefixStartsWithGlobalPrefix_EmitsWarning()
+    public void FMED015_GroupPrefixStartsWithGlobalPrefix_EmitsWarning()
     {
         // Relative prefix (no leading /) that duplicates the global prefix content
         var source = """
@@ -1319,9 +1311,9 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void FMED015_AbsoluteCategoryPrefix_NoWarning()
+    public void FMED015_AbsoluteGroupPrefix_NoWarning()
     {
-        // A leading / makes the category absolute (bypasses global prefix), so no doubling
+        // A leading / makes the group absolute (bypasses global prefix), so no doubling
         var source = """
             using Foundatio.Mediator;
 
@@ -1380,7 +1372,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     [Fact]
     public void FMED015_ExactMatchOfGlobalPrefix_NoWarning()
     {
-        // Category prefix that exactly equals the global prefix is unusual but not a "double-up"
+        // Group prefix that exactly equals the global prefix is unusual but not a "double-up"
         // because the generated path is just /api (not /api/api)
         var source = """
             using Foundatio.Mediator;
@@ -1409,7 +1401,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void AbsolutePrefix_CategoryRouteBypassesGlobalPrefix()
+    public void AbsolutePrefix_GroupRouteBypassesGlobalPrefix()
     {
         var source = """
             using Foundatio.Mediator;
@@ -1435,7 +1427,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // Category group should be parented on `endpoints`, not `rootGroup`
+        // Endpoint group should be parented on `endpoints`, not `rootGroup`
         Assert.Contains("endpoints.MapGroup(\"/health\")", endpointSource);
         // Global prefix group should still exist
         Assert.Contains("MapGroup(\"api\")", endpointSource);
@@ -1471,14 +1463,14 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // The endpoint should be registered directly on `endpoints`, not the category group
+        // The endpoint should be registered directly on `endpoints`, not the endpoint group
         Assert.Contains("endpoints.MapGet(\"/status\"", endpointSource);
     }
 
     [Fact]
-    public void RelativePrefix_CategoryNestedUnderGlobalGroup()
+    public void RelativePrefix_GroupNestedUnderGlobalGroup()
     {
-        // Verify that without leading / the category is nested under the global group
+        // Verify that without leading / the group is nested under the global group
         var source = """
             using Foundatio.Mediator;
 
@@ -1503,7 +1495,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // Category group should be parented on `rootGroup` (relative behavior)
+        // Endpoint group should be parented on `rootGroup` (relative behavior)
         Assert.Contains("rootGroup.MapGroup(\"health\")", endpointSource);
     }
 
@@ -1714,10 +1706,10 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetTodo should pluralize to /todos/{id}
-        Assert.Contains("/todos/{id}", endpointSource);
-        // GetTodos is already plural → /todos
-        Assert.Contains("MapGet(\"/todos\"", endpointSource);
+        // With auto-grouping under "Todos", both routes use the group prefix
+        AssertEndpoint(endpointSource, "GET", "/api/todos/{id}");
+        AssertEndpoint(endpointSource, "GET", "/api/todos");
+        Assert.Contains(".WithTags(\"Todos\")", endpointSource);
     }
 
     [Fact]
@@ -1744,7 +1736,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         Assert.NotNull(endpointSource);
         // Health is uncountable — should stay /health, not /healths
-        Assert.Contains("\"/health\"", endpointSource);
+        // With auto-grouping, the group prefix is "health" (uncountable stays singular)
+        AssertEndpoint(endpointSource, "GET", "/api/health");
         Assert.DoesNotContain("healths", endpointSource);
     }
 
@@ -1883,10 +1876,11 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetAllTodos → strip Get → AllTodos → strip All → Todos → /todos
-        Assert.Contains("MapGet(\"/todos\"", endpointSource);
-        // GetTodo → strip Get → Todo → pluralize → Todos → /todos/{id}
-        Assert.Contains("/todos/{id}", endpointSource);
+        // With auto-grouping under "Todos", both routes use the group prefix
+        // GetAllTodos → strip Get → AllTodos → strip All → Todos → entity matches group → /
+        AssertEndpoint(endpointSource, "GET", "/api/todos");
+        // GetTodo → strip Get → Todo → entity matches group → /{id}
+        AssertEndpoint(endpointSource, "GET", "/api/todos/{id}");
         // Should NOT produce /all-todos
         Assert.DoesNotContain("all-todos", endpointSource);
     }
@@ -1982,7 +1976,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     public void FMED016_DivergentRoutes_EmitsWarning()
     {
         // When a handler class without [HandlerEndpointGroup] produces different route prefixes,
-        // emit FMED016 warning
+        // emit FMED016 warning. Use [Handler] attribute (no Handler suffix) to prevent auto-grouping.
         var source = """
             using Foundatio.Mediator;
 
@@ -1991,7 +1985,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public record GetTodo(string Id);
             public record GetStatus();
 
-            public class TodoHandler
+            [Handler]
+            public class TodoService
             {
                 public string Handle(GetTodo query) => "todo";
                 public string Handle(GetStatus query) => "ok";
@@ -2006,7 +2001,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var warning = diagnostics.FirstOrDefault(d => d.Id == "FMED016");
         Assert.NotNull(warning);
         Assert.Equal(DiagnosticSeverity.Warning, warning!.Severity);
-        Assert.Contains("TodoHandler", warning.GetMessage());
+        Assert.Contains("TodoService", warning.GetMessage());
     }
 
     [Fact]
@@ -2091,8 +2086,9 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // GetTodoItemsWithPagination → strip Get → TodoItemsWithPagination → strip With... → TodoItems → /todo-items
-        Assert.Contains("/todo-items", endpointSource);
+        // With auto-grouping under "Todos", entity "TodoItems" shares prefix "Todo" →
+        // sub-route "items" within the group → full route /api/todos/items
+        AssertEndpoint(endpointSource, "GET", "/api/todos/items");
         Assert.DoesNotContain("pagination", endpointSource);
     }
 
@@ -2233,6 +2229,120 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // ExportOrders → action verb "export", entity "Orders" → POST /orders/export
         Assert.Contains("/orders/export", endpointSource);
         Assert.Contains("MapPost", endpointSource);
+    }
+
+    [Fact]
+    public void FromHeaderOnMessageProperty_EmitsBindingParamAndMerge()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateItem(
+                string Name,
+                [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(CreateItem command) => command.Name;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Lambda should have [FromHeader(Name = "X-Tenant-Id")] as a separate param
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromHeader(Name = \"X-Tenant-Id\")]", endpointSource);
+        // Should merge the header param into the message
+        Assert.Contains("message with { TenantId = tenantId }", endpointSource);
+    }
+
+    [Fact]
+    public void FromHeaderOnGetMessage_ExcludedFromQueryParams()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(
+                string ItemId,
+                [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => query.ItemId;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Should have the header binding attribute on the lambda param
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromHeader(Name = \"X-Tenant-Id\")]", endpointSource);
+        // TenantId should NOT be a [FromQuery] param
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery] string tenantId", endpointSource);
+    }
+
+    [Fact]
+    public void FromRouteOnMessageProperty_IncludedInRouteTemplate()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(
+                [property: FromRoute] string Slug
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => query.Slug;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // [FromRoute] property should appear in the route template
+        Assert.Contains("/{slug}", endpointSource);
+        Assert.Contains("MapGet", endpointSource);
+    }
+
+    [Fact]
+    public void FromQueryOnPostMessage_EmitsBindingParamAndMerge()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Mvc;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateItem(
+                string Name,
+                [property: FromQuery(Name = "version")] string ApiVersion
+            );
+
+            public class ItemHandler
+            {
+                public string Handle(CreateItem command) => command.Name;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Lambda should have [FromQuery(Name = "version")] as a separate param
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromQuery(Name = \"version\")]", endpointSource);
+        // Should merge the query param into the message
+        Assert.Contains("message with { ApiVersion = apiVersion }", endpointSource);
     }
 }
 

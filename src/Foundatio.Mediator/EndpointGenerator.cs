@@ -9,110 +9,6 @@ namespace Foundatio.Mediator;
 internal static class EndpointGenerator
 {
     /// <summary>
-    /// Generates the design-time API surface (stub) for endpoint extension methods.
-    /// Registered via RegisterSourceOutput so IntelliSense sees Map{X}Endpoints()
-    /// before the first build. Delegates to a static partial void core method
-    /// that is a no-op at design time.
-    /// </summary>
-    public static void ExecuteStub(
-        SourceProductionContext context,
-        GeneratorConfiguration configuration,
-        EndpointDefaultsInfo endpointDefaults,
-        CompilationInfo compilationInfo)
-    {
-        // Only generate stub when minimal APIs are available and endpoint discovery is enabled
-        if (!compilationInfo.SupportsMinimalApis)
-            return;
-
-        if (endpointDefaults.Discovery is "None" or null)
-            return;
-
-        var safeAssemblyName = compilationInfo.AssemblyName.ToIdentifier();
-
-        // --- Per-module stub: {SafeAssemblyName}_MediatorEndpoints ---
-        var moduleSource = new IndentedStringBuilder();
-        moduleSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpoints.Api.g.cs");
-        moduleSource.AppendLine("""
-            using Microsoft.AspNetCore.Builder;
-            using Microsoft.AspNetCore.Http;
-            using Microsoft.AspNetCore.Routing;
-            using System.Diagnostics.CodeAnalysis;
-            """);
-
-        moduleSource.AppendLine();
-        moduleSource.AppendLine("namespace Foundatio.Mediator;");
-        moduleSource.AppendLine();
-        moduleSource.AddGeneratedCodeAttribute();
-        moduleSource.AppendLines($$"""
-            [ExcludeFromCodeCoverage]
-            public static partial class {{safeAssemblyName}}_MediatorEndpoints
-            {
-                /// <summary>
-                /// Maps this module's handler endpoints to the application.
-                /// </summary>
-                /// <param name="endpoints">The endpoint route builder.</param>
-                /// <param name="logEndpoints">When true, logs all mapped endpoints at startup.</param>
-                public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)
-                {
-                    MapEndpointsCore(endpoints, logEndpoints);
-                }
-
-                /// <summary>
-                /// Core endpoint registration, implemented by the source generator at compile time.
-                /// At design time this is a no-op so IntelliSense works before the first build.
-                /// </summary>
-                static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints);
-            }
-            """);
-
-        context.AddSource("_MediatorEndpoints.Api.g.cs", moduleSource.ToString());
-
-        // --- Aggregator stub: MapMediatorEndpoints() (app projects only) ---
-        if (!compilationInfo.IsApplication)
-            return;
-
-        var aggSource = new IndentedStringBuilder();
-        aggSource.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_MediatorEndpointAggregator.Api.g.cs");
-        aggSource.AppendLine("""
-            using Microsoft.AspNetCore.Builder;
-            using Microsoft.AspNetCore.Http;
-            using Microsoft.AspNetCore.Routing;
-            using System;
-            using System.Diagnostics.CodeAnalysis;
-
-            namespace Foundatio.Mediator;
-            """);
-
-        aggSource.AppendLine();
-        aggSource.AddGeneratedCodeAttribute();
-        aggSource.AppendLines("""
-            [ExcludeFromCodeCoverage]
-            public static partial class MediatorEndpointExtensions
-            {
-                /// <summary>
-                /// Maps all discovered mediator handler endpoints from all referenced assemblies.
-                /// Discovers endpoint modules automatically via <see cref="FoundatioModuleAttribute"/> and naming convention.
-                /// </summary>
-                /// <param name="endpoints">The endpoint route builder.</param>
-                /// <param name="configure">Optional configuration to select assemblies and enable logging.</param>
-                /// <returns>The endpoint route builder for chaining.</returns>
-                public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)
-                {
-                    MapMediatorEndpointsCore(endpoints, configure);
-                    return endpoints;
-                }
-
-                /// <summary>
-                /// Core aggregator implementation, filled in at compile time by the source generator.
-                /// </summary>
-                static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure);
-            }
-            """);
-
-        context.AddSource("_MediatorEndpointAggregator.Api.g.cs", aggSource.ToString());
-    }
-
-    /// <summary>
     /// Executes endpoint generation for handlers.
     /// </summary>
     public static void Execute(
@@ -196,20 +92,20 @@ internal static class EndpointGenerator
             // FMED015: Group route prefix duplicates global endpoint prefix.
             // Only applies to relative prefixes (no leading /) since absolute prefixes bypass the global group.
             var globalPrefix = endpointDefaults.RoutePrefix;
-            var groupPrefix = endpoint.GroupRoutePrefix;
+            var grpPrefix = endpoint.GroupRoutePrefix;
             if (!endpoint.GroupBypassGlobalPrefix
                 && !string.IsNullOrEmpty(globalPrefix)
-                && !string.IsNullOrEmpty(groupPrefix))
+                && !string.IsNullOrEmpty(grpPrefix))
             {
                 // For relative prefixes, check if the prefix content duplicates the global prefix content.
                 // e.g. global = "/api", relative group = "api/products" → /api/api/products (wrong)
                 var globalContent = globalPrefix!.TrimStart('/');
-                var groupContent = groupPrefix!.TrimStart('/');
-                if (groupContent.StartsWith(globalContent, StringComparison.OrdinalIgnoreCase)
-                    && groupContent.Length > globalContent.Length
-                    && warnedGroups.Add(groupPrefix))
+                var grpContent = grpPrefix!.TrimStart('/');
+                if (grpContent.StartsWith(globalContent, StringComparison.OrdinalIgnoreCase)
+                    && grpContent.Length > globalContent.Length
+                    && warnedGroups.Add(grpPrefix))
                 {
-                    var suggested = groupContent.Substring(globalContent.Length).TrimStart('/');
+                    var suggested = grpContent.Substring(globalContent.Length).TrimStart('/');
                     context.ReportDiagnostic(Diagnostic.Create(
                         new DiagnosticDescriptor(
                             "FMED015",
@@ -220,7 +116,7 @@ internal static class EndpointGenerator
                             DiagnosticSeverity.Warning,
                             isEnabledByDefault: true),
                         Location.None,
-                        groupPrefix,
+                        grpPrefix,
                         globalPrefix,
                         suggested));
                 }
@@ -296,7 +192,7 @@ internal static class EndpointGenerator
         }
 
         // FMED016: Handlers in the same class produce routes with different base paths.
-        // Only check handlers without an explicit [HandlerEndpointGroup] group,
+        // Only check handlers without an explicit [HandlerEndpointGroup],
         // since grouped handlers already have a shared group prefix.
         var ungroupedByClass = handlers
             .Where(h => string.IsNullOrEmpty(h.Endpoint!.Value.GroupRoutePrefix) && !h.Endpoint!.Value.HasExplicitRoute)
@@ -383,13 +279,14 @@ internal static class EndpointGenerator
         source.AppendLine("namespace Foundatio.Mediator;");
 
         source.AppendLine();
-        source.AppendLine($"public static partial class {safeAssemblyName}_MediatorEndpoints");
+        source.AddGeneratedCodeAttribute();
+        source.AppendLine("[ExcludeFromCodeCoverage]");
+        source.AppendLine($"public static class {safeAssemblyName}_MediatorEndpoints");
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Generate the core implementation as a static partial void method
-        // that fills in the stub declared in _MediatorEndpoints.Api.g.cs
-        GenerateMapMediatorEndpointsCoreMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
+        // Generate the MapEndpoints method
+        GenerateMapEndpointsMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -402,10 +299,9 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Generates the MapEndpointsCore static partial void implementation.
-    /// This provides the compile-time body for the stub declared in _MediatorEndpoints.Api.g.cs.
+    /// Generates the public MapEndpoints method for a per-module endpoint class.
     /// </summary>
-    private static void GenerateMapMediatorEndpointsCoreMethod(
+    private static void GenerateMapEndpointsMethod(
         IndentedStringBuilder source,
         List<HandlerInfo> handlers,
         List<HandlerInfo> skippedHandlers,
@@ -418,9 +314,11 @@ internal static class EndpointGenerator
         bool hasLoggerFactory)
     {
         source.AppendLine("/// <summary>");
-        source.AppendLine("/// Core endpoint registration implementation.");
+        source.AppendLine("/// Maps this module's handler endpoints to the application.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("static partial void MapEndpointsCore(IEndpointRouteBuilder endpoints, bool logEndpoints)");
+        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
+        source.AppendLine("/// <param name=\"logEndpoints\">When true, logs all mapped endpoints at startup.</param>");
+        source.AppendLine("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
         source.AppendLine("{");
         source.IncrementIndent();
 
@@ -501,7 +399,7 @@ internal static class EndpointGenerator
         // All handlers are emitted on flat routes (no version path segments).
         // Version dispatch is handled via request headers when multiple handlers
         // map to the same route with different ApiVersions.
-        EmitCategoryEndpoints(source, handlers, parentGroupVar, hasGlobalGroup,
+        EmitGroupEndpoints(source, handlers, parentGroupVar, hasGlobalGroup,
             endpointDefaults, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi,
             assemblySuffix, endpointLogEntries);
 
@@ -526,7 +424,7 @@ internal static class EndpointGenerator
     /// When header-based versioning is enabled, detects route collisions across versions
     /// and emits version dispatch endpoints that read the Api-Version header.
     /// </summary>
-    private static void EmitCategoryEndpoints(
+    private static void EmitGroupEndpoints(
         IndentedStringBuilder source,
         List<HandlerInfo> handlers,
         string parentGroupVar,
@@ -543,7 +441,7 @@ internal static class EndpointGenerator
 
         // Group handlers by group name
         var handlersByGroup = handlers
-            .GroupBy(h => h.Endpoint?.GroupName ?? "Default")
+            .GroupBy(h => h.Endpoint?.Group ?? "Default")
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -633,7 +531,7 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Emits the endpoint logging block at the end of MapEndpointsCore.
+    /// Emits the endpoint logging block at the end of MapEndpoints.
     /// </summary>
     private static void EmitEndpointLogging(
         IndentedStringBuilder source,
@@ -713,37 +611,11 @@ internal static class EndpointGenerator
         source.AppendLine("}");
     }
 
-    /// <summary>
-    /// Computes the full display route path for logging by combining global prefix, group prefix, and endpoint route.
-    /// </summary>
     private static string ComputeFullDisplayRoute(string? globalPrefix, string groupPrefix, string endpointRoute, bool groupBypassGlobalPrefix, bool routeBypassPrefixes)
-    {
-        string result;
-        if (routeBypassPrefixes)
-            result = endpointRoute;
-        else if (groupBypassGlobalPrefix)
-            result = JoinRouteParts(groupPrefix, endpointRoute);
-        else
-        {
-            var basePath = globalPrefix ?? "";
-            result = JoinRouteParts(basePath, JoinRouteParts(groupPrefix, endpointRoute));
-        }
-
-        if (string.IsNullOrEmpty(result))
-            return "/";
-        if (!result.StartsWith("/"))
-            result = "/" + result;
-        return result;
-    }
+        => RouteConventions.ComputeFullDisplayRoute(globalPrefix, groupPrefix, endpointRoute, groupBypassGlobalPrefix, routeBypassPrefixes);
 
     private static string JoinRouteParts(string a, string b)
-    {
-        a = a.TrimEnd('/');
-        b = b.TrimStart('/');
-        if (string.IsNullOrEmpty(a)) return b;
-        if (string.IsNullOrEmpty(b)) return a;
-        return a + "/" + b;
-    }
+        => RouteConventions.JoinRouteParts(a, b);
 
     /// <summary>
     /// Detects duplicate routes within a group and returns overrides for conflicting handlers.
@@ -993,40 +865,47 @@ internal static class EndpointGenerator
         if (endpoint.BindFromBody)
         {
             var routeParams = endpoint.RouteParameters;
+            var bindingParams = endpoint.BindingParameters;
             var fromBodyAttr = hasFromBodyAttribute ? "[Microsoft.AspNetCore.Mvc.FromBody] " : "";
+            var allMergeParams = routeParams.Concat(bindingParams).ToList();
 
-            if (routeParams.Any())
+            if (allMergeParams.Count > 0)
             {
-                // PUT/PATCH with route parameters - need to merge route params with body
+                // POST/PUT/PATCH with route and/or binding parameters - need to merge into message
                 source.Append($"{asyncKeyword}(");
 
                 // Add route parameters first
-                for (int i = 0; i < routeParams.Length; i++)
+                foreach (var param in routeParams)
                 {
-                    var param = routeParams[i];
-                    source.Append($"{param.Type.FullName} {param.Name}");
-                    source.Append(", ");
+                    source.Append($"{param.Type.FullName} {param.Name}, ");
                 }
 
                 // Then add body parameter
                 source.Append($"{fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+
+                // Add binding parameters (e.g., [FromHeader(Name = "X-Tenant-Id")] string tenantId)
+                foreach (var param in bindingParams)
+                {
+                    source.Append($"{param.BindingAttributeSyntax} {param.Type.FullName} {param.Name}, ");
+                }
+
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
 
-                // Merge route parameters into message
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
+
+                // Merge route + binding parameters into message
                 if (handler.MessageType.IsRecord)
                 {
-                    // For records, use 'with' expression
                     source.Append("var mergedMessage = message with { ");
-                    source.Append(string.Join(", ", routeParams.Select(p => $"{p.PropertyName} = {p.Name}")));
+                    source.Append(string.Join(", ", allMergeParams.Select(p => $"{p.PropertyName} = {p.Name}")));
                     source.AppendLine(" };");
                 }
                 else
                 {
-                    // For classes, set properties directly (assumes they have setters)
-                    foreach (var param in routeParams)
+                    foreach (var param in allMergeParams)
                     {
                         source.AppendLine($"message.{param.PropertyName} = {param.Name};");
                     }
@@ -1040,12 +919,14 @@ internal static class EndpointGenerator
             }
             else
             {
-                // POST without route parameters - just bind from body
+                // POST without route or binding parameters - just bind from body
                 source.Append($"{asyncKeyword}({fromBodyAttr}{messageType} message, ");
-                source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+                source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
                 source.AppendLine();
                 source.AppendLine("{");
                 source.IncrementIndent();
+
+                source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
                 GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -1056,11 +937,14 @@ internal static class EndpointGenerator
         else if (endpoint.SupportsAsParameters && hasAsParametersAttribute)
         {
             // GET/DELETE with [AsParameters] - message type supports it
+            // ASP.NET natively respects [FromHeader]/[FromQuery]/[FromRoute] on the type's properties
             source.Append($"{asyncKeyword}([Microsoft.AspNetCore.Http.AsParameters] {messageType} message, ");
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
@@ -1072,19 +956,25 @@ internal static class EndpointGenerator
             // GET/DELETE with constructor binding - need to construct the message
             var routeParams = endpoint.RouteParameters;
             var queryParams = endpoint.QueryParameters;
-            var allParams = routeParams.Concat(queryParams).ToList();
+            var bindingParams = endpoint.BindingParameters;
+            var allParams = routeParams.Concat(queryParams).Concat(bindingParams).ToList();
 
             source.Append($"{asyncKeyword}(");
 
-            // Add route and query parameters
+            // Add route, query, and binding parameters
             for (int i = 0; i < allParams.Count; i++)
             {
                 var param = allParams[i];
                 var paramType = param.Type.FullName;
 
-                // Add FromQuery for query parameters
-                if (!param.IsRouteParameter)
+                if (param.BindingAttributeSyntax != null)
                 {
+                    // Use the explicit binding attribute (e.g., [FromHeader(Name = "X-Tenant-Id")])
+                    source.Append($"{param.BindingAttributeSyntax} ");
+                }
+                else if (!param.IsRouteParameter)
+                {
+                    // Default: query parameters get [FromQuery]
                     source.Append("[Microsoft.AspNetCore.Mvc.FromQuery] ");
                 }
 
@@ -1097,10 +987,12 @@ internal static class EndpointGenerator
             if (allParams.Count > 0)
                 source.Append(", ");
 
-            source.Append("Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
             source.AppendLine();
             source.AppendLine("{");
             source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response);");
 
             // Construct the message from parameters
             if (allParams.Count > 0)
@@ -1138,17 +1030,17 @@ internal static class EndpointGenerator
         // Check if the return type is void - don't assign to variable
         if (handler.ReturnType.IsVoid)
         {
-            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"{awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok();");
         }
         else if (handler.ReturnType.IsFileResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsResult)
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
         }
         else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 0)
@@ -1166,7 +1058,7 @@ internal static class EndpointGenerator
         {
             // Streaming endpoint — IAsyncEnumerable<T>
             var endpoint = handler.Endpoint.Value;
-            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var stream = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             if (endpoint.StreamingFormat == "ServerSentEvents")
             {
                 // Wrap in TypedResults.ServerSentEvents() for SSE format
@@ -1183,7 +1075,7 @@ internal static class EndpointGenerator
         }
         else
         {
-            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, cancellationToken);");
+            source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
             source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
         }
     }
@@ -1198,44 +1090,40 @@ internal static class EndpointGenerator
             [ExcludeFromCodeCoverage]
             public static class MediatorEndpointResultMapper_{{assemblySuffix}}
             {
-                /// <summary>
-                /// Converts a Foundatio.Mediator.IResult to an HTTP result.
-                /// </summary>
-                public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result)
+                public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result) => result.Status switch
                 {
-                    return result.Status switch
+                    Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
                     {
-                        Foundatio.Mediator.ResultStatus.Success => result.GetValue() switch
-                        {
-                            Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
-                                file.Stream, file.ContentType, file.FileName),
-                            { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
-                            _ => Microsoft.AspNetCore.Http.Results.Ok()
-                        },
-                        Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
-                            result.Location ?? "", result.GetValue()),
-                        Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
-                        Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
-                            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                        Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
-                            result.ValidationErrors
-                                .GroupBy(e => e.Identifier ?? "")
-                                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
-                        Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
-                            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                        Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
-                        Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
-                        Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
-                            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                        Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
-                            result.Message ?? "An error occurred", statusCode: 500),
-                        Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
-                            result.Message ?? "A critical error occurred", statusCode: 500),
-                        Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
-                            result.Message ?? "Service unavailable", statusCode: 503),
-                        _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
-                    };
-                }
+                        Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
+                            file.Stream, file.ContentType, file.FileName),
+                        { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
+                        _ => Microsoft.AspNetCore.Http.Results.Ok()
+                    },
+                    Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
+                        result.Location ?? "", result.GetValue()),
+                    Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
+                        null, result.GetValue()),
+                    Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
+                    Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
+                        result.ValidationErrors
+                            .GroupBy(e => e.Identifier ?? "")
+                            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
+                    Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
+                    Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
+                    Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "An error occurred", statusCode: 500),
+                    Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "A critical error occurred", statusCode: 500),
+                    Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "Service unavailable", statusCode: 503),
+                    _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
+                };
             }
             """);
     }
@@ -1555,7 +1443,6 @@ internal static class EndpointGenerator
     /// Derives a clean project name from the assembly name for use as a suffix
     /// in generated endpoint method names. Takes the last meaningful segment,
     /// strips common suffixes like Api/Web/Module/Service/Server, and sanitizes.
-    /// </summary>
     /// <summary>
     /// Generates the aggregator implementation that discovers and invokes all endpoint modules via reflection.
     /// </summary>
@@ -1576,15 +1463,20 @@ internal static class EndpointGenerator
             namespace Foundatio.Mediator;
             """);
 
+        source.AppendLine();
+        source.AddGeneratedCodeAttribute();
         source.AppendLines("""
-
-            public static partial class MediatorEndpointExtensions
+            [ExcludeFromCodeCoverage]
+            public static class MediatorEndpointExtensions
             {
                 /// <summary>
-                /// Core aggregator implementation. Discovers all assemblies marked with
-                /// <see cref="FoundatioModuleAttribute"/> containing a class ending with _MediatorEndpoints.
+                /// Maps all discovered mediator handler endpoints from all referenced assemblies.
+                /// Discovers endpoint modules automatically via <see cref="FoundatioModuleAttribute"/> and naming convention.
                 /// </summary>
-                static partial void MapMediatorEndpointsCore(IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure)
+                /// <param name="endpoints">The endpoint route builder.</param>
+                /// <param name="configure">Optional configuration to select assemblies and enable logging.</param>
+                /// <returns>The endpoint route builder for chaining.</returns>
+                public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)
                 {
                     MediatorEndpointOptions? options = null;
                     if (configure != null)
@@ -1617,6 +1509,8 @@ internal static class EndpointGenerator
                             method?.Invoke(null, new object[] { endpoints, logEndpoints });
                         }
                     }
+
+                    return endpoints;
                 }
             }
             """);

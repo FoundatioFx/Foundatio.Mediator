@@ -269,13 +269,13 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class PingHandler_Ping_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, Ping message, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Ping message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try
@@ -304,7 +304,7 @@ public static class PingHandler_Ping_Handler
         using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
-        string? result = default;
+        string? result = default!;
         System.Exception? exception = null;
 
         try

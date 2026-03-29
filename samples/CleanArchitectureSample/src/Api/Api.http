@@ -18,7 +18,7 @@ Content-Type: application/json
 }
 
 ### Check current user
-GET {{baseUrl}}/api/auth/me
+GET {{baseUrl}}/api/auth/current-user
 Accept: application/json
 
 ### Logout

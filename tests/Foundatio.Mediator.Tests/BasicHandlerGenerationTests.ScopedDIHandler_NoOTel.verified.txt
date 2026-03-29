@@ -270,10 +270,10 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class GetUserHandler_GetUser_Handler
 {
-    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, GetUser message, System.Threading.CancellationToken cancellationToken)
+    public static async System.Threading.Tasks.ValueTask<string> HandleAsync(Foundatio.Mediator.IMediator mediator, GetUser message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
-        string? result = default;
+        string? result = default!;
         var handlerInstance = serviceProvider.GetRequiredService<GetUserHandler>();
         result = await handlerInstance.HandleAsync(message, cancellationToken);
         return result;
@@ -283,7 +283,7 @@ public static class GetUserHandler_GetUser_Handler
     {
         var typedMessage = (GetUser)message;
         var serviceProvider = (System.IServiceProvider)mediator;
-        string? result = default;
+        string? result = default!;
         var handlerInstance = serviceProvider.GetRequiredService<GetUserHandler>();
         result = await handlerInstance.HandleAsync(typedMessage, cancellationToken);
         if (responseType == null)

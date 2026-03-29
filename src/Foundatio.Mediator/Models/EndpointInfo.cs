@@ -40,10 +40,10 @@ internal readonly record struct EndpointInfo
     /// <summary>
     /// The group name for API grouping (from HandlerEndpointGroupAttribute).
     /// </summary>
-    public string? GroupName { get; init; }
+    public string? Group { get; init; }
 
     /// <summary>
-    /// OpenAPI tags for the group. When non-empty, used instead of <see cref="GroupName"/> for <c>.WithTags()</c>.
+    /// OpenAPI tags for the group. When non-empty, used instead of <see cref="Group"/> for <c>.WithTags()</c>.
     /// </summary>
     public EquatableArray<string> GroupTags { get; init; }
 
@@ -61,6 +61,12 @@ internal readonly record struct EndpointInfo
     /// Query parameters for GET/DELETE requests.
     /// </summary>
     public EquatableArray<EndpointParameterInfo> QueryParameters { get; init; }
+
+    /// <summary>
+    /// Parameters with explicit binding attributes ([FromHeader], [FromQuery], [FromRoute])
+    /// that must be extracted as separate endpoint lambda parameters and merged into the message.
+    /// </summary>
+    public EquatableArray<EndpointParameterInfo> BindingParameters { get; init; }
 
     /// <summary>
     /// Whether the message should be bound from body (POST/PUT/PATCH).
@@ -230,4 +236,11 @@ internal readonly record struct EndpointParameterInfo
     /// Whether this is a route parameter (vs query parameter).
     /// </summary>
     public bool IsRouteParameter { get; init; }
+
+    /// <summary>
+    /// The full attribute syntax to emit on the endpoint lambda parameter
+    /// (e.g., <c>[Microsoft.AspNetCore.Mvc.FromHeader(Name = "X-Tenant-Id")]</c>).
+    /// Null when the parameter uses default binding (route or query convention).
+    /// </summary>
+    public string? BindingAttributeSyntax { get; init; }
 }

@@ -1077,7 +1077,7 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
     }
 
     [Fact]
-    public void ExplicitGroup_UsesGroupNameAsCategory()
+    public void ExplicitGroup_UsesGroupNameForRoutePrefix()
     {
         var source = """
             using Foundatio.Mediator;
@@ -1104,7 +1104,7 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
     }
 
     [Fact]
-    public void NoExplicitGroup_DerivesCategoryFromMessages()
+    public void NoExplicitGroup_DerivesGroupFromMessages()
     {
         var source = """
             using Foundatio.Mediator;
@@ -1128,4 +1128,436 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
         AssertEndpoint(endpointSource, "POST", "/api/products");
     }
 
+    // ── Single-word message routing ──────────────────────────────────────
+
+    [Fact]
+    public void SingleWord_UsesHandlerPrefixAndMessageName()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record Login(string Username, string Password);
+            public record Logout;
+
+            public class AuthHandler
+            {
+                public string Handle(Login command) => "ok";
+                public void Handle(Logout command) { }
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Single-word messages should use handler prefix + message name
+        AssertEndpoint(endpointSource, "POST", "/api/auth/login");
+        AssertEndpoint(endpointSource, "POST", "/api/auth/logout");
+        // Should NOT pluralize single-word messages
+        AssertNoRouteContains(endpointSource, "/logouts");
+        AssertNoRouteContains(endpointSource, "/logins");
+    }
+
+    [Fact]
+    public void SingleWord_WithGroup_UsesMessageNameOnly()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record Login(string Username, string Password);
+            public record Logout;
+
+            [HandlerEndpointGroup("Auth")]
+            public class AuthHandler
+            {
+                public string Handle(Login command) => "ok";
+                public void Handle(Logout command) { }
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // With explicit group, should use group prefix + message name
+        AssertEndpoint(endpointSource, "POST", "/api/auth/login");
+        AssertEndpoint(endpointSource, "POST", "/api/auth/logout");
+    }
+
+    [Fact]
+    public void SingleWord_MatchesHandlerPrefix_NoDuplication()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record Ping;
+
+            public class PingHandler
+            {
+                public string Handle(Ping command) => "pong";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // When handler prefix matches message name, no duplication
+        AssertEndpoint(endpointSource, "POST", "/api/ping");
+        AssertNoRouteContains(endpointSource, "/ping/ping");
+    }
+
+    [Fact]
+    public void MultiWord_StillPluralizes()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(string Id);
+            public record CreateWidget(string Name);
+
+            public class WidgetHandler
+            {
+                public string Handle(GetWidget query) => "widget";
+                public string Handle(CreateWidget command) => "created";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Multi-word messages with verb prefixes should still use normal CRUD conventions
+        AssertEndpoint(endpointSource, "GET", "/api/widgets/{id}");
+        AssertEndpoint(endpointSource, "POST", "/api/widgets");
+    }
+
+    [Fact]
+    public void ExplicitRoute_AutoDerivesGroupFromHandler()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetCurrentUser;
+
+            public class AuthHandler
+            {
+                [HandlerEndpoint(Route = "me")]
+                public string Handle(GetCurrentUser query) => "user";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Explicit relative route + no [HandlerEndpointGroup] should auto-derive group from handler
+        AssertEndpoint(endpointSource, "GET", "/api/auth/me");
+        AssertNoRouteContains(endpointSource, "/api/me");
+    }
+
+    [Fact]
+    public void ExplicitAbsoluteRoute_DoesNotAutoDerive()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record HealthCheck;
+
+            public class SystemHandler
+            {
+                [HandlerEndpoint(Route = "/health")]
+                public string Handle(HealthCheck query) => "ok";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Absolute routes (leading /) bypass all prefixes — no auto-derive
+        AssertEndpoint(endpointSource, "POST", "/health");
+        AssertNoRouteContains(endpointSource, "/system/health");
+    }
+
+    [Fact]
+    public void ExplicitRoute_WithExplicitGroup_UsesGroupNotHandler()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetProfile;
+
+            [HandlerEndpointGroup("Account")]
+            public class UserHandler
+            {
+                [HandlerEndpoint(Route = "profile")]
+                public string Handle(GetProfile query) => "profile";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Explicit [HandlerEndpointGroup] should take precedence over auto-derive
+        AssertEndpoint(endpointSource, "GET", "/api/account/profile");
+        AssertNoRouteContains(endpointSource, "/user/profile");
+    }
+
+    [Fact]
+    public void CrudRoutes_NoAutoDerive_StillPluralized()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrder(string OrderId);
+            public record CreateOrder(string Name);
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+                public string Handle(CreateOrder command) => "created";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Standard CRUD routes without explicit Route should NOT auto-derive group
+        AssertEndpoint(endpointSource, "GET", "/api/orders/{orderId}");
+        AssertEndpoint(endpointSource, "POST", "/api/orders");
+        AssertNoRouteContains(endpointSource, "/order/");
+    }
+
+    // ── Theory tests: Naming Convention Matrix ──────────────────────────────────
+    // These lock in the expected routes so convention changes are caught immediately.
+    // To guarantee route stability across library upgrades, use [HandlerEndpoint] or [HandlerEndpointGroup].
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.SingleHandlerMessageOnlyCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_SingleHandler_MatchingName_MessageOnlyRoute(
+        string handlerClassName, string messageName, string messageProperties,
+        string expectedHttpMethod, string expectedRoute)
+    {
+        var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
+        var source = $$"""
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record {{messageName}}({{propsPart}});
+
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, expectedHttpMethod, expectedRoute);
+    }
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.MultiHandlerGroupCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_MultiHandler_AutoDerivesGroup(
+        string handlerClassName, string messagesSpec, string expectedGroupTag,
+        string expectedRoutesSpec)
+    {
+        // Parse messagesSpec: "GetOrder:string OrderId;CreateOrder:string Name"
+        var parsedMessages = messagesSpec.Split(';').Select(msg =>
+        {
+            var parts = msg.Split(':');
+            return (Name: parts[0], Props: parts.Length > 1 ? parts[1] : "");
+        });
+
+        var recordDefs = new System.Text.StringBuilder();
+        var handleMethods = new System.Text.StringBuilder();
+        foreach (var (name, props) in parsedMessages)
+        {
+            recordDefs.AppendLine($"public record {name}({props});");
+            handleMethods.AppendLine($"    public string Handle({name} msg) => \"ok\";");
+        }
+
+        var source = $$"""
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            {{recordDefs}}
+            public class {{handlerClassName}}
+            {
+            {{handleMethods}}
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Verify group tag
+        Assert.Contains($".WithTags(\"{expectedGroupTag}\")", endpointSource);
+
+        // Verify each expected route
+        var expectedRoutes = expectedRoutesSpec.Split(';');
+        foreach (var expected in expectedRoutes)
+        {
+            var spaceIdx = expected.IndexOf(' ');
+            var method = expected.Substring(0, spaceIdx);
+            var route = expected.Substring(spaceIdx + 1);
+            AssertEndpoint(endpointSource, method, route);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.SingleHandlerNonMatchingNameCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_SingleHandler_NonMatchingName_AutoDerivesGroup(
+        string handlerClassName, string messageName, string messageProperties,
+        string expectedHttpMethod, string expectedRoute, string expectedGroupTag)
+    {
+        var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
+
+        var source = $$"""
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record {{messageName}}({{propsPart}});
+
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, expectedHttpMethod, expectedRoute);
+        Assert.Contains($".WithTags(\"{expectedGroupTag}\")", endpointSource);
+    }
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.ExplicitOverrideCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_ExplicitAttributes_OverrideConvention(
+        string source, string expectedRoutesSpec)
+    {
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        var expectedRoutes = expectedRoutesSpec.Split(';');
+        foreach (var expected in expectedRoutes)
+        {
+            var spaceIdx = expected.IndexOf(' ');
+            var method = expected.Substring(0, spaceIdx);
+            var route = expected.Substring(spaceIdx + 1);
+            AssertEndpoint(endpointSource, method, route);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.GlobalPrefixCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_GlobalPrefix_CombinesWithConvention(
+        string routePrefix, string handlerClassName, string messageName,
+        string messageProperties, string expectedRoute)
+    {
+        var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
+
+        var source = $$"""
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointRoutePrefix = "{{routePrefix}}")]
+
+            public record {{messageName}}({{propsPart}});
+
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", expectedRoute);
+    }
+
+    [Theory]
+    [MemberData(nameof(EndpointNamingConventionData.SingleWordMessageCases), MemberType = typeof(EndpointNamingConventionData))]
+    public void NamingConvention_SingleWordMessage_UsesHandlerPrefix(
+        string handlerClassName, string messageName, string messageProperties,
+        string expectedRoute)
+    {
+        var propsPart = string.IsNullOrEmpty(messageProperties) ? "" : messageProperties;
+
+        var source = $$"""
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record {{messageName}}({{propsPart}});
+
+            public class {{handlerClassName}}
+            {
+                public string Handle({{messageName}} msg) => "ok";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "POST", expectedRoute);
+    }
+
+    [Fact]
+    public void NamingConvention_MixedClasses_SingleAndMultiHandler_BothWork()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            // Single-handler class (message-only mode)
+            public record GetProduct(string ProductId);
+            public class GetProductHandler
+            {
+                public string Handle(GetProduct query) => "product";
+            }
+
+            // Multi-handler class (group mode)
+            public record GetOrder(string OrderId);
+            public record CreateOrder(string Name);
+            public record DeleteOrder(string OrderId);
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+                public string Handle(CreateOrder command) => "created";
+                public void Handle(DeleteOrder command) { }
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Single-handler: route from message only
+        AssertEndpoint(endpointSource, "GET", "/api/products/{productId}");
+
+        // Multi-handler: auto-grouped under /orders
+        AssertEndpoint(endpointSource, "GET", "/api/orders/{orderId}");
+        AssertEndpoint(endpointSource, "POST", "/api/orders");
+        AssertEndpoint(endpointSource, "DELETE", "/api/orders/{orderId}");
+
+        // Multi-handler class should have group tag
+        Assert.Contains(".WithTags(\"Orders\")", endpointSource);
+    }
 }

@@ -138,7 +138,7 @@ internal static class HandlerGenerator
 
         string asyncModifier = (isAsyncMethod && !canSkipAsyncStateMachine) ? "async " : "";
 
-        source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)")
+        source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)")
               .AppendLine("{");
 
         source.IncrementIndent();
@@ -239,7 +239,7 @@ internal static class HandlerGenerator
         source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
 
         // Emit the handler invocation code (middleware + logging + OTel + handler call)
-        EmitHandlerInvocationCode(source, handler, configuration, "result");
+        EmitHandlerInvocationCode(source, handler, configuration, "result", callContextVar: "callContext");
 
         // For tuple returns, cascade non-first items
         if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1 && publishItems.Count > 0)
@@ -301,7 +301,7 @@ internal static class HandlerGenerator
             string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, isVoid: false, returnTypeName);
             string asyncModifier = isAsyncMethod ? "async " : "";
 
-            source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, System.Threading.CancellationToken cancellationToken)");
+            source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)");
             source.AppendLine("{");
             source.IncrementIndent();
 
@@ -309,7 +309,7 @@ internal static class HandlerGenerator
             source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
 
             // Emit the handler invocation code with the target tuple index
-            EmitHandlerInvocationCode(source, handler, configuration, "result", "message", targetIndex);
+            EmitHandlerInvocationCode(source, handler, configuration, "result", "message", targetIndex, callContextVar: "callContext");
 
             if (hasCascadingHandlers)
             {
@@ -334,7 +334,7 @@ internal static class HandlerGenerator
     /// <param name="resultVar">Variable name to store the handler result.</param>
     /// <param name="messageVar">Variable name containing the typed message (default: "message").</param>
     /// <param name="targetTupleIndex">For tuple return types, the index of the tuple item this method returns (0 = Item1, 1 = Item2, etc.). -1 for non-tuple handlers.</param>
-    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false)
+    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false, string? callContextVar = null)
     {
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
@@ -366,12 +366,12 @@ internal static class HandlerGenerator
         // Check if we have Execute middleware - if so, wrap the entire pipeline
         if (executeMiddleware.Count > 0)
         {
-            EmitExecuteMiddlewareChain(source, handler, executeMiddleware, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex);
+            EmitExecuteMiddlewareChain(source, handler, executeMiddleware, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, callContextVar);
         }
         else
         {
             // Original code path - no Execute middleware
-            EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, requiresTryCatch, isUntypedMethod: isUntypedMethod);
+            EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, variables, resultVar, messageVar, targetTupleIndex, requiresTryCatch, isUntypedMethod: isUntypedMethod, callContextVar: callContextVar);
         }
     }
 
@@ -389,7 +389,8 @@ internal static class HandlerGenerator
         Dictionary<string, string> variables,
         string resultVar,
         string messageVar,
-        int targetTupleIndex)
+        int targetTupleIndex,
+        string? callContextVar = null)
     {
         bool requiresTryCatch = handler.RequiresTryCatch || configuration.OpenTelemetryEnabled;
 
@@ -409,7 +410,7 @@ internal static class HandlerGenerator
         }
 
         // Emit the full pipeline inside the delegate - isUntypedMethod is false here because we're inside a delegate that returns object?
-        EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, innerVariables, "innerResult", messageVar, targetTupleIndex, requiresTryCatch, insideExecuteDelegate: true, isUntypedMethod: false);
+        EmitPipelineCode(source, handler, beforeMiddleware, afterMiddleware, finallyMiddleware, configuration, innerVariables, "innerResult", messageVar, targetTupleIndex, requiresTryCatch, insideExecuteDelegate: true, isUntypedMethod: false, callContextVar: callContextVar);
 
         source.AppendLine(handler.HasReturnValue ? "return innerResult;" : "return null;");
         source.DecrementIndent();
@@ -426,7 +427,7 @@ internal static class HandlerGenerator
             string nextDelegate = $"wrapped{i}";
 
             // Build parameters for Execute method
-            string parameters = BuildExecuteParameters(source, m.ExecuteMethod!.Value.Parameters, variables, messageVar, currentDelegate);
+            string parameters = BuildExecuteParameters(source, m.ExecuteMethod!.Value.Parameters, variables, messageVar, currentDelegate, callContextVar);
 
             string asyncModifier = m.ExecuteMethod!.Value.IsAsync ? "await " : "";
             source.AppendLine($"Foundatio.Mediator.HandlerExecutionDelegate {nextDelegate} = async () =>");
@@ -450,7 +451,7 @@ internal static class HandlerGenerator
     /// <summary>
     /// Builds the parameters for an Execute middleware method call.
     /// </summary>
-    private static string BuildExecuteParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string> variables, string messageVar, string delegateVar)
+    private static string BuildExecuteParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string> variables, string messageVar, string delegateVar, string? callContextVar = null)
     {
         var parameterValues = new List<string>();
 
@@ -482,11 +483,22 @@ internal static class HandlerGenerator
             }
             else
             {
-                // DI parameter — use GetService for nullable types to avoid notnull constraint violation
-                if (param.Type.IsNullable)
-                    parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                // DI parameter — check CallContext first (reference types only), then fall back to DI.
+                // CallContext.Set<T> constrains T : class, so only reference types can be stored.
+                if (callContextVar != null && param.Type.IsReferenceType)
+                {
+                    if (param.Type.IsNullable)
+                        parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.UnwrappedFullName})) as {param.Type.UnwrappedFullName} ?? serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                    else
+                        parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.FullName})) as {param.Type.FullName} ?? serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                }
                 else
-                    parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                {
+                    if (param.Type.IsNullable)
+                        parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                    else
+                        parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                }
             }
         }
 
@@ -513,7 +525,8 @@ internal static class HandlerGenerator
         int targetTupleIndex,
         bool requiresTryCatch,
         bool insideExecuteDelegate = false,
-        bool isUntypedMethod = false)
+        bool isUntypedMethod = false,
+        string? callContextVar = null)
     {
         // Main execution with optional try-catch-finally
         if (requiresTryCatch)
@@ -528,14 +541,14 @@ internal static class HandlerGenerator
             variables["System.Exception"] = "exception";
         }
 
-        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex, insideExecuteDelegate, isUntypedMethod);
-        EmitHandlerInvocation(source, handler, variables, resultVar, messageVar);
-        EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar);
+        EmitBeforeMiddlewareCalls(source, beforeMiddleware, handler, variables, messageVar, targetTupleIndex, insideExecuteDelegate, isUntypedMethod, callContextVar);
+        EmitHandlerInvocation(source, handler, variables, resultVar, messageVar, callContextVar);
+        EmitAfterMiddlewareCalls(source, afterMiddleware, variables, messageVar, callContextVar);
 
         if (requiresTryCatch)
         {
             source.DecrementIndent();
-            EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, beforeMiddleware, variables, messageVar);
+            EmitCatchAndFinallyBlocks(source, configuration, finallyMiddleware, beforeMiddleware, variables, messageVar, callContextVar);
         }
     }
 
@@ -711,7 +724,8 @@ internal static class HandlerGenerator
             return;
 
         bool allowNull = handler.ReturnType.IsNullable || handler.ReturnType.IsReferenceType;
-        source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {resultVar} = default;");
+        // Use default! to suppress CS8604 when result is passed to Finally middleware before handler assigns it
+        source.AppendLine($"{handler.ReturnType.UnwrappedFullName}{(allowNull ? "?" : "")} {resultVar} = default!;");
     }
 
     private static void EmitBeforeMiddlewareCalls(
@@ -722,14 +736,15 @@ internal static class HandlerGenerator
         string messageVar,
         int targetTupleIndex,
         bool insideExecuteDelegate = false,
-        bool isUntypedMethod = false)
+        bool isUntypedMethod = false,
+        string? callContextVar = null)
     {
         foreach (var m in beforeMiddleware)
         {
             string asyncModifier = m.Method.IsAsync ? "await " : "";
             string result = m.Method.ReturnType.IsVoid ? "" : $"{m.Middleware.Identifier.ToCamelCase()}Result = ";
             string accessor = m.Middleware.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
-            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar, callContextVar);
 
             source.AppendLine($"{result}{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
 
@@ -829,11 +844,12 @@ internal static class HandlerGenerator
         HandlerInfo handler,
         Dictionary<string, string> variables,
         string resultVar,
-        string messageVar)
+        string messageVar,
+        string? callContextVar = null)
     {
         string asyncModifier = handler.ReturnType.IsTask ? "await " : "";
         string result = handler.ReturnType.IsVoid ? "" : $"{resultVar} = ";
-        string parameters = BuildParameters(source, handler.Parameters, variables, messageVar);
+        string parameters = BuildParameters(source, handler.Parameters, variables, messageVar, callContextVar);
 
         // Determine handler accessor - must match GenerateGetOrCreateHandler logic
         string accessor;
@@ -882,7 +898,10 @@ internal static class HandlerGenerator
             {
                 foreach (var tupleItem in handler.ReturnType.TupleItems)
                 {
-                    variables[tupleItem.TypeFullName] = $"{resultVar}.{tupleItem.Name}";
+                    // Null-forgive reference-type tuple items to suppress CS8604
+                    // in Finally middleware (result may be default if handler threw)
+                    string nullForgive = tupleItem.IsReferenceType ? "!" : "";
+                    variables[tupleItem.TypeFullName] = $"{resultVar}.{tupleItem.Name}{nullForgive}";
 
                     if (tupleItem.TypeFullName.StartsWith(WellKnownTypes.ResultOfT.Replace("`1", "<")))
                     {
@@ -897,13 +916,14 @@ internal static class HandlerGenerator
         IndentedStringBuilder source,
         List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> afterMiddleware,
         Dictionary<string, string> variables,
-        string messageVar)
+        string messageVar,
+        string? callContextVar = null)
     {
         foreach (var m in afterMiddleware)
         {
             string asyncModifier = m.Method.IsAsync ? "await " : "";
             string accessor = m.Middleware.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
-            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar, callContextVar);
 
             source.AppendLine($"{asyncModifier}{accessor}.{m.Method.MethodName}({parameters});");
         }
@@ -916,7 +936,8 @@ internal static class HandlerGenerator
         List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> finallyMiddleware,
         List<(MiddlewareMethodInfo Method, MiddlewareInfo Middleware)> beforeMiddleware,
         Dictionary<string, string> variables,
-        string messageVar)
+        string messageVar,
+        string? callContextVar = null)
     {
         source.AppendLine("""
             }
@@ -951,7 +972,7 @@ internal static class HandlerGenerator
         {
             string asyncModifier = m.Method.IsAsync ? "await " : "";
             string accessor = m.Method.IsStatic ? m.Middleware.FullName : m.Middleware.Identifier.ToCamelCase();
-            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar);
+            string parameters = BuildParameters(source, m.Method.Parameters, variables, messageVar, callContextVar);
 
             // Guard Finally calls for middleware whose Before has state —
             // if Before was skipped due to short-circuiting, Finally would receive null/default state
@@ -1123,7 +1144,7 @@ internal static class HandlerGenerator
         return $"HandleItem{itemIndex + 1}{suffix}";
     }
 
-    private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null, string messageVar = "message")
+    private static string BuildParameters(IndentedStringBuilder source, EquatableArray<ParameterInfo> parameters, Dictionary<string, string>? variables = null, string messageVar = "message", string? callContextVar = null)
     {
         var parameterValues = new List<string>();
 
@@ -1175,11 +1196,22 @@ internal static class HandlerGenerator
             }
             else
             {
-                // DI parameter — use GetService for nullable types to avoid notnull constraint violation
-                if (param.Type.IsNullable)
-                    parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                // DI parameter — check CallContext first (reference types only), then fall back to DI.
+                // CallContext.Set<T> constrains T : class, so only reference types can be stored.
+                if (callContextVar != null && param.Type.IsReferenceType)
+                {
+                    if (param.Type.IsNullable)
+                        parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.UnwrappedFullName})) as {param.Type.UnwrappedFullName} ?? serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                    else
+                        parameterValues.Add($"{callContextVar}?.Get(typeof({param.Type.FullName})) as {param.Type.FullName} ?? serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                }
                 else
-                    parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                {
+                    if (param.Type.IsNullable)
+                        parameterValues.Add($"serviceProvider.GetService<{param.Type.UnwrappedFullName}>()");
+                    else
+                        parameterValues.Add($"serviceProvider.GetRequiredService<{param.Type.FullName}>()");
+                }
             }
         }
 

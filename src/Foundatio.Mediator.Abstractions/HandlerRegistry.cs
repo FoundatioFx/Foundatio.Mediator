@@ -61,13 +61,16 @@ public sealed class HandlerRegistry : IDisposable
                 .Select(a => a.AttributeTypeName)
                 .Distinct(StringComparer.Ordinal))
             {
-                if (!_handlersByAttributeType.TryGetValue(attributeTypeName, out var attributeList))
+                foreach (var lookupName in TypeNameResolver.GetLookupNames(attributeTypeName))
                 {
-                    attributeList = new List<HandlerRegistration>();
-                    _handlersByAttributeType[attributeTypeName] = attributeList;
-                }
+                    if (!_handlersByAttributeType.TryGetValue(lookupName, out var attributeList))
+                    {
+                        attributeList = new List<HandlerRegistration>();
+                        _handlersByAttributeType[lookupName] = attributeList;
+                    }
 
-                attributeList.Add(registration);
+                    attributeList.Add(registration);
+                }
             }
         }
     }
@@ -130,9 +133,13 @@ public sealed class HandlerRegistry : IDisposable
         if (string.IsNullOrWhiteSpace(attributeTypeName))
             throw new ArgumentException("Attribute type must have a full name.", nameof(attributeType));
 
-        return _handlersByAttributeType.TryGetValue(attributeTypeName, out var handlers)
-            ? handlers.ToArray()
-            : Array.Empty<HandlerRegistration>();
+        foreach (var lookupName in TypeNameResolver.GetLookupNames(attributeType))
+        {
+            if (_handlersByAttributeType.TryGetValue(lookupName, out var handlers))
+                return handlers.ToArray();
+        }
+
+        return Array.Empty<HandlerRegistration>();
     }
 
     /// <summary>

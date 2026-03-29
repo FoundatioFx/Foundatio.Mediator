@@ -11,8 +11,11 @@ Write a handler:
 ```csharp
 public class ProductHandler
 {
+    /// <summary>Create a new product</summary>
     public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
+    /// <summary>Get a product by ID</summary>
     public Result<Product> Handle(GetProduct query) { ... }
+    /// <summary>List all products</summary>
     public Result<List<Product>> Handle(GetProducts query) { ... }
     public Task<Result<Product>> HandleAsync(UpdateProduct command) { ... }
     public Task<Result> HandleAsync(DeleteProduct command) { ... }
@@ -42,7 +45,7 @@ No attributes required. The source generator infers everything from your message
 - **HTTP method** — from the message name prefix (`Get*` → GET, `Create*` → POST, `Update*` → PUT, `Delete*` → DELETE, etc.)
 - **Route** — from the message name (minus the verb prefix), **auto-pluralized** to follow REST conventions, with message properties (names ending in `Id` become route parameters)
 - **Parameter binding** — ID properties go in the route, other properties become query parameters (GET/DELETE) or body (POST/PUT/PATCH)
-- **OpenAPI metadata** — operation names, status codes, and even error responses are auto-detected from your `Result` factory calls
+- **OpenAPI metadata** — operation names, status codes, and even error responses are auto-detected from your `Result` factory calls. XML `<summary>` comments on handler methods automatically become the OpenAPI summary for each endpoint.
 - **Result mapping** — `Result<T>` return values are automatically converted to the correct HTTP status codes
 
 ### Why This Matters
@@ -136,26 +139,25 @@ Everything works out of the box with smart defaults. Attributes are only needed 
 The group name is optional — when omitted, it's derived from the class name (e.g., `ProductHandler` → `Products`):
 
 ```csharp
-// Explicit name
-[HandlerEndpointGroup("Products")]
-public class ProductHandler { ... }
-
-// Derived name — equivalent to above
-[HandlerEndpointGroup]
-public class ProductHandler { ... }
+[HandlerEndpointGroup(RoutePrefix = "v2/products")]
+public class ProductHandler
+{
+    public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
+    public Result<Product> Handle(GetProduct query) { ... }
+}
 ```
 
-This changes the routes from the default (derived from the class name) to use the group name:
+This overrides the default route prefix (which would be `products` from the class name) with a versioned path:
 
 ```text
-POST  /api/products              → CreateProduct
-GET   /api/products/{productId}  → GetProduct
+POST  /api/v2/products              → CreateProduct
+GET   /api/v2/products/{productId}  → GetProduct
 ```
 
 **When do you need `[HandlerEndpointGroup]`?**
 
-- To set a **custom route prefix** different from the class name: `[HandlerEndpointGroup("Products", RoutePrefix = "v2/products")]`
-- To set a **shared OpenAPI tag** for grouping in Swagger UI
+- To set a **custom route prefix** different from the class name: `[HandlerEndpointGroup(RoutePrefix = "v2/products")]`
+- To set a **custom OpenAPI tag** different from the class name: `[HandlerEndpointGroup(Name = "Inventory")]`
 - To apply **endpoint filters** to all endpoints in the class: `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(AuditFilter)])]`
 - To share auth, filter, or routing configuration across all handler methods in one place
 
@@ -163,7 +165,7 @@ GET   /api/products/{productId}  → GetProduct
 
 | Property | Purpose |
 | --- | --- |
-| `Name` (constructor) | Group name used as the OpenAPI tag and default route prefix (lowercased) |
+| `Name` | Group name used as the OpenAPI tag and default route prefix (kebab-cased). When omitted, auto-derived from the class name (e.g., `OrderHandler` → `"Orders"`) |
 | `RoutePrefix` | Override the route prefix (relative to global prefix; use leading `/` for absolute) |
 | `Tags` | Override the OpenAPI tags (defaults to `Name` as a single tag) |
 | `EndpointFilters` | `IEndpointFilter` types applied to all endpoints in this group |
@@ -231,91 +233,234 @@ public class ProductHandler
 }
 ```
 
-## HTTP Method Inference
+## How Routes Are Generated
 
-The HTTP method is inferred from the message type name prefix:
+The generator builds every endpoint route through a simple four-step algorithm. Understanding these steps lets you predict exactly what route any message name will produce — and tells you when to reach for an explicit attribute instead.
 
-| Message Name Pattern | HTTP Method |
-| ------------------- | ----------- |
-| `Get*`, `Find*`, `Search*`, `List*`, `Query*` | GET |
-| `Create*`, `Add*`, `New*` | POST |
-| `Update*`, `Edit*`, `Modify*`, `Set*`, `Change*` | PUT |
-| `Delete*`, `Remove*` | DELETE |
-| `Patch*` | PATCH |
+### Step 1: Determine the Mode
 
-**Action verbs** — prefixes like `Complete*`, `Approve*`, `Cancel*`, `Submit*`, `Archive*`, `Publish*`, `Export*`, `Import*`, `Download*`, `Upload*`, etc., default to **POST** and produce an action route suffix:
+Every handler class operates in one of two modes, chosen automatically:
+
+| Mode | When it activates | Where the entity comes from |
+| --- | --- | --- |
+| **Single-message** | Class has exactly **1** handler method **and** the class name matches the message name | The message name |
+| **Group** | Class has **2+** methods, **or** the class name doesn't match the message | The handler class name |
+
+"Class name matches the message name" means the class name minus the `Handler`/`Consumer` suffix equals the message type name. For example, `GetOrderHandler` matches `GetOrder`, but `OrderHandler` does not.
 
 ```csharp
-// POST /api/todos/{todoId}/complete
-public Task<Result> HandleAsync(CompleteTodo command) { ... }
+// Single-message mode: "GetOrder" == "GetOrder" + Handler
+public class GetOrderHandler
+{
+    public Result<Order> Handle(GetOrder query) { ... }
+}
 
-// POST /api/orders/{orderId}/cancel
-public Task<Result> HandleAsync(CancelOrder command) { ... }
+// Group mode: "Order" ≠ "GetOrder" (and has 3 methods)
+public class OrderHandler
+{
+    public Result<Order> Handle(GetOrder query) { ... }
+    public Result<Order> Handle(CreateOrder cmd) { ... }
+    public Result Handle(CompleteOrder cmd) { ... }
+}
 ```
 
-Any unrecognized prefix defaults to **POST**.
+**Why two modes?** Single-message mode keeps things minimal — one handler, one route, no endpoint group or OpenAPI tag. Group mode creates an endpoint group from the class name so all methods in the class share a common route prefix and OpenAPI tag.
 
-## Route Generation
+### Step 2: Determine the Entity
 
-The final route for every endpoint is built by concatenating up to three levels. Each level is **relative** to its parent by default — but any level that starts with `/` becomes **absolute** and discards everything above it.
+The **entity** is the REST resource your handler operates on. It determines the base path of the route.
+
+**In group mode**, the entity comes from the handler class name:
+
+| Handler Class | Entity | Route Prefix |
+| --- | --- | --- |
+| `OrderHandler` | Order | `/orders` |
+| `ShoppingCartHandler` | ShoppingCart | `/shopping-carts` |
+| `TodoHandler` | Todo | `/todos` |
+
+The class name is stripped of its `Handler`/`Consumer` suffix, pluralized, and kebab-cased. This becomes the group route prefix — every method in the class inherits it.
+
+**In single-message mode**, there's no group prefix. The entity is extracted from the message name (after stripping the verb — see step 3) and becomes the route directly:
+
+| Message | Verb | Entity | Route |
+| --- | --- | --- | --- |
+| `GetOrder` | Get | Order | `GET /api/orders/{orderId}` |
+| `CreateTodo` | Create | Todo | `POST /api/todos` |
+| `CompleteTodo` | Complete | Todo | `POST /api/todos/{todoId}/complete` |
+
+### Step 3: Infer the HTTP Method
+
+The first word of the message name (split at the PascalCase boundary) determines the HTTP method:
+
+| Prefix | HTTP Method |
+| --- | --- |
+| `Get`, `Find`, `Search`, `List`, `Query` | **GET** |
+| `Create`, `Add`, `New` | **POST** |
+| `Update`, `Edit`, `Modify`, `Change`, `Set` | **PUT** |
+| `Delete`, `Remove` | **DELETE** |
+| `Patch` | **PATCH** |
+| _Anything else_ | **POST** |
+
+These CRUD prefixes are the only special-cased verbs. Everything else — `Complete`, `Approve`, `Cancel`, `Export`, `Finalize`, `Validate`, literally _any_ verb — defaults to POST and becomes a route action suffix (see step 4).
+
+### Step 4: Build the Route
+
+With the mode, entity, and HTTP method determined, the generator strips the entity from the message name. Whatever's left becomes the route.
+
+**CRUD verbs** are stripped cleanly — they map to HTTP methods and don't produce a route suffix:
+
+```text
+GetOrder     → strip "Get"      → entity "Order"   → GET /orders/{orderId}
+CreateOrder  → strip "Create"   → entity "Order"   → POST /orders
+DeleteOrder  → strip "Delete"   → entity "Order"   → DELETE /orders/{orderId}
+```
+
+**Action verbs** — anything that's not a CRUD prefix — are split at the first PascalCase word boundary. The first word is the action, the rest is the entity:
+
+```text
+CompleteTodo  → "Complete" + "Todo"  → POST /todos/{todoId}/complete
+ArchiveOrder  → "Archive"  + "Order" → POST /orders/{orderId}/archive
+ExportOrders  → "Export"   + "Orders"→ POST /orders/export
+FinalizeOrder → "Finalize" + "Order" → POST /orders/{orderId}/finalize
+```
+
+The action verb is kebab-cased and appended as a route suffix. No hardcoded list of action verbs is needed — the generator figures it out by splitting PascalCase.
+
+**Single-word messages** (no PascalCase boundary, like `Login`, `Logout`, `Ping`) are treated as bare actions. In group mode, they become a route segment under the group prefix:
+
+```csharp
+public class AuthHandler
+{
+    public Result Handle(Login cmd) { ... }    // → POST /api/auth/login
+    public Result Handle(Logout cmd) { ... }   // → POST /api/auth/logout
+}
+```
+
+### Putting It All Together
+
+Here's the full algorithm applied to a typical handler:
+
+```csharp
+public class OrderHandler
+{
+    public Result<Order> Handle(GetOrder query) { ... }
+    public Result<Order[]> Handle(GetOrders query) { ... }
+    public Result<Order> Handle(CreateOrder cmd) { ... }
+    public Result<Order> Handle(UpdateOrder cmd) { ... }
+    public Result Handle(DeleteOrder cmd) { ... }
+    public Result Handle(CompleteOrder cmd) { ... }
+    public Result Handle(ExportOrders cmd) { ... }
+}
+```
+
+| Message | Step 1: Mode | Step 2: Entity | Step 3: HTTP | Step 4: Route |
+| --- | --- | --- | --- | --- |
+| `GetOrder` | Group (multi-method) | "Order" from class | `Get` → GET | Strip `Get`+`Order` → nothing left → `GET /api/orders/{orderId}` |
+| `GetOrders` | Group | "Order" from class | `Get` → GET | Strip `Get`+`Orders` → nothing left → `GET /api/orders` |
+| `CreateOrder` | Group | "Order" from class | `Create` → POST | Strip `Create`+`Order` → nothing left → `POST /api/orders` |
+| `UpdateOrder` | Group | "Order" from class | `Update` → PUT | Strip `Update`+`Order` → nothing left → `PUT /api/orders/{orderId}` |
+| `DeleteOrder` | Group | "Order" from class | `Delete` → DELETE | Strip `Delete`+`Order` → nothing left → `DELETE /api/orders/{orderId}` |
+| `CompleteOrder` | Group | "Order" from class | `Complete` → POST | Strip `Order` → "Complete" left → `POST /api/orders/{orderId}/complete` |
+| `ExportOrders` | Group | "Order" from class | `Export` → POST | Strip `Orders` → "Export" left → `POST /api/orders/export` |
+
+And the same entity split across separate single-message handlers:
+
+```csharp
+public class GetOrderHandler { public Result<Order> Handle(GetOrder q) { ... } }
+public class CreateOrderHandler { public Result<Order> Handle(CreateOrder c) { ... } }
+public class CompleteOrderHandler { public Result Handle(CompleteOrder c) { ... } }
+```
+
+| Message | Step 1: Mode | Route |
+| --- | --- | --- |
+| `GetOrder` | Single (class matches) | `GET /api/orders/{orderId}` |
+| `CreateOrder` | Single (class matches) | `POST /api/orders` |
+| `CompleteOrder` | Single (class matches) | `POST /api/orders/{orderId}/complete` |
+
+Both approaches produce identical routes — organize your handlers however you prefer.
+
+### Route Structure
+
+The final route is built by joining up to three levels:
 
 | Level | Source | Default |
-| ----- | ------ | ------- |
+| --- | --- | --- |
 | 1. Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` |
-| 2. Group prefix | `[HandlerEndpointGroup("Products")]` or auto-derived from message name | Entity name (message minus verb prefix), **pluralized** and kebab-cased |
-| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | ID properties as route params, lookup/action suffix |
+| 2. Group prefix | `[HandlerEndpointGroup("Name")]` or auto-derived from handler class | Pluralized entity, kebab-cased |
+| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | Route params + action suffix |
 
-::: tip Routes are pluralized
-The group prefix is automatically pluralized: `TodoHandler` handling `GetTodo` produces `/api/todos`, not `/api/todo`. To see the exact routes generated, call `c.LogEndpoints()` in `MapMediatorEndpoints`.
+```text
+/api/orders/{orderId}/complete
+ ↑      ↑       ↑        ↑
+ │      │       │        └─ Action suffix (from "Complete" in CompleteOrder)
+ │      │       └─ Route parameter (from OrderId property)
+ │      └─ Group prefix (from OrderHandler → "orders")
+ └─ Global prefix (default "api")
+```
+
+::: tip
+Routes are automatically **pluralized**: `TodoHandler` → `/todos`, `CategoryHandler` → `/categories`, `PersonHandler` → `/people`. Irregular nouns are handled automatically.
+
+**Uncountable nouns** are not pluralized: `Health`, `Status`, `Data`, `Auth`, `Config`, `Settings`, `Media`, `Cache`, `Analytics`, etc.
 :::
 
-```text
-/api/products/{productId}
- ↑      ↑           ↑
- │      │           └─ 3. Endpoint route (auto-generated from GetProduct's ProductId property)
- │      └─ 2. Group prefix (from [HandlerEndpointGroup("Products")] or class name "ProductHandler")
- └─ 1. Global prefix (default "api")
-```
+### Entity Name Normalization
 
-### How Prefixes Concatenate
+The generator strips common CQRS qualifiers from message names before deriving routes. This keeps routes clean regardless of your naming style:
 
-When all three levels are **relative** (no leading `/`), they concatenate left to right:
+| Pattern | Example | What's stripped | Route |
+| ------- | ------- | --------------- | ----- |
+| `All` prefix | `GetAllTodos` | `All` | `GET /api/todos` |
+| `ById` suffix | `GetTodoById` | `ById` | `GET /api/todos/{id}` |
+| `Details` / `Detail` | `GetOrderDetails` | `Details` | `GET /api/orders/{id}` |
+| `Summary` | `GetOrderSummary` | `Summary` | `GET /api/orders/{id}` |
+| `Paged` / `Paginated` | `GetProductsPaged` | `Paged` | `GET /api/products` |
+| `List` / `Stream` | `GetTodoList` | `List` | `GET /api/todos` |
+| `With<Feature>` | `GetTodosWithPagination` | `WithPagination` | `GET /api/todos` |
 
-```text
-Global("api")  +  Group("products")  +  Endpoint("{productId}")  →  /api/products/{productId}
-Global("api")  +  Group("v2/items")  +  Endpoint("{itemId}")     →  /api/v2/items/{itemId}
-Global("")     +  Group("products")  +  Endpoint("{productId}")  →  /products/{productId}
-```
+Some patterns produce **route segments** instead of being stripped:
 
-### Absolute Override with Leading `/`
+| Pattern | Example | Route |
+| ------- | ------- | ----- |
+| `Count` suffix | `GetOrderCount` | `GET /api/orders/count` |
+| `By<Property>` | `GetOrderByEmail` | `GET /api/orders/by-email` |
+| `For<Entity>` | `GetOrdersForCustomer` | `GET /api/orders/for-customer/{customerId}` |
+| `From<Entity>` | `GetShipmentsFromWarehouse` | `GET /api/shipments/from-warehouse/{warehouseId}` |
 
-A leading `/` on any prefix makes it **absolute** — it replaces everything above it in the hierarchy:
+::: tip
+`By<Property>`, `For<Entity>`, and `From<Entity>` produce route segments under the entity, keeping all routes grouped. For example, `GetTodoByName(string Name)` generates `GET /api/todos/by-name?name=...` — no conflict with the list route `GET /api/todos`.
+:::
 
-**Group-level override** — a `/` on the group prefix discards the global prefix:
+### Sub-Entity Routes
+
+When a message entity doesn't match the handler's group entity, it appears as a sub-route:
 
 ```csharp
-// Global prefix is "api", but this group bypasses it
+public class TodoHandler
+{
+    public Result<Todo> Handle(GetTodo query) { ... }              // → GET /api/todos/{todoId}
+    public Result<Item[]> Handle(GetTodoItems query) { ... }       // → GET /api/todos/items
+    public Result<User> Handle(GetCurrentUser query) { ... }       // → GET /api/todos/current-user
+}
+```
+
+`TodoItems` starts with the group entity `Todo`, so it's recognized as a sub-entity — only the `Items` part becomes a route segment. `CurrentUser` doesn't match the group entity at all, so it appears as a singular sub-resource.
+
+### Absolute Routes
+
+A leading `/` on any level makes it **absolute** — it discards everything above it:
+
+```csharp
+// Leading / on group prefix → bypasses global "api" prefix
 [HandlerEndpointGroup("Health", RoutePrefix = "/health")]
-public class HealthHandler
-{
-    public Result<Status> Handle(GetHealthCheck query) { ... }
-}
+public class HealthHandler { ... }
 // → GET /health  (not /api/health)
-```
 
-**Endpoint-level override** — a `/` on the endpoint route discards both the global and group prefix:
-
-```csharp
-[HandlerEndpointGroup("Products")]
-public class ProductHandler
-{
-    [HandlerEndpoint(Route = "/status")]
-    public Result<string> Handle(GetStatus query) { ... }
-}
+// Leading / on endpoint route → bypasses both global and group prefix
+[HandlerEndpoint(Route = "/status")]
+public Result<string> Handle(GetStatus query) { ... }
 // → GET /status  (not /api/products/status)
 ```
-
-**Summary:**
 
 | Group `RoutePrefix` | Endpoint `Route` | Result (global = `"api"`) |
 | --- | --- | --- |
@@ -324,84 +469,23 @@ public class ProductHandler
 | `"products"` (relative) | `"/status"` (absolute) | `/status` |
 | `"/v2/products"` (absolute) | `"{productId}"` (relative) | `/v2/products/{productId}` |
 
-### Route Pluralization
-
-Entity names in convention-based routes are **automatically pluralized** to follow REST conventions. The entity name is extracted from the message name by removing the verb prefix (e.g., `GetProduct` → `Product`), then pluralized before being converted to kebab-case.
-
-| Message Name | Entity | Pluralized Route |
-| ------------ | ------ | ---------------- |
-| `GetProduct` | Product | `/products/{productId}` |
-| `GetProducts` | Products | `/products` (already plural) |
-| `CreateTodo` | Todo | `/todos` |
-| `GetCategory` | Category | `/categories/{categoryId}` |
-| `GetPerson` | Person | `/people/{personId}` |
-| `GetHealth` | Health | `/health` (uncountable) |
-
-**Irregular nouns** are handled automatically: `Person` → `People`, `Child` → `Children`, `Index` → `Indices`, `Criterion` → `Criteria`, etc.
-
-**Uncountable nouns** are not pluralized: `Health`, `Status`, `Data`, `Info`, `Auth`, `Config`, `Feedback`, `Metadata`, `Settings`, `Media`, `Cache`, `Analytics`, `Telemetry`, `Search`, `Content`, `Access`.
-
-To override auto-pluralization, use an explicit route:
+::: warning Route Stability
+Convention-based routes may evolve as naming heuristics improve across library versions. If your API routes are part of a **public contract** (consumed by external clients, documented in an OpenAPI spec, or pinned in integration tests), use explicit attributes to guarantee stability:
 
 ```csharp
-[HandlerEndpoint(Route = "/custom-path/{id}")]
-public Result<Item> Handle(GetItem query) { ... }
+[HandlerEndpointGroup(RoutePrefix = "orders")]
+public class OrderHandler
+{
+    [HandlerEndpoint(Route = "{orderId}")]
+    public Result<Order> Handle(GetOrder query) { ... }
+
+    [HandlerEndpoint(Route = "{orderId}/promote")]
+    public Result Handle(PromoteOrder cmd) { ... }
+}
 ```
 
-### Message Naming Conventions
-
-Routes are derived from the **message type name**. The generator strips a verb prefix, normalizes common qualifiers, pluralizes the entity, and converts to kebab-case. Understanding this pipeline helps you write message names that produce clean, consistent routes.
-
-**The golden path** — these naming patterns produce RESTful routes automatically:
-
-```csharp
-public record GetTodo(string Id);      // → GET    /api/todos/{id}
-public record GetTodos();              // → GET    /api/todos
-public record CreateTodo(string Name); // → POST   /api/todos
-public record UpdateTodo(string Id);   // → PUT    /api/todos/{id}
-public record DeleteTodo(string Id);   // → DELETE /api/todos/{id}
-public record CompleteTodo(string Id); // → POST   /api/todos/{id}/complete
-public record ExportTodos();           // → POST   /api/todos/export
-```
-
-**Common qualifiers are normalized automatically.** The generator handles a variety of CQRS naming conventions, extracting the entity name and producing clean routes:
-
-| Pattern | Example | Route |
-| ------- | ------- | ----- |
-| **`All` prefix** | `GetAllTodos` | `GET /api/todos` |
-| **`ById` suffix** | `GetTodoById` | `GET /api/todos/{id}` |
-| **`Details`/`Summary`** | `GetOrderDetails` | `GET /api/orders/{id}` |
-| **`Paged`/`Paginated`** | `GetProductsPaged` | `GET /api/products` |
-| **`With<Feature>`** | `GetTodoItemsWithPagination` | `GET /api/todo-items` |
-| **`By<Property>`** | `GetTodoByName` | `GET /api/todos/by-name` |
-| **`For<Entity>`** | `GetOrdersForCustomer` | `GET /api/orders/for-customer/{customerId}` |
-| **`From<Entity>`** | `GetOrdersFromUser` | `GET /api/orders/from-user/{userId}` |
-| **`Count` suffix** | `GetOrderCount` | `GET /api/orders/count` |
-| **Action verbs** | `ExportOrders` | `POST /api/orders/export` |
-
-**Stripped entirely** (query modifiers, not resource identity): `All`, `ById`, `Details`, `Detail`, `Summary`, `List`, `Paged`, `Paginated`, `With<Feature>`
-
-**Converted to route segments** (distinct sub-resources): `By<Property>`, `For<Entity>`, `From<Entity>`, `Count`
-
-**Action prefixes** (produce POST with action suffix): `Complete`, `Approve`, `Cancel`, `Submit`, `Export`, `Import`, `Download`, `Upload`, and [others](./handler-conventions.md)
-
-::: tip
-`By<Property>`, `For<Entity>`, and `From<Entity>` produce route segments under the entity, keeping all routes grouped. For example, `GetTodoByName(string Name)` generates `GET /api/todos/by-name?name=...` — no conflict with the list route `GET /api/todos`.
+For internal APIs or rapid prototyping, convention-based routes are ideal.
 :::
-
-**What to avoid.** Message names that don't reduce to a common entity will produce separate routes. If you see unexpected routes, check your message names:
-
-```csharp
-// ❌ These produce different route prefixes — probably not what you want
-public record GetTodo(string Id);          // → /api/todos/{id}
-public record GetActiveTodoCount();        // → /api/active-todo-counts  (different prefix!)
-
-// ✅ Better: use consistent entity root, differentiate with parameters
-public record GetTodo(string Id);          // → /api/todos/{id}
-public record GetTodos(bool? Active);      // → /api/todos?active=true
-```
-
-The generator emits diagnostic **FMED016** when handlers in the same class produce routes with different base paths, alerting you to naming inconsistencies. Use `[HandlerEndpointGroup("Todos")]` to force a shared prefix when message names don't naturally align.
 
 ### Route Parameters
 
@@ -420,18 +504,6 @@ For GET/DELETE requests, non-ID properties become query parameters:
 public record SearchProducts(string? Category, int? MinPrice, int? MaxPrice);
 // → GET /api/products?category=...&minPrice=...&maxPrice=...
 ```
-
-### Avoiding Doubled Prefixes
-
-A common mistake is repeating the global prefix inside the group prefix:
-
-```text
-Global("api")  +  Group("api/products")  →  /api/api/products  ⚠️ Wrong!
-```
-
-The group prefix `"api/products"` is relative, so it nests under the global `"api"` — producing a doubled path. Use `"products"` instead, or use an absolute path `"/api/products"` if you want to spell out the full path explicitly.
-
-> The compiler emits warning **FMED015** if it detects a group `RoutePrefix` that duplicates the global prefix.
 
 ## Parameter Binding
 
@@ -466,13 +538,129 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
 
+### Binding Attributes on Message Properties
+
+You can use `[FromHeader]`, `[FromQuery]`, and `[FromRoute]` on message properties to control how individual values are bound in endpoints. This is useful for values like tenant IDs, correlation IDs, or API keys that come from HTTP headers rather than the request body.
+
+**POST with a header-bound property:**
+
+```csharp
+public record CreateOrder(
+    string CustomerId,
+    decimal Amount,
+    [property: FromHeader(Name = "X-Tenant-Id")] string TenantId
+);
+```
+
+The generator extracts the attributed property as a separate endpoint parameter and merges it back into the message:
+
+```csharp
+// Generated:
+MapPost("/orders", ([FromBody] CreateOrder message,
+    [FromHeader(Name = "X-Tenant-Id")] string tenantId,
+    HttpContext httpContext, IMediator mediator, CancellationToken ct) =>
+{
+    var mergedMessage = message with { TenantId = tenantId };
+    // ...
+})
+```
+
+**GET with a header-bound property:**
+
+For GET/DELETE messages with a parameterless constructor, `[AsParameters]` binding handles header attributes natively — no extra work from the generator:
+
+```csharp
+public record SearchProducts
+{
+    public string? Category { get; init; }
+
+    [FromHeader(Name = "X-Tenant-Id")]
+    public string TenantId { get; init; } = "";
+}
+// → MapGet("/", ([AsParameters] SearchProducts message, ...) => ...)
+// ASP.NET binds Category from query string, TenantId from header
+```
+
+::: tip Record syntax
+C# records use positional parameters that default to **constructor** attribute targets. To place an attribute on the generated **property**, use the `property:` target prefix:
+
+```csharp
+public record MyMessage(
+    string Name,
+    [property: FromHeader(Name = "X-Custom")] string CustomValue
+);
+```
+
+:::
+
+::: info Transport-agnostic
+The message is still the contract. When calling via `mediator.InvokeAsync()`, you provide all values directly — the binding attributes are only used by the endpoint generator:
+
+```csharp
+// From an endpoint: TenantId comes from the X-Tenant-Id header automatically
+// From code: you provide it explicitly
+await mediator.InvokeAsync(new CreateOrder("cust-1", 99.99m, "tenant-42"));
+```
+
+:::
+
+### Accessing HTTP Types in Handlers
+
+When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, and `HttpResponse` are automatically available as handler method parameters — no DI registration required:
+
+```csharp
+public class ProductHandler
+{
+    public Result<Product> Handle(
+        GetProduct query,
+        HttpContext httpContext)   // Auto-resolved from the endpoint
+    {
+        var userAgent = httpContext.Request.Headers.UserAgent;
+        // ...
+    }
+
+    public Result Handle(
+        ExportProducts query,
+        HttpResponse response)     // Also works with HttpRequest / HttpResponse directly
+    {
+        response.Headers.Append("X-Export-Id", Guid.NewGuid().ToString());
+        // ...
+    }
+}
+```
+
+The endpoint generator populates a `CallContext` with these values before calling the handler. When the same handler is invoked directly via `mediator.InvokeAsync()` (without an endpoint), these parameters fall back to normal DI resolution.
+
+::: warning Avoid HTTP types in handlers when possible
+Using `HttpContext`, `HttpRequest`, or `HttpResponse` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
+
+```csharp
+// ❌ Coupled to HTTP — hard to test, only works from endpoints
+public Result<Product> Handle(GetProduct query, HttpContext httpContext)
+{
+    var tenant = httpContext.Request.Headers["X-Tenant-Id"].ToString();
+    // ...
+}
+
+// ✅ Transport-agnostic — easy to test, works from anywhere
+public record GetProduct(string Id, string TenantId);
+
+public Result<Product> Handle(GetProduct query)
+{
+    // query.TenantId is populated by middleware or the endpoint binding
+}
+```
+
+Reserve HTTP type parameters for edge cases where you genuinely need low-level HTTP access (e.g., streaming a response body, reading raw headers that can't be modeled as message properties).
+:::
+
 ## Result to HTTP Status Mapping
 
 `Result<T>` and `Result` return values are automatically mapped to HTTP responses:
 
 | ResultStatus | HTTP Status |
 | ------------ | ----------- |
-| `Success` | 200 OK |
+| `Ok` | 200 OK |
 | `Created` | 201 Created |
 | `NoContent` | 204 No Content |
 | `BadRequest` | 400 Bad Request |
@@ -542,8 +730,8 @@ public class AdminHandler
 // Require auth globally
 [assembly: MediatorConfiguration(AuthorizationRequired = true)]
 
-// Opt out specific handlers
-[HandlerAllowAnonymous]
+// Opt out specific handlers — either attribute works
+[HandlerAllowAnonymous]  // or [AllowAnonymous] from Microsoft.AspNetCore.Authorization
 public class PublicHandler
 {
     public Task<Result<Status>> HandleAsync(HealthCheck query) { ... }
@@ -582,7 +770,7 @@ Events are excluded based on naming conventions regardless of interface implemen
 
 ## OpenAPI / XML Documentation
 
-To get endpoint summaries from your handler's XML doc comments, enable documentation generation:
+XML doc `<summary>` comments on handler methods automatically become the OpenAPI summary for the generated endpoint. Enable documentation generation in your project file:
 
 ```xml
 <PropertyGroup>
@@ -591,7 +779,23 @@ To get endpoint summaries from your handler's XML doc comments, enable documenta
 </PropertyGroup>
 ```
 
-XML doc `<summary>` comments on handler methods automatically become the OpenAPI summary for the generated endpoint.
+Then add `<summary>` comments to your handler methods:
+
+```csharp
+public class ProductHandler
+{
+    /// <summary>Create a new product in the catalog</summary>
+    public Task<Result<Product>> HandleAsync(CreateProduct command) { ... }
+
+    /// <summary>Get a product by its unique identifier</summary>
+    public Result<Product> Handle(GetProduct query) { ... }
+
+    /// <summary>List all products with optional filtering</summary>
+    public Result<List<Product>> Handle(GetProducts query) { ... }
+}
+```
+
+The generated endpoints will include these summaries in their OpenAPI metadata — visible in Swagger UI, Scalar, and any other OpenAPI tooling. You can also override the summary per-endpoint using `[HandlerEndpoint(Summary = "...")]`.
 
 ## API Versioning
 

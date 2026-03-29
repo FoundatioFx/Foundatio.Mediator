@@ -8,7 +8,12 @@ public enum ResultStatus
     /// <summary>
     /// The operation completed successfully.
     /// </summary>
-    Success = 0,
+    Ok = 0,
+
+    /// <summary>
+    /// Alias for <see cref="Ok"/>. The operation completed successfully.
+    /// </summary>
+    Success = Ok,
 
     /// <summary>
     /// The operation completed successfully and created a new resource.
@@ -16,52 +21,57 @@ public enum ResultStatus
     Created = 1,
 
     /// <summary>
+    /// The request has been accepted for processing, but processing is deferred (HTTP 202).
+    /// </summary>
+    Accepted = 2,
+
+    /// <summary>
     /// The operation completed successfully with no content to return.
     /// </summary>
-    NoContent = 2,
+    NoContent = 3,
 
     /// <summary>
     /// The request was invalid
     /// </summary>
-    BadRequest = 3,
+    BadRequest = 4,
 
     /// <summary>
     /// An error occurred during the operation.
     /// </summary>
-    Error = 4,
+    Error = 5,
 
     /// <summary>
     /// The request is invalid due to validation errors.
     /// </summary>
-    Invalid = 5,
+    Invalid = 6,
 
     /// <summary>
     /// The requested resource was not found.
     /// </summary>
-    NotFound = 6,
+    NotFound = 7,
 
     /// <summary>
     /// The user is not authenticated.
     /// </summary>
-    Unauthorized = 7,
+    Unauthorized = 8,
 
     /// <summary>
     /// The user is authenticated but does not have permission to perform the operation.
     /// </summary>
-    Forbidden = 8,
+    Forbidden = 9,
 
     /// <summary>
     /// The operation conflicts with the current state of the resource.
     /// </summary>
-    Conflict = 9,
+    Conflict = 10,
 
     /// <summary>
     /// A critical error occurred that prevented the operation from completing.
     /// </summary>
-    CriticalError = 10,
+    CriticalError = 11,
 
     /// <summary>
     /// The service is temporarily unavailable.
     /// </summary>
-    Unavailable = 11
+    Unavailable = 12
 }

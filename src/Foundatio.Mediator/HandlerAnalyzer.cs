@@ -96,6 +96,9 @@ internal static class HandlerAnalyzer
         if (handlerMethods.Count == 0)
             return [];
 
+        // Count only methods that will actually produce endpoints (exclude parameterless and generic methods)
+        int effectiveHandlerMethodCount = handlerMethods.Count(m => !m.IsGenericMethod && m.Parameters.Length > 0);
+
         var handlers = new List<HandlerInfo>();
 
         foreach (var handlerMethod in handlerMethods)
@@ -215,7 +218,7 @@ internal static class HandlerAnalyzer
 
             // Extract XML documentation summary (method first, then class if single handler)
             var xmlDocSummary = ExtractXmlDocSummary(handlerMethod)
-                ?? (handlerMethods.Count == 1 ? ExtractXmlDocSummary(classSymbol) : null);
+                ?? (effectiveHandlerMethodCount == 1 ? ExtractXmlDocSummary(classSymbol) : null);
 
             // Extract authorization metadata from [HandlerAuthorize], [HandlerAllowAnonymous], [AllowAnonymous]
             var authorizationInfo = ExtractAuthorizationInfo(classSymbol, handlerMethod, context.SemanticModel.Compilation);
@@ -228,7 +231,8 @@ internal static class HandlerAnalyzer
                 xmlDocSummary,
                 context.SemanticModel.Compilation,
                 handlerMethod.ReturnType,
-                authorizationInfo);
+                authorizationInfo,
+                effectiveHandlerMethodCount);
 
             // Extract handler-specific middleware references from [UseMiddleware] and custom attributes
             var handlerMiddlewareRefs = ExtractHandlerMiddlewareReferences(
@@ -307,11 +311,10 @@ internal static class HandlerAnalyzer
         if (string.Equals(attributeClass.ContainingAssembly?.Name, compilation.AssemblyName, StringComparison.Ordinal))
             return null;
 
-        var attributeNamespace = attributeClass.ContainingNamespace?.ToDisplayString();
-        if (attributeNamespace != null && attributeNamespace.StartsWith("Foundatio.Mediator", StringComparison.Ordinal))
-        {
+        // Exclude framework attributes defined in the Abstractions assembly —
+        // the generator already processes these internally.
+        if (string.Equals(attributeClass.ContainingAssembly?.Name, "Foundatio.Mediator.Abstractions", StringComparison.Ordinal))
             return null;
-        }
 
         var attributeTypeNameRaw = attributeClass
             .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
@@ -480,7 +483,8 @@ internal static class HandlerAnalyzer
         string? xmlDocSummary,
         Compilation compilation,
         ITypeSymbol returnType,
-        AuthorizationInfo authorizationInfo)
+        AuthorizationInfo authorizationInfo,
+        int handlerMethodCount)
     {
         if (messageType == null)
             return null;
@@ -512,7 +516,7 @@ internal static class HandlerAnalyzer
             return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
         }
 
-        // Extract group info
+        // Extract group info from [HandlerEndpointGroup]
         string? groupName = null;
         string? groupRoutePrefix = null;
         string[]? groupTags = null;
@@ -522,31 +526,9 @@ internal static class HandlerAnalyzer
             // Group name from constructor argument or named property
             if (groupAttr.ConstructorArguments.Length > 0)
                 groupName = groupAttr.ConstructorArguments[0].Value as string;
-
             groupName ??= GetStringProperty(groupAttr, "Name");
-
             groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
             groupTags = GetStringArrayProperty(groupAttr, "Tags");
-            // If no explicit RoutePrefix, use the group name as the prefix (lowercase, no leading / = relative)
-            if (string.IsNullOrEmpty(groupRoutePrefix) && !string.IsNullOrEmpty(groupName))
-            {
-                groupRoutePrefix = groupName!.ToLowerInvariant();
-            }
-        }
-
-        // A leading / on the group RoutePrefix means absolute (bypass global prefix),
-        // matching ASP.NET Core MVC's attribute routing convention.
-        // No leading / means relative (nested under global prefix).
-        bool groupBypassGlobalPrefix = false;
-        if (!string.IsNullOrEmpty(groupRoutePrefix) && groupRoutePrefix!.StartsWith("/", StringComparison.Ordinal))
-        {
-            groupBypassGlobalPrefix = true;
-        }
-        else if (!string.IsNullOrEmpty(groupRoutePrefix))
-        {
-            // Ensure relative prefixes don't start with / in the generated MapGroup call
-            // (they're relative to the parent group)
-            groupRoutePrefix = groupRoutePrefix!.TrimStart('/');
         }
 
         // Extract endpoint info (method takes precedence over class)
@@ -599,6 +581,14 @@ internal static class HandlerAnalyzer
 
         var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod") ??
                              GetIntProperty(classEndpointAttr, "HttpMethod") ?? 0;
+
+        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
+                            GetStringProperty(classEndpointAttr, "Route");
+
+        // Detect action verb early (needed for route param extraction)
+        var actionVerb = GetActionVerb(messageType.Name);
+
+        // Compute HTTP method (needed for AnalyzeMessageParameters before calling shared route logic)
         var httpMethod = httpMethodEnum switch
         {
             1 => "GET",
@@ -609,19 +599,40 @@ internal static class HandlerAnalyzer
             _ => isStreaming ? "GET" : InferHttpMethod(messageType.Name)
         };
 
-        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
-                            GetStringProperty(classEndpointAttr, "Route");
-        var hasExplicitRoute = !string.IsNullOrEmpty(explicitRoute);
+        // Analyze message type for parameters (before route computation, since route params go into the shared input)
+        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
 
-        // A leading / on an explicit route means absolute (bypass all prefixes),
-        // matching ASP.NET Core MVC's attribute routing convention.
-        bool routeBypassPrefixes = false;
-        if (explicitRoute != null && explicitRoute.StartsWith("/", StringComparison.Ordinal))
+        // ── Shared route computation ───────────────────────────────
+        // Uses the same code path as MediatorInfoAnalyzer (FMED017 diagnostic).
+        var routeResult = RouteConventions.ComputeEndpointRouteInfo(new RouteConventions.EndpointRouteInput
         {
-            routeBypassPrefixes = true;
-        }
+            HandlerClassName = classSymbol.Name,
+            MessageTypeName = messageType.Name,
+            HandlerMethodCount = handlerMethodCount,
+            RouteParamNames = routeParams.Select(p => p.Name).ToArray(),
+            GlobalRoutePrefix = "",
+            HasGroupAttribute = groupAttr != null,
+            GroupName = groupName,
+            GroupRoutePrefix = groupRoutePrefix,
+            HttpMethodEnum = httpMethodEnum,
+            ExplicitRoute = explicitRoute,
+            IsStreaming = isStreaming,
+        });
 
-        var route = explicitRoute;
+        // Apply shared results back to local variables used by downstream logic
+        httpMethod = routeResult.HttpMethod;
+        groupName = routeResult.GroupName;
+        groupRoutePrefix = routeResult.GroupRoutePrefix;
+        var groupBypassGlobalPrefix = routeResult.GroupBypassGlobalPrefix;
+        var hasExplicitRoute = routeResult.HasExplicitRoute;
+        var routeBypassPrefixes = routeResult.RouteBypassPrefixes;
+        var route = routeResult.Route;
+
+        // If no explicit group RoutePrefix, apply default kebab-case from groupName for tags
+        if (groupAttr != null && string.IsNullOrEmpty(GetStringProperty(groupAttr, "RoutePrefix")) && !string.IsNullOrEmpty(groupName))
+        {
+            // groupRoutePrefix already set by shared logic
+        }
 
         var name = GetStringProperty(methodEndpointAttr, "Name") ??
                    GetStringProperty(classEndpointAttr, "Name") ??
@@ -666,18 +677,6 @@ internal static class HandlerAnalyzer
 
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
-
-        // Detect action verb for route generation (e.g., CompleteTodo → "complete")
-        var actionVerb = GetActionVerb(messageType.Name);
-
-        // Analyze message type for parameters
-        var (routeParams, queryParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
-
-        // Generate route if not explicitly specified
-        if (string.IsNullOrEmpty(route))
-        {
-            route = GenerateRoute(messageType.Name, groupRoutePrefix, groupName, routeParams, httpMethod, actionVerb);
-        }
 
         // Determine binding strategy
         bool bindFromBody = httpMethod is "POST" or "PUT" or "PATCH";
@@ -740,13 +739,14 @@ internal static class HandlerAnalyzer
             Name = name,
             Summary = summary,
             Description = description,
-            GroupName = groupName ?? tags?.FirstOrDefault(),
+            Group = groupName ?? tags?.FirstOrDefault(),
             GroupTags = new(groupTags ?? []),
             GroupRoutePrefix = groupRoutePrefix,
             GroupBypassGlobalPrefix = groupBypassGlobalPrefix,
             RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
+            BindingParameters = new(bindingParams),
             BindFromBody = bindFromBody,
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
@@ -832,45 +832,17 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Infers the HTTP method from the message type name.
     /// </summary>
-    private static string InferHttpMethod(string messageTypeName)
-    {
-        if (messageTypeName.StartsWith("Get", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Find", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Search", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("List", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Query", StringComparison.OrdinalIgnoreCase))
-            return "GET";
-
-        if (messageTypeName.StartsWith("Create", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Add", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("New", StringComparison.OrdinalIgnoreCase))
-            return "POST";
-
-        if (messageTypeName.StartsWith("Update", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Edit", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Modify", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Change", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Set", StringComparison.OrdinalIgnoreCase))
-            return "PUT";
-
-        if (messageTypeName.StartsWith("Delete", StringComparison.OrdinalIgnoreCase) ||
-            messageTypeName.StartsWith("Remove", StringComparison.OrdinalIgnoreCase))
-            return "DELETE";
-
-        if (messageTypeName.StartsWith("Patch", StringComparison.OrdinalIgnoreCase))
-            return "PATCH";
-
-        return "POST"; // Default
-    }
+    private static string InferHttpMethod(string messageTypeName) => RouteConventions.InferHttpMethod(messageTypeName);
 
     /// <summary>
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
-    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, bool supportsAsParameters, bool hasParameterlessConstructor)
+    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, bool supportsAsParameters, bool hasParameterlessConstructor)
         AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
+        var bindingParams = new List<EndpointParameterInfo>();
 
         // Check if message supports [AsParameters] binding
         // It needs a parameterless constructor or a record with optional parameters
@@ -901,14 +873,27 @@ internal static class HandlerAnalyzer
                              prop.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
             };
 
+            // Check for explicit binding attributes ([FromHeader], [FromQuery], [FromRoute])
+            var bindingAttrSyntax = GetBindingAttributeSyntax(prop);
+            if (bindingAttrSyntax != null)
+            {
+                // [FromRoute] properties must also be added as route parameters so the
+                // route template includes the {placeholder}; other binding attrs go to bindingParams.
+                if (IsFromRouteAttribute(prop))
+                    routeParams.Add(paramInfo with { IsRouteParameter = true, BindingAttributeSyntax = bindingAttrSyntax });
+                else
+                    bindingParams.Add(paramInfo with { BindingAttributeSyntax = bindingAttrSyntax });
+                continue;
+            }
+
             // Determine if this should be a route parameter
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
                                 prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
 
-            // For GET/DELETE/PUT, ID properties become route parameters.
+            // For GET/DELETE/PUT/PATCH, ID properties become route parameters.
             // For action verbs (POST), IDs are also promoted to route params
             // (e.g., CompleteTodo(string TodoId) → POST /todos/{todoId}/complete)
-            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" || isActionVerb))
+            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
             {
                 routeParams.Add(paramInfo with { IsRouteParameter = true });
             }
@@ -919,12 +904,66 @@ internal static class HandlerAnalyzer
             }
         }
 
-        return (routeParams.ToArray(), queryParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+        return (routeParams.ToArray(), queryParams.ToArray(), bindingParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+    }
+
+    /// <summary>
+    /// Checks a property for [FromHeader], [FromQuery], or [FromRoute] attributes
+    /// and returns the full attribute syntax string for emission, or null if none found.
+    /// </summary>
+    private static string? GetBindingAttributeSyntax(IPropertySymbol prop)
+    {
+        foreach (var attr in prop.GetAttributes())
+        {
+            var attrClass = attr.AttributeClass;
+            if (attrClass is null)
+                continue;
+
+            var fullName = attrClass.ToDisplayString();
+            if (fullName is not ("Microsoft.AspNetCore.Mvc.FromHeaderAttribute"
+                              or "Microsoft.AspNetCore.Mvc.FromQueryAttribute"
+                              or "Microsoft.AspNetCore.Mvc.FromRouteAttribute"))
+                continue;
+
+            // Strip "Attribute" suffix for emission: FromHeaderAttribute → FromHeader
+            var attrName = fullName.Substring(0, fullName.Length - "Attribute".Length);
+
+            // Reconstruct attribute arguments
+            var args = new List<string>();
+
+            foreach (var ctorArg in attr.ConstructorArguments)
+            {
+                if (ctorArg.Value is string s)
+                    args.Add($"\"{s}\"");
+                else if (ctorArg.Value is not null)
+                    args.Add(ctorArg.Value.ToString());
+            }
+
+            foreach (var namedArg in attr.NamedArguments)
+            {
+                if (namedArg.Value.Value is string s)
+                    args.Add($"{namedArg.Key} = \"{s}\"");
+                else if (namedArg.Value.Value is not null)
+                    args.Add($"{namedArg.Key} = {namedArg.Value.Value}");
+            }
+
+            return args.Count > 0
+                ? $"[{attrName}({string.Join(", ", args)})]"
+                : $"[{attrName}]";
+        }
+
+        return null;
+    }
+
+    private static bool IsFromRouteAttribute(IPropertySymbol prop)
+    {
+        return prop.GetAttributes().Any(a =>
+            a.AttributeClass?.ToDisplayString() == "Microsoft.AspNetCore.Mvc.FromRouteAttribute");
     }
 
     /// <summary>
     /// Generates a route template from message name and parameters.
-    /// This generates the relative route (what goes after the group prefix).
+    /// Thin wrapper that maps EndpointParameterInfo[] to string[] for the shared RouteConventions.
     /// </summary>
     private static string GenerateRoute(
         string messageTypeName,
@@ -932,212 +971,18 @@ internal static class HandlerAnalyzer
         string? groupName,
         EndpointParameterInfo[] routeParams,
         string httpMethod,
-        string? actionVerb = null)
+        string? actionVerb = null,
+        string? handlerClassName = null)
     {
-        var parts = new List<string>();
-        var (entityName, lookupSuffix) = NormalizeEntityName(RemoveVerbPrefix(messageTypeName));
-
-        // If we have a group with a route prefix, the route is relative to that prefix
-        // Otherwise, we need to include the entity name in the route
-        if (string.IsNullOrEmpty(groupRoutePrefix))
-        {
-            // No group prefix - include pluralized entity name in route
-            var kebabEntity = entityName.SimplePluralize().ToKebabCase();
-            if (!string.IsNullOrEmpty(kebabEntity))
-            {
-                parts.Add(kebabEntity);
-            }
-        }
-
-        // Add lookup suffix for By<Property>, For<Entity>, From<Entity>, Count patterns
-        // e.g., GetTodoByName in "Todos" → /todos/by-name
-        //        GetOrdersForCustomer → /orders/for-customer/{customerId}
-        // Placed before route params so the suffix reads naturally: /for-customer/{id}
-        if (lookupSuffix != null)
-        {
-            parts.Add(lookupSuffix);
-        }
-
-        // Add route parameters
-        foreach (var param in routeParams)
-        {
-            parts.Add($"{{{param.Name}}}");
-        }
-
-        // Add action verb suffix for action-style endpoints
-        // e.g., CompleteTodo in "Todos" → /{todoId}/complete
-        //        CompleteSomething in "Todos" → /{somethingId}/complete-something
-        if (actionVerb != null)
-        {
-            // When entity matches group (or no group), use just the verb: /complete
-            // When entity doesn't match, preserve entity in action segment: /complete-something
-            bool entityMatchesGroup = !string.IsNullOrEmpty(groupName) &&
-                entityName.Length >= 2 &&
-                (groupName!.StartsWith(entityName, StringComparison.OrdinalIgnoreCase) ||
-                 entityName.StartsWith(groupName, StringComparison.OrdinalIgnoreCase));
-
-            if (entityMatchesGroup || string.IsNullOrEmpty(groupRoutePrefix))
-            {
-                parts.Add(actionVerb);
-            }
-            else
-            {
-                // Entity doesn't match group — include it to avoid ambiguity
-                parts.Add(actionVerb + "-" + entityName.SimplePluralize().ToKebabCase());
-            }
-        }
-
-        // Build the route
-        if (parts.Count == 0)
-            return "/";
-
-        return "/" + string.Join("/", parts.Where(p => !string.IsNullOrEmpty(p)));
+        var paramNames = routeParams.Select(p => p.Name).ToArray();
+        return RouteConventions.GenerateRoute(messageTypeName, groupRoutePrefix, groupName, paramNames, httpMethod, actionVerb, handlerClassName);
     }
 
-    /// <summary>
-    /// All verb prefixes used for route and HTTP method inference.
-    /// CRUD verbs map to specific HTTP methods; action verbs default to POST
-    /// and generate an action route suffix (e.g., /complete, /archive).
-    /// </summary>
-    private static readonly string[] CrudPrefixes =
-    [
-        "Get", "Find", "Search", "List", "Query",
-        "Create", "Add", "New",
-        "Update", "Edit", "Modify", "Change", "Set",
-        "Delete", "Remove",
-        "Patch"
-    ];
+    private static string? GetActionVerb(string messageTypeName) => RouteConventions.GetActionVerb(messageTypeName);
 
-    private static readonly string[] ActionPrefixes =
-    [
-        "Complete", "Approve", "Cancel", "Submit", "Process",
-        "Execute", "Activate", "Deactivate", "Archive", "Restore",
-        "Publish", "Unpublish", "Enable", "Disable", "Reset",
-        "Confirm", "Reject", "Assign", "Unassign", "Close", "Reopen",
-        "Export", "Import", "Download", "Upload"
-    ];
+    private static string RemoveVerbPrefix(string name) => RouteConventions.RemoveVerbPrefix(name);
 
-    /// <summary>
-    /// Returns the action verb (kebab-cased) if the message name starts with an action prefix,
-    /// or null for CRUD verbs. Action verbs produce a route suffix (e.g., "complete", "archive")
-    /// and promote ID properties to route parameters even for POST.
-    /// </summary>
-    private static string? GetActionVerb(string messageTypeName)
-    {
-        foreach (var prefix in ActionPrefixes)
-        {
-            if (messageTypeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && messageTypeName.Length > prefix.Length)
-            {
-                return prefix.ToKebabCase();
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Removes common verb prefixes from message type names.
-    /// </summary>
-    private static string RemoveVerbPrefix(string name)
-    {
-        foreach (var prefix in CrudPrefixes)
-        {
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
-            {
-                return name.Substring(prefix.Length);
-            }
-        }
-
-        foreach (var prefix in ActionPrefixes)
-        {
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && name.Length > prefix.Length)
-            {
-                return name.Substring(prefix.Length);
-            }
-        }
-
-        return name;
-    }
-
-    /// <summary>
-    /// Common suffixes stripped from entity names to normalize routes.
-    /// For example, "TodoById" → "Todo", "OrderDetails" → "Order".
-    /// Ordered longest-first so "Details" is checked before "Detail".
-    /// </summary>
-    private static readonly string[] EntitySuffixes =
-    [
-        "Paginated", "Details", "Detail", "Summary", "ById", "Paged", "Stream", "List"
-    ];
-
-    /// <summary>
-    /// Normalizes an entity name by removing common qualifiers that break route grouping.
-    /// Returns the normalized entity name and an optional route suffix for lookup patterns.
-    /// Examples:
-    ///   "AllTodos" → ("Todos", null)
-    ///   "TodoById" → ("Todo", null)                   — ById stripped, Id becomes route param
-    ///   "TodoByName" → ("Todo", "by-name")            — entity extracted, "by-name" becomes route segment
-    ///   "TodoDetails" → ("Todo", null)
-    ///   "TodoItemsWithPagination" → ("TodoItems", null) — With&lt;Feature&gt; stripped
-    ///   "OrderCount" → ("Order", "count")              — count becomes route segment
-    ///   "OrdersForCustomer" → ("Orders", "for-customer") — For&lt;Entity&gt; becomes route segment
-    ///   "OrdersFromUser" → ("Orders", "from-user")     — From&lt;Entity&gt; becomes route segment
-    /// </summary>
-    private static (string entityName, string? routeSuffix) NormalizeEntityName(string entityName)
-    {
-        if (string.IsNullOrEmpty(entityName))
-            return (entityName, null);
-
-        // Strip leading "All" prefix (e.g., AllTodos → Todos)
-        if (entityName.StartsWith("All", StringComparison.Ordinal) && entityName.Length > 3 && char.IsUpper(entityName[3]))
-        {
-            entityName = entityName.Substring(3);
-        }
-
-        // Strip known suffixes (e.g., TodoById → Todo, OrderDetails → Order, ProductsPaged → Products)
-        foreach (var suffix in EntitySuffixes)
-        {
-            if (entityName.EndsWith(suffix, StringComparison.Ordinal) && entityName.Length > suffix.Length)
-            {
-                entityName = entityName.Substring(0, entityName.Length - suffix.Length);
-                return (entityName, null);
-            }
-        }
-
-        // Strip With<Feature> suffix entirely (e.g., TodoItemsWithPagination → TodoItems)
-        // These are query modifiers (pagination, includes, filters) — not part of the resource identity.
-        var withIndex = entityName.IndexOf("With", StringComparison.Ordinal);
-        if (withIndex > 0 && withIndex + 4 < entityName.Length && char.IsUpper(entityName[withIndex + 4]))
-        {
-            entityName = entityName.Substring(0, withIndex);
-            return (entityName, null);
-        }
-
-        // Detect Count suffix (e.g., OrderCount → entity "Order", suffix "count")
-        // This is a well-established REST convention: GET /api/orders/count
-        if (entityName.EndsWith("Count", StringComparison.Ordinal) && entityName.Length > 5)
-        {
-            entityName = entityName.Substring(0, entityName.Length - 5);
-            return (entityName, "count");
-        }
-
-        // Detect For<Entity>/From<Entity>/By<Property> patterns — extract entity + route suffix.
-        // e.g., OrdersForCustomer → ("Orders", "for-customer")
-        //        OrdersFromUser → ("Orders", "from-user")
-        //        TodoByName → ("Todo", "by-name")
-        // "ById" is already handled above via EntitySuffixes.
-        foreach (var keyword in new[] { "For", "From", "By" })
-        {
-            var idx = entityName.IndexOf(keyword, StringComparison.Ordinal);
-            if (idx > 0 && idx + keyword.Length < entityName.Length && char.IsUpper(entityName[idx + keyword.Length]))
-            {
-                var suffix = entityName.Substring(idx);    // e.g., "ForCustomer"
-                entityName = entityName.Substring(0, idx); // e.g., "Orders"
-                return (entityName, suffix.ToKebabCase());  // e.g., "for-customer"
-            }
-        }
-
-        return (entityName, null);
-    }
+    private static (string entityName, string? routeSuffix) NormalizeEntityName(string entityName) => RouteConventions.NormalizeEntityName(entityName);
 
     #region Event Detection
 

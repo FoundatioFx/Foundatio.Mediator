@@ -294,7 +294,12 @@ internal static class FoundatioModuleGenerator
 
     private static string EscapeStringLiteral(string value)
     {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return value
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\r", "\\r")
+            .Replace("\n", "\\n")
+            .Replace("\t", "\\t");
     }
 
     private static string FormatAttributeMetadata(HandlerInfo handler)

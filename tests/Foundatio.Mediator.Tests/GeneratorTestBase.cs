@@ -151,7 +151,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             assemblyName: assemblyName,
             syntaxTrees: [syntaxTree],
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
 
         using var ms = new MemoryStream();
         var emitResult = compilation.Emit(ms);
@@ -222,7 +223,8 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
             assemblyName: assemblyName,
             syntaxTrees: [CSharpSyntaxTree.ParseText(source, parseOptions)],
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                nullableContextOptions: NullableContextOptions.Enable));
     }
 
     public static AnalyzerConfigOptionsProvider CreateOptions(params (string Key, string Value)[] globalOptions)
@@ -300,7 +302,7 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
     /// Asserts the generated source contains an endpoint with the given HTTP method and full route.
     /// Parses the generated log lines which have the format:
     ///   writeLog("  GET  /api/todos/{todoId}  → Handler.Method(Message) (convention)");
-    /// This validates the fully composed path including route prefix and category.
+    /// This validates the fully composed path including route prefix and group.
     /// </summary>
     protected static void AssertEndpoint(string endpointSource, string httpMethod, string fullRoute)
     {
@@ -417,5 +419,23 @@ public abstract class GeneratorTestBase(ITestOutputHelper output) : TestWithLogg
                 return false;
             }
         }
+    }
+
+    /// <summary>
+    /// Runs a DiagnosticAnalyzer against the given source and returns the reported diagnostics.
+    /// </summary>
+    protected async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(
+        string source,
+        DiagnosticAnalyzer analyzer,
+        MetadataReference[]? additionalReferences = null)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview)
+            .WithFeatures([new KeyValuePair<string, string>("InterceptorsNamespaces", "Foundatio.Mediator")]);
+        var compilation = CreateCompilation(source, parseOptions, additionalReferences);
+
+        var compilationWithAnalyzers = compilation.WithAnalyzers(
+            ImmutableArray.Create(analyzer));
+
+        return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
     }
 }

@@ -43,6 +43,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="5.3.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0"
       PrivateAssets="all" />
+    <!-- TestHost for E2E endpoint tests -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
   </ItemGroup>
 
   <ItemGroup>

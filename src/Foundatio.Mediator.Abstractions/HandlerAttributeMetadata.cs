@@ -107,11 +107,11 @@ public sealed class HandlerAttributeMetadata
 
     private Attribute? ResolveAttribute()
     {
-        var attributeType = ResolveType(AttributeTypeName);
+        var attributeType = TypeNameResolver.Resolve(AttributeTypeName);
         if (attributeType == null || !typeof(Attribute).IsAssignableFrom(attributeType))
             return null;
 
-        var handlerType = _registration?.SourceHandlerType ?? ResolveType(SourceHandlerTypeName);
+        var handlerType = _registration?.SourceHandlerType ?? TypeNameResolver.Resolve(SourceHandlerTypeName);
         if (handlerType == null)
             return null;
 
@@ -138,7 +138,7 @@ public sealed class HandlerAttributeMetadata
 
         if (SourceMethodParameterTypeNames.Count > 0)
         {
-            var parameterTypes = SourceMethodParameterTypeNames.Select(ResolveType).ToArray();
+            var parameterTypes = SourceMethodParameterTypeNames.Select(TypeNameResolver.Resolve).ToArray();
             if (parameterTypes.All(t => t != null))
             {
                 return handlerType.GetMethod(
@@ -154,62 +154,5 @@ public sealed class HandlerAttributeMetadata
             .FirstOrDefault(m => string.Equals(m.Name, SourceMethodName, StringComparison.Ordinal));
     }
 
-    private static Type? ResolveType(string? typeName)
-    {
-        if (string.IsNullOrWhiteSpace(typeName))
-            return null;
-
-        var resolvedTypeName = typeName!;
-
-        var type = Type.GetType(resolvedTypeName, throwOnError: false);
-        if (type != null)
-            return type;
-
-        type = TryResolveNestedTypeName(resolvedTypeName);
-        if (type != null)
-            return type;
-
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            type = assembly.GetType(resolvedTypeName, throwOnError: false);
-            if (type != null)
-                return type;
-
-            type = TryResolveNestedTypeName(resolvedTypeName, assembly);
-            if (type != null)
-                return type;
-        }
-
-        return null;
-    }
-
-    private static Type? TryResolveNestedTypeName(string typeName, Assembly? assembly = null)
-    {
-        var dotPositions = new List<int>();
-        for (int i = 0; i < typeName.Length; i++)
-        {
-            if (typeName[i] == '.')
-                dotPositions.Add(i);
-        }
-
-        if (dotPositions.Count == 0)
-            return null;
-
-        for (int start = dotPositions.Count - 1; start >= 0; start--)
-        {
-            var chars = typeName.ToCharArray();
-            for (int i = start; i < dotPositions.Count; i++)
-                chars[dotPositions[i]] = '+';
-
-            var candidate = new string(chars);
-            var resolved = assembly == null
-                ? Type.GetType(candidate, throwOnError: false)
-                : assembly.GetType(candidate, throwOnError: false);
-
-            if (resolved != null)
-                return resolved;
-        }
-
-        return null;
-    }
 }
+

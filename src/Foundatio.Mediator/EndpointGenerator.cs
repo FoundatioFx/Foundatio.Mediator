@@ -275,6 +275,8 @@ internal static class EndpointGenerator
             source.AppendLine("using Microsoft.Extensions.Logging;");
         }
 
+
+
         source.AppendLine();
         source.AppendLine("namespace Foundatio.Mediator;");
 
@@ -1443,6 +1445,7 @@ internal static class EndpointGenerator
     /// Derives a clean project name from the assembly name for use as a suffix
     /// in generated endpoint method names. Takes the last meaningful segment,
     /// strips common suffixes like Api/Web/Module/Service/Server, and sanitizes.
+    /// </summary>
     /// <summary>
     /// Generates the aggregator implementation that discovers and invokes all endpoint modules via reflection.
     /// </summary>
@@ -1517,6 +1520,8 @@ internal static class EndpointGenerator
 
         return source.ToString();
     }
+
+
 
     /// <summary>
     /// Escapes a string for use in C# source code.

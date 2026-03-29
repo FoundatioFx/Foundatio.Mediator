@@ -29,17 +29,15 @@ internal static class FoundatioModuleGenerator
 
         if (hasHandlers || hasMiddlewareToRegister)
         {
-            source.AppendLines("""
-
-                using Microsoft.Extensions.DependencyInjection;
-                using Microsoft.Extensions.DependencyInjection.Extensions;
-                using System;
-                using System.Diagnostics;
-                using System.Diagnostics.CodeAnalysis;
-                using System.Threading;
-                using System.Threading.Tasks;
-                using Foundatio.Mediator.Generated;
-                """);
+            source.AppendLine();
+            source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+            source.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
+            source.AppendLine("using System;");
+            source.AppendLine("using System.Diagnostics;");
+            source.AppendLine("using System.Diagnostics.CodeAnalysis;");
+            source.AppendLine("using System.Threading;");
+            source.AppendLine("using System.Threading.Tasks;");
+            source.AppendLine("using Foundatio.Mediator.Generated;");
         }
 
         source.AppendLine();
@@ -222,12 +220,10 @@ internal static class FoundatioModuleGenerator
             bool anyHandlerRequiresAuth = handlers.Any(h => h.RequiresAuthorization);
             if (configuration.AuthorizationEnabled && compilationInfo.IsAspNetCore && anyHandlerRequiresAuth)
             {
-                source.AppendLines("""
-                    // Ensure IHttpContextAccessor is available for the authorization context provider
-                    services.AddHttpContextAccessor();
-                    // Register HttpContext-based authorization context provider for ASP.NET Core
-                    services.TryAddSingleton<Foundatio.Mediator.IAuthorizationContextProvider, HttpContextAuthorizationContextProvider>();
-                    """);
+                source.AppendLine("// Ensure IHttpContextAccessor is available for the authorization context provider");
+                source.AppendLine("services.AddHttpContextAccessor();");
+                source.AppendLine("// Register HttpContext-based authorization context provider for ASP.NET Core");
+                source.AppendLine("services.TryAddSingleton<Foundatio.Mediator.IAuthorizationContextProvider, HttpContextAuthorizationContextProvider>();");
             }
 
             source.DecrementIndent();

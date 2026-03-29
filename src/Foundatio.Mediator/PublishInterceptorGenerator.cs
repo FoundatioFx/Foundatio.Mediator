@@ -125,205 +125,265 @@ internal static class PublishInterceptorGenerator
 
     private static void GenerateForeachAwaitBody(IndentedStringBuilder source)
     {
-        source.AppendLines("""
-            if (handlers.Length == 0) return default;
-
-            for (int i = 0; i < handlers.Length; i++)
-            {
-                System.Threading.Tasks.ValueTask task;
-                try
-                {
-                    task = handlers[i](mediator, message, cancellationToken);
-                }
-                catch (System.Exception ex)
-                {
-                    return AwaitRemainingAfterSyncThrowForeachAsync(ex, mediator, handlers, message, cancellationToken, i + 1);
-                }
-                if (!task.IsCompletedSuccessfully)
-                {
-                    return AwaitRemainingForeachAsync(task, mediator, handlers, message, cancellationToken, i + 1);
-                }
-            }
-
-            return default;
-            """);
+        source.AppendLine("if (handlers.Length == 0) return default;");
+        source.AppendLine();
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("System.Threading.Tasks.ValueTask task;");
+        source.AppendLine("try");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("task = handlers[i](mediator, message, cancellationToken);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine("catch (System.Exception ex)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitRemainingAfterSyncThrowForeachAsync(ex, mediator, handlers, message, cancellationToken, i + 1);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine("if (!task.IsCompletedSuccessfully)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitRemainingForeachAsync(task, mediator, handlers, message, cancellationToken, i + 1);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return default;");
     }
 
     private static void GenerateTaskWhenAllBody(IndentedStringBuilder source)
     {
-        source.AppendLines("""
-            if (handlers.Length == 0) return default;
-            if (handlers.Length == 1) return handlers[0](mediator, message, cancellationToken);
-
-            // Start all handlers concurrently
-            var tasks = new System.Threading.Tasks.ValueTask[handlers.Length];
-            System.Collections.Generic.List<System.Exception>? syncExceptions = null;
-            for (int i = 0; i < handlers.Length; i++)
-            {
-                try
-                {
-                    tasks[i] = handlers[i](mediator, message, cancellationToken);
-                }
-                catch (System.Exception ex)
-                {
-                    syncExceptions ??= new System.Collections.Generic.List<System.Exception>();
-                    syncExceptions.Add(ex);
-                    tasks[i] = default;
-                }
-            }
-
-            if (syncExceptions != null)
-            {
-                return AwaitAllTasksWithSyncExceptionsAsync(tasks, syncExceptions);
-            }
-
-            // Check if all completed synchronously
-            for (int i = 0; i < tasks.Length; i++)
-            {
-                if (!tasks[i].IsCompletedSuccessfully)
-                {
-                    return AwaitAllTasksAsync(tasks);
-                }
-            }
-
-            return default;
-            """);
+        source.AppendLine("if (handlers.Length == 0) return default;");
+        source.AppendLine("if (handlers.Length == 1) return handlers[0](mediator, message, cancellationToken);");
+        source.AppendLine();
+        source.AppendLine("// Start all handlers concurrently");
+        source.AppendLine("var tasks = new System.Threading.Tasks.ValueTask[handlers.Length];");
+        source.AppendLine("System.Collections.Generic.List<System.Exception>? syncExceptions = null;");
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("try");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("tasks[i] = handlers[i](mediator, message, cancellationToken);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine("catch (System.Exception ex)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("syncExceptions ??= new System.Collections.Generic.List<System.Exception>();");
+        source.AppendLine("syncExceptions.Add(ex);");
+        source.AppendLine("tasks[i] = default;");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("if (syncExceptions != null)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitAllTasksWithSyncExceptionsAsync(tasks, syncExceptions);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("// Check if all completed synchronously");
+        source.AppendLine("for (int i = 0; i < tasks.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("if (!tasks[i].IsCompletedSuccessfully)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("return AwaitAllTasksAsync(tasks);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return default;");
     }
 
     private static void GenerateFireAndForgetBody(IndentedStringBuilder source)
     {
-        source.AppendLines("""
-            for (int i = 0; i < handlers.Length; i++)
-            {
-                var handler = handlers[i];
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    try
-                    {
-                        await handler(mediator, message, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch { /* Fire and forget */ }
-                }, System.Threading.CancellationToken.None);
-            }
-
-            return default;
-            """);
+        source.AppendLine("for (int i = 0; i < handlers.Length; i++)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("var handler = handlers[i];");
+        source.AppendLine("_ = System.Threading.Tasks.Task.Run(async () =>");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("try");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("await handler(mediator, message, cancellationToken).ConfigureAwait(false);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine("catch { /* Fire and forget */ }");
+        source.DecrementIndent();
+        source.AppendLine("}, System.Threading.CancellationToken.None);");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+        source.AppendLine("return default;");
     }
 
     private static void GenerateHelperMethods(IndentedStringBuilder source, GeneratorConfiguration configuration)
     {
         if (configuration.NotificationPublishStrategy == "ForeachAwait" || string.IsNullOrEmpty(configuration.NotificationPublishStrategy))
         {
-            source.AppendLines("""
-                private static async System.Threading.Tasks.ValueTask AwaitRemainingForeachAsync(
-                    System.Threading.Tasks.ValueTask current,
-                    Foundatio.Mediator.IMediator mediator,
-                    global::Foundatio.Mediator.PublishAsyncDelegate[] handlers,
-                    object message,
-                    System.Threading.CancellationToken cancellationToken,
-                    int startIndex)
-                {
-                    System.Collections.Generic.List<System.Exception>? exceptions = null;
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitRemainingForeachAsync(");
+            source.AppendLine("    System.Threading.Tasks.ValueTask current,");
+            source.AppendLine("    Foundatio.Mediator.IMediator mediator,");
+            source.AppendLine("    global::Foundatio.Mediator.PublishAsyncDelegate[] handlers,");
+            source.AppendLine("    object message,");
+            source.AppendLine("    System.Threading.CancellationToken cancellationToken,");
+            source.AppendLine("    int startIndex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("System.Collections.Generic.List<System.Exception>? exceptions = null;");
+            source.AppendLine();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await current.ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("for (int i = startIndex; i < handlers.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("if (exceptions != null)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
 
-                    try
-                    {
-                        await current.ConfigureAwait(false);
-                    }
-                    catch (System.Exception ex)
-                    {
-                        exceptions ??= new System.Collections.Generic.List<System.Exception>();
-                        exceptions.Add(ex);
-                    }
-
-                    for (int i = startIndex; i < handlers.Length; i++)
-                    {
-                        try
-                        {
-                            await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);
-                        }
-                        catch (System.Exception ex)
-                        {
-                            exceptions ??= new System.Collections.Generic.List<System.Exception>();
-                            exceptions.Add(ex);
-                        }
-                    }
-
-                    if (exceptions != null)
-                    {
-                        throw new System.AggregateException(exceptions);
-                    }
-                }
-
-                private static async System.Threading.Tasks.ValueTask AwaitRemainingAfterSyncThrowForeachAsync(
-                    System.Exception syncException,
-                    Foundatio.Mediator.IMediator mediator,
-                    global::Foundatio.Mediator.PublishAsyncDelegate[] handlers,
-                    object message,
-                    System.Threading.CancellationToken cancellationToken,
-                    int startIndex)
-                {
-                    var exceptions = new System.Collections.Generic.List<System.Exception> { syncException };
-
-                    for (int i = startIndex; i < handlers.Length; i++)
-                    {
-                        try
-                        {
-                            await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);
-                        }
-                        catch (System.Exception ex)
-                        {
-                            exceptions.Add(ex);
-                        }
-                    }
-
-                    throw new System.AggregateException(exceptions);
-                }
-                """);
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitRemainingAfterSyncThrowForeachAsync(");
+            source.AppendLine("    System.Exception syncException,");
+            source.AppendLine("    Foundatio.Mediator.IMediator mediator,");
+            source.AppendLine("    global::Foundatio.Mediator.PublishAsyncDelegate[] handlers,");
+            source.AppendLine("    object message,");
+            source.AppendLine("    System.Threading.CancellationToken cancellationToken,");
+            source.AppendLine("    int startIndex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("var exceptions = new System.Collections.Generic.List<System.Exception> { syncException };");
+            source.AppendLine();
+            source.AppendLine("for (int i = startIndex; i < handlers.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await handlers[i](mediator, message, cancellationToken).ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
         }
 
         if (configuration.NotificationPublishStrategy == "TaskWhenAll")
         {
-            source.AppendLines("""
-                private static async System.Threading.Tasks.ValueTask AwaitAllTasksAsync(System.Threading.Tasks.ValueTask[] tasks)
-                {
-                    System.Collections.Generic.List<System.Exception>? exceptions = null;
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitAllTasksAsync(System.Threading.Tasks.ValueTask[] tasks)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("System.Collections.Generic.List<System.Exception>? exceptions = null;");
+            source.AppendLine();
+            source.AppendLine("for (int i = 0; i < tasks.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await tasks[i].ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions ??= new System.Collections.Generic.List<System.Exception>();");
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("if (exceptions != null)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
 
-                    for (int i = 0; i < tasks.Length; i++)
-                    {
-                        try
-                        {
-                            await tasks[i].ConfigureAwait(false);
-                        }
-                        catch (System.Exception ex)
-                        {
-                            exceptions ??= new System.Collections.Generic.List<System.Exception>();
-                            exceptions.Add(ex);
-                        }
-                    }
-
-                    if (exceptions != null)
-                    {
-                        throw new System.AggregateException(exceptions);
-                    }
-                }
-
-                private static async System.Threading.Tasks.ValueTask AwaitAllTasksWithSyncExceptionsAsync(System.Threading.Tasks.ValueTask[] tasks, System.Collections.Generic.List<System.Exception> exceptions)
-                {
-                    for (int i = 0; i < tasks.Length; i++)
-                    {
-                        try
-                        {
-                            await tasks[i].ConfigureAwait(false);
-                        }
-                        catch (System.Exception ex)
-                        {
-                            exceptions.Add(ex);
-                        }
-                    }
-
-                    throw new System.AggregateException(exceptions);
-                }
-                """);
+            source.AppendLine("private static async System.Threading.Tasks.ValueTask AwaitAllTasksWithSyncExceptionsAsync(System.Threading.Tasks.ValueTask[] tasks, System.Collections.Generic.List<System.Exception> exceptions)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("for (int i = 0; i < tasks.Length; i++)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("try");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("await tasks[i].ConfigureAwait(false);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("catch (System.Exception ex)");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            source.AppendLine("exceptions.Add(ex);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
+            source.AppendLine("throw new System.AggregateException(exceptions);");
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine();
         }
     }
 }

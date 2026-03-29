@@ -42,7 +42,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(ProcessOrder)),
                 "ProcessOrderHandler_ProcessOrder_Handler",
-                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
+                (mediator, message, callContext, cancellationToken, responseType) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType)),
                 ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -272,7 +272,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class ProcessOrderHandler_ProcessOrder_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var timingMiddleware = GetOrCreateTimingMiddleware(serviceProvider);
@@ -306,7 +306,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         return result;
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType)
     {
         var typedMessage = (ProcessOrder)message;
         var serviceProvider = (System.IServiceProvider)mediator;

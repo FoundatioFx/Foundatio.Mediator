@@ -39,7 +39,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Echo)),
                 "EchoHandler_Echo_Handler",
-                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(EchoHandler_Echo_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
+                (mediator, message, callContext, cancellationToken, responseType) => new ValueTask<object?>(EchoHandler_Echo_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType)),
                 EchoHandler_Echo_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -269,14 +269,14 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class EchoHandler_Echo_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         return handlerInstance.Handle(message);
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType)
     {
         var typedMessage = (Echo)message;
         var serviceProvider = (System.IServiceProvider)mediator;

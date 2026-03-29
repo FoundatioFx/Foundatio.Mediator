@@ -34,45 +34,6 @@ public sealed class HandlerRegistry : IDisposable
     private readonly ConcurrentDictionary<Type, Type[]> _messageTypeMatchCache = new();
     private readonly object _subscriptionWriteLock = new();
     private volatile bool _disposed;
-    private volatile bool _startupLogged;
-
-    /// <summary>
-    /// Gets or sets whether to log all registered handlers at startup.
-    /// Set during <c>AddMediator</c>; consumed on first <see cref="TryLogStartupInfo"/> call.
-    /// </summary>
-    internal bool LogHandlersAtStartup { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to log the middleware pipeline at startup.
-    /// Set during <c>AddMediator</c>; consumed on first <see cref="TryLogStartupInfo"/> call.
-    /// </summary>
-    internal bool LogMiddlewareAtStartup { get; set; }
-
-    /// <summary>
-    /// Logs startup information (handler/middleware registrations) using the provided logger.
-    /// Called once from the <see cref="Mediator"/> constructor so logging goes through MS logging.
-    /// Short-circuits on a volatile bool read, so subsequent calls are essentially free.
-    /// </summary>
-    internal void TryLogStartupInfo(IServiceProvider serviceProvider)
-    {
-        if (_startupLogged)
-            return;
-        _startupLogged = true;
-
-        var loggerFactory = serviceProvider.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
-        var logger = loggerFactory?.CreateLogger("Foundatio.Mediator");
-        if (logger == null)
-            return;
-
-        if (LogHandlersAtStartup)
-            ShowRegisteredHandlers(logger);
-
-        if (LogMiddlewareAtStartup)
-            ShowRegisteredMiddleware(logger);
-
-        if (!LogHandlersAtStartup && !LogMiddlewareAtStartup)
-            logger.LogInformation("Foundatio.Mediator registered {HandlerCount} handler(s) and {MiddlewareCount} middleware.", _allRegistrations.Count, _allMiddleware.Count);
-    }
 
     /// <summary>
     /// Adds a handler registration to the registry. Must be called before <see cref="Freeze"/>.
@@ -497,9 +458,9 @@ public sealed class HandlerRegistry : IDisposable
             if (asyncMethod == null)
                 return null;
 
-            HandleAsyncDelegate asyncDelegate = (mediator, message, callContext, ct, returnType, skipAuthorization) =>
+            HandleAsyncDelegate asyncDelegate = (mediator, message, callContext, ct, returnType) =>
             {
-                object? taskObj = asyncMethod.Invoke(null, [mediator, message, callContext, ct, returnType, skipAuthorization]);
+                object? taskObj = asyncMethod.Invoke(null, [mediator, message, callContext, ct, returnType]);
                 return taskObj is ValueTask<object?> vt ? vt : (ValueTask<object?>)taskObj!;
             };
 
@@ -509,7 +470,7 @@ public sealed class HandlerRegistry : IDisposable
                 var syncMethod = wrapperClosed.GetMethod("UntypedHandle", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (syncMethod != null)
                 {
-                    syncDelegate = (mediator, message, callContext, ct, returnType, skipAuthorization) => syncMethod.Invoke(null, [mediator, message, callContext, ct, returnType, skipAuthorization]);
+                    syncDelegate = (mediator, message, callContext, ct, returnType) => syncMethod.Invoke(null, [mediator, message, callContext, ct, returnType]);
                 }
             }
 
@@ -543,7 +504,6 @@ public sealed class HandlerRegistry : IDisposable
     /// </summary>
     /// <typeparam name="T">
     /// The notification type to subscribe to. Can be a concrete type, base class, or interface.
-    /// Use <see cref="MessageContext{TMessage}"/> to also receive publisher metadata.
     /// Messages are matched using <see cref="Type.IsAssignableFrom"/>.
     /// </typeparam>
     /// <param name="cancellationToken">Token that ends the subscription when cancelled.</param>
@@ -564,10 +524,11 @@ public sealed class HandlerRegistry : IDisposable
             SingleReader = true
         });
 
-        // Detect if T is MessageContext<TInner> — if so, subscribe to TInner but wrap into the context.
-        var (subscriptionType, entry) = CreateSubscriptionEntry(channel.Writer);
+        var entry = new SubscriptionEntry(
+            msg => channel.Writer.TryWrite((T)msg),
+            () => channel.Writer.TryComplete());
 
-        AddSubscription(subscriptionType, entry);
+        AddSubscription(typeof(T), entry);
         try
         {
             // Use WaitToReadAsync + TryRead instead of ReadAllAsync so we can
@@ -596,54 +557,8 @@ public sealed class HandlerRegistry : IDisposable
         }
         finally
         {
-            RemoveSubscription(subscriptionType, entry);
+            RemoveSubscription(typeof(T), entry);
             channel.Writer.TryComplete();
-        }
-    }
-
-    /// <summary>
-    /// Creates a <see cref="SubscriptionEntry"/> appropriate for the channel type.
-    /// When <typeparamref name="T"/> is <see cref="MessageContext{TMessage}"/>, the entry
-    /// subscribes to the inner message type and wraps writes with context.
-    /// Otherwise, it subscribes to <typeparamref name="T"/> directly and discards context.
-    /// </summary>
-    private static (Type subscriptionType, SubscriptionEntry entry) CreateSubscriptionEntry<T>(ChannelWriter<T> writer)
-    {
-        // Check if T is MessageContext<TInner>
-        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(MessageContext<>))
-        {
-            // Use a generic helper to avoid Activator.CreateInstance on every write
-            var helperType = typeof(MessageContextSubscriptionHelper<>).MakeGenericType(typeof(T).GetGenericArguments()[0]);
-            var helper = (ISubscriptionEntryFactory<T>)Activator.CreateInstance(helperType)!;
-            return helper.Create(writer);
-        }
-        else
-        {
-            var entry = new SubscriptionEntry(
-                (msg, _) => writer.TryWrite((T)msg),
-                () => writer.TryComplete());
-            return (typeof(T), entry);
-        }
-    }
-
-    private interface ISubscriptionEntryFactory<T>
-    {
-        (Type subscriptionType, SubscriptionEntry entry) Create(ChannelWriter<T> writer);
-    }
-
-    /// <summary>
-    /// Generic helper that creates a <see cref="SubscriptionEntry"/> for <see cref="MessageContext{TInner}"/>
-    /// subscriptions. Created once per subscription via reflection; the write delegate itself is a
-    /// direct generic call with no reflection per message.
-    /// </summary>
-    private sealed class MessageContextSubscriptionHelper<TInner> : ISubscriptionEntryFactory<MessageContext<TInner>>
-    {
-        public (Type subscriptionType, SubscriptionEntry entry) Create(ChannelWriter<MessageContext<TInner>> writer)
-        {
-            var entry = new SubscriptionEntry(
-                (msg, ctx) => writer.TryWrite(new MessageContext<TInner>((TInner)msg, ctx)),
-                () => writer.TryComplete());
-            return (typeof(TInner), entry);
         }
     }
 
@@ -660,8 +575,6 @@ public sealed class HandlerRegistry : IDisposable
         if (groups.Count == 0)
             return;
 
-        // Capture the current activity context so it travels with the message through the channel.
-        var context = Activity.Current?.Context ?? default;
         var messageType = message.GetType();
 
         // One-time IsAssignableFrom check per unique message type; cached thereafter.
@@ -682,7 +595,7 @@ public sealed class HandlerRegistry : IDisposable
             if (groups.TryGetValue(matchingTypes[i], out var entries))
             {
                 for (int j = 0; j < entries.Length; j++)
-                    entries[j].Write(message, context);
+                    entries[j].Write(message);
             }
         }
     }
@@ -744,9 +657,9 @@ public sealed class HandlerRegistry : IDisposable
         }
     }
 
-    private sealed class SubscriptionEntry(Action<object, ActivityContext> write, Action complete)
+    private sealed class SubscriptionEntry(Action<object> write, Action complete)
     {
-        public void Write(object message, ActivityContext context) => write(message, context);
+        public void Write(object message) => write(message);
         public void Complete() => complete();
     }
 

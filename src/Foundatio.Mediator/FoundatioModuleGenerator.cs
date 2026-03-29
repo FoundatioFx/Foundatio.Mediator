@@ -163,7 +163,7 @@ internal static class FoundatioModuleGenerator
                         }
                         else
                         {
-                            source.AppendLine($"        (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),");
+                            source.AppendLine($"        (mediator, message, callContext, cancellationToken, responseType) => new ValueTask<object?>({handlerClassName}.UntypedHandle(mediator, message, callContext, cancellationToken, responseType)),");
                             source.AppendLine($"        {handlerClassName}.UntypedHandle,");
                         }
 
@@ -237,10 +237,7 @@ internal static class FoundatioModuleGenerator
 
                         public System.Security.Claims.ClaimsPrincipal? GetCurrentPrincipal()
                         {
-                            // Prefer HttpContext.User for HTTP requests; fall back to Thread.CurrentPrincipal
-                            // for background workers (e.g., queue workers that reconstruct the principal from headers)
-                            return _httpContextAccessor.HttpContext?.User
-                                ?? System.Threading.Thread.CurrentPrincipal as System.Security.Claims.ClaimsPrincipal;
+                            return _httpContextAccessor.HttpContext?.User;
                         }
                     }
                     """);

@@ -14,8 +14,9 @@ namespace Foundatio.Mediator.Queues;
 /// </para>
 /// <para>
 /// On the <b>process path</b> (when <see cref="MediatorConsumer{T}"/> calls back through
-/// the mediator), this middleware passes through to <c>next()</c> so the full pipeline
-/// (logging, validation, auth, etc.) executes before the handler.
+/// the mediator), the presence of a <see cref="QueueContext"/> in <see cref="CallContext.Current"/>
+/// signals that this is a processing invocation. The middleware passes through to <c>next()</c>
+/// so the full pipeline (logging, validation, auth, etc.) executes before the handler.
 /// </para>
 /// <para>
 /// Order is set low so this middleware runs as the outermost ExecuteAsync wrapper,
@@ -25,21 +26,10 @@ namespace Foundatio.Mediator.Queues;
 [Middleware(Order = -100, ExplicitOnly = true)]
 public class QueueMiddleware
 {
-    private static readonly AsyncLocal<bool> s_isProcessing = new();
     private static readonly ConcurrentDictionary<Type, MethodInfo> s_publishMethods = new();
 
     private static readonly MethodInfo s_publishTypedMethod = typeof(QueueMiddleware)
         .GetMethod(nameof(PublishTypedAsync), BindingFlags.NonPublic | BindingFlags.Static)!;
-
-    /// <summary>
-    /// Indicates the current async context is processing a message from the bus.
-    /// Set by <see cref="MediatorConsumer{T}"/> to prevent re-enqueuing.
-    /// </summary>
-    internal static bool IsProcessing
-    {
-        get => s_isProcessing.Value;
-        set => s_isProcessing.Value = value;
-    }
 
     private readonly IMessageBus _bus;
 
@@ -48,10 +38,11 @@ public class QueueMiddleware
     public async ValueTask<object?> ExecuteAsync(
         object message,
         HandlerExecutionDelegate next,
-        HandlerExecutionInfo handlerInfo)
+        HandlerExecutionInfo handlerInfo,
+        CallContext? callContext)
     {
-        // Process path: consumer is calling back through the mediator — run the full pipeline
-        if (IsProcessing)
+        // Process path: QueueContext in CallContext signals we're processing from the bus
+        if (callContext?.TryGet<QueueContext>(out _) == true)
             return await next().ConfigureAwait(false);
 
         // Enqueue path: publish to the bus and return immediately

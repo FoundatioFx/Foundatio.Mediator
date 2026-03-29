@@ -138,7 +138,7 @@ internal static class HandlerGenerator
 
         string asyncModifier = (isAsyncMethod && !canSkipAsyncStateMachine) ? "async " : "";
 
-        source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)")
+        source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)")
               .AppendLine("{");
 
         source.IncrementIndent();
@@ -301,7 +301,7 @@ internal static class HandlerGenerator
             string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, isVoid: false, returnTypeName);
             string asyncModifier = isAsyncMethod ? "async " : "";
 
-            source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)");
+            source.AppendLine($"public static {asyncModifier}{methodReturnType} {methodName}(Foundatio.Mediator.IMediator mediator, {handler.MessageType.FullName} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)");
             source.AppendLine("{");
             source.IncrementIndent();
 
@@ -561,16 +561,9 @@ internal static class HandlerGenerator
         if (!configuration.OpenTelemetryEnabled)
             return;
 
-        // For notification handlers (void return), include the handler class name to
-        // distinguish multiple handlers for the same message type in traces.
-        var activityName = handler.ReturnType.IsVoid
-            ? $"Handle {handler.Identifier}.{handler.MessageType.Identifier}"
-            : $"Handle {handler.MessageType.Identifier}";
-
-        source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{activityName}\");");
+        source.AppendLine($"using var activity = MediatorActivitySource.Instance.StartActivity(\"{handler.MessageType.Identifier}\");");
         source.AppendLine($"activity?.SetTag(\"messaging.system\", \"Foundatio.Mediator\");");
         source.AppendLine($"activity?.SetTag(\"messaging.message.type\", \"{handler.MessageType.FullName}\");");
-        source.AppendLine($"activity?.SetTag(\"messaging.handler\", \"{handler.Identifier}\");");
         variables["System.Diagnostics.Activity"] = "activity";
     }
 
@@ -595,10 +588,7 @@ internal static class HandlerGenerator
             return;
 
         source.AppendLine();
-        source.AppendLine("// Authorization check (skipped for publish/event dispatch)");
-        source.AppendLine("if (!skipAuthorization)");
-        source.AppendLine("{");
-        source.IncrementIndent();
+        source.AppendLine("// Authorization check");
         source.AppendLine("var authContextProvider = serviceProvider.GetRequiredService<Foundatio.Mediator.IAuthorizationContextProvider>();");
         source.AppendLine("var authService = serviceProvider.GetRequiredService<Foundatio.Mediator.IHandlerAuthorizationService>();");
         source.AppendLine("var principal = authContextProvider.GetCurrentPrincipal();");
@@ -621,8 +611,6 @@ internal static class HandlerGenerator
             source.AppendLine("throw new System.UnauthorizedAccessException(authResult.FailureReason ?? \"Authorization failed.\");");
         }
 
-        source.DecrementIndent();
-        source.AppendLine("}");
         source.DecrementIndent();
         source.AppendLine("}");
         source.AppendLine();
@@ -1016,8 +1004,8 @@ internal static class HandlerGenerator
         bool isAsyncMethod = handler.IsAsync || handler.ReturnType.IsTuple;
 
         source.AppendLine(isAsyncMethod
-            ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)"
-            : "public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)");
+            ? "public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType)"
+            : "public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType)");
 
         source.AppendLine("{");
         source.IncrementIndent();

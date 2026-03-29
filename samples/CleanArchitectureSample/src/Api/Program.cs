@@ -1,6 +1,5 @@
 using Common.Module;
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Orders.Module;
 using Products.Module;
 using Reports.Module;
@@ -32,8 +31,6 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.MapDemoAuthEndpoints();
 
 // Map module endpoints - discovers and maps all endpoint modules from referenced assemblies
 app.MapMediatorEndpoints();

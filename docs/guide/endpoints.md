@@ -819,7 +819,6 @@ When `ApiVersions` is not set, no versioning logic is generated — everything w
 Most handlers need zero versioning boilerplate. Handlers without `ApiVersion` serve all versions automatically:
 
 ```csharp
-[HandlerEndpointGroup("Products")]
 public class ProductHandler
 {
     // Available in ALL versions — no annotation needed
@@ -833,7 +832,7 @@ public class ProductHandler
 When a breaking change is needed, create a separate handler class with an explicit `ApiVersion`. It overrides the default handler for that version on the same route:
 
 ```csharp
-[HandlerEndpointGroup("Products", ApiVersion = "2")]
+[HandlerEndpointGroup(ApiVersion = "2")]
 public class ProductV2Handler
 {
     // Overrides GetProduct for version 2 only — returns a different DTO
@@ -857,7 +856,7 @@ Non-overridden endpoints (like `CreateProduct`) are served by the unversioned ha
 Override the group version on individual methods:
 
 ```csharp
-[HandlerEndpointGroup("Widgets", ApiVersion = "1")]
+[HandlerEndpointGroup(ApiVersion = "1")]
 public class WidgetHandler
 {
     // Inherits v1 from the group
@@ -874,7 +873,7 @@ public class WidgetHandler
 Expose a handler in specific versions without creating separate classes:
 
 ```csharp
-[HandlerEndpointGroup("Products", ApiVersions = ["1", "2"])]
+[HandlerEndpointGroup(ApiVersions = ["1", "2"])]
 public class ProductHandler
 {
     public Result<Product> Handle(GetProduct query) { ... }
@@ -886,7 +885,7 @@ public class ProductHandler
 Mark a version as deprecated to signal consumers it will be removed:
 
 ```csharp
-[HandlerEndpointGroup("Products", ApiVersion = "1", Deprecated = true)]
+[HandlerEndpointGroup(ApiVersion = "1", Deprecated = true)]
 public class ProductHandlerV1
 {
     public Result<Product> Handle(GetProduct query) { ... }
@@ -918,11 +917,10 @@ public class HealthHandler
 }
 
 // Serves all versions at /api/products (default)
-[HandlerEndpointGroup("Products")]
 public class ProductHandler { ... }
 
 // Overrides specific routes for version 2 at /api/products
-[HandlerEndpointGroup("Products", ApiVersion = "2")]
+[HandlerEndpointGroup(ApiVersion = "2")]
 public class ProductV2Handler { ... }
 ```
 

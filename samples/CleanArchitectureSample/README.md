@@ -17,7 +17,7 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 | **Authorization** | `[HandlerAuthorize(Roles = ["Admin"])]`, `[HandlerAllowAnonymous]`, global `AuthorizationRequired = true` |
 | **Message validation** | `[Required]`, `[Range]`, `[StringLength]` on message records, enforced by `ValidationMiddleware` |
 | **Endpoint generation** | `MapMediatorEndpoints()` auto-generates minimal API routes from handlers |
-| **Endpoint groups & filters** | `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]` |
+| **Endpoint groups & filters** | `[HandlerEndpointGroup(EndpointFilters = [typeof(SetRequestedByFilter)])]` |
 | **Middleware ordering** | `OrderBefore`/`OrderAfter` declarative dependencies between middleware |
 | **Module-scoped middleware** | `OrdersModuleMiddleware`, `ProductsModuleMiddleware` run only for their module's messages |
 | **Multiple cascading events** | `UpdateProduct` returns `(Result<Product>, ProductUpdated?, ProductStockChanged?)` |

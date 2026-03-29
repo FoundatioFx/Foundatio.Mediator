@@ -14,7 +14,6 @@ namespace Reports.Module.Handlers;
 /// - All data is fetched via published queries through the mediator
 /// - Loose coupling enables independent module evolution
 /// </summary>
-[HandlerEndpointGroup("Reports")]
 public class ReportHandler(IMediator mediator, ILogger<ReportHandler> logger)
 {
     private const int LowStockThreshold = 10;

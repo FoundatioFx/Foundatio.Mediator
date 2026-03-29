@@ -12,7 +12,6 @@ namespace Common.Module.Handlers;
 /// monitors, and readiness probes.
 /// </summary>
 [HandlerAllowAnonymous]
-[HandlerEndpointGroup("Health")]
 public class HealthHandler
 {
     public HealthStatusResponse Handle(GetHealthStatus query) =>

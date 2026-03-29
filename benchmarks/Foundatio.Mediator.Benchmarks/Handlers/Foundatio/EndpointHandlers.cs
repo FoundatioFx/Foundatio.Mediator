@@ -11,7 +11,7 @@ public record GetBenchWidgetV2(string ItemId);
 // ── Unversioned endpoint handler ────────────────────────────────────────
 
 [Handler]
-[HandlerEndpointGroup("BenchItems")]
+[HandlerEndpointGroup]
 public class BenchItemHandler
 {
     [HandlerAllowAnonymous]
@@ -23,7 +23,7 @@ public class BenchItemHandler
 // ── Versioned endpoint handler (v1 — unversioned fallback) ─────────────
 
 [Handler]
-[HandlerEndpointGroup("BenchWidgets")]
+[HandlerEndpointGroup]
 public class BenchWidgetHandler
 {
     [HandlerAllowAnonymous]

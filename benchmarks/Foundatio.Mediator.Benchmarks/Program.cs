@@ -17,12 +17,6 @@ class Program
                 BenchmarkRunner.Run<FoundatioBenchmarks>(SpotlightConfig.Instance, args: args.Length > 1 ? args[1..] : []);
                 break;
 
-            case "endpoints":
-            case "e":
-                Console.WriteLine("Running endpoint benchmarks (manual vs mediator vs versioned)...");
-                BenchmarkRunner.Run<EndpointBenchmarks>(args: args.Length > 1 ? args[1..] : []);
-                break;
-
             case "all":
             case "compare":
             default:

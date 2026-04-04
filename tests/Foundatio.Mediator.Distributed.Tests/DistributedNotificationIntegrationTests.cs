@@ -357,10 +357,10 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
 // ── Test helper: counting bus decorator ──────────────────────────────
 internal sealed class CountingPubSubClient(IPubSubClient inner, Action onPublish) : IPubSubClient
 {
-    public async Task PublishAsync(string topic, ReadOnlyMemory<byte> body, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(string topic, PubSubEntry message, CancellationToken cancellationToken = default)
     {
         onPublish();
-        await inner.PublishAsync(topic, body, headers, cancellationToken);
+        await inner.PublishAsync(topic, message, cancellationToken);
     }
 
     public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken cancellationToken = default)

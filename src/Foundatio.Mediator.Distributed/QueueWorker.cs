@@ -23,14 +23,13 @@ public sealed class QueueWorker : BackgroundService
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<QueueWorker> _logger;
-    private static readonly Random s_jitterRandom = new();
     private static readonly TimeSpan s_defaultStateExpiry = TimeSpan.FromHours(24);
 
     public QueueWorker(
         IQueueClient client,
         IServiceScopeFactory scopeFactory,
         QueueWorkerOptions options,
-        DistributedOptions? distributedOptions,
+        DistributedQueueOptions? distributedOptions,
         ILogger<QueueWorker> logger,
         QueueWorkerInfo? workerInfo = null,
         IQueueJobStateStore? stateStore = null,
@@ -446,11 +445,7 @@ public sealed class QueueWorker : BackgroundService
 
         // Apply proportional jitter (±10% of the computed delay)
         double jitterRange = delayMs * 0.1;
-        double jitter;
-        lock (s_jitterRandom)
-        {
-            jitter = (s_jitterRandom.NextDouble() * 2 - 1) * jitterRange;
-        }
+        double jitter = (Random.Shared.NextDouble() * 2 - 1) * jitterRange;
         delayMs = Math.Max(0, delayMs + jitter);
 
         // Cap at 15 minutes to prevent unreasonably long delays

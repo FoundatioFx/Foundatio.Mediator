@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -24,12 +25,15 @@ public class QueueMiddleware
 {
     private readonly IQueueClient _client;
     private readonly IQueueJobStateStore? _stateStore;
+    private readonly HandlerRegistry _registry;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
+    private readonly ConcurrentDictionary<string, QueueHandlerMetadata> _metadataCache = new(StringComparer.Ordinal);
 
-    public QueueMiddleware(IQueueClient client, DistributedOptions? options = null, IQueueJobStateStore? stateStore = null, TimeProvider? timeProvider = null)
+    public QueueMiddleware(IQueueClient client, HandlerRegistry registry, DistributedQueueOptions? options = null, IQueueJobStateStore? stateStore = null, TimeProvider? timeProvider = null)
     {
         _client = client;
+        _registry = registry;
         _stateStore = stateStore;
         _jsonOptions = options?.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -39,7 +43,8 @@ public class QueueMiddleware
         object message,
         HandlerExecutionDelegate next,
         HandlerExecutionInfo handlerInfo,
-        CallContext? callContext)
+        CallContext? callContext,
+        CancellationToken cancellationToken)
     {
         // Process path: QueueContext in CallContext signals we're processing from the queue
         if (callContext?.TryGet<QueueContext>(out _) == true)
@@ -53,7 +58,7 @@ public class QueueMiddleware
         // Enqueue path: serialize and send to the queue
         var messageType = message.GetType();
         var body = JsonSerializer.SerializeToUtf8Bytes(message, messageType, _jsonOptions);
-        var queueName = GetQueueName(handlerInfo, messageType);
+        var metadata = GetMetadata(handlerInfo.DescriptorId, messageType);
 
         var headers = new Dictionary<string, string>
         {
@@ -72,8 +77,7 @@ public class QueueMiddleware
 
         // Generate job ID and track initial state when progress tracking is enabled
         string? jobId = null;
-        var trackProgress = IsTrackProgressEnabled(handlerInfo);
-        if (trackProgress && _stateStore is not null)
+        if (metadata.TrackProgress && _stateStore is not null)
         {
             jobId = Guid.NewGuid().ToString("N");
             headers[MessageHeaders.JobId] = jobId;
@@ -82,14 +86,14 @@ public class QueueMiddleware
             var jobState = new QueueJobState
             {
                 JobId = jobId,
-                QueueName = queueName,
+                QueueName = metadata.QueueName,
                 MessageType = messageType.FullName ?? messageType.Name,
                 Status = QueueJobStatus.Queued,
                 CreatedUtc = now,
                 LastUpdatedUtc = now
             };
 
-            await _stateStore.SetJobStateAsync(jobState, cancellationToken: default).ConfigureAwait(false);
+            await _stateStore.SetJobStateAsync(jobState, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         var entry = new QueueEntry
@@ -98,7 +102,7 @@ public class QueueMiddleware
             Headers = headers
         };
 
-        await _client.SendAsync(queueName, entry, default).ConfigureAwait(false);
+        await _client.SendAsync(metadata.QueueName, entry, cancellationToken).ConfigureAwait(false);
 
         if (jobId is not null)
             return Result.Accepted(jobId);
@@ -106,25 +110,22 @@ public class QueueMiddleware
         return Result.Accepted("Message queued");
     }
 
-    private static string GetQueueName(HandlerExecutionInfo handlerInfo, Type messageType)
+    private QueueHandlerMetadata GetMetadata(string descriptorId, Type messageType)
     {
-        var queueAttr = handlerInfo.HandlerType
-            .GetCustomAttributes(typeof(QueueAttribute), true)
-            .OfType<QueueAttribute>()
-            .FirstOrDefault();
+        return _metadataCache.GetOrAdd(descriptorId, static (id, state) =>
+        {
+            var (registry, fallbackName) = state;
+            if (registry.TryGetHandlerByDescriptorId(id, out var registration) && registration is not null)
+            {
+                var queueAttr = registration.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute;
+                return new QueueHandlerMetadata(
+                    !string.IsNullOrWhiteSpace(queueAttr?.QueueName) ? queueAttr!.QueueName! : fallbackName,
+                    queueAttr?.TrackProgress ?? false);
+            }
 
-        return !string.IsNullOrWhiteSpace(queueAttr?.QueueName)
-            ? queueAttr!.QueueName!
-            : messageType.Name;
+            return new QueueHandlerMetadata(fallbackName, false);
+        }, (_registry, messageType.Name));
     }
 
-    private static bool IsTrackProgressEnabled(HandlerExecutionInfo handlerInfo)
-    {
-        var queueAttr = handlerInfo.HandlerType
-            .GetCustomAttributes(typeof(QueueAttribute), true)
-            .OfType<QueueAttribute>()
-            .FirstOrDefault();
-
-        return queueAttr?.TrackProgress == true;
-    }
+    private sealed record QueueHandlerMetadata(string QueueName, bool TrackProgress);
 }

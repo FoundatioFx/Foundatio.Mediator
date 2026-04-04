@@ -64,28 +64,24 @@ public interface IQueueJobStateStore
     /// <summary>
     /// Retrieves tracked jobs filtered by one or more statuses, ordered by creation time descending.
     /// </summary>
-    Task<IReadOnlyList<QueueJobState>> GetJobsByStatusAsync(string queueName, QueueJobStatus[] statuses, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
+    async Task<IReadOnlyList<QueueJobState>> GetJobsByStatusAsync(string queueName, QueueJobStatus[] statuses, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
     {
         // Default: fall back to GetJobsByQueueAsync and filter in memory
-        return GetJobsByQueueAsync(queueName, 0, skip + take + 500, cancellationToken)
-            .ContinueWith(t =>
-            {
-                var statusSet = new HashSet<QueueJobStatus>(statuses);
-                IReadOnlyList<QueueJobState> result = t.Result
-                    .Where(j => statusSet.Contains(j.Status))
-                    .Skip(skip)
-                    .Take(take)
-                    .ToList();
-                return result;
-            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        var all = await GetJobsByQueueAsync(queueName, 0, skip + take + 500, cancellationToken).ConfigureAwait(false);
+        var statusSet = new HashSet<QueueJobStatus>(statuses);
+        return all
+            .Where(j => statusSet.Contains(j.Status))
+            .Skip(skip)
+            .Take(take)
+            .ToList();
     }
 
     /// <summary>
     /// Counts jobs in a specific status for a queue.
     /// </summary>
-    Task<long> GetJobCountByStatusAsync(string queueName, QueueJobStatus status, CancellationToken cancellationToken = default)
+    async Task<long> GetJobCountByStatusAsync(string queueName, QueueJobStatus status, CancellationToken cancellationToken = default)
     {
-        return GetJobsByQueueAsync(queueName, 0, int.MaxValue, cancellationToken)
-            .ContinueWith(t => (long)t.Result.Count(j => j.Status == status), TaskContinuationOptions.OnlyOnRanToCompletion);
+        var all = await GetJobsByQueueAsync(queueName, 0, int.MaxValue, cancellationToken).ConfigureAwait(false);
+        return all.Count(j => j.Status == status);
     }
 }

@@ -39,15 +39,15 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async Task PublishAsync(string topic, ReadOnlyMemory<byte> body, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(string topic, PubSubEntry message, CancellationToken cancellationToken = default)
     {
         var topicArn = await GetOrCreateTopicArnAsync(topic, cancellationToken).ConfigureAwait(false);
 
         // Wrap body + headers into a single JSON envelope for SNS
         var envelope = new MessageEnvelope
         {
-            Body = Convert.ToBase64String(body.Span),
-            Headers = headers is not null ? new Dictionary<string, string>(headers) : null
+            Body = Convert.ToBase64String(message.Body.Span),
+            Headers = message.Headers is not null ? new Dictionary<string, string>(message.Headers) : null
         };
 
         var json = JsonSerializer.Serialize(envelope);

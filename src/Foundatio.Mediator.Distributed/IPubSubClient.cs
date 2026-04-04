@@ -4,16 +4,15 @@ namespace Foundatio.Mediator.Distributed;
 /// Transport-agnostic pub/sub abstraction used by the distributed notification system.
 /// Implementations fan messages out to all subscribers (topic-based publish/subscribe).
 /// </summary>
-public interface IPubSubClient
+public interface IPubSubClient : IAsyncDisposable
 {
     /// <summary>
     /// Publishes a message to all subscribers of the specified topic.
     /// </summary>
     /// <param name="topic">The topic to publish to.</param>
-    /// <param name="body">The serialized message body.</param>
-    /// <param name="headers">Optional transport headers.</param>
+    /// <param name="message">The outbound message containing body and optional headers.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    Task PublishAsync(string topic, ReadOnlyMemory<byte> body, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default);
+    Task PublishAsync(string topic, PubSubEntry message, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Subscribes to a topic. The returned <see cref="IAsyncDisposable"/> unsubscribes when disposed.
@@ -30,4 +29,7 @@ public interface IPubSubClient
     /// <see cref="SubscribeAsync"/> can skip to polling without additional API calls.
     /// </summary>
     Task EnsureTopicsAsync(IReadOnlyList<string> topics, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    ValueTask IAsyncDisposable.DisposeAsync() => default;
 }

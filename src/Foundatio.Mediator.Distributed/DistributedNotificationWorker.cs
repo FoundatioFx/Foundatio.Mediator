@@ -31,6 +31,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
     private readonly DistributedNotificationOptions _options;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger<DistributedNotificationWorker> _logger;
+    private readonly MessageTypeResolver? _typeResolver;
 
     /// <summary>
     /// Tracks notification objects that arrived from the bus and are currently being
@@ -46,6 +47,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         IPubSubClient bus,
         DistributedNotificationOptions options,
         ILogger<DistributedNotificationWorker> logger,
+        MessageTypeResolver? typeResolver = null,
         TimeProvider? timeProvider = null)
     {
         _scopeFactory = scopeFactory;
@@ -53,6 +55,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         _options = options;
         _jsonOptions = options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _logger = logger;
+        _typeResolver = typeResolver;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -125,7 +128,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
                             headers[MessageHeaders.TraceState] = traceState;
                     }
 
-                    await _bus.PublishAsync(_options.Topic, body, headers, stoppingToken).ConfigureAwait(false);
+                    await _bus.PublishAsync(_options.Topic, new PubSubEntry { Body = body, Headers = headers }, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -186,10 +189,10 @@ public sealed class DistributedNotificationWorker : BackgroundService
             return;
         }
 
-        var messageType = Type.GetType(typeName);
+        var messageType = _typeResolver?.TryResolve(typeName);
         if (messageType is null)
         {
-            _logger.LogWarning("Cannot resolve type '{TypeName}' from bus message, skipping", typeName);
+            _logger.LogWarning("Cannot resolve type '{TypeName}' from bus message — type not registered in MessageTypeResolver, skipping", typeName);
             return;
         }
 

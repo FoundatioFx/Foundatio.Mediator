@@ -58,11 +58,11 @@ public static class SqsServiceExtensions
     /// <code>
     /// services.AddSingleton&lt;IAmazonSQS&gt;(new AmazonSQSClient(...));
     /// services.AddSingleton&lt;IAmazonSimpleNotificationService&gt;(new AmazonSimpleNotificationServiceClient(...));
-    /// services.AddSnsSqsPubSubClient();
+    /// services.AddMediatorSnsSqsPubSub();
     /// services.AddMediatorDistributedNotifications();
     /// </code>
     /// </example>
-    public static IServiceCollection AddSnsSqsPubSubClient(
+    public static IServiceCollection AddMediatorSnsSqsPubSub(
         this IServiceCollection services,
         Action<SnsSqsPubSubClientOptions>? configure = null)
     {

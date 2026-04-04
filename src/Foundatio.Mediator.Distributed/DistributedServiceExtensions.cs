@@ -8,7 +8,7 @@ namespace Foundatio.Mediator.Distributed;
 /// <summary>
 /// Options for configuring distributed queue support.
 /// </summary>
-public class DistributedOptions
+public class DistributedQueueOptions
 {
     /// <summary>
     /// Custom JSON serializer options for message serialization/deserialization.
@@ -34,7 +34,7 @@ public static class DistributedServiceExtensions
     /// serialized and sent to a queue for asynchronous processing.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="configure">Optional configuration callback for <see cref="DistributedOptions"/>.</param>
+    /// <param name="configure">Optional configuration callback for <see cref="DistributedQueueOptions"/>.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <example>
     /// <code>
@@ -48,7 +48,7 @@ public static class DistributedServiceExtensions
     /// </example>
     public static IServiceCollection AddMediatorDistributed(
         this IServiceCollection services,
-        Action<DistributedOptions>? configure = null)
+        Action<DistributedQueueOptions>? configure = null)
     {
         // Prevent double registration
         if (services.Any(sd => sd.ServiceType == typeof(QueueMiddleware)))
@@ -58,7 +58,7 @@ public static class DistributedServiceExtensions
             ?? throw new InvalidOperationException(
                 "AddMediatorDistributed requires AddMediator to be called first.");
 
-        var options = new DistributedOptions();
+        var options = new DistributedQueueOptions();
         configure?.Invoke(options);
 
         // Register options as singleton for QueueMiddleware and QueueWorker to consume
@@ -75,9 +75,10 @@ public static class DistributedServiceExtensions
         // Register the middleware
         services.AddTransient<QueueMiddleware>();
 
-        // Register the worker registry
+        // Register the worker registry and type resolver
         var workerRegistry = new QueueWorkerRegistry();
         services.AddSingleton<IQueueWorkerRegistry>(workerRegistry);
+        var typeResolver = GetOrAddTypeResolver(services);
 
         // Track whether any handler uses progress tracking
         bool anyTrackProgress = false;
@@ -96,6 +97,9 @@ public static class DistributedServiceExtensions
             var queueName = !string.IsNullOrWhiteSpace(queueAttr?.QueueName)
                 ? queueAttr!.QueueName!
                 : messageType.Name;
+
+            // Register this message type in the type resolver for safe deserialization
+            typeResolver.Register(messageType);
 
             // Apply group filtering
             var group = queueAttr?.Group;
@@ -153,7 +157,7 @@ public static class DistributedServiceExtensions
                 sp.GetRequiredService<IQueueClient>(),
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 workerOptions,
-                sp.GetService<DistributedOptions>(),
+                sp.GetService<DistributedQueueOptions>(),
                 sp.GetRequiredService<ILogger<QueueWorker>>(),
                 workerInfo,
                 sp.GetService<IQueueJobStateStore>(),
@@ -215,7 +219,21 @@ public static class DistributedServiceExtensions
             sp.GetRequiredService<IServiceScopeFactory>(),
             sp.GetRequiredService<IPubSubClient>(),
             sp.GetRequiredService<DistributedNotificationOptions>(),
-            sp.GetRequiredService<ILogger<DistributedNotificationWorker>>()));
+            sp.GetRequiredService<ILogger<DistributedNotificationWorker>>(),
+            sp.GetService<MessageTypeResolver>(),
+            sp.GetService<TimeProvider>()));
+
+        // Register known notification types in the type resolver
+        var registry = services.GetHandlerRegistry();
+        if (registry is not null)
+        {
+            var typeResolver = GetOrAddTypeResolver(services);
+            foreach (var reg in registry.Registrations)
+            {
+                if (reg.MessageType is not null && typeof(IDistributedNotification).IsAssignableFrom(reg.MessageType))
+                    typeResolver.Register(reg.MessageType);
+            }
+        }
 
         return services;
     }
@@ -237,5 +255,16 @@ public static class DistributedServiceExtensions
             sp.GetRequiredService<ILogger<DistributedInfrastructureInitializer>>()));
 
         return infraOptions;
+    }
+
+    private static MessageTypeResolver GetOrAddTypeResolver(IServiceCollection services)
+    {
+        var descriptor = services.FirstOrDefault(sd => sd.ServiceType == typeof(MessageTypeResolver));
+        if (descriptor?.ImplementationInstance is MessageTypeResolver existing)
+            return existing;
+
+        var resolver = new MessageTypeResolver();
+        services.AddSingleton(resolver);
+        return resolver;
     }
 }

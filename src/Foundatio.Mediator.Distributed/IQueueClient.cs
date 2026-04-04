@@ -4,7 +4,7 @@ namespace Foundatio.Mediator.Distributed;
 /// Transport-agnostic contract for sending and receiving queue messages.
 /// Implementations map to specific transports (in-memory, SQS, RabbitMQ, etc.).
 /// </summary>
-public interface IQueueClient
+public interface IQueueClient : IAsyncDisposable
 {
     /// <summary>
     /// Sends a single message to the specified queue.
@@ -49,8 +49,7 @@ public interface IQueueClient
     /// <param name="message">The message to dead-letter.</param>
     /// <param name="reason">A human-readable reason for dead-lettering.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default)
-        => CompleteAsync(message, cancellationToken);
+    Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Ensures the specified queues exist, creating them if necessary.
@@ -64,4 +63,7 @@ public interface IQueueClient
     /// </summary>
     Task<QueueStats> GetQueueStatsAsync(string queueName, CancellationToken cancellationToken = default)
         => Task.FromResult(new QueueStats { QueueName = queueName });
+
+    /// <inheritdoc />
+    ValueTask IAsyncDisposable.DisposeAsync() => default;
 }

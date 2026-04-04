@@ -133,5 +133,5 @@ static void ConfigureAwsDistributed(IServiceCollection services, string serviceU
         _ => new Amazon.SimpleNotificationService.AmazonSimpleNotificationServiceClient(credentials, snsConfig));
 
     services.AddMediatorSqs();
-    services.AddSnsSqsPubSubClient();
+    services.AddMediatorSnsSqsPubSub();
 }

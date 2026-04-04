@@ -452,7 +452,7 @@ builder.Services.AddMediatorSqs();
 builder.Services.AddMediatorDistributed();
 
 // Distributed notification fan-out via SNS+SQS
-builder.Services.AddSnsSqsPubSubClient();
+builder.Services.AddMediatorSnsSqsPubSub();
 builder.Services.AddMediatorDistributedNotifications();
 ```
 

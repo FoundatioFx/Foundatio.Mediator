@@ -53,7 +53,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
     {
         await using var client = CreateClient();
 
-        await client.PublishAsync("no-sub-topic", "hello"u8.ToArray(), cancellationToken: TestCancellationToken);
+        await client.PublishAsync("no-sub-topic", new PubSubEntry { Body = "hello"u8.ToArray() }, TestCancellationToken);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
         }, TestCancellationToken);
 
         var headers = new Dictionary<string, string> { ["key"] = "value" };
-        await client.PublishAsync(topic, "hello"u8.ToArray(), headers, TestCancellationToken);
+        await client.PublishAsync(topic, new PubSubEntry { Body = "hello"u8.ToArray(), Headers = headers }, TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(30)),
             "Timed out waiting for message");
@@ -100,7 +100,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
         }, TestCancellationToken);
 
         for (int i = 0; i < 3; i++)
-            await client.PublishAsync(topic, System.Text.Encoding.UTF8.GetBytes($"msg-{i}"), cancellationToken: TestCancellationToken);
+            await client.PublishAsync(topic, new PubSubEntry { Body = System.Text.Encoding.UTF8.GetBytes($"msg-{i}") }, TestCancellationToken);
 
         for (int i = 0; i < 3; i++)
             Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(30)), $"Timed out waiting for message {i}");
@@ -132,7 +132,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
             ["h2"] = "v2",
             ["h3"] = "v3"
         };
-        await client.PublishAsync(topic, "test"u8.ToArray(), headers, TestCancellationToken);
+        await client.PublishAsync(topic, new PubSubEntry { Body = "test"u8.ToArray(), Headers = headers }, TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(30)));
         Assert.NotNull(received);
@@ -157,14 +157,14 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await client.PublishAsync(topic, "msg1"u8.ToArray(), cancellationToken: TestCancellationToken);
+        await client.PublishAsync(topic, new PubSubEntry { Body = "msg1"u8.ToArray() }, TestCancellationToken);
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(30)));
         Assert.Equal(1, count);
 
         // Dispose subscription
         await sub.DisposeAsync();
 
-        await client.PublishAsync(topic, "msg2"u8.ToArray(), cancellationToken: TestCancellationToken);
+        await client.PublishAsync(topic, new PubSubEntry { Body = "msg2"u8.ToArray() }, TestCancellationToken);
         await Task.Delay(TimeSpan.FromSeconds(3), TestCancellationToken);
 
         Assert.Equal(1, count); // Should not have received msg2
@@ -186,7 +186,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await client.PublishAsync(topic, "no-headers"u8.ToArray(), cancellationToken: TestCancellationToken);
+        await client.PublishAsync(topic, new PubSubEntry { Body = "no-headers"u8.ToArray() }, TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(30)));
         Assert.NotNull(received);

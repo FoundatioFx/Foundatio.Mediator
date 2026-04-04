@@ -13,21 +13,21 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, SubscriptionEntry>> _subscriptions = new();
 
     /// <inheritdoc />
-    public Task PublishAsync(string topic, ReadOnlyMemory<byte> body, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
+    public Task PublishAsync(string topic, PubSubEntry entry, CancellationToken cancellationToken = default)
     {
         if (!_subscriptions.TryGetValue(topic, out var entries))
             return Task.CompletedTask;
 
         var message = new PubSubMessage
         {
-            Body = body,
-            Headers = headers is IReadOnlyDictionary<string, string> ro
-                ? ro
-                : new Dictionary<string, string>(headers ?? new Dictionary<string, string>())
+            Body = entry.Body,
+            Headers = entry.Headers is not null
+                ? new Dictionary<string, string>(entry.Headers)
+                : new Dictionary<string, string>()
         };
 
-        foreach (var entry in entries.Values)
-            entry.Writer.TryWrite(message);
+        foreach (var sub in entries.Values)
+            sub.Writer.TryWrite(message);
 
         return Task.CompletedTask;
     }
@@ -82,6 +82,12 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
             topicEntries.Clear();
         }
         _subscriptions.Clear();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return default;
     }
 
     private sealed class SubscriptionEntry(ChannelWriter<PubSubMessage> writer)

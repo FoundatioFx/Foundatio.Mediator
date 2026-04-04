@@ -233,7 +233,7 @@ internal static class EndpointGenerator
         source.IncrementIndent();
 
         // Generate the MapEndpoints method
-        GenerateMapEndpointsMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory);
+        GenerateMapEndpointsMethod(source, handlers, skippedHandlers, endpointDefaults, configuration, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, assemblySuffix, compilationInfo.HasLoggerFactory, compilationInfo.AssemblyName);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -258,7 +258,8 @@ internal static class EndpointGenerator
         bool hasFromBodyAttribute,
         bool hasWithOpenApi,
         string assemblySuffix,
-        bool hasLoggerFactory)
+        bool hasLoggerFactory,
+        string assemblyName)
     {
         source.AppendLine("/// <summary>");
         source.AppendLine("/// Maps this module's handler endpoints to the application.");
@@ -446,7 +447,7 @@ internal static class EndpointGenerator
         }
 
         // Emit endpoint logging block
-        EmitEndpointLogging(source, endpointLogEntries, skippedLogEntries, hasLoggerFactory);
+        EmitEndpointLogging(source, endpointLogEntries, skippedLogEntries, hasLoggerFactory, assemblyName);
 
         source.DecrementIndent();
         source.AppendLine("}");
@@ -459,7 +460,8 @@ internal static class EndpointGenerator
         IndentedStringBuilder source,
         List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)> entries,
         List<(string HandlerInfo, string Reason)> skippedEntries,
-        bool hasLoggerFactory)
+        bool hasLoggerFactory,
+        string assemblyName)
     {
         if (entries.Count == 0 && skippedEntries.Count == 0)
             return;
@@ -487,7 +489,7 @@ internal static class EndpointGenerator
             source.AppendLine("System.Action<string> writeLog = System.Console.WriteLine;");
         }
 
-        source.AppendLine($"writeLog(\"Foundatio.Mediator mapped {entries.Count} endpoint(s):\");");
+        source.AppendLine($"writeLog(\"Foundatio.Mediator mapped {entries.Count} endpoint(s) for {assemblyName}:\");");
 
         foreach (var (httpMethod, fullRoute, handlerInfo, isExplicitRoute) in entries)
         {
@@ -517,16 +519,16 @@ internal static class EndpointGenerator
             source.AppendLine("var endpointLogger = endpoints.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(\"Foundatio.Mediator.Endpoints\");");
             source.AppendLine("if (endpointLogger != null)");
             source.IncrementIndent();
-            source.AppendLine($"endpointLogger.LogInformation(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+            source.AppendLine($"endpointLogger.LogInformation(\"Foundatio.Mediator mapped {entries.Count} endpoint(s) for {assemblyName}.\");");
             source.DecrementIndent();
             source.AppendLine("else");
             source.IncrementIndent();
-            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s) for {assemblyName}.\");");
             source.DecrementIndent();
         }
         else
         {
-            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s).\");");
+            source.AppendLine($"System.Console.WriteLine(\"Foundatio.Mediator mapped {entries.Count} endpoint(s) for {assemblyName}.\");");
         }
 
         source.DecrementIndent();

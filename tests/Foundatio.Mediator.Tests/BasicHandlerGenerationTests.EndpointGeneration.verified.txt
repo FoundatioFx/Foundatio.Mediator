@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -39,7 +39,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(GetWidget)),
                 "WidgetHandler_GetWidget_Handler",
-                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(WidgetHandler_GetWidget_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(WidgetHandler_GetWidget_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
                 WidgetHandler_GetWidget_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -149,12 +149,12 @@ public static class Tests_MediatorEndpoints
         if (logEndpoints)
         {
             System.Action<string> writeLog = System.Console.WriteLine;
-            writeLog("Foundatio.Mediator mapped 1 endpoint(s):");
+            writeLog("Foundatio.Mediator mapped 1 endpoint(s) for Tests:");
             writeLog("  GET  /api/widgets/{id}  → WidgetHandler.Handle(GetWidget) (convention)");
         }
         else
         {
-            System.Console.WriteLine("Foundatio.Mediator mapped 1 endpoint(s).");
+            System.Console.WriteLine("Foundatio.Mediator mapped 1 endpoint(s) for Tests.");
         }
     }
 }
@@ -380,14 +380,14 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class WidgetHandler_GetWidget_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, GetWidget message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, GetWidget message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         return handlerInstance.Handle(message);
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
     {
         var typedMessage = (GetWidget)message;
         var serviceProvider = (System.IServiceProvider)mediator;

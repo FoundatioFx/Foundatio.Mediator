@@ -13,12 +13,13 @@ public sealed class Mediator : IMediator, IServiceProvider
     private readonly INotificationPublisher _notificationPublisher;
     private readonly IServiceProvider _serviceProvider;
 
-    [DebuggerStepThrough]
     public Mediator(HandlerRegistry registry, INotificationPublisher notificationPublisher, IServiceProvider serviceProvider)
     {
         _registry = registry;
         _notificationPublisher = notificationPublisher;
         _serviceProvider = serviceProvider;
+
+        registry.TryLogStartupInfo(serviceProvider);
     }
 
     /// <summary>

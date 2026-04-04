@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -42,7 +42,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(ProcessOrder)),
                 "ProcessOrderHandler_ProcessOrder_Handler",
-                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
                 ProcessOrderHandler_ProcessOrder_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -272,7 +272,7 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class ProcessOrderHandler_ProcessOrder_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, ProcessOrder message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var timingMiddleware = GetOrCreateTimingMiddleware(serviceProvider);
@@ -306,7 +306,7 @@ public static class ProcessOrderHandler_ProcessOrder_Handler
         return result;
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
     {
         var typedMessage = (ProcessOrder)message;
         var serviceProvider = (System.IServiceProvider)mediator;

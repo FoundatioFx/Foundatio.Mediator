@@ -71,6 +71,10 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public bool IsHandlerExecutionInfo { get; init; }
     /// <summary>
+    /// Indicates if the type is a CallContext, which provides request-scoped parameter injection.
+    /// </summary>
+    public bool IsCallContext { get; init; }
+    /// <summary>
     /// Indicates if the type is a tuple type.
     /// </summary>
     public bool IsTuple { get; init; }
@@ -119,6 +123,7 @@ internal readonly record struct TypeSymbolInfo
             IsHandlerResult = false,
             IsCancellationToken = false,
             IsHandlerExecutionInfo = false,
+            IsCallContext = false,
             IsTuple = false,
             IsTypeParameter = false,
             TupleItems = EquatableArray<TupleItemInfo>.Empty,
@@ -153,6 +158,7 @@ internal readonly record struct TypeSymbolInfo
         bool isHandlerResult = unwrappedNullableType.IsHandlerResult(compilation);
         bool isCancellationToken = unwrappedNullableType.IsCancellationToken(compilation);
         bool isHandlerExecutionInfo = unwrappedNullableType.IsHandlerExecutionInfo(compilation);
+        bool isCallContext = unwrappedNullableType.IsCallContext(compilation);
         bool isTuple = unwrappedNullableType is INamedTypeSymbol { IsTupleType: true };
         var tupleItems = unwrappedNullableType.GetTupleItems(compilation);
         bool isTypeParameter = typeSymbol.TypeKind == TypeKind.TypeParameter;
@@ -205,6 +211,7 @@ internal readonly record struct TypeSymbolInfo
             IsHandlerResult = isHandlerResult,
             IsCancellationToken = isCancellationToken,
             IsHandlerExecutionInfo = isHandlerExecutionInfo,
+            IsCallContext = isCallContext,
             IsTuple = isTuple,
             IsTypeParameter = isTypeParameter,
             TupleItems = tupleItems,

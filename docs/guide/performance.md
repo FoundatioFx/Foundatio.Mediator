@@ -4,7 +4,7 @@ Foundatio.Mediator aims to get as close to direct method call performance as pos
 
 ## Benchmark Results
 
-> 📊 **Last Updated:** 2026-03-29
+> 📊 **Last Updated:** 2026-02-23
 
 ### Commands
 
@@ -15,7 +15,7 @@ Process a message with no return value.
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
 <tbody><tr><td style="width:100%"><code>Direct_Command</code></td><td style="text-align:right;white-space:nowrap">0.0000 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Command</code></td><td style="text-align:right;white-space:nowrap">0.0131 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Command</code></td><td style="text-align:right;white-space:nowrap">0.0584 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_Command</code></td><td style="text-align:right;white-space:nowrap">8.4553 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_Command</code></td><td style="text-align:right;white-space:nowrap">11.0105 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>MediatR_Command</code></td><td style="text-align:right;white-space:nowrap">32.3613 ns</td><td style="text-align:right;white-space:nowrap">128 B</td></tr>
@@ -33,7 +33,7 @@ Request/response dispatch returning an Order object.
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
 <tbody><tr><td style="width:100%"><code>Direct_Query</code></td><td style="text-align:right;white-space:nowrap">21.1054 ns</td><td style="text-align:right;white-space:nowrap">48 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Query</code></td><td style="text-align:right;white-space:nowrap">22.2566 ns</td><td style="text-align:right;white-space:nowrap">48 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Query</code></td><td style="text-align:right;white-space:nowrap">22.7625 ns</td><td style="text-align:right;white-space:nowrap">48 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_Query</code></td><td style="text-align:right;white-space:nowrap">25.0262 ns</td><td style="text-align:right;white-space:nowrap">48 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_Query</code></td><td style="text-align:right;white-space:nowrap">29.5762 ns</td><td style="text-align:right;white-space:nowrap">48 B</td></tr>
 <tr><td style="width:100%"><code>MediatR_Query</code></td><td style="text-align:right;white-space:nowrap">53.4603 ns</td><td style="text-align:right;white-space:nowrap">248 B</td></tr>
@@ -53,7 +53,7 @@ Notification dispatched to 2 handlers.
 </thead>
 <tbody><tr><td style="width:100%"><code>Direct_Publish</code></td><td style="text-align:right;white-space:nowrap">0.0052 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_Publish</code></td><td style="text-align:right;white-space:nowrap">5.6175 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_Publish</code></td><td style="text-align:right;white-space:nowrap">19.1801 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_Publish</code></td><td style="text-align:right;white-space:nowrap">16.2971 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_Publish</code></td><td style="text-align:right;white-space:nowrap">51.8625 ns</td><td style="text-align:right;white-space:nowrap">32 B</td></tr>
 <tr><td style="width:100%"><code>MediatR_Publish</code></td><td style="text-align:right;white-space:nowrap">52.5791 ns</td><td style="text-align:right;white-space:nowrap">440 B</td></tr>
 <tr><td style="width:100%"><code>Wolverine_Publish</code></td><td style="text-align:right;white-space:nowrap">1,755.3777 ns</td><td style="text-align:right;white-space:nowrap">2,840 B</td></tr>
@@ -72,7 +72,7 @@ Query where handler has an injected service (IOrderService) and timing middlewar
 <tbody><tr><td style="width:100%"><code>Direct_FullQuery</code></td><td style="text-align:right;white-space:nowrap">62.9251 ns</td><td style="text-align:right;white-space:nowrap">160 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_FullQuery</code></td><td style="text-align:right;white-space:nowrap">73.6510 ns</td><td style="text-align:right;white-space:nowrap">88 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_FullQuery</code></td><td style="text-align:right;white-space:nowrap">74.1282 ns</td><td style="text-align:right;white-space:nowrap">88 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_FullQuery</code></td><td style="text-align:right;white-space:nowrap">80.3133 ns</td><td style="text-align:right;white-space:nowrap">88 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_FullQuery</code></td><td style="text-align:right;white-space:nowrap">77.3365 ns</td><td style="text-align:right;white-space:nowrap">88 B</td></tr>
 <tr><td style="width:100%"><code>Wolverine_FullQuery</code></td><td style="text-align:right;white-space:nowrap">284.2368 ns</td><td style="text-align:right;white-space:nowrap">944 B</td></tr>
 <tr><td style="width:100%"><code>MassTransit_FullQuery</code></td><td style="text-align:right;white-space:nowrap">5,914.7751 ns</td><td style="text-align:right;white-space:nowrap">13,144 B</td></tr>
 </tbody>
@@ -88,7 +88,7 @@ CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foun
 </thead>
 <tbody><tr><td style="width:100%"><code>Direct_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">26.9792 ns</td><td style="text-align:right;white-space:nowrap">144 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">36.7020 ns</td><td style="text-align:right;white-space:nowrap">72 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">46.1951 ns</td><td style="text-align:right;white-space:nowrap">72 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">53.6296 ns</td><td style="text-align:right;white-space:nowrap">72 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">82.9136 ns</td><td style="text-align:right;white-space:nowrap">104 B</td></tr>
 <tr><td style="width:100%"><code>MediatR_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">113.6711 ns</td><td style="text-align:right;white-space:nowrap">744 B</td></tr>
 <tr><td style="width:100%"><code>Wolverine_CascadingMessages</code></td><td style="text-align:right;white-space:nowrap">2,220.3872 ns</td><td style="text-align:right;white-space:nowrap">4,056 B</td></tr>
@@ -105,7 +105,7 @@ Middleware returns cached result; handler is never invoked. Each library uses it
 <tr><th style="text-align:left">Method</th><th style="text-align:right;white-space:nowrap">Mean</th><th style="text-align:right;white-space:nowrap">Allocated</th></tr>
 </thead>
 <tbody><tr><td style="width:100%"><code>Direct_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">0.2052 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
-<tr><td style="width:100%"><code>Foundatio_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">4.8048 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
+<tr><td style="width:100%"><code>Foundatio_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">5.1399 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>MediatorNet_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">8.2942 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>ImmediateHandlers_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">9.0116 ns</td><td style="text-align:right;white-space:nowrap">0 B</td></tr>
 <tr><td style="width:100%"><code>MediatR_ShortCircuit</code></td><td style="text-align:right;white-space:nowrap">48.3730 ns</td><td style="text-align:right;white-space:nowrap">416 B</td></tr>

@@ -2,6 +2,10 @@
 
 Foundatio.Mediator provides built-in, unified authorization that works for **both** HTTP endpoints and direct `mediator.InvokeAsync()` calls. Authorization requirements are baked into the handler's `HandlerExecutionInfo` at compile time, ensuring zero-reflection enforcement at runtime.
 
+::: tip Events Skip Authorization
+Authorization only runs on the **invoke** path (`InvokeAsync` / `Invoke`). Handlers triggered via `PublishAsync` or [cascading tuple returns](/guide/cascading-messages) always skip auth checks because events represent something that has already happened — blocking an event handler would leave the system in an inconsistent state. If the event handler itself calls `mediator.InvokeAsync(...)` internally, that nested invoke **will** enforce authorization as normal.
+:::
+
 ## Quick Start
 
 Add `[HandlerAuthorize]` to any handler that requires authentication:
@@ -25,7 +29,7 @@ That's it. The source generator emits an authorization check before the handler 
 
 1. **Compile time** — The source generator reads `[HandlerAuthorize]` and `[HandlerAllowAnonymous]` attributes and assembly-level `AuthorizationRequired`/`AuthorizationPolicies`/`AuthorizationRoles` properties, then bakes the requirements into the generated handler wrapper as an `AuthorizationRequirements` instance on `HandlerExecutionInfo`.
 
-2. **Runtime** — Before calling the handler method, the generated code:
+2. **Runtime (invoke path only)** — Before calling the handler method via `InvokeAsync`/`Invoke`, the generated code:
    - Resolves `IAuthorizationContextProvider` to get the current `ClaimsPrincipal`
    - Resolves `IHandlerAuthorizationService` to perform the check
    - Calls `AuthorizeAsync(principal, requirements, cancellationToken)`
@@ -219,6 +223,18 @@ public class CustomAuthService : IHandlerAuthorizationService
 
 services.AddSingleton<IHandlerAuthorizationService, CustomAuthService>();
 ```
+
+## Events and Publish
+
+Authorization is **not enforced** when a handler is triggered through the publish (event) path. This includes:
+
+- Direct calls to `mediator.PublishAsync(message)`
+- Cascading messages from [tuple returns](/guide/cascading-messages) (e.g., `(Result<Order>, OrderCreatedEvent)`)
+- Distributed notifications arriving from other services
+
+Events represent facts — something that has already happened. Blocking an event handler with an authorization failure would leave the system in an inconsistent state (the action succeeded but side effects didn't run). Authorization should be enforced at the point where the action is **requested** (the `InvokeAsync` call), not when downstream handlers react to it.
+
+If an event handler needs to perform a privileged operation internally, it can call `mediator.InvokeAsync(...)` — that nested invoke will enforce authorization normally.
 
 ## Middleware vs Built-in Authorization
 

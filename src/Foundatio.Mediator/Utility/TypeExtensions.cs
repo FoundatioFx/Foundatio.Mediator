@@ -220,6 +220,12 @@ internal static class TypeExtensions
         return SymbolEqualityComparer.Default.Equals(typeSymbol, handlerExecutionInfoSymbol);
     }
 
+    internal static bool IsCallContext(this ITypeSymbol typeSymbol, Compilation compilation)
+    {
+        var callContextSymbol = compilation.GetTypeByMetadataName(WellKnownTypes.CallContext);
+        return SymbolEqualityComparer.Default.Equals(typeSymbol, callContextSymbol);
+    }
+
     /// <summary>
     /// Checks if the type is <c>IAsyncEnumerable&lt;T&gt;</c> and extracts the element type.
     /// Unwraps Task/ValueTask wrappers first.
@@ -275,6 +281,7 @@ internal static class WellKnownTypes
     public const string CancellationToken = "System.Threading.CancellationToken";
     public const string HandlerExecutionInfo = "Foundatio.Mediator.HandlerExecutionInfo";
     public const string HandlerExecutionDelegate = "Foundatio.Mediator.HandlerExecutionDelegate";
+    public const string CallContext = "Foundatio.Mediator.CallContext";
     public const string HandlerEndpointAttribute = "Foundatio.Mediator.HandlerEndpointAttribute";
     public const string HandlerEndpointGroupAttribute = "Foundatio.Mediator.HandlerEndpointGroupAttribute";
     public const string UseMiddlewareAttribute = "Foundatio.Mediator.UseMiddlewareAttribute";

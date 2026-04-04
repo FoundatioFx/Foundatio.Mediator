@@ -1,4 +1,4 @@
-{
+﻿{
   Diagnostics: null,
   GeneratorDiagnostics: null,
   GeneratedTrees: [
@@ -39,7 +39,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Echo)),
                 "EchoHandler_Echo_Handler",
-                (mediator, message, cancellationToken, responseType) => new ValueTask<object?>(EchoHandler_Echo_Handler.UntypedHandle(mediator, message, cancellationToken, responseType)),
+                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(EchoHandler_Echo_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
                 EchoHandler_Echo_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -269,14 +269,14 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class EchoHandler_Echo_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Echo message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
         var handlerInstance = GetOrCreateHandler(serviceProvider);
         return handlerInstance.Handle(message);
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, CancellationToken cancellationToken, Type? responseType)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
     {
         var typedMessage = (Echo)message;
         var serviceProvider = (System.IServiceProvider)mediator;

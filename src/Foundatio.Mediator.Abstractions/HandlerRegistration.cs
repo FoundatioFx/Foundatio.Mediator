@@ -68,7 +68,7 @@ public sealed class HandlerRegistration
     {
         return (mediator, msg, cancellationToken) =>
         {
-            var task = handleAsync(mediator, msg, null, cancellationToken, null);
+            var task = handleAsync(mediator, msg, null, cancellationToken, null, skipAuthorization: true);
             if (task.IsCompletedSuccessfully)
                 return default;
             return AwaitAndDiscard(task);
@@ -289,10 +289,10 @@ public sealed class HandlerRegistration
 /// Delegate type for asynchronous handler dispatch. Used by source-generated handler wrappers.
 /// </summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public delegate ValueTask<object?> HandleAsyncDelegate(IMediator mediator, object message, CallContext? callContext, CancellationToken cancellationToken, Type? returnType);
+public delegate ValueTask<object?> HandleAsyncDelegate(IMediator mediator, object message, CallContext? callContext, CancellationToken cancellationToken, Type? returnType, bool skipAuthorization = false);
 
 /// <summary>
 /// Delegate type for synchronous handler dispatch. Used by source-generated handler wrappers.
 /// </summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public delegate object? HandleDelegate(IMediator mediator, object message, CallContext? callContext, CancellationToken cancellationToken, Type? returnType);
+public delegate object? HandleDelegate(IMediator mediator, object message, CallContext? callContext, CancellationToken cancellationToken, Type? returnType, bool skipAuthorization = false);

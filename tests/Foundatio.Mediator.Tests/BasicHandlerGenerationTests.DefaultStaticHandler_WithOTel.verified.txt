@@ -39,7 +39,7 @@ public static class Tests_MediatorHandlers
         registry.AddHandler(new HandlerRegistration(
                 MessageTypeKey.Get(typeof(Ping)),
                 "PingHandler_Ping_Handler",
-                (mediator, message, callContext, cancellationToken, responseType) => new ValueTask<object?>(PingHandler_Ping_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType)),
+                (mediator, message, callContext, cancellationToken, responseType, skipAuthorization) => new ValueTask<object?>(PingHandler_Ping_Handler.UntypedHandle(mediator, message, callContext, cancellationToken, responseType, skipAuthorization)),
                 PingHandler_Ping_Handler.UntypedHandle,
                 false,
                 2147483647,
@@ -269,12 +269,13 @@ namespace Foundatio.Mediator.Generated;
 [ExcludeFromCodeCoverage]
 public static class PingHandler_Ping_Handler
 {
-    public static string Handle(Foundatio.Mediator.IMediator mediator, Ping message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken)
+    public static string Handle(Foundatio.Mediator.IMediator mediator, Ping message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)
     {
         var serviceProvider = (System.IServiceProvider)mediator;
-        using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
+        using var activity = MediatorActivitySource.Instance.StartActivity("Handle Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
+        activity?.SetTag("messaging.handler", "PingHandler");
         string? result = default!;
         System.Exception? exception = null;
 
@@ -297,13 +298,14 @@ public static class PingHandler_Ping_Handler
         return result;
     }
 
-    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType)
+    public static object? UntypedHandle(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)
     {
         var typedMessage = (Ping)message;
         var serviceProvider = (System.IServiceProvider)mediator;
-        using var activity = MediatorActivitySource.Instance.StartActivity("Ping");
+        using var activity = MediatorActivitySource.Instance.StartActivity("Handle Ping");
         activity?.SetTag("messaging.system", "Foundatio.Mediator");
         activity?.SetTag("messaging.message.type", "Ping");
+        activity?.SetTag("messaging.handler", "PingHandler");
         string? result = default!;
         System.Exception? exception = null;
 

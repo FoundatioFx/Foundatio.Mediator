@@ -1,5 +1,6 @@
 using Common.Module.Events;
 using Common.Module.Services;
+using Foundatio.Mediator.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Handlers;
@@ -10,7 +11,11 @@ namespace Common.Module.Handlers;
 /// - Orders.Module and Products.Module don't know this handler exists
 /// - They just publish events; subscribers react independently
 /// - Adding new audit capabilities requires no changes to source modules
+///
+/// Decorated with [Queue] so audit logging is processed asynchronously via SQS,
+/// keeping the request path fast.
 /// </summary>
+[Queue]
 public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHandler> logger)
 {
     // Order events

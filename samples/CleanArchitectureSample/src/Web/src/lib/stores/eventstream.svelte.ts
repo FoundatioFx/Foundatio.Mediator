@@ -68,7 +68,7 @@ class EventStreamService {
   }
 
   private connect() {
-    this.eventSource = new EventSource('/events/stream');
+    this.eventSource = new EventSource('/api/events');
 
     this.eventSource.addEventListener('message', (e: MessageEvent) => {
       try {

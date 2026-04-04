@@ -132,17 +132,17 @@ public class SampleRunner
 
     private async Task RunQueueExample()
     {
-        Console.WriteLine("5️⃣ Queue Processing (via SlimMessageBus)");
+        Console.WriteLine("5️⃣ Queue Processing (Distributed)");
         Console.WriteLine("==========================================\n");
 
 
         Console.WriteLine("📨 Enqueuing report generation (will be processed asynchronously)...\n");
 
-        // This returns immediately — the message is published to the bus
+        // This returns immediately — the message is serialized and sent to the queue
         await _mediator.InvokeAsync(new GenerateReport("Monthly Sales Report", 5));
 
-        // Wait for the bus consumer to process the message
-        Console.WriteLine("⏳ Waiting for consumer to process...\n");
+        // Wait for the queue worker to process the message
+        Console.WriteLine("⏳ Waiting for worker to process...\n");
         await Task.Delay(2000);
 
         Console.WriteLine("✅ Queue processing completed");

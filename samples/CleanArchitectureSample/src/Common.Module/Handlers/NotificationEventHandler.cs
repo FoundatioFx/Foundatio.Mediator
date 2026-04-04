@@ -1,5 +1,6 @@
 using Common.Module.Events;
 using Common.Module.Services;
+using Foundatio.Mediator.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Handlers;
@@ -11,7 +12,11 @@ namespace Common.Module.Handlers;
 /// - Low stock alerts when inventory changes
 /// - Order confirmations when orders are created
 /// - Status updates when orders change
+///
+/// Decorated with [Queue] so notification delivery is processed asynchronously
+/// via SQS, keeping the request path fast.
 /// </summary>
+[Queue]
 public class NotificationEventHandler(INotificationService notificationService, ILogger<NotificationEventHandler> logger)
 {
     private const int LowStockThreshold = 10;

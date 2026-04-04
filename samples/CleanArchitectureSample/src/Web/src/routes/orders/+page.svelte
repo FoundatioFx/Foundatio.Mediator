@@ -72,16 +72,12 @@
     }
   }
 
-  // Reload orders whenever the user navigates to this page (including back from edit/create)
-  // Reload on SPA navigations back to this page
-  afterNavigate((nav) => {
-    if (nav.from) loadOrders();
+  // Reload orders on every navigation to this page (initial load + SPA navigations back)
+  afterNavigate(() => {
+    loadOrders();
   });
 
   onMount(() => {
-    // Initial data load — afterNavigate may miss the first render when
-    // the layout delays mounting children (e.g. auth check)
-    loadOrders();
 
     const unsubCreated = eventStream.onOrderCreated((event) => {
       toast.success('New order created');

@@ -24,6 +24,9 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 | **Result pattern** | `Result.NotFound()`, `Result.Invalid()`, `Result.Error()` — no exceptions for business logic |
 | **Streaming SSE endpoint** | `ClientEventStreamHandler` turns `IDispatchToClient` events into a real-time SSE stream |
 | **Assembly configuration** | `[assembly: MediatorConfiguration(AuthorizationRequired = true, ...)]` per module |
+| **Distributed notifications** | Domain events implement `IDistributedNotification` — fan out across all replicas via SNS+SQS |
+| **Async queue handlers** | `[Queue]` on `AuditEventHandler` / `NotificationEventHandler` — processed via SQS |
+| **Aspire orchestration** | `AppHost` runs 3 API replicas + LocalStack (SQS/SNS) for local development |
 
 ## Project Structure
 
@@ -31,10 +34,10 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 src/
 ├── Common.Module/               # Cross-cutting middleware, events, shared services
 │   ├── Events/
-│   │   └── DomainEvents.cs      # OrderCreated, ProductUpdated, etc.
+│   │   └── DomainEvents.cs      # OrderCreated, ProductUpdated, etc. (IDistributedNotification)
 │   ├── Handlers/
-│   │   ├── AuditEventHandler.cs        # Reacts to all domain events
-│   │   ├── NotificationEventHandler.cs # Sends notifications on events
+│   │   ├── AuditEventHandler.cs        # [Queue] — async audit logging via SQS
+│   │   ├── NotificationEventHandler.cs # [Queue] — async notification delivery via SQS
 │   │   └── HealthHandler.cs            # [HandlerAllowAnonymous] health check
 │   ├── Middleware/
 │   │   ├── ObservabilityMiddleware.cs  # Before/After/Finally with Stopwatch state
@@ -70,9 +73,15 @@ src/
 │   └── ServiceConfiguration.cs
 │
 ├── Api/                         # ASP.NET Core composition root
-│   ├── Program.cs               # AddMediator(), MapMediatorEndpoints()
+│   ├── Program.cs               # AddMediator(), SQS/SNS, Aspire, MapMediatorEndpoints()
 │   └── Handlers/
 │       └── ClientEventStreamHandler.cs  # Streaming SSE endpoint for real-time events
+│
+├── AppHost/                     # Aspire orchestrator (3 API replicas + LocalStack)
+│   └── Program.cs
+│
+├── ServiceDefaults/             # Aspire service defaults (OpenTelemetry, health checks)
+│   └── Extensions.cs
 │
 └── Web/                         # SvelteKit SPA frontend
 ```
@@ -401,7 +410,53 @@ source.onmessage = (e) => {
 };
 ```
 
-### 10. Result Pattern
+### 10. Distributed Notifications (SNS+SQS Fan-Out)
+
+Domain events implement `IDistributedNotification` so they automatically fan out to all replicas in a scale-out cluster. When one replica handles a request and publishes `OrderCreated`, every other replica also receives it — enabling SSE streams, cache invalidation, and other real-time features to work across all instances:
+
+```csharp
+// DomainEvents.cs — IDistributedNotification extends INotification
+public record OrderCreated(string OrderId, string CustomerId, decimal Amount, DateTime CreatedAt)
+    : IDistributedNotification, IDispatchToClient;
+```
+
+The `DistributedNotificationWorker` background service bridges local mediator pub/sub with the remote SNS+SQS bus:
+
+- **Outbound**: subscribes to local `IDistributedNotification` events → serializes → publishes to SNS topic
+- **Inbound**: subscribes to per-node SQS queue (fed by SNS) → deserializes → publishes locally via `mediator.PublishAsync()`
+- **Loop prevention**: two layers prevent infinite re-broadcast — HostId header (skip self-delivery) + reference identity set (skip re-broadcast of bus-received messages)
+
+### 11. Async Queue Handlers (SQS)
+
+Event handlers decorated with `[Queue]` offload processing to an SQS queue, keeping the request path fast. The audit and notification handlers both use this pattern:
+
+```csharp
+[Queue]
+public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHandler> logger)
+{
+    // This runs asynchronously via SQS — the handler that published OrderCreated
+    // returns immediately without waiting for audit logging to complete
+    public async Task HandleAsync(OrderCreated evt, CancellationToken cancellationToken) { ... }
+}
+```
+
+The distributed infrastructure is wired up in `Program.cs`:
+
+```csharp
+// AWS clients (LocalStack via Aspire or real AWS)
+builder.Services.AddSingleton<IAmazonSQS>(_ => new AmazonSQSClient(...));
+builder.Services.AddSingleton<IAmazonSimpleNotificationService>(_ => new AmazonSimpleNotificationServiceClient(...));
+
+// Async queue processing via SQS
+builder.Services.AddMediatorSqs();
+builder.Services.AddMediatorDistributed();
+
+// Distributed notification fan-out via SNS+SQS
+builder.Services.AddSnsSqsPubSubClient();
+builder.Services.AddMediatorDistributedNotifications();
+```
+
+### 12. Result Pattern
 
 All handlers return `Result<T>` for business logic outcomes instead of throwing exceptions:
 
@@ -445,8 +500,26 @@ Common.Module (no module dependencies)
 
 - .NET 10 SDK
 - Node.js 20+ (for the frontend)
+- Docker (for Aspire + LocalStack)
 
-### Quick Start
+### Quick Start (with Aspire)
+
+The recommended way to run uses Aspire to orchestrate 3 API replicas with a LocalStack container providing SQS and SNS:
+
+```bash
+cd samples/CleanArchitectureSample/src/AppHost
+dotnet run
+```
+
+This starts:
+
+- **3 API replicas** — demonstrating distributed notification fan-out
+- **LocalStack** — provides SQS (async queue processing) and SNS (pub/sub notifications)
+- **Aspire Dashboard** — view traces, logs, and metrics at the URL shown in terminal output
+
+### Quick Start (standalone)
+
+To run a single instance without Aspire/Docker:
 
 1. **Install frontend dependencies** (first time only):
 
@@ -459,6 +532,8 @@ Common.Module (no module dependencies)
    - **VS Code**: Run the "Clean Architecture Sample" launch configuration
    - **Visual Studio**: Set `Api` as startup project and press F5
    - **CLI**: `dotnet run --project samples/CleanArchitectureSample/src/Api`
+
+Without the `AWS:ServiceURL` environment variable, the app falls back to in-memory queue and pub/sub client implementations.
 
 The SPA Proxy starts the Vite dev server automatically.
 

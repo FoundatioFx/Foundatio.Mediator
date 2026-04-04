@@ -72,16 +72,12 @@
     }
   }
 
-  // Reload products whenever the user navigates to this page (including back from edit/create)
-  // Reload on SPA navigations back to this page
-  afterNavigate((nav) => {
-    if (nav.from) loadProducts();
+  // Reload products on every navigation to this page (initial load + SPA navigations back)
+  afterNavigate(() => {
+    loadProducts();
   });
 
   onMount(() => {
-    // Initial data load — afterNavigate may miss the first render when
-    // the layout delays mounting children (e.g. auth check)
-    loadProducts();
 
     const unsubCreated = eventStream.onProductCreated((event) => {
       toast.success('New product created');

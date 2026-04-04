@@ -6,8 +6,11 @@ using Microsoft.Extensions.Hosting;
 // Create application host
 var builder = Host.CreateApplicationBuilder(args);
 
+// Check if --sqs flag is passed
+var useSqs = args.Contains("--sqs", StringComparer.OrdinalIgnoreCase);
+
 // Configure all services
-builder.Services.ConfigureServices();
+builder.Services.ConfigureServices(useSqs);
 
 var host = builder.Build();
 

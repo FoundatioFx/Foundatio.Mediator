@@ -1,5 +1,5 @@
 using ConsoleSample.Messages;
-using Foundatio.Mediator.Queues;
+using Foundatio.Mediator.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace ConsoleSample.Handlers;

@@ -1,0 +1,88 @@
+using Foundatio.Mediator;
+
+namespace Foundatio.Mediator.Distributed;
+
+/// <summary>
+/// Marks a handler class or method for queue-based processing.
+/// When applied, invocations via <c>mediator.InvokeAsync()</c> will serialize the message
+/// and send it to a queue for asynchronous processing instead of executing the handler inline.
+/// </summary>
+/// <example>
+/// <code>
+/// [Queue(Concurrency = 3)]
+/// public class OrderProcessingHandler
+/// {
+///     public async Task&lt;Result&gt; HandleAsync(
+///         ProcessOrder message,
+///         CancellationToken ct)
+///     {
+///         // ... do work ...
+///         return Result.Success();
+///     }
+/// }
+/// </code>
+/// </example>
+[UseMiddleware(typeof(QueueMiddleware))]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+public sealed class QueueAttribute : Attribute
+{
+    /// <summary>
+    /// Override the queue name. Defaults to the message type name.
+    /// </summary>
+    public string? QueueName { get; set; }
+
+    /// <summary>
+    /// Maximum number of retry attempts before dead-lettering. Default is 2.
+    /// Total attempts = MaxRetries + 1 (initial attempt + retries).
+    /// </summary>
+    public int MaxRetries { get; set; } = 2;
+
+    /// <summary>
+    /// Work item timeout as a TimeSpan string (e.g., "00:05:00").
+    /// If a message is not completed within this duration, it is automatically abandoned.
+    /// Default is 5 minutes.
+    /// </summary>
+    public string? Timeout { get; set; }
+
+    /// <summary>
+    /// Number of concurrent consumer tasks processing this queue. Default is 1.
+    /// </summary>
+    public int Concurrency { get; set; } = 1;
+
+    /// <summary>
+    /// Number of messages to fetch per receive batch. Default is 1.
+    /// Higher values reduce round-trips to the transport at the cost of larger working sets.
+    /// </summary>
+    public int PrefetchCount { get; set; } = 1;
+
+    /// <summary>
+    /// Queue group name for selective hosting. When set, only workers configured
+    /// for the matching group will process messages from this queue.
+    /// </summary>
+    public string? Group { get; set; }
+
+    /// <summary>
+    /// When true, the worker automatically completes the message on success
+    /// and abandons it on exception. Default is true.
+    /// </summary>
+    public bool AutoComplete { get; set; } = true;
+
+    /// <summary>
+    /// The retry delay strategy for failed messages. Default is <see cref="QueueRetryPolicy.Exponential"/>.
+    /// </summary>
+    public QueueRetryPolicy RetryPolicy { get; set; } = QueueRetryPolicy.Exponential;
+
+    /// <summary>
+    /// The base delay between retries as a TimeSpan string (e.g., "00:00:05").
+    /// For <see cref="QueueRetryPolicy.Fixed"/>, this is the constant delay.
+    /// For <see cref="QueueRetryPolicy.Exponential"/>, this is the initial delay that doubles on each retry.
+    /// Default is 5 seconds.
+    /// </summary>
+    public string? RetryDelay { get; set; }
+
+    /// <summary>
+    /// When true, the job's progress and state are tracked via <see cref="IQueueJobStateStore"/>.
+    /// Enables progress reporting, cancellation, and dashboard visibility. Default is false.
+    /// </summary>
+    public bool TrackProgress { get; set; }
+}

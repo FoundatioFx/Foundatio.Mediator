@@ -11,6 +11,12 @@
       "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/Api/Api.csproj"
     },
     {
+      "name": "Clean Architecture Sample (Distributed)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/samples/CleanArchitectureSample/src/AppHost/AppHost.csproj"
+    },
+    {
       "name": "Console Sample",
       "type": "dotnet",
       "request": "launch",

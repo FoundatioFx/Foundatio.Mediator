@@ -512,10 +512,15 @@ internal static class HandlerAnalyzer
         }
 
         // Auto-exclude events/notifications from endpoint generation
-        var eventExcludeReason = GetEventExcludeReason(classSymbol, messageType);
-        if (eventExcludeReason != null)
+        // Skip heuristic if the handler has an explicit [HandlerEndpoint] attribute
+        bool hasExplicitEndpointAttr = methodEndpointAttr != null || classEndpointAttr != null;
+        if (!hasExplicitEndpointAttr)
         {
-            return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
+            var eventExcludeReason = GetEventExcludeReason(classSymbol, messageType);
+            if (eventExcludeReason != null)
+            {
+                return new EndpointInfo { GenerateEndpoint = false, ExcludeReason = eventExcludeReason };
+            }
         }
 
         // Extract group info from [HandlerEndpointGroup]

@@ -73,15 +73,30 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         // Get job IDs from sorted set in reverse order (newest first)
         var jobIds = await db.SortedSetRangeByRankAsync(queueSetKey, skip, skip + take - 1, Order.Descending).ConfigureAwait(false);
 
-        var results = new List<QueueJobState>(jobIds.Length);
-        foreach (var jobId in jobIds)
+        if (jobIds.Length == 0)
+            return [];
+
+        // Pipeline all hash reads to avoid N+1 round-trips
+        var batch = db.CreateBatch();
+        var tasks = new Task<HashEntry[]>[jobIds.Length];
+        for (int i = 0; i < jobIds.Length; i++)
         {
-            if (jobId.IsNullOrEmpty)
+            if (jobIds[i].IsNullOrEmpty)
                 continue;
 
-            var state = await GetJobStateAsync(jobId.ToString(), cancellationToken).ConfigureAwait(false);
-            if (state is not null)
-                results.Add(state);
+            tasks[i] = batch.HashGetAllAsync(JobKey(jobIds[i].ToString()));
+        }
+        batch.Execute();
+
+        var results = new List<QueueJobState>(jobIds.Length);
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            if (tasks[i] is null)
+                continue;
+
+            var entries = await tasks[i].ConfigureAwait(false);
+            if (entries.Length > 0)
+                results.Add(ParseJobState(entries));
         }
 
         return results;

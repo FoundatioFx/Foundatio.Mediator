@@ -7,7 +7,7 @@ public class SampleRunner
 {
     private readonly IMediator _mediator;
 
-    public SampleRunner(IMediator mediator)
+    public SampleRunner(IMediator mediator, IServiceProvider serviceProvider)
     {
         _mediator = mediator;
     }
@@ -21,7 +21,6 @@ public class SampleRunner
         await RunOrderCrudExamples();
         await RunCounterStreamExample();
         await RunEventPublishingExamples();
-        await RunQueueExample();
 
         Console.WriteLine("\n🎉 All samples completed successfully!");
     }
@@ -127,25 +126,6 @@ public class SampleRunner
         Console.WriteLine("\n📢 Publishing OrderDeleted event...");
         await _mediator.PublishAsync(new OrderDeleted("ORD-DEMO-001", DateTime.UtcNow));
 
-        Console.WriteLine();
-    }
-
-    private async Task RunQueueExample()
-    {
-        Console.WriteLine("5️⃣ Queue Processing (Distributed)");
-        Console.WriteLine("==========================================\n");
-
-
-        Console.WriteLine("📨 Enqueuing report generation (will be processed asynchronously)...\n");
-
-        // This returns immediately — the message is serialized and sent to the queue
-        await _mediator.InvokeAsync(new GenerateReport("Monthly Sales Report", 5));
-
-        // Wait for the queue worker to process the message
-        Console.WriteLine("⏳ Waiting for worker to process...\n");
-        await Task.Delay(2000);
-
-        Console.WriteLine("✅ Queue processing completed");
         Console.WriteLine();
     }
 }

@@ -4,6 +4,17 @@ namespace Foundatio.Mediator.Distributed;
 /// Transport-agnostic pub/sub abstraction used by the distributed notification system.
 /// Implementations fan messages out to all subscribers (topic-based publish/subscribe).
 /// </summary>
+/// <remarks>
+/// <para>
+/// Pub/sub is <b>fire-and-forget</b>: there is no acknowledgment, retry, or dead-letter
+/// mechanism. If a subscriber's handler throws, the message is considered delivered and
+/// will not be redelivered. Implementations should delete/acknowledge the transport
+/// message after invoking the handler regardless of success or failure.
+/// </para>
+/// <para>
+/// For at-least-once delivery with retries and dead-lettering, use <see cref="IQueueClient"/> instead.
+/// </para>
+/// </remarks>
 public interface IPubSubClient : IAsyncDisposable
 {
     /// <summary>

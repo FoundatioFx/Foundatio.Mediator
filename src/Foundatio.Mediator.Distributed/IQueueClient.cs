@@ -46,6 +46,18 @@ public interface IQueueClient : IAsyncDisposable
     /// Moves a message to the dead-letter queue for the specified queue.
     /// The message body and headers are preserved, with additional dead-letter metadata added.
     /// </summary>
+    /// <remarks>
+    /// Implementations should follow this convention:
+    /// <list type="number">
+    /// <item>Send a new message to <c>{queueName}-dead-letter</c> with the original body and headers.</item>
+    /// <item>Add the metadata headers <see cref="MessageHeaders.DeadLetterReason"/>,
+    ///   <see cref="MessageHeaders.DeadLetteredAt"/>, <see cref="MessageHeaders.OriginalQueueName"/>,
+    ///   and <see cref="MessageHeaders.DeadLetterDequeueCount"/>.</item>
+    /// <item>Complete (delete) the original message from the source queue.</item>
+    /// </list>
+    /// Transports that manage dead-letter queues natively (e.g., Azure Service Bus) may use
+    /// native dead-letter operations instead, but must still preserve the metadata headers.
+    /// </remarks>
     /// <param name="message">The message to dead-letter.</param>
     /// <param name="reason">A human-readable reason for dead-lettering.</param>
     /// <param name="cancellationToken">A cancellation token.</param>

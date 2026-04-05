@@ -59,6 +59,25 @@ public sealed class QueueJobState
     /// The last time this state was updated.
     /// </summary>
     public DateTimeOffset LastUpdatedUtc { get; set; }
+
+    /// <summary>
+    /// Creates a shallow copy of this state. Used by stores to return independent
+    /// snapshots so callers can mutate properties without affecting stored data.
+    /// </summary>
+    public QueueJobState Clone() => new()
+    {
+        JobId = JobId,
+        QueueName = QueueName,
+        MessageType = MessageType,
+        Status = Status,
+        Progress = Progress,
+        ProgressMessage = ProgressMessage,
+        CreatedUtc = CreatedUtc,
+        StartedUtc = StartedUtc,
+        CompletedUtc = CompletedUtc,
+        ErrorMessage = ErrorMessage,
+        LastUpdatedUtc = LastUpdatedUtc
+    };
 }
 
 /// <summary>

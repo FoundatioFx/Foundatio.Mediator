@@ -35,7 +35,4 @@ public record Order(string Id, string CustomerId, decimal Amount, string Descrip
 // Counter stream request
 public record CounterStreamRequest { }
 
-// Queue messages
-public record GenerateReport(string ReportName, int ItemCount);
-
 public interface IValidatable { }

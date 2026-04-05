@@ -14,6 +14,8 @@ public interface IQueueJobStateStore
 
     /// <summary>
     /// Retrieves the state for a specific job.
+    /// Implementations must return an independent copy so callers can mutate
+    /// properties without affecting stored data.
     /// </summary>
     /// <returns>The job state, or <c>null</c> if the job ID is not found or has expired.</returns>
     Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default);

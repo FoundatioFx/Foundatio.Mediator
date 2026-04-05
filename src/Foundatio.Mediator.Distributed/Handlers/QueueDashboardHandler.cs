@@ -4,8 +4,11 @@ namespace Foundatio.Mediator.Distributed;
 /// Handles queue dashboard queries: listing workers, viewing stats, and managing tracked jobs.
 /// Endpoints are auto-generated under <c>/api/queues</c> by the source generator.
 /// </summary>
+/// <remarks>
+/// These endpoints respect the global authorization settings. To allow anonymous access
+/// in development, set <c>AuthorizationRequired = false</c> on <c>[assembly: MediatorConfiguration]</c>.
+/// </remarks>
 [HandlerEndpointGroup("Queues")]
-[HandlerAllowAnonymous]
 public class QueueDashboardHandler
 {
     private readonly IQueueWorkerRegistry _registry;

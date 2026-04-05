@@ -17,10 +17,4 @@ public class SqsQueueClientOptions
     /// Set to 0 for short polling.
     /// </summary>
     public int WaitTimeSeconds { get; set; } = 20;
-
-    /// <summary>
-    /// Default visibility timeout in seconds for received messages. Default is 30.
-    /// Can be overridden per-queue via <see cref="QueueAttribute.Timeout"/>.
-    /// </summary>
-    public int DefaultVisibilityTimeoutSeconds { get; set; } = 30;
 }

@@ -35,7 +35,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
     public Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default)
     {
         if (_jobs.TryGetValue(jobId, out var entry) && !IsExpired(entry))
-            return Task.FromResult<QueueJobState?>(entry.State);
+            return Task.FromResult<QueueJobState?>(entry.State.Clone());
 
         // Remove expired entry on access
         if (entry is not null)
@@ -55,7 +55,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
             .OrderByDescending(e => e.State.CreatedUtc)
             .Skip(skip)
             .Take(take)
-            .Select(e => e.State)
+            .Select(e => e.State.Clone())
             .ToList();
 
         return Task.FromResult<IReadOnlyList<QueueJobState>>(results);
@@ -112,7 +112,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
             .OrderByDescending(e => e.State.CreatedUtc)
             .Skip(skip)
             .Take(take)
-            .Select(e => e.State)
+            .Select(e => e.State.Clone())
             .ToList();
 
         return Task.FromResult<IReadOnlyList<QueueJobState>>(results);

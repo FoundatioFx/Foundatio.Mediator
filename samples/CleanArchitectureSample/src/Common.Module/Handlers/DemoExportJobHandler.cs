@@ -15,17 +15,23 @@ public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
 {
     public async Task<Result> HandleAsync(DemoExportJob message, QueueContext queueContext, CancellationToken ct)
     {
-        logger.LogInformation("Starting demo export job ({Steps} steps, {Delay}ms each)", message.Steps, message.StepDelayMs);
+        // Add per-job variability: ±40% on step count, ±50% on delay
+        var rng = Random.Shared;
+        int steps = Math.Max(3, (int)(message.Steps * (0.6 + rng.NextDouble() * 0.8)));
+        int baseDelay = Math.Max(100, (int)(message.StepDelayMs * (0.5 + rng.NextDouble())));
 
-        for (int i = 1; i <= message.Steps; i++)
+        logger.LogInformation("Starting demo export job ({Steps} steps, ~{Delay}ms each)", steps, baseDelay);
+
+        for (int i = 1; i <= steps; i++)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Simulate work
-            await Task.Delay(message.StepDelayMs, ct).ConfigureAwait(false);
+            // Simulate variable work — some steps are fast, some slow
+            int jitter = (int)(baseDelay * (0.3 + rng.NextDouble() * 1.4));
+            await Task.Delay(jitter, ct).ConfigureAwait(false);
 
-            int percent = (int)((double)i / message.Steps * 100);
-            string stepMessage = $"Processing step {i} of {message.Steps}";
+            int percent = (int)((double)i / steps * 100);
+            string stepMessage = $"Processing step {i} of {steps}";
             await queueContext.ReportProgressAsync(percent, stepMessage, ct).ConfigureAwait(false);
 
             logger.LogDebug("Demo export: {Percent}% - {Message}", percent, stepMessage);

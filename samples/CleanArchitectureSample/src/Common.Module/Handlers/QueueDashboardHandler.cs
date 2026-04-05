@@ -61,17 +61,40 @@ public class QueueDashboardHandler
         var queuedCount = await _stateStore.GetJobCountByStatusAsync(query.QueueName, QueueJobStatus.Queued, ct).ConfigureAwait(false);
 
         var activeJobs = await _stateStore.GetJobsByStatusAsync(
-            query.QueueName, [QueueJobStatus.Processing], 0, 200, ct).ConfigureAwait(false);
+            query.QueueName, QueueJobStatus.Processing, 0, 200, ct).ConfigureAwait(false);
 
-        var recentJobs = await _stateStore.GetJobsByStatusAsync(
-            query.QueueName, [QueueJobStatus.Completed, QueueJobStatus.Failed, QueueJobStatus.Cancelled],
-            0, query.RecentTerminalCount ?? 20, ct).ConfigureAwait(false);
+        var recentTerminalCount = query.RecentTerminalCount ?? 20;
+        var completedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Completed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var failedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Failed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var cancelledJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Cancelled, 0, recentTerminalCount, ct).ConfigureAwait(false);
+
+        var recentJobs = completedJobs.Concat(failedJobs).Concat(cancelledJobs)
+            .OrderByDescending(j => j.CompletedUtc ?? j.LastUpdatedUtc)
+            .Take(recentTerminalCount)
+            .ToList();
+
+        CounterStatsView? counterStats = null;
+        try
+        {
+            var stats = await _stateStore.GetCounterStatsAsync(query.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false);
+            counterStats = new CounterStatsView
+            {
+                Totals = stats.Totals,
+                Buckets = stats.Buckets.Select(b => new CounterBucketView
+                {
+                    Hour = b.Hour,
+                    Counters = b.Counters
+                }).ToList()
+            };
+        }
+        catch { /* State store may not support counters */ }
 
         return new JobDashboardView
         {
             QueuedCount = queuedCount,
             ActiveJobs = activeJobs.Select(ToJobSummary).ToList(),
-            RecentJobs = recentJobs.Select(ToJobSummary).ToList()
+            RecentJobs = recentJobs.Select(ToJobSummary).ToList(),
+            CounterStats = counterStats
         };
     }
 
@@ -116,11 +139,11 @@ public class QueueDashboardHandler
 
     private async Task<QueueSummary> ToSummaryAsync(QueueWorkerInfo worker, QueueStats? stats, CancellationToken ct)
     {
-        IReadOnlyDictionary<string, long>? counters = null;
+        QueueCounterStats? counterStats = null;
         long? processingCount = null;
         if (_stateStore is not null)
         {
-            try { counters = await _stateStore.GetCountersAsync(worker.QueueName, ct).ConfigureAwait(false); }
+            try { counterStats = await _stateStore.GetCounterStatsAsync(worker.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false); }
             catch { /* State store may not be available */ }
 
             if (worker.TrackProgress)
@@ -128,6 +151,20 @@ public class QueueDashboardHandler
                 try { processingCount = await _stateStore.GetJobCountByStatusAsync(worker.QueueName, QueueJobStatus.Processing, ct).ConfigureAwait(false); }
                 catch { /* State store may not be available */ }
             }
+        }
+
+        CounterStatsView? counterStatsView = null;
+        if (counterStats is not null)
+        {
+            counterStatsView = new CounterStatsView
+            {
+                Totals = counterStats.Totals,
+                Buckets = counterStats.Buckets.Select(b => new CounterBucketView
+                {
+                    Hour = b.Hour,
+                    Counters = b.Counters
+                }).ToList()
+            };
         }
 
         return new QueueSummary
@@ -139,12 +176,13 @@ public class QueueDashboardHandler
             RetryPolicy = worker.RetryPolicy.ToString(),
             TrackProgress = worker.TrackProgress,
             IsRunning = worker.IsRunning,
-            MessagesProcessed = counters?.GetValueOrDefault("processed") ?? worker.MessagesProcessed,
-            MessagesFailed = counters?.GetValueOrDefault("failed") ?? worker.MessagesFailed,
-            MessagesDeadLettered = counters?.GetValueOrDefault("dead_lettered") ?? worker.MessagesDeadLettered,
+            MessagesProcessed = counterStats?.Totals.GetValueOrDefault("processed") ?? worker.MessagesProcessed,
+            MessagesFailed = counterStats?.Totals.GetValueOrDefault("failed") ?? worker.MessagesFailed,
+            MessagesDeadLettered = counterStats?.Totals.GetValueOrDefault("dead_lettered") ?? worker.MessagesDeadLettered,
             ActiveCount = stats?.ActiveCount ?? 0,
             DeadLetterCount = stats?.DeadLetterCount ?? 0,
-            InFlightCount = processingCount ?? stats?.InFlightCount ?? 0
+            InFlightCount = processingCount ?? stats?.InFlightCount ?? 0,
+            CounterStats = counterStatsView
         };
     }
 

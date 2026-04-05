@@ -18,5 +18,9 @@ export const queuesApi = {
     api.postJSON<JobCancellationResult>(`/api/queues/job/${jobId}/cancel-job`, {}),
 
   enqueueDemoJob: (count = 1, steps = 10, stepDelayMs = 500) =>
-    api.postJSON<DemoJobEnqueued>('/api/queues/demo-job/enqueue-demo-job', { count, steps, stepDelayMs })
+    api.postJSON<DemoJobEnqueued>('/api/queues/demo-job/enqueue-demo-job', { count, steps, stepDelayMs }),
+
+  /** Call the DemoExportJob queue endpoint directly — the mediator enqueues it async and returns 202 Accepted. */
+  enqueueDemoJobDirect: (steps = 20, stepDelayMs = 1500) =>
+    api.postJSON<void>('/api/export-jobs/demo', { steps, stepDelayMs })
 };

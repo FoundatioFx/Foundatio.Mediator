@@ -53,10 +53,10 @@ public sealed class QueueWorkerInfo
 
     // --- Runtime stats (updated atomically by QueueWorker) ---
 
-    internal long _messagesProcessed;
-    internal long _messagesFailed;
-    internal long _messagesDeadLettered;
-    internal volatile bool _isRunning;
+    private long _messagesProcessed;
+    private long _messagesFailed;
+    private long _messagesDeadLettered;
+    private volatile bool _isRunning;
 
     /// <summary>
     /// Total messages processed successfully since startup.
@@ -77,4 +77,9 @@ public sealed class QueueWorkerInfo
     /// Whether the worker is currently running.
     /// </summary>
     public bool IsRunning => _isRunning;
+
+    internal void IncrementProcessed() => Interlocked.Increment(ref _messagesProcessed);
+    internal void IncrementFailed() => Interlocked.Increment(ref _messagesFailed);
+    internal void IncrementDeadLettered() => Interlocked.Increment(ref _messagesDeadLettered);
+    internal void SetRunning(bool running) => _isRunning = running;
 }

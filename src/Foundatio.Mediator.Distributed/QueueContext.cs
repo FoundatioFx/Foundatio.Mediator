@@ -65,20 +65,20 @@ public class QueueContext
     /// is still actively working. This acts as a heartbeat keep-alive that extends the
     /// message visibility by the configured timeout. Set by the worker infrastructure.
     /// </summary>
-    public Func<CancellationToken, Task>? OnReportProgress { get; init; }
+    internal Func<CancellationToken, Task>? OnReportProgress { get; init; }
 
     /// <summary>
     /// Delegate invoked by <see cref="ReportProgressAsync(int, string?, CancellationToken)"/>
     /// to update progress percentage and message in the state store.
     /// Set by the worker infrastructure when progress tracking is enabled.
     /// </summary>
-    public Func<int, string?, CancellationToken, Task>? OnReportDetailedProgress { get; init; }
+    internal Func<int, string?, CancellationToken, Task>? OnReportDetailedProgress { get; init; }
 
     /// <summary>
     /// Delegate invoked by <see cref="RenewTimeoutAsync"/> to extend the message lock
     /// or visibility timeout by a specific duration. Set by the worker infrastructure.
     /// </summary>
-    public Func<TimeSpan, CancellationToken, Task>? OnRenewTimeout { get; init; }
+    internal Func<TimeSpan, CancellationToken, Task>? OnRenewTimeout { get; init; }
 
     /// <summary>
     /// Reports that the handler is still actively processing the message.

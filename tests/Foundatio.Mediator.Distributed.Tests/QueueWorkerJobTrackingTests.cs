@@ -124,7 +124,7 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
             await Task.Delay(200, cts.Token);
 
             // Find the job — there should be exactly one
-            var jobs = await stateStore.GetJobsByQueueAsync("TrackedCommand", cancellationToken: cts.Token);
+            var jobs = await stateStore.GetJobsByStatusAsync("TrackedCommand", QueueJobStatus.Completed, cancellationToken: cts.Token);
             Assert.Single(jobs);
 
             var state = jobs[0];
@@ -167,7 +167,7 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
             await signal.WaitAsync(timeout: TimeSpan.FromSeconds(10));
             await Task.Delay(200, cts.Token);
 
-            var jobs = await stateStore.GetJobsByQueueAsync("TrackedLongRunningCommand", cancellationToken: cts.Token);
+            var jobs = await stateStore.GetJobsByStatusAsync("TrackedLongRunningCommand", QueueJobStatus.Completed, cancellationToken: cts.Token);
             Assert.Single(jobs);
 
             var state = jobs[0];
@@ -209,7 +209,7 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
             await Task.Delay(500, cts.Token);
 
             // Find the job and request cancellation
-            var jobs = await stateStore.GetJobsByQueueAsync("TrackedCancellableCommand", cancellationToken: cts.Token);
+            var jobs = await stateStore.GetJobsByStatusAsync("TrackedCancellableCommand", QueueJobStatus.Processing, cancellationToken: cts.Token);
             Assert.Single(jobs);
             var jobId = jobs[0].JobId;
 

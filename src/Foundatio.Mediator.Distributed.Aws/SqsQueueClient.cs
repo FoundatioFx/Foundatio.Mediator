@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using Amazon.SQS;
 using Amazon.SQS.Model;
+using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Distributed.Aws;
 
@@ -15,13 +16,15 @@ public sealed class SqsQueueClient : IQueueClient
     private readonly IAmazonSQS _sqs;
     private readonly SqsQueueClientOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<SqsQueueClient> _logger;
     private readonly ConcurrentDictionary<string, string> _queueUrlCache = new();
 
-    public SqsQueueClient(IAmazonSQS sqs, SqsQueueClientOptions? options = null, TimeProvider? timeProvider = null)
+    public SqsQueueClient(IAmazonSQS sqs, SqsQueueClientOptions? options = null, TimeProvider? timeProvider = null, ILogger<SqsQueueClient>? logger = null)
     {
         _sqs = sqs;
         _options = options ?? new SqsQueueClientOptions();
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SqsQueueClient>.Instance;
     }
 
     public async Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default)
@@ -215,12 +218,33 @@ public sealed class SqsQueueClient : IQueueClient
         var queueUrl = await GetQueueUrlAsync(message.QueueName, cancellationToken).ConfigureAwait(false);
         var sqsMessage = GetNativeMessage(message);
 
-        await _sqs.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+        try
         {
-            QueueUrl = queueUrl,
-            ReceiptHandle = sqsMessage.ReceiptHandle,
-            VisibilityTimeout = (int)Math.Ceiling(extension.TotalSeconds)
-        }, cancellationToken).ConfigureAwait(false);
+            await _sqs.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+            {
+                QueueUrl = queueUrl,
+                ReceiptHandle = sqsMessage.ReceiptHandle,
+                VisibilityTimeout = (int)Math.Ceiling(extension.TotalSeconds)
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ReceiptHandleIsInvalidException ex)
+        {
+            // Receipt handle expired or message already completed/deleted (e.g., leftover from a previous run).
+            // This is not fatal — the message is already gone from the queue.
+            _logger.LogDebug(ex, "Receipt handle invalid for message {MessageId} on {QueueName}, message may have been completed or expired",
+                message.Id, message.QueueName);
+        }
+        catch (MessageNotInflightException ex)
+        {
+            _logger.LogDebug(ex, "Message {MessageId} on {QueueName} is not in-flight, visibility timeout change skipped",
+                message.Id, message.QueueName);
+        }
+        catch (AmazonSQSException ex) when (ex.Message.Contains("does not exist or is not available", StringComparison.OrdinalIgnoreCase))
+        {
+            // LocalStack may throw a generic AmazonSQSException instead of the specific types above.
+            _logger.LogDebug(ex, "Receipt handle for message {MessageId} on {QueueName} is no longer valid, visibility timeout change skipped",
+                message.Id, message.QueueName);
+        }
     }
 
     private async Task<string> GetQueueUrlAsync(string queueName, CancellationToken cancellationToken)

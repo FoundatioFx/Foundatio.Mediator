@@ -31,6 +31,7 @@ public record QueueSummary
     public long ActiveCount { get; init; }
     public long DeadLetterCount { get; init; }
     public long InFlightCount { get; init; }
+    public CounterStatsView? CounterStats { get; init; }
 }
 
 public record JobSummary
@@ -54,6 +55,19 @@ public record JobDashboardView
     public long QueuedCount { get; init; }
     public required List<JobSummary> ActiveJobs { get; init; }
     public required List<JobSummary> RecentJobs { get; init; }
+    public CounterStatsView? CounterStats { get; init; }
+}
+
+public record CounterStatsView
+{
+    public required IReadOnlyDictionary<string, long> Totals { get; init; }
+    public required IReadOnlyList<CounterBucketView> Buckets { get; init; }
+}
+
+public record CounterBucketView
+{
+    public DateTimeOffset Hour { get; init; }
+    public required IReadOnlyDictionary<string, long> Counters { get; init; }
 }
 
 public record DemoJobEnqueued(string JobId);

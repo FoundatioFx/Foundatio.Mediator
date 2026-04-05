@@ -23,6 +23,10 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
     {
         var db = _redis.GetDatabase();
         var key = JobKey(state.JobId);
+        var score = state.CreatedUtc.ToUnixTimeMilliseconds();
+
+        // Read old status before overwriting (for status set migration)
+        var oldStatusValue = await db.HashGetAsync(key, "Status").ConfigureAwait(false);
 
         var entries = new HashEntry[]
         {
@@ -32,7 +36,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             new("Status", ((int)state.Status).ToString(CultureInfo.InvariantCulture)),
             new("Progress", state.Progress.ToString(CultureInfo.InvariantCulture)),
             new("ProgressMessage", state.ProgressMessage ?? string.Empty),
-            new("CreatedUtc", state.CreatedUtc.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)),
+            new("CreatedUtc", score.ToString(CultureInfo.InvariantCulture)),
             new("StartedUtc", state.StartedUtc?.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) ?? string.Empty),
             new("CompletedUtc", state.CompletedUtc?.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) ?? string.Empty),
             new("ErrorMessage", state.ErrorMessage ?? string.Empty),
@@ -43,14 +47,27 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
 
         // Add to the per-queue sorted set (scored by creation timestamp for ordering)
         var queueSetKey = QueueSetKey(state.QueueName);
-        await db.SortedSetAddAsync(queueSetKey, state.JobId, state.CreatedUtc.ToUnixTimeMilliseconds()).ConfigureAwait(false);
+        await db.SortedSetAddAsync(queueSetKey, state.JobId, score).ConfigureAwait(false);
 
-        // Set TTL
+        // Maintain per-status sorted sets
+        // Remove from old status set if status changed
+        if (!oldStatusValue.IsNullOrEmpty && int.TryParse(oldStatusValue.ToString(), out var oldStatusInt))
+        {
+            var oldStatus = (QueueJobStatus)oldStatusInt;
+            if (oldStatus != state.Status)
+                await db.SortedSetRemoveAsync(StatusSetKey(state.QueueName, oldStatus), state.JobId).ConfigureAwait(false);
+        }
+
+        // Add to current status set
+        await db.SortedSetAddAsync(StatusSetKey(state.QueueName, state.Status), state.JobId, score).ConfigureAwait(false);
+
+        // Set TTL on all keys
         var ttl = expiry ?? _options.DefaultExpiry;
         if (ttl.HasValue)
         {
             await db.KeyExpireAsync(key, ttl.Value).ConfigureAwait(false);
             await db.KeyExpireAsync(queueSetKey, ttl.Value).ConfigureAwait(false);
+            await db.KeyExpireAsync(StatusSetKey(state.QueueName, state.Status), ttl.Value).ConfigureAwait(false);
         }
     }
 
@@ -65,41 +82,77 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         return ParseJobState(entries);
     }
 
-    public async Task<IReadOnlyList<QueueJobState>> GetJobsByQueueAsync(string queueName, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
+    public async Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var queueSetKey = QueueSetKey(queueName);
+        var key = JobKey(jobId);
 
-        // Get job IDs from sorted set in reverse order (newest first)
-        var jobIds = await db.SortedSetRangeByRankAsync(queueSetKey, skip, skip + take - 1, Order.Descending).ConfigureAwait(false);
+        // Read old status + queue name for sorted set migration
+        var fields = await db.HashGetAsync(key, ["Status", "QueueName", "CreatedUtc"]).ConfigureAwait(false);
+        if (fields[0].IsNullOrEmpty)
+            return; // Job doesn't exist
 
-        if (jobIds.Length == 0)
-            return [];
+        var queueName = fields[1].ToString();
+        var createdScore = long.TryParse(fields[2].ToString(), out var cs) ? cs : 0d;
+        var oldStatusInt = int.TryParse(fields[0].ToString(), out var osi) ? osi : -1;
+        var oldStatus = (QueueJobStatus)oldStatusInt;
+        var now = DateTimeOffset.UtcNow;
 
-        // Pipeline all hash reads to avoid N+1 round-trips
-        var batch = db.CreateBatch();
-        var tasks = new Task<HashEntry[]>[jobIds.Length];
-        for (int i = 0; i < jobIds.Length; i++)
+        // Build only the fields that need updating
+        var updates = new List<HashEntry>
         {
-            if (jobIds[i].IsNullOrEmpty)
-                continue;
+            new("Status", ((int)status).ToString(CultureInfo.InvariantCulture)),
+            new("LastUpdatedUtc", now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
+        };
 
-            tasks[i] = batch.HashGetAllAsync(JobKey(jobIds[i].ToString()));
-        }
-        batch.Execute();
+        if (startedUtc.HasValue)
+            updates.Add(new HashEntry("StartedUtc", startedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
+        if (completedUtc.HasValue)
+            updates.Add(new HashEntry("CompletedUtc", completedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
+        if (errorMessage is not null)
+            updates.Add(new HashEntry("ErrorMessage", errorMessage));
+        if (progress.HasValue)
+            updates.Add(new HashEntry("Progress", progress.Value.ToString(CultureInfo.InvariantCulture)));
 
-        var results = new List<QueueJobState>(jobIds.Length);
-        for (int i = 0; i < tasks.Length; i++)
+        await db.HashSetAsync(key, updates.ToArray()).ConfigureAwait(false);
+
+        // Migrate sorted sets if status changed
+        if (oldStatus != status)
         {
-            if (tasks[i] is null)
-                continue;
-
-            var entries = await tasks[i].ConfigureAwait(false);
-            if (entries.Length > 0)
-                results.Add(ParseJobState(entries));
+            await db.SortedSetRemoveAsync(StatusSetKey(queueName, oldStatus), jobId).ConfigureAwait(false);
+            await db.SortedSetAddAsync(StatusSetKey(queueName, status), jobId, createdScore).ConfigureAwait(false);
         }
 
-        return results;
+        // Refresh TTL
+        var ttl = expiry ?? _options.DefaultExpiry;
+        if (ttl.HasValue)
+        {
+            await db.KeyExpireAsync(key, ttl.Value).ConfigureAwait(false);
+            await db.KeyExpireAsync(StatusSetKey(queueName, status), ttl.Value).ConfigureAwait(false);
+        }
+    }
+
+    public async Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    {
+        var db = _redis.GetDatabase();
+        var key = JobKey(jobId);
+
+        if (!await db.KeyExistsAsync(key).ConfigureAwait(false))
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var updates = new HashEntry[]
+        {
+            new("Progress", progress.ToString(CultureInfo.InvariantCulture)),
+            new("ProgressMessage", progressMessage ?? string.Empty),
+            new("LastUpdatedUtc", now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
+        };
+
+        await db.HashSetAsync(key, updates).ConfigureAwait(false);
+
+        var ttl = expiry ?? _options.DefaultExpiry;
+        if (ttl.HasValue)
+            await db.KeyExpireAsync(key, ttl.Value).ConfigureAwait(false);
     }
 
     public async Task<bool> RequestCancellationAsync(string jobId, CancellationToken cancellationToken = default)
@@ -142,130 +195,123 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         var db = _redis.GetDatabase();
         var key = JobKey(jobId);
 
-        // Get queue name before deleting so we can clean up the sorted set
-        var queueName = await db.HashGetAsync(key, "QueueName").ConfigureAwait(false);
+        // Read queue name and status before deleting so we can clean up sorted sets
+        var fields = await db.HashGetAsync(key, ["QueueName", "Status"]).ConfigureAwait(false);
+        var queueName = fields[0];
+        var statusValue = fields[1];
 
         await db.KeyDeleteAsync(key).ConfigureAwait(false);
         await db.KeyDeleteAsync(CancelKey(jobId)).ConfigureAwait(false);
 
         if (!queueName.IsNullOrEmpty)
-            await db.SortedSetRemoveAsync(QueueSetKey(queueName.ToString()), jobId).ConfigureAwait(false);
+        {
+            var qn = queueName.ToString();
+            await db.SortedSetRemoveAsync(QueueSetKey(qn), jobId).ConfigureAwait(false);
+
+            // Remove from per-status sorted set
+            if (!statusValue.IsNullOrEmpty && int.TryParse(statusValue.ToString(), out var statusInt))
+                await db.SortedSetRemoveAsync(StatusSetKey(qn, (QueueJobStatus)statusInt), jobId).ConfigureAwait(false);
+        }
     }
 
     public Task IncrementCounterAsync(string queueName, string counterName, long value = 1, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var key = CountersKey(queueName);
-        return db.HashIncrementAsync(key, counterName, value);
+        var bucketKey = CounterBucketKey(queueName, DateTimeOffset.UtcNow);
+        var task = db.HashIncrementAsync(bucketKey, counterName, value);
+
+        // Auto-expire each hourly bucket after 48h so old buckets clean themselves up
+        _ = db.KeyExpireAsync(bucketKey, TimeSpan.FromHours(48), ExpireWhen.HasNoExpiry);
+
+        return task;
     }
 
-    public async Task<IReadOnlyDictionary<string, long>> GetCountersAsync(string queueName, CancellationToken cancellationToken = default)
+    public async Task<QueueCounterStats> GetCounterStatsAsync(string queueName, TimeSpan? window = null, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var key = CountersKey(queueName);
-        var entries = await db.HashGetAllAsync(key).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        var effectiveWindow = window ?? TimeSpan.FromHours(24);
+        var startHour = TruncateToHour(now - effectiveWindow);
+        var endHour = TruncateToHour(now);
 
-        var result = new Dictionary<string, long>(entries.Length);
-        foreach (var entry in entries)
+        // Build list of bucket keys to query
+        var hours = new List<DateTimeOffset>();
+        for (var hour = startHour; hour <= endHour; hour = hour.AddHours(1))
+            hours.Add(hour);
+
+        // Pipeline all bucket reads in a single round-trip
+        var batch = db.CreateBatch();
+        var tasks = new Task<HashEntry[]>[hours.Count];
+        for (int i = 0; i < hours.Count; i++)
+            tasks[i] = batch.HashGetAllAsync(CounterBucketKey(queueName, hours[i]));
+        batch.Execute();
+
+        var totals = new Dictionary<string, long>();
+        var buckets = new List<CounterBucket>(hours.Count);
+
+        for (int i = 0; i < hours.Count; i++)
         {
-            if (entry.Value.TryParse(out long val))
-                result[entry.Name.ToString()] = val;
+            var entries = await tasks[i].ConfigureAwait(false);
+            var counters = new Dictionary<string, long>(entries.Length);
+
+            foreach (var entry in entries)
+            {
+                if (entry.Value.TryParse(out long val))
+                {
+                    var name = entry.Name.ToString();
+                    counters[name] = val;
+                    totals[name] = totals.GetValueOrDefault(name) + val;
+                }
+            }
+
+            buckets.Add(new CounterBucket { Hour = hours[i], Counters = counters });
         }
 
-        return result;
+        return new QueueCounterStats { Totals = totals, Buckets = buckets };
     }
 
     private string JobKey(string jobId) => $"{_options.KeyPrefix}:{jobId}";
     private string CancelKey(string jobId) => $"{_options.KeyPrefix}:{jobId}:cancel";
     private string QueueSetKey(string queueName) => $"{_options.KeyPrefix}:queues:{queueName}";
-    private string CountersKey(string queueName) => $"{_options.KeyPrefix}:counters:{queueName}";
+    private string StatusSetKey(string queueName, QueueJobStatus status) => $"{_options.KeyPrefix}:queues:{queueName}:status:{(int)status}";
+    private string CounterBucketKey(string queueName, DateTimeOffset timestamp) => $"{_options.KeyPrefix}:counters:{queueName}:{TruncateToHour(timestamp):yyyy-MM-ddTHH}";
 
-    public async Task<IReadOnlyList<QueueJobState>> GetJobsByStatusAsync(string queueName, QueueJobStatus[] statuses, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
+    private static DateTimeOffset TruncateToHour(DateTimeOffset timestamp)
+        => new(timestamp.Year, timestamp.Month, timestamp.Day, timestamp.Hour, 0, 0, TimeSpan.Zero);
+
+    public async Task<IReadOnlyList<QueueJobState>> GetJobsByStatusAsync(string queueName, QueueJobStatus status, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var queueSetKey = QueueSetKey(queueName);
-        var prefix = _options.KeyPrefix;
+        var setKey = StatusSetKey(queueName, status);
 
-        // Build status filter string for Lua (e.g., ",0,1,")
-        var statusFilter = "," + string.Join(",", statuses.Select(s => ((int)s).ToString(CultureInfo.InvariantCulture))) + ",";
+        // O(take) — read only the page we need from the sorted set (newest first)
+        var members = await db.SortedSetRangeByRankAsync(setKey, skip, skip + take - 1, Order.Descending).ConfigureAwait(false);
 
-        // Lua script: iterate sorted set in descending order, check Status hash field, collect matching job IDs
-        const string lua = """
-            local queueKey = KEYS[1]
-            local prefix = ARGV[1]
-            local statusFilter = ARGV[2]
-            local skip = tonumber(ARGV[3])
-            local take = tonumber(ARGV[4])
-
-            local all = redis.call('ZREVRANGE', queueKey, 0, -1)
-            local matched = 0
-            local collected = 0
-            local results = {}
-
-            for _, jobId in ipairs(all) do
-                local status = redis.call('HGET', prefix .. ':' .. jobId, 'Status')
-                if status and string.find(statusFilter, ',' .. status .. ',', 1, true) then
-                    matched = matched + 1
-                    if matched > skip then
-                        table.insert(results, jobId)
-                        collected = collected + 1
-                        if collected >= take then break end
-                    end
-                end
-            end
-
-            return results
-            """;
-
-        var scriptResult = await db.ScriptEvaluateAsync(lua,
-            [queueSetKey],
-            [prefix, statusFilter, skip, take]).ConfigureAwait(false);
-
-        var jobIds = (RedisResult[]?)scriptResult;
-        if (jobIds is null || jobIds.Length == 0)
+        if (members.Length == 0)
             return [];
 
-        var results = new List<QueueJobState>(jobIds.Length);
-        foreach (var jobId in jobIds)
+        // Pipeline all hash reads
+        var batch = db.CreateBatch();
+        var tasks = new Task<HashEntry[]>[members.Length];
+        for (int i = 0; i < members.Length; i++)
+            tasks[i] = batch.HashGetAllAsync(JobKey(members[i].ToString()));
+        batch.Execute();
+
+        var results = new List<QueueJobState>(members.Length);
+        for (int i = 0; i < tasks.Length; i++)
         {
-            var state = await GetJobStateAsync(jobId.ToString()!, cancellationToken).ConfigureAwait(false);
-            if (state is not null)
-                results.Add(state);
+            var entries = await tasks[i].ConfigureAwait(false);
+            if (entries.Length > 0)
+                results.Add(ParseJobState(entries));
         }
 
         return results;
     }
 
-    public async Task<long> GetJobCountByStatusAsync(string queueName, QueueJobStatus status, CancellationToken cancellationToken = default)
+    public Task<long> GetJobCountByStatusAsync(string queueName, QueueJobStatus status, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var queueSetKey = QueueSetKey(queueName);
-        var prefix = _options.KeyPrefix;
-        var statusStr = ((int)status).ToString(CultureInfo.InvariantCulture);
-
-        const string lua = """
-            local queueKey = KEYS[1]
-            local prefix = ARGV[1]
-            local targetStatus = ARGV[2]
-
-            local all = redis.call('ZRANGE', queueKey, 0, -1)
-            local count = 0
-
-            for _, jobId in ipairs(all) do
-                local status = redis.call('HGET', prefix .. ':' .. jobId, 'Status')
-                if status == targetStatus then
-                    count = count + 1
-                end
-            end
-
-            return count
-            """;
-
-        var result = await db.ScriptEvaluateAsync(lua,
-            [queueSetKey],
-            [prefix, statusStr]).ConfigureAwait(false);
-
-        return (long)result;
+        return db.SortedSetLengthAsync(StatusSetKey(queueName, status));
     }
 
     private static QueueJobState ParseJobState(HashEntry[] entries)

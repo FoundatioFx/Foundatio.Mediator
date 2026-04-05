@@ -73,10 +73,8 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         var state = CreateJobState();
         await store.SetJobStateAsync(state, cancellationToken: CT);
 
-        state.Status = QueueJobStatus.Processing;
-        state.Progress = 50;
-        state.ProgressMessage = "Half done";
-        await store.SetJobStateAsync(state, cancellationToken: CT);
+        var updated = state with { Status = QueueJobStatus.Processing, Progress = 50, ProgressMessage = "Half done" };
+        await store.SetJobStateAsync(updated, cancellationToken: CT);
 
         var retrieved = await store.GetJobStateAsync("job-1", CT);
         Assert.NotNull(retrieved);
@@ -153,25 +151,25 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         Assert.Equal(now.ToUnixTimeMilliseconds(), retrieved.CompletedUtc!.Value.ToUnixTimeMilliseconds());
     }
 
-    // ── GetJobsByQueue ─────────────────────────────────────────────────────
+    // ── GetJobsByStatus ─────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetJobsByQueue_ReturnsMatchingJobs()
+    public async Task GetJobsByStatus_ReturnsMatchingJobs()
     {
         var store = CreateStore();
         await store.SetJobStateAsync(CreateJobState("job-1", "QueueA"), cancellationToken: CT);
         await store.SetJobStateAsync(CreateJobState("job-2", "QueueA"), cancellationToken: CT);
         await store.SetJobStateAsync(CreateJobState("job-3", "QueueB"), cancellationToken: CT);
 
-        var jobsA = await store.GetJobsByQueueAsync("QueueA", cancellationToken: CT);
+        var jobsA = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, cancellationToken: CT);
         Assert.Equal(2, jobsA.Count);
 
-        var jobsB = await store.GetJobsByQueueAsync("QueueB", cancellationToken: CT);
+        var jobsB = await store.GetJobsByStatusAsync("QueueB", QueueJobStatus.Queued, cancellationToken: CT);
         Assert.Single(jobsB);
     }
 
     [Fact]
-    public async Task GetJobsByQueue_OrdersByCreatedUtcDescending()
+    public async Task GetJobsByStatus_OrdersByCreatedUtcDescending()
     {
         var store = CreateStore();
         var baseTime = DateTimeOffset.UtcNow;
@@ -180,7 +178,7 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         await store.SetJobStateAsync(CreateJobState("job-2", "QueueA", createdUtc: baseTime.AddMinutes(1)), cancellationToken: CT);
         await store.SetJobStateAsync(CreateJobState("job-3", "QueueA", createdUtc: baseTime.AddMinutes(2)), cancellationToken: CT);
 
-        var jobs = await store.GetJobsByQueueAsync("QueueA", cancellationToken: CT);
+        var jobs = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, cancellationToken: CT);
         Assert.Equal(3, jobs.Count);
         Assert.Equal("job-3", jobs[0].JobId); // newest first
         Assert.Equal("job-2", jobs[1].JobId);
@@ -188,7 +186,7 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task GetJobsByQueue_SupportsPagination()
+    public async Task GetJobsByStatus_SupportsPagination()
     {
         var store = CreateStore();
         var baseTime = DateTimeOffset.UtcNow;
@@ -200,13 +198,13 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
                 cancellationToken: CT);
         }
 
-        var page1 = await store.GetJobsByQueueAsync("QueueA", skip: 0, take: 2, cancellationToken: CT);
+        var page1 = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, skip: 0, take: 2, cancellationToken: CT);
         Assert.Equal(2, page1.Count);
 
-        var page2 = await store.GetJobsByQueueAsync("QueueA", skip: 2, take: 2, cancellationToken: CT);
+        var page2 = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, skip: 2, take: 2, cancellationToken: CT);
         Assert.Equal(2, page2.Count);
 
-        var page3 = await store.GetJobsByQueueAsync("QueueA", skip: 4, take: 2, cancellationToken: CT);
+        var page3 = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, skip: 4, take: 2, cancellationToken: CT);
         Assert.Single(page3);
 
         // No overlap between pages
@@ -215,10 +213,10 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task GetJobsByQueue_EmptyQueue_ReturnsEmpty()
+    public async Task GetJobsByStatus_EmptyQueue_ReturnsEmpty()
     {
         var store = CreateStore();
-        var jobs = await store.GetJobsByQueueAsync("EmptyQueue", cancellationToken: CT);
+        var jobs = await store.GetJobsByStatusAsync("EmptyQueue", QueueJobStatus.Queued, cancellationToken: CT);
         Assert.Empty(jobs);
     }
 
@@ -233,12 +231,19 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         await store.SetJobStateAsync(CreateJobState("job-3", "Q", QueueJobStatus.Completed), cancellationToken: CT);
         await store.SetJobStateAsync(CreateJobState("job-4", "Q", QueueJobStatus.Failed), cancellationToken: CT);
 
-        var active = await store.GetJobsByStatusAsync("Q", [QueueJobStatus.Queued, QueueJobStatus.Processing], cancellationToken: CT);
-        Assert.Equal(2, active.Count);
-        Assert.All(active, j => Assert.True(j.Status is QueueJobStatus.Queued or QueueJobStatus.Processing));
+        var queued = await store.GetJobsByStatusAsync("Q", QueueJobStatus.Queued, cancellationToken: CT);
+        Assert.Single(queued);
+        Assert.Equal(QueueJobStatus.Queued, queued[0].Status);
 
-        var terminal = await store.GetJobsByStatusAsync("Q", [QueueJobStatus.Completed, QueueJobStatus.Failed], cancellationToken: CT);
-        Assert.Equal(2, terminal.Count);
+        var processing = await store.GetJobsByStatusAsync("Q", QueueJobStatus.Processing, cancellationToken: CT);
+        Assert.Single(processing);
+        Assert.Equal(QueueJobStatus.Processing, processing[0].Status);
+
+        var completed = await store.GetJobsByStatusAsync("Q", QueueJobStatus.Completed, cancellationToken: CT);
+        Assert.Single(completed);
+
+        var failed = await store.GetJobsByStatusAsync("Q", QueueJobStatus.Failed, cancellationToken: CT);
+        Assert.Single(failed);
     }
 
     [Fact]
@@ -320,7 +325,7 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task RemoveJobState_RemovesFromQueueListing()
+    public async Task RemoveJobState_RemovesFromStatusListing()
     {
         var store = CreateStore();
         await store.SetJobStateAsync(CreateJobState("job-1", "QueueA"), cancellationToken: CT);
@@ -328,7 +333,7 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
 
         await store.RemoveJobStateAsync("job-1", CT);
 
-        var jobs = await store.GetJobsByQueueAsync("QueueA", cancellationToken: CT);
+        var jobs = await store.GetJobsByStatusAsync("QueueA", QueueJobStatus.Queued, cancellationToken: CT);
         Assert.Single(jobs);
         Assert.Equal("job-2", jobs[0].JobId);
     }
@@ -373,9 +378,9 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         await store.IncrementCounterAsync("TestQueue", "processed", 1, CT);
         await store.IncrementCounterAsync("TestQueue", "failed", 1, CT);
 
-        var counters = await store.GetCountersAsync("TestQueue", CT);
-        Assert.Equal(2, counters["processed"]);
-        Assert.Equal(1, counters["failed"]);
+        var stats = await store.GetCounterStatsAsync("TestQueue", TimeSpan.FromHours(1), CT);
+        Assert.Equal(2, stats.Totals["processed"]);
+        Assert.Equal(1, stats.Totals["failed"]);
     }
 
     [Fact]
@@ -386,16 +391,17 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         await store.IncrementCounterAsync("TestQueue", "processed", 5, CT);
         await store.IncrementCounterAsync("TestQueue", "processed", 10, CT);
 
-        var counters = await store.GetCountersAsync("TestQueue", CT);
-        Assert.Equal(15, counters["processed"]);
+        var stats = await store.GetCounterStatsAsync("TestQueue", TimeSpan.FromHours(1), CT);
+        Assert.Equal(15, stats.Totals["processed"]);
     }
 
     [Fact]
-    public async Task GetCounters_EmptyQueue_ReturnsEmpty()
+    public async Task GetCounterStats_EmptyQueue_ReturnsEmptyTotals()
     {
         var store = CreateStore();
-        var counters = await store.GetCountersAsync("NonExistent", CT);
-        Assert.Empty(counters);
+        var stats = await store.GetCounterStatsAsync("NonExistent", TimeSpan.FromHours(1), CT);
+        Assert.Empty(stats.Totals);
+        Assert.NotEmpty(stats.Buckets); // Should still have hourly bucket entries (with empty counters)
     }
 
     [Fact]
@@ -406,10 +412,30 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         await store.IncrementCounterAsync("Queue1", "processed", 3, CT);
         await store.IncrementCounterAsync("Queue2", "processed", 7, CT);
 
-        var counters1 = await store.GetCountersAsync("Queue1", CT);
-        var counters2 = await store.GetCountersAsync("Queue2", CT);
+        var stats1 = await store.GetCounterStatsAsync("Queue1", TimeSpan.FromHours(1), CT);
+        var stats2 = await store.GetCounterStatsAsync("Queue2", TimeSpan.FromHours(1), CT);
 
-        Assert.Equal(3, counters1["processed"]);
-        Assert.Equal(7, counters2["processed"]);
+        Assert.Equal(3, stats1.Totals["processed"]);
+        Assert.Equal(7, stats2.Totals["processed"]);
+    }
+
+    [Fact]
+    public async Task GetCounterStats_ReturnsBucketsForWindow()
+    {
+        var store = CreateStore();
+
+        await store.IncrementCounterAsync("TestQueue", "processed", 5, CT);
+
+        var stats = await store.GetCounterStatsAsync("TestQueue", TimeSpan.FromHours(24), CT);
+
+        // Should have 25 buckets (24 hours ago through current hour)
+        Assert.Equal(25, stats.Buckets.Count);
+
+        // At least one bucket should have the counter
+        Assert.Contains(stats.Buckets, b => b.Counters.GetValueOrDefault("processed") > 0);
+
+        // Buckets should be ordered oldest to newest
+        for (int i = 1; i < stats.Buckets.Count; i++)
+            Assert.True(stats.Buckets[i].Hour > stats.Buckets[i - 1].Hour);
     }
 }

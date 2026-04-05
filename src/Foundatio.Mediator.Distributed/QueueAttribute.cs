@@ -50,10 +50,11 @@ public sealed class QueueAttribute : Attribute
     public int Concurrency { get; set; } = 1;
 
     /// <summary>
-    /// Number of messages to fetch per receive batch. Default is 1.
-    /// Higher values reduce round-trips to the transport at the cost of larger working sets.
+    /// Number of messages to fetch per receive batch.
+    /// When 0 (the default), automatically matches <see cref="Concurrency"/>
+    /// so each receive call can fill the consumer pipeline in a single round-trip.
     /// </summary>
-    public int PrefetchCount { get; set; } = 1;
+    public int PrefetchCount { get; set; }
 
     /// <summary>
     /// Queue group name for selective hosting. When set, only workers configured

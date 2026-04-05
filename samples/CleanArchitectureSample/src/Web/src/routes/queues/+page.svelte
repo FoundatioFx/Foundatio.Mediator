@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { queuesApi } from '$lib/api';
-  import { Button, Badge, Spinner, Alert } from '$lib/components/ui';
-  import type { QueueSummary, JobSummary, JobStatus, JobDashboardView } from '$lib/types/queue';
+  import { Button, Badge, Spinner, Alert, Sparkline } from '$lib/components/ui';
+  import type { QueueSummary, JobSummary, JobStatus, JobDashboardView, CounterStats } from '$lib/types/queue';
   import { JOB_STATUS_COLORS } from '$lib/types/queue';
+  import { auth } from '$lib/stores/auth.svelte';
 
   let workers = $state<QueueSummary[]>([]);
   let selectedQueue = $state<string | null>(null);
@@ -85,7 +86,12 @@
   async function enqueueDemoJob(count = 1) {
     demoLoading = true;
     try {
-      await queuesApi.enqueueDemoJob(count, 10, 1000);
+      if (count === 1) {
+        // Call the DemoExportJob endpoint directly — it goes straight to the queue
+        await queuesApi.enqueueDemoJobDirect(10, 1000);
+      } else {
+        await queuesApi.enqueueDemoJob(count, 10, 1000);
+      }
       // Refresh workers + jobs
       await loadWorkers();
       if (selectedQueue) {
@@ -133,6 +139,12 @@
       stopJobPolling();
     };
   });
+
+  function bucketValues(stats: CounterStats | null | undefined, key: string): number[] {
+    if (!stats?.buckets?.length) return [];
+    return stats.buckets.map((b) => b.counters[key] ?? 0);
+  }
+
 </script>
 
 <svelte:head>
@@ -147,10 +159,10 @@
       <p class="mt-1 text-sm text-gray-500">Monitor queue workers, job progress, and manage running jobs.</p>
     </div>
     <div class="flex items-center gap-2">
-      <Button onclick={() => enqueueDemoJob(1)} loading={demoLoading}>
+      <Button onclick={() => enqueueDemoJob(1)} loading={demoLoading} disabled={!auth.isAuthenticated}>
         Enqueue Demo Job
       </Button>
-      <Button onclick={() => enqueueDemoJob(10)} loading={demoLoading} variant="outline">
+      <Button onclick={() => enqueueDemoJob(10)} loading={demoLoading} variant="outline" disabled={!auth.isAuthenticated}>
         Enqueue 10 Jobs
       </Button>
     </div>
@@ -171,19 +183,16 @@
     </div>
   {:else}
     <!-- Workers Table -->
-    <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+    <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden select-none">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Processed</th>
-            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Failed</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Throughput</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Queued</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">In Flight</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Dead Letter</th>
-            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Concurrency</th>
-            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tracking</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -194,11 +203,13 @@
                 : 'hover:bg-gray-50'}"
               onclick={() => selectQueue(worker.queueName)}
             >
-              <td class="px-4 py-3">
-                <div class="text-sm font-medium text-gray-900">{worker.queueName}</div>
-                <div class="text-xs text-gray-500">{worker.messageType}</div>
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-900">{worker.queueName}</span>
+                  <span class="text-xs text-gray-400">×{worker.concurrency}{#if worker.trackProgress} · tracked{/if}</span>
+                </div>
               </td>
-              <td class="px-4 py-3">
+              <td class="px-4 py-2">
                 {#if worker.isRunning}
                   <span class="inline-flex items-center gap-1.5">
                     <span class="relative flex h-2 w-2">
@@ -214,19 +225,15 @@
                   </span>
                 {/if}
               </td>
-              <td class="px-4 py-3 text-right text-sm text-gray-700 tabular-nums">{worker.messagesProcessed.toLocaleString()}</td>
-              <td class="px-4 py-3 text-right text-sm tabular-nums {worker.messagesFailed > 0 ? 'text-red-600 font-medium' : 'text-gray-700'}">{worker.messagesFailed.toLocaleString()}</td>
-              <td class="px-4 py-3 text-right text-sm text-gray-700 tabular-nums">{worker.activeCount.toLocaleString()}</td>
-              <td class="px-4 py-3 text-right text-sm tabular-nums {worker.inFlightCount > 0 ? 'text-blue-600 font-medium' : 'text-gray-700'}">{worker.inFlightCount.toLocaleString()}</td>
-              <td class="px-4 py-3 text-right text-sm tabular-nums {worker.deadLetterCount > 0 ? 'text-red-600 font-medium' : 'text-gray-700'}">{worker.deadLetterCount.toLocaleString()}</td>
-              <td class="px-4 py-3 text-center text-sm text-gray-700">{worker.concurrency}</td>
-              <td class="px-4 py-3 text-center">
-                {#if worker.trackProgress}
-                  <Badge text="Tracked" class="bg-blue-100 text-blue-800" />
-                {:else}
-                  <span class="text-xs text-gray-400">—</span>
-                {/if}
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-3">
+                  <Sparkline data={bucketValues(worker.counterStats, 'processed')} color="#22c55e" label="processed" />
+                  <Sparkline data={bucketValues(worker.counterStats, 'failed')} color="#ef4444" label="failed" />
+                </div>
               </td>
+              <td class="px-4 py-2 text-right text-sm text-gray-700 tabular-nums">{worker.activeCount.toLocaleString()}</td>
+              <td class="px-4 py-2 text-right text-sm tabular-nums {worker.inFlightCount > 0 ? 'text-blue-600 font-medium' : 'text-gray-700'}">{worker.inFlightCount.toLocaleString()}</td>
+              <td class="px-4 py-2 text-right text-sm tabular-nums {worker.deadLetterCount > 0 ? 'text-red-600 font-medium' : 'text-gray-700'}">{worker.deadLetterCount.toLocaleString()}</td>
             </tr>
           {/each}
         </tbody>
@@ -312,7 +319,7 @@
             {/if}
             <div class="divide-y divide-gray-100">
               {#each dashboard.recentJobs as job (job.jobId)}
-                <div class="px-4 py-3 opacity-75">
+                <div class="px-4 py-3 opacity-75 overflow-hidden">
                   <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                       <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium {JOB_STATUS_COLORS[job.status] ?? 'bg-gray-100 text-gray-800'}">
@@ -341,7 +348,7 @@
                   {/if}
 
                   {#if job.errorMessage}
-                    <div class="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                    <div class="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded truncate max-w-full" title={job.errorMessage}>
                       {job.errorMessage}
                     </div>
                   {/if}

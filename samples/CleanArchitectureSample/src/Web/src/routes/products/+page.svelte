@@ -72,12 +72,15 @@
     }
   }
 
-  // Reload products on every navigation to this page (initial load + SPA navigations back)
-  afterNavigate(() => {
+  // Reload products on SPA navigations back to this page
+  afterNavigate(({ type }) => {
+    // Skip the initial navigation — onMount handles the first load
+    if (type === 'enter') return;
     loadProducts();
   });
 
   onMount(() => {
+    loadProducts();
 
     const unsubCreated = eventStream.onProductCreated((event) => {
       toast.success('New product created');

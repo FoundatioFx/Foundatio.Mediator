@@ -12,6 +12,7 @@ export interface QueueSummary {
   activeCount: number;
   deadLetterCount: number;
   inFlightCount: number;
+  counterStats: CounterStats | null;
 }
 
 export type JobStatus = 'Queued' | 'Processing' | 'Completed' | 'Failed' | 'Cancelled';
@@ -33,6 +34,17 @@ export interface JobDashboardView {
   queuedCount: number;
   activeJobs: JobSummary[];
   recentJobs: JobSummary[];
+  counterStats: CounterStats | null;
+}
+
+export interface CounterStats {
+  totals: Record<string, number>;
+  buckets: CounterBucket[];
+}
+
+export interface CounterBucket {
+  hour: string;
+  counters: Record<string, number>;
 }
 
 export interface JobCancellationResult {

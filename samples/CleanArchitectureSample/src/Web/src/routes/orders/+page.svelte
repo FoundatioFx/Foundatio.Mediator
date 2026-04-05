@@ -72,12 +72,15 @@
     }
   }
 
-  // Reload orders on every navigation to this page (initial load + SPA navigations back)
-  afterNavigate(() => {
+  // Reload orders on SPA navigations back to this page
+  afterNavigate(({ type }) => {
+    // Skip the initial navigation — onMount handles the first load
+    if (type === 'enter') return;
     loadOrders();
   });
 
   onMount(() => {
+    loadOrders();
 
     const unsubCreated = eventStream.onOrderCreated((event) => {
       toast.success('New order created');

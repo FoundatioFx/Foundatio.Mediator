@@ -71,18 +71,6 @@ public class QueueDashboardHandler
     }
 
     /// <summary>
-    /// Gets tracked jobs for a specific queue, ordered by creation time descending.
-    /// </summary>
-    public async Task<Result<IReadOnlyList<QueueJobState>>> HandleAsync(GetQueueJobs query, CancellationToken ct)
-    {
-        if (_stateStore is null)
-            return Result.Error("Job state tracking is not configured.");
-
-        var jobs = await _stateStore.GetJobsByQueueAsync(query.QueueName, query.Skip, query.Take, ct).ConfigureAwait(false);
-        return Result<IReadOnlyList<QueueJobState>>.Ok(jobs);
-    }
-
-    /// <summary>
     /// Gets a dashboard view: queued count, active (processing) jobs, and recent terminal jobs.
     /// </summary>
     public async Task<Result<QueueJobDashboardView>> HandleAsync(GetQueueJobDashboard query, CancellationToken ct)
@@ -93,17 +81,26 @@ public class QueueDashboardHandler
         var queuedCount = await _stateStore.GetJobCountByStatusAsync(query.QueueName, QueueJobStatus.Queued, ct).ConfigureAwait(false);
 
         var activeJobs = await _stateStore.GetJobsByStatusAsync(
-            query.QueueName, [QueueJobStatus.Processing], 0, 200, ct).ConfigureAwait(false);
+            query.QueueName, QueueJobStatus.Processing, 0, 200, ct).ConfigureAwait(false);
 
-        var recentJobs = await _stateStore.GetJobsByStatusAsync(
-            query.QueueName, [QueueJobStatus.Completed, QueueJobStatus.Failed, QueueJobStatus.Cancelled],
-            0, query.RecentTerminalCount ?? 20, ct).ConfigureAwait(false);
+        var recentTerminalCount = query.RecentTerminalCount ?? 20;
+        var completedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Completed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var failedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Failed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var cancelledJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Cancelled, 0, recentTerminalCount, ct).ConfigureAwait(false);
+
+        var recentJobs = completedJobs.Concat(failedJobs).Concat(cancelledJobs)
+            .OrderByDescending(j => j.CompletedUtc ?? j.LastUpdatedUtc)
+            .Take(recentTerminalCount)
+            .ToList();
+
+        var counterStats = await _stateStore.GetCounterStatsAsync(query.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false);
 
         return new QueueJobDashboardView
         {
             QueuedCount = queuedCount,
             ActiveJobs = activeJobs,
-            RecentJobs = recentJobs
+            RecentJobs = recentJobs,
+            CounterStats = counterStats
         };
     }
 

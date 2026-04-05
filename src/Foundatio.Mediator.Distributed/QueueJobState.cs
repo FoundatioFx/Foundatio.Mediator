@@ -2,8 +2,9 @@ namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
 /// Represents the current state of a queue job being tracked.
+/// Immutable — use <c>with { }</c> expressions to create modified copies.
 /// </summary>
-public sealed class QueueJobState
+public sealed record QueueJobState
 {
     /// <summary>
     /// The unique identifier for this job, generated at enqueue time.
@@ -23,17 +24,17 @@ public sealed class QueueJobState
     /// <summary>
     /// The current status of the job.
     /// </summary>
-    public QueueJobStatus Status { get; set; } = QueueJobStatus.Queued;
+    public QueueJobStatus Status { get; init; } = QueueJobStatus.Queued;
 
     /// <summary>
     /// Progress percentage (0–100). Updated by the handler via <see cref="QueueContext.ReportProgressAsync(int, string?, CancellationToken)"/>.
     /// </summary>
-    public int Progress { get; set; }
+    public int Progress { get; init; }
 
     /// <summary>
     /// Optional message describing what the job is currently doing.
     /// </summary>
-    public string? ProgressMessage { get; set; }
+    public string? ProgressMessage { get; init; }
 
     /// <summary>
     /// When the job was created (enqueued).
@@ -43,41 +44,22 @@ public sealed class QueueJobState
     /// <summary>
     /// When the worker started processing the job.
     /// </summary>
-    public DateTimeOffset? StartedUtc { get; set; }
+    public DateTimeOffset? StartedUtc { get; init; }
 
     /// <summary>
     /// When the job reached a terminal state (Completed, Failed, or Cancelled).
     /// </summary>
-    public DateTimeOffset? CompletedUtc { get; set; }
+    public DateTimeOffset? CompletedUtc { get; init; }
 
     /// <summary>
     /// Error message when the job has failed.
     /// </summary>
-    public string? ErrorMessage { get; set; }
+    public string? ErrorMessage { get; init; }
 
     /// <summary>
     /// The last time this state was updated.
     /// </summary>
-    public DateTimeOffset LastUpdatedUtc { get; set; }
-
-    /// <summary>
-    /// Creates a shallow copy of this state. Used by stores to return independent
-    /// snapshots so callers can mutate properties without affecting stored data.
-    /// </summary>
-    public QueueJobState Clone() => new()
-    {
-        JobId = JobId,
-        QueueName = QueueName,
-        MessageType = MessageType,
-        Status = Status,
-        Progress = Progress,
-        ProgressMessage = ProgressMessage,
-        CreatedUtc = CreatedUtc,
-        StartedUtc = StartedUtc,
-        CompletedUtc = CompletedUtc,
-        ErrorMessage = ErrorMessage,
-        LastUpdatedUtc = LastUpdatedUtc
-    };
+    public DateTimeOffset LastUpdatedUtc { get; init; }
 }
 
 /// <summary>

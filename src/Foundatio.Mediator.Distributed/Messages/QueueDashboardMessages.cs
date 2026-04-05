@@ -11,11 +11,6 @@ public record GetQueueWorkers;
 public record GetQueueWorker(string QueueName);
 
 /// <summary>
-/// Gets tracked jobs for a specific queue.
-/// </summary>
-public record GetQueueJobs(string QueueName, int Skip = 0, int Take = 50);
-
-/// <summary>
 /// Gets a dashboard view of jobs for a queue: queued count, active jobs, and recent terminal jobs.
 /// </summary>
 public record GetQueueJobDashboard(string QueueName, int? RecentTerminalCount = 20);
@@ -69,4 +64,10 @@ public record QueueJobDashboardView
 
     /// <summary>Recently completed, failed, or cancelled jobs.</summary>
     public required IReadOnlyList<QueueJobState> RecentJobs { get; init; }
+
+    /// <summary>
+    /// Counter statistics with per-hour buckets for sparkline rendering.
+    /// Includes totals and hourly breakdown of processed, failed, and dead-lettered counts.
+    /// </summary>
+    public QueueCounterStats? CounterStats { get; init; }
 }

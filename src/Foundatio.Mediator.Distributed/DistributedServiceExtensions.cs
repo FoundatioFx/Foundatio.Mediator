@@ -67,6 +67,10 @@ public static class DistributedServiceExtensions
         // Collect queue names for startup initialization
         var infraOptions = GetOrAddInfrastructureOptions(services);
 
+        // Track which queue names already have a worker registered to avoid duplicates.
+        // Multiple handlers for the same message type share a single queue and worker.
+        var registeredQueues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Register a QueueWorker for each [Queue]-decorated handler
         foreach (var handler in queueHandlers)
         {
@@ -81,6 +85,12 @@ public static class DistributedServiceExtensions
 
             // Register this message type in the type resolver for safe deserialization
             typeResolver.Register(messageType);
+
+            // Skip if a worker is already registered for this queue name.
+            // Multiple handlers for the same message type (e.g., AuditEventHandler and
+            // NotificationEventHandler both handling OrderCreated) share one queue worker.
+            if (!registeredQueues.Add(queueName))
+                continue;
 
             // Apply group filtering
             var group = queueAttr?.Group;
@@ -102,13 +112,21 @@ public static class DistributedServiceExtensions
             if (trackProgress)
                 anyTrackProgress = true;
 
+            var concurrency = queueAttr?.Concurrency ?? 1;
+            var prefetchCount = queueAttr?.PrefetchCount ?? 0;
+            // Auto-scale prefetch to match concurrency when not explicitly set.
+            // This ensures each ReceiveAsync call can fill the consumer pipeline in a
+            // single round-trip, which is critical for fair distribution across nodes.
+            if (prefetchCount <= 0)
+                prefetchCount = concurrency;
+
             var workerOptions = new QueueWorkerOptions
             {
                 QueueName = queueName,
                 MessageType = messageType,
                 Registration = handler,
-                Concurrency = queueAttr?.Concurrency ?? 1,
-                PrefetchCount = queueAttr?.PrefetchCount ?? 1,
+                Concurrency = concurrency,
+                PrefetchCount = prefetchCount,
                 VisibilityTimeout = visibilityTimeout,
                 MaxRetries = queueAttr?.MaxRetries ?? 2,
                 RetryPolicy = queueAttr?.RetryPolicy ?? QueueRetryPolicy.Exponential,

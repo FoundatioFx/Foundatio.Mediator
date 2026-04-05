@@ -31,6 +31,7 @@
     <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />
     <Project Path="tests/Foundatio.Mediator.Distributed.Tests/Foundatio.Mediator.Distributed.Tests.csproj" />
     <Project Path="tests/Foundatio.Mediator.Distributed.Aws.Tests/Foundatio.Mediator.Distributed.Aws.Tests.csproj" />
+    <Project Path="tests/Foundatio.Mediator.Distributed.Redis.Tests/Foundatio.Mediator.Distributed.Redis.Tests.csproj" />
 
   </Folder>
 </Solution>

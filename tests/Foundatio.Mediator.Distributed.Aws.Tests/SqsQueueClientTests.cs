@@ -240,11 +240,11 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var first = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(first);
 
-        // Abandon with 2 second delay
-        await client.AbandonAsync(first[0], TimeSpan.FromSeconds(2), TestCancellationToken);
+        // Abandon with 5 second delay
+        await client.AbandonAsync(first[0], TimeSpan.FromSeconds(5), TestCancellationToken);
 
-        // Should NOT be visible immediately
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        // Should NOT be visible immediately (visibility delay is 2s, long poll is 1s)
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         var immediate = await client.ReceiveAsync(queueName, 1, cts.Token);
         Assert.Empty(immediate);
     }

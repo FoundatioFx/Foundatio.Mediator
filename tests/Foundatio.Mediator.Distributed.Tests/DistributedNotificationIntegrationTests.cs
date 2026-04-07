@@ -10,6 +10,16 @@ public record TestDistributedEvent(string Value) : IDistributedNotification;
 public record AnotherDistributedEvent(int Number) : IDistributedNotification;
 public record NonDistributedEvent(string Value) : INotification;
 
+// Messages for attribute-based and options-based distribution
+[DistributedNotification]
+public record AttributeDistributedEvent(string Value);
+
+public record ExplicitIncludeEvent(string Value);
+
+public record FilterMatchEvent(string Value);
+
+public record PlainNotificationEvent(string Value) : INotification;
+
 // ── Handlers ──────────────────────────────────────────────────────────
 public class TestDistributedEventHandler(HandlerSignal signal)
 {
@@ -24,6 +34,26 @@ public class AnotherDistributedEventHandler(HandlerSignal signal)
 public class NonDistributedEventHandler(HandlerSignal signal)
 {
     public void Handle(NonDistributedEvent message) => signal.Record(message.Value);
+}
+
+public class AttributeDistributedEventHandler(HandlerSignal signal)
+{
+    public void Handle(AttributeDistributedEvent message) => signal.Record(message.Value);
+}
+
+public class ExplicitIncludeEventHandler(HandlerSignal signal)
+{
+    public void Handle(ExplicitIncludeEvent message) => signal.Record(message.Value);
+}
+
+public class FilterMatchEventHandler(HandlerSignal signal)
+{
+    public void Handle(FilterMatchEvent message) => signal.Record(message.Value);
+}
+
+public class PlainNotificationEventHandler(HandlerSignal signal)
+{
+    public void Handle(PlainNotificationEvent message) => signal.Record(message.Value);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -348,6 +378,405 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         finally
         {
             foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+}
+
+// ── Attribute-based and options-based distribution tests ──────────────
+public class DistributedNotificationFilteringTests(ITestOutputHelper output) : TestWithLoggingBase(output)
+{
+    /// <summary>
+    /// [DistributedNotification] attribute: messages decorated with the attribute
+    /// are distributed across nodes without implementing IDistributedNotification.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_AttributeDecorated_FansOut()
+    {
+        var sharedBus = new InMemoryPubSubClient();
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+
+        var servicesA = new ServiceCollection();
+        servicesA.AddLogging();
+        servicesA.AddSingleton(signalA);
+        servicesA.AddSingleton<IPubSubClient>(sharedBus);
+        servicesA.AddMediator(b => b.AddAssembly<AttributeDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-a");
+
+        var servicesB = new ServiceCollection();
+        servicesB.AddLogging();
+        servicesB.AddSingleton(signalB);
+        servicesB.AddSingleton<IPubSubClient>(sharedBus);
+        servicesB.AddMediator(b => b.AddAssembly<AttributeDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-b");
+
+        await using var providerA = servicesA.BuildServiceProvider();
+        await using var providerB = servicesB.BuildServiceProvider();
+
+        var hostedA = providerA.GetServices<IHostedService>().ToList();
+        var hostedB = providerB.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        foreach (var svc in hostedA.Concat(hostedB))
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            var mediatorA = providerA.GetRequiredService<IMediator>();
+            await mediatorA.PublishAsync(new AttributeDistributedEvent("attr-test"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalA.Values);
+            Assert.Equal("attr-test", signalA.Values[0]);
+
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalB.Values);
+            Assert.Equal("attr-test", signalB.Values[0]);
+        }
+        finally
+        {
+            foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Explicit Include&lt;T&gt;(): messages registered via options are distributed.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_ExplicitInclude_FansOut()
+    {
+        var sharedBus = new InMemoryPubSubClient();
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+
+        var servicesA = new ServiceCollection();
+        servicesA.AddLogging();
+        servicesA.AddSingleton(signalA);
+        servicesA.AddSingleton<IPubSubClient>(sharedBus);
+        servicesA.AddMediator(b => b.AddAssembly<ExplicitIncludeEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-a";
+                opts.Include<ExplicitIncludeEvent>();
+            });
+
+        var servicesB = new ServiceCollection();
+        servicesB.AddLogging();
+        servicesB.AddSingleton(signalB);
+        servicesB.AddSingleton<IPubSubClient>(sharedBus);
+        servicesB.AddMediator(b => b.AddAssembly<ExplicitIncludeEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-b";
+                opts.Include<ExplicitIncludeEvent>();
+            });
+
+        await using var providerA = servicesA.BuildServiceProvider();
+        await using var providerB = servicesB.BuildServiceProvider();
+
+        var hostedA = providerA.GetServices<IHostedService>().ToList();
+        var hostedB = providerB.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        foreach (var svc in hostedA.Concat(hostedB))
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            var mediatorA = providerA.GetRequiredService<IMediator>();
+            await mediatorA.PublishAsync(new ExplicitIncludeEvent("explicit-test"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalA.Values);
+            Assert.Equal("explicit-test", signalA.Values[0]);
+
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalB.Values);
+            Assert.Equal("explicit-test", signalB.Values[0]);
+        }
+        finally
+        {
+            foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// MessageFilter predicate: types matching the predicate are distributed.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_MessageFilter_FansOut()
+    {
+        var sharedBus = new InMemoryPubSubClient();
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+
+        var servicesA = new ServiceCollection();
+        servicesA.AddLogging();
+        servicesA.AddSingleton(signalA);
+        servicesA.AddSingleton<IPubSubClient>(sharedBus);
+        servicesA.AddMediator(b => b.AddAssembly<FilterMatchEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-a";
+                opts.MessageFilter = type => type == typeof(FilterMatchEvent);
+            });
+
+        var servicesB = new ServiceCollection();
+        servicesB.AddLogging();
+        servicesB.AddSingleton(signalB);
+        servicesB.AddSingleton<IPubSubClient>(sharedBus);
+        servicesB.AddMediator(b => b.AddAssembly<FilterMatchEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-b";
+                opts.MessageFilter = type => type == typeof(FilterMatchEvent);
+            });
+
+        await using var providerA = servicesA.BuildServiceProvider();
+        await using var providerB = servicesB.BuildServiceProvider();
+
+        var hostedA = providerA.GetServices<IHostedService>().ToList();
+        var hostedB = providerB.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        foreach (var svc in hostedA.Concat(hostedB))
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            var mediatorA = providerA.GetRequiredService<IMediator>();
+            await mediatorA.PublishAsync(new FilterMatchEvent("filter-test"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalA.Values);
+            Assert.Equal("filter-test", signalA.Values[0]);
+
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalB.Values);
+            Assert.Equal("filter-test", signalB.Values[0]);
+        }
+        finally
+        {
+            foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// IncludeAllNotifications: when enabled, all notification types are distributed.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_IncludeAllNotifications_FansOut()
+    {
+        var sharedBus = new InMemoryPubSubClient();
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+
+        var servicesA = new ServiceCollection();
+        servicesA.AddLogging();
+        servicesA.AddSingleton(signalA);
+        servicesA.AddSingleton<IPubSubClient>(sharedBus);
+        servicesA.AddMediator(b => b.AddAssembly<PlainNotificationEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-a";
+                opts.IncludeAllNotifications = true;
+            });
+
+        var servicesB = new ServiceCollection();
+        servicesB.AddLogging();
+        servicesB.AddSingleton(signalB);
+        servicesB.AddSingleton<IPubSubClient>(sharedBus);
+        servicesB.AddMediator(b => b.AddAssembly<PlainNotificationEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.HostId = "node-b";
+                opts.IncludeAllNotifications = true;
+            });
+
+        await using var providerA = servicesA.BuildServiceProvider();
+        await using var providerB = servicesB.BuildServiceProvider();
+
+        var hostedA = providerA.GetServices<IHostedService>().ToList();
+        var hostedB = providerB.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        foreach (var svc in hostedA.Concat(hostedB))
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            var mediatorA = providerA.GetRequiredService<IMediator>();
+            await mediatorA.PublishAsync(new PlainNotificationEvent("all-test"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalA.Values);
+            Assert.Equal("all-test", signalA.Values[0]);
+
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalB.Values);
+            Assert.Equal("all-test", signalB.Values[0]);
+        }
+        finally
+        {
+            foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// ShouldDistribute unit test: verifies the evaluation order and short-circuiting.
+    /// </summary>
+    [Fact]
+    public void ShouldDistribute_EvaluationOrder()
+    {
+        var options = new DistributedNotificationOptions();
+
+        // IDistributedNotification — always true by default
+        Assert.True(options.ShouldDistribute(typeof(TestDistributedEvent)));
+
+        // [DistributedNotification] attribute — true
+        Assert.True(options.ShouldDistribute(typeof(AttributeDistributedEvent)));
+
+        // Plain notification — false by default
+        Assert.False(options.ShouldDistribute(typeof(PlainNotificationEvent)));
+
+        // Explicit include
+        options.Include<PlainNotificationEvent>();
+        Assert.True(options.ShouldDistribute(typeof(PlainNotificationEvent)));
+
+        // MessageFilter
+        var options2 = new DistributedNotificationOptions
+        {
+            MessageFilter = type => type == typeof(FilterMatchEvent)
+        };
+        Assert.True(options2.ShouldDistribute(typeof(FilterMatchEvent)));
+        Assert.False(options2.ShouldDistribute(typeof(PlainNotificationEvent)));
+
+        // IncludeAllNotifications
+        var options3 = new DistributedNotificationOptions { IncludeAllNotifications = true };
+        Assert.True(options3.ShouldDistribute(typeof(PlainNotificationEvent)));
+        Assert.True(options3.ShouldDistribute(typeof(FilterMatchEvent)));
+    }
+
+    /// <summary>
+    /// Backward compatibility: IDistributedNotification still works without any options changes.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_InterfaceBased_StillWorks()
+    {
+        var sharedBus = new InMemoryPubSubClient();
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+
+        var servicesA = new ServiceCollection();
+        servicesA.AddLogging();
+        servicesA.AddSingleton(signalA);
+        servicesA.AddSingleton<IPubSubClient>(sharedBus);
+        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-a");
+
+        var servicesB = new ServiceCollection();
+        servicesB.AddLogging();
+        servicesB.AddSingleton(signalB);
+        servicesB.AddSingleton<IPubSubClient>(sharedBus);
+        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-b");
+
+        await using var providerA = servicesA.BuildServiceProvider();
+        await using var providerB = servicesB.BuildServiceProvider();
+
+        var hostedA = providerA.GetServices<IHostedService>().ToList();
+        var hostedB = providerB.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        foreach (var svc in hostedA.Concat(hostedB))
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            var mediatorA = providerA.GetRequiredService<IMediator>();
+            await mediatorA.PublishAsync(new TestDistributedEvent("compat"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalA.Values);
+            Assert.Equal("compat", signalA.Values[0]);
+
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signalB.Values);
+            Assert.Equal("compat", signalB.Values[0]);
+        }
+        finally
+        {
+            foreach (var svc in hostedA.Concat(hostedB))
+                await svc.StopAsync(CancellationToken.None);
+            sharedBus.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Non-matching types are NOT sent to the bus even when MessageFilter is set.
+    /// </summary>
+    [Fact]
+    public async Task PublishAsync_FilterMismatch_NotSentToBus()
+    {
+        int busPublishCount = 0;
+        var sharedBus = new InMemoryPubSubClient();
+        var countingBus = new CountingPubSubClient(sharedBus, () => Interlocked.Increment(ref busPublishCount));
+
+        var signal = new HandlerSignal();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(signal);
+        services.AddSingleton<IPubSubClient>(countingBus);
+        services.AddMediator(b => b.AddAssembly<PlainNotificationEventHandler>())
+            .AddDistributedNotifications(opts =>
+            {
+                opts.MessageFilter = type => type == typeof(FilterMatchEvent);
+            });
+
+        await using var provider = services.BuildServiceProvider();
+        var hostedServices = provider.GetServices<IHostedService>().ToList();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        foreach (var svc in hostedServices)
+            await svc.StartAsync(cts.Token);
+
+        try
+        {
+            var mediator = provider.GetRequiredService<IMediator>();
+            await mediator.PublishAsync(new PlainNotificationEvent("should-not-distribute"), cts.Token);
+
+            // Local handler fires
+            await signal.WaitAsync(timeout: TimeSpan.FromSeconds(5));
+            Assert.Single(signal.Values);
+
+            // Wait for any potential bus activity
+            await Task.Delay(500, cts.Token);
+
+            // PlainNotificationEvent doesn't match the filter — no bus publish
+            Assert.Equal(0, busPublishCount);
+        }
+        finally
+        {
+            foreach (var svc in hostedServices)
                 await svc.StopAsync(CancellationToken.None);
             sharedBus.Dispose();
         }

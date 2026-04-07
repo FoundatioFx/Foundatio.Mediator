@@ -54,6 +54,15 @@ export default withMermaid(defineConfig({
           ]
         },
         {
+          text: 'Distributed',
+          items: [
+            { text: 'Going Distributed', link: '/guide/distributed-overview' },
+            { text: 'Distributed Queues', link: '/guide/distributed-queues' },
+            { text: 'Distributed Notifications', link: '/guide/distributed-notifications' },
+            { text: 'Transport Providers', link: '/guide/distributed-transports' }
+          ]
+        },
+        {
           text: 'Advanced Topics',
           items: [
             { text: 'Cascading Messages', link: '/guide/cascading-messages' },

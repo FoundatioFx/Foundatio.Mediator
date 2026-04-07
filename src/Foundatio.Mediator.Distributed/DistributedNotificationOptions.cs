@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -51,6 +52,96 @@ public class DistributedNotificationOptions
     /// (e.g., <c>"myapp"</c> produces topic <c>"myapp-distributed-notifications"</c>).
     /// </remarks>
     public string? ResourcePrefix { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, all notification types are distributed via pub/sub,
+    /// regardless of whether they implement <see cref="IDistributedNotification"/>
+    /// or are decorated with <see cref="DistributedNotificationAttribute"/>.
+    /// Default is <c>false</c>.
+    /// </summary>
+    public bool IncludeAllNotifications { get; set; }
+
+    /// <summary>
+    /// Optional predicate evaluated for notification types that are not already included
+    /// by <see cref="IDistributedNotification"/>, <see cref="DistributedNotificationAttribute"/>,
+    /// or explicit <see cref="Include{T}"/> calls. Return <c>true</c> to distribute the type.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// opts.MessageFilter = type => type.Namespace?.StartsWith("MyApp.Events") == true;
+    /// </code>
+    /// </example>
+    public Func<Type, bool>? MessageFilter { get; set; }
+
+    /// <summary>
+    /// Explicitly includes a notification type for distributed fan-out.
+    /// Use this when the type cannot implement <see cref="IDistributedNotification"/>
+    /// or be decorated with <see cref="DistributedNotificationAttribute"/>.
+    /// </summary>
+    /// <typeparam name="T">The notification type to distribute.</typeparam>
+    /// <returns>This options instance for chaining.</returns>
+    public DistributedNotificationOptions Include<T>()
+    {
+        IncludedTypes.Add(typeof(T));
+        return this;
+    }
+
+    /// <summary>
+    /// Explicitly includes a notification type for distributed fan-out.
+    /// </summary>
+    /// <param name="type">The notification type to distribute.</param>
+    /// <returns>This options instance for chaining.</returns>
+    public DistributedNotificationOptions Include(Type type)
+    {
+        IncludedTypes.Add(type);
+        return this;
+    }
+
+    /// <summary>
+    /// Scans the assembly containing <typeparamref name="T"/> and includes all
+    /// public notification types (classes and structs) for distributed fan-out.
+    /// A type is considered a notification if it implements <see cref="INotification"/>.
+    /// </summary>
+    /// <typeparam name="T">A type whose assembly will be scanned.</typeparam>
+    /// <returns>This options instance for chaining.</returns>
+    public DistributedNotificationOptions IncludeNotificationsFromAssemblyOf<T>()
+    {
+        foreach (var type in typeof(T).Assembly.GetExportedTypes())
+        {
+            if (typeof(INotification).IsAssignableFrom(type) && type is { IsAbstract: false, IsInterface: false })
+                IncludedTypes.Add(type);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Types explicitly added via <see cref="Include{T}"/> or <see cref="IncludeNotificationsFromAssemblyOf{T}"/>.
+    /// </summary>
+    internal HashSet<Type> IncludedTypes { get; } = [];
+
+    /// <summary>
+    /// Determines whether a given message type should be distributed via pub/sub.
+    /// Evaluation order: explicit includes → <see cref="IDistributedNotification"/> →
+    /// <see cref="DistributedNotificationAttribute"/> → <see cref="MessageFilter"/> →
+    /// <see cref="IncludeAllNotifications"/>.
+    /// </summary>
+    public bool ShouldDistribute(Type messageType)
+    {
+        if (IncludedTypes.Contains(messageType))
+            return true;
+
+        if (typeof(IDistributedNotification).IsAssignableFrom(messageType))
+            return true;
+
+        if (messageType.GetCustomAttribute<DistributedNotificationAttribute>() is not null)
+            return true;
+
+        if (MessageFilter is not null)
+            return MessageFilter(messageType);
+
+        return IncludeAllNotifications;
+    }
 
     /// <summary>
     /// Returns <see cref="Topic"/> with <see cref="ResourcePrefix"/> applied when configured.

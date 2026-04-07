@@ -85,6 +85,38 @@ GET  /api/todos/{id}  → 200 OK / 404 Not Found
 
 Routes, HTTP methods, parameter binding, and OpenAPI metadata are all inferred from your message names and `Result` factory calls.
 
+### Go distributed
+
+Need to scale out? Add `[Queue]` to any handler — same code, now processed asynchronously via a background queue:
+
+```csharp
+public record SendEmail(string To, string Subject, string Body);
+
+[Queue]
+public class SendEmailHandler(IEmailService email)
+{
+    public async Task HandleAsync(SendEmail msg, CancellationToken ct)
+        => await email.SendAsync(msg.To, msg.Subject, msg.Body, ct);
+}
+```
+
+The message is queued and processed asynchronously by a background worker. Full retry, dead-lettering, and progress tracking built in.
+
+Broadcast events across all nodes in your cluster with a marker interface:
+
+```csharp
+public record ProductPriceChanged(string ProductId, decimal NewPrice) : IDistributedNotification;
+```
+
+Your handlers, middleware, DI, and error handling all work exactly the same — the distributed layer just changes _where_ execution happens. Pluggable transports for AWS SQS/SNS, with more coming soon.
+
+```bash
+dotnet add package Foundatio.Mediator.Distributed
+dotnet add package Foundatio.Mediator.Distributed.Aws   # For AWS SQS/SNS
+```
+
+**📖 [Distributed Guide](https://mediator.foundatio.dev/guide/distributed-overview.html)** — queues, notifications, transport providers, and worker configuration.
+
 **👉 [Getting Started Guide](https://mediator.foundatio.dev/guide/getting-started.html)** — step-by-step setup with code samples for ASP.NET Core and console apps.
 
 **📖 [Complete Documentation](https://mediator.foundatio.dev)**

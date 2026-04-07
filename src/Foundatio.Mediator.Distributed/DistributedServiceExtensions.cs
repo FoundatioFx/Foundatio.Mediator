@@ -192,9 +192,11 @@ public static class DistributedServiceExtensions
 
     /// <summary>
     /// Adds distributed notification fan-out support to Foundatio.Mediator.
-    /// Notifications implementing <see cref="IDistributedNotification"/> will be
-    /// automatically published to a pub/sub client and re-published on all other nodes
-    /// in the cluster.
+    /// Notifications are distributed when they implement <see cref="IDistributedNotification"/>,
+    /// are decorated with <see cref="DistributedNotificationAttribute"/>, are explicitly included
+    /// via <see cref="DistributedNotificationOptions.Include{T}"/>, match
+    /// <see cref="DistributedNotificationOptions.MessageFilter"/>, or when
+    /// <see cref="DistributedNotificationOptions.IncludeAllNotifications"/> is enabled.
     /// </summary>
     /// <param name="builder">The mediator builder.</param>
     /// <param name="configure">Optional configuration callback for <see cref="DistributedNotificationOptions"/>.</param>
@@ -206,7 +208,11 @@ public static class DistributedServiceExtensions
     ///
     /// // Or with options:
     /// services.AddMediator()
-    ///     .AddDistributedNotifications(opts => opts.Topic = "my-app-notifications");
+    ///     .AddDistributedNotifications(opts =>
+    ///     {
+    ///         opts.Topic = "my-app-notifications";
+    ///         opts.Include&lt;OrderCreated&gt;();
+    ///     });
     /// </code>
     /// </example>
     public static IMediatorBuilder AddDistributedNotifications(
@@ -233,14 +239,8 @@ public static class DistributedServiceExtensions
         infraOptions.TopicNames.Add(options.EffectiveTopic);
 
         // Register the background worker
-        services.AddSingleton<IHostedService>(sp => new DistributedNotificationWorker(
-            sp.GetRequiredService<IServiceScopeFactory>(),
-            sp.GetRequiredService<IPubSubClient>(),
-            sp.GetRequiredService<DistributedNotificationOptions>(),
-            sp.GetRequiredService<ILogger<DistributedNotificationWorker>>(),
-            sp.GetService<MessageTypeResolver>(),
-            sp.GetService<DistributedInfrastructureReady>(),
-            sp.GetService<TimeProvider>()));
+        // Build the resolved set of distributed types for the worker to filter on.
+        var distributedTypes = new HashSet<Type>();
 
         // Register known notification types in the type resolver
         var registry = services.GetHandlerRegistry();
@@ -249,10 +249,38 @@ public static class DistributedServiceExtensions
             var typeResolver = GetOrAddTypeResolver(services);
             foreach (var reg in registry.Registrations)
             {
-                if (reg.MessageType is not null && typeof(IDistributedNotification).IsAssignableFrom(reg.MessageType))
+                if (reg.MessageType is not null && options.ShouldDistribute(reg.MessageType))
+                {
                     typeResolver.Register(reg.MessageType);
+                    distributedTypes.Add(reg.MessageType);
+                }
             }
         }
+
+        // Also register explicitly included types that may not have handlers in the registry
+        // (e.g., types only consumed on other nodes)
+        if (distributedTypes.Count == 0 && options.IncludedTypes.Count == 0
+            && !options.IncludeAllNotifications && options.MessageFilter is null)
+        {
+            // No distributed types discovered and no dynamic filters — skip the worker entirely
+            return builder;
+        }
+
+        foreach (var type in options.IncludedTypes)
+        {
+            var typeResolver2 = GetOrAddTypeResolver(services);
+            typeResolver2.Register(type);
+            distributedTypes.Add(type);
+        }
+
+        services.AddSingleton<IHostedService>(sp => new DistributedNotificationWorker(
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            sp.GetRequiredService<IPubSubClient>(),
+            sp.GetRequiredService<DistributedNotificationOptions>(),
+            sp.GetRequiredService<ILogger<DistributedNotificationWorker>>(),
+            sp.GetService<MessageTypeResolver>(),
+            sp.GetService<DistributedInfrastructureReady>(),
+            sp.GetService<TimeProvider>()));
 
         return builder;
     }

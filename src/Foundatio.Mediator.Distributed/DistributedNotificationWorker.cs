@@ -8,13 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Background service that bridges local <see cref="IDistributedNotification"/> events
+/// Background service that bridges locally published distributed notifications
 /// to a remote <see cref="IPubSubClient"/> (outbound) and re-publishes inbound bus messages
 /// to the local mediator.
 /// </summary>
 /// <remarks>
-/// <para><b>Outbound loop</b>: uses <c>mediator.SubscribeAsync&lt;IDistributedNotification&gt;()</c>
-/// to tap into all locally published distributed notifications, then serializes and publishes
+/// <para><b>Outbound loop</b>: uses <c>mediator.SubscribeAsync&lt;MessageContext&lt;object&gt;&gt;()</c>
+/// to tap into all locally published notifications, filters to types that should be distributed
+/// (via <see cref="DistributedNotificationOptions.ShouldDistribute"/>), then serializes and publishes
 /// them to the pub/sub client. Messages that arrived from the bus (tracked by reference identity
 /// in <see cref="_inboundMessages"/>) are skipped to prevent re-broadcast loops.</para>
 ///
@@ -100,9 +101,13 @@ public sealed class DistributedNotificationWorker : BackgroundService
                 FullMode = _options.FullMode
             };
 
-            await foreach (var envelope in mediator.SubscribeAsync<MessageContext<IDistributedNotification>>(stoppingToken, subscriberOptions).ConfigureAwait(false))
+            await foreach (var envelope in mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, subscriberOptions).ConfigureAwait(false))
             {
                 var notification = envelope.Message;
+
+                // Filter to only types that should be distributed
+                if (!_options.ShouldDistribute(notification.GetType()))
+                    continue;
 
                 // Skip messages that arrived from the bus. TryRemove atomically checks and cleans
                 // up the tracking entry, avoiding the race where a finally block removed the entry

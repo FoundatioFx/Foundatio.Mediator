@@ -37,13 +37,13 @@ public class QueueWorkerOptions
     /// redelivered. Handlers can extend this via <see cref="QueueContext.RenewTimeoutAsync"/>.
     /// Default is 5 minutes.
     /// </summary>
-    public TimeSpan VisibilityTimeout { get; init; } = TimeSpan.FromMinutes(5);
+    public TimeSpan VisibilityTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Maximum number of retry attempts before the message is dead-lettered (transport-dependent).
-    /// Default is 2.
+    /// Maximum number of times the message will be attempted before dead-lettering.
+    /// Default is 3 (1 initial attempt + 2 retries).
     /// </summary>
-    public int MaxRetries { get; init; } = 2;
+    public int MaxAttempts { get; init; } = 3;
 
     /// <summary>
     /// Queue group for selective hosting. When set, this worker only starts
@@ -56,6 +56,12 @@ public class QueueWorkerOptions
     /// and abandons it on exception. Default is true.
     /// </summary>
     public bool AutoComplete { get; init; } = true;
+
+    /// <summary>
+    /// When true, the worker automatically renews the message visibility timeout
+    /// on a background timer. Default is true.
+    /// </summary>
+    public bool AutoRenewTimeout { get; init; } = true;
 
     /// <summary>
     /// The retry delay strategy for failed messages. Default is <see cref="QueueRetryPolicy.Exponential"/>.

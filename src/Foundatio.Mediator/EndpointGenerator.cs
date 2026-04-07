@@ -978,7 +978,7 @@ internal static class EndpointGenerator
                 Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
                     result.Location ?? "", result.GetValue()),
                 Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
-                    null, result.GetValue()),
+                    string.IsNullOrEmpty(result.Location) ? null : result.Location, result.GetValue()),
                 Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
                 Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
                     string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),

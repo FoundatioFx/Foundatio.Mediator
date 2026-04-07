@@ -68,8 +68,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         services.AddLogging();
         services.AddSingleton(signal);
         services.AddSingleton<IQueueClient>(queueClient);
-        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
@@ -100,8 +100,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -146,8 +146,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedLongRunningCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedLongRunningCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -188,8 +188,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedCancellableCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCancellableCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -249,8 +249,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -283,8 +283,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
         var registry = provider.GetRequiredService<IQueueWorkerRegistry>();
@@ -305,8 +305,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -346,8 +346,8 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TrackedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 

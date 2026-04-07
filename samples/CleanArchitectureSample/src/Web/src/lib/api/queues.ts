@@ -7,9 +7,9 @@ export const queuesApi = {
   getWorker: (queueName: string) =>
     api.getJSON<QueueSummary>(`/api/queues/queue?queueName=${encodeURIComponent(queueName)}`),
 
-  getJobDashboard: (queueName: string) =>
+  getJobDashboard: (queueName: string, recentTerminalCount: number = 5) =>
     api.getJSON<JobDashboardView>(
-      `/api/queues/job-dashboard?queueName=${encodeURIComponent(queueName)}`
+      `/api/queues/job-dashboard?queueName=${encodeURIComponent(queueName)}&recentTerminalCount=${recentTerminalCount}`
     ),
 
   getJob: (jobId: string) => api.getJSON<JobSummary>(`/api/queues/queue-job/${jobId}`),

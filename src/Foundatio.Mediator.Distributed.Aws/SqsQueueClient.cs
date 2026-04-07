@@ -18,6 +18,7 @@ public sealed class SqsQueueClient : IQueueClient
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SqsQueueClient> _logger;
     private readonly ConcurrentDictionary<string, string> _queueUrlCache = new();
+    private readonly ConcurrentDictionary<string, bool> _dlqNotFound = new();
 
     public SqsQueueClient(IAmazonSQS sqs, SqsQueueClientOptions? options = null, TimeProvider? timeProvider = null, ILogger<SqsQueueClient>? logger = null)
     {
@@ -210,6 +211,7 @@ public sealed class SqsQueueClient : IQueueClient
 
         // Send to DLQ then complete the original message
         await SendAsync(dlqName, entry, cancellationToken).ConfigureAwait(false);
+        _dlqNotFound.TryRemove(dlqName, out _);
         await CompleteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
@@ -252,12 +254,16 @@ public sealed class SqsQueueClient : IQueueClient
         if (_queueUrlCache.TryGetValue(queueName, out var cached))
             return cached;
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         if (_options.AutoCreateQueues)
         {
             var createResponse = await _sqs.CreateQueueAsync(new CreateQueueRequest
             {
                 QueueName = queueName
             }, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug("CreateQueue {QueueName} completed in {ElapsedMs}ms", queueName, sw.ElapsedMilliseconds);
 
             _queueUrlCache[queueName] = createResponse.QueueUrl;
             return createResponse.QueueUrl;
@@ -268,14 +274,20 @@ public sealed class SqsQueueClient : IQueueClient
             QueueName = queueName
         }, cancellationToken).ConfigureAwait(false);
 
+        _logger.LogDebug("GetQueueUrl {QueueName} completed in {ElapsedMs}ms", queueName, sw.ElapsedMilliseconds);
+
         _queueUrlCache[queueName] = response.QueueUrl;
         return response.QueueUrl;
     }
 
     /// <inheritdoc />
-    public Task EnsureQueuesAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+    public async Task EnsureQueuesAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
     {
-        return Task.WhenAll(queueNames.Select(name => GetQueueUrlAsync(name, cancellationToken)));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        await Task.WhenAll(queueNames.Select(name => GetQueueUrlAsync(name, cancellationToken))).ConfigureAwait(false);
+
+        _logger.LogInformation("EnsureQueues: {Count} queues ready in {ElapsedMs}ms", queueNames.Count, sw.ElapsedMilliseconds);
     }
 
     /// <inheritdoc />
@@ -299,27 +311,41 @@ public sealed class SqsQueueClient : IQueueClient
             && long.TryParse(inFlightStr, out var parsedInFlight))
             inFlightCount = parsedInFlight;
 
-        // Try to get dead-letter queue stats
+        // Try to get dead-letter queue stats (DLQ is created lazily on first dead-letter)
         long deadLetterCount = 0;
         var dlqName = $"{queueName}-dead-letter";
-        if (_queueUrlCache.ContainsKey(dlqName))
+        // Skip lookup if we already know the DLQ doesn't exist.
+        // The negative cache is cleared when DeadLetterAsync creates the queue.
+        if (!_dlqNotFound.ContainsKey(dlqName))
         {
             try
             {
-                var dlqUrl = await GetQueueUrlAsync(dlqName, cancellationToken).ConfigureAwait(false);
-                var dlqResponse = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+                string dlqUrl;
+                if (_queueUrlCache.TryGetValue(dlqName, out var cachedDlqUrl))
+                {
+                    dlqUrl = cachedDlqUrl;
+                }
+                else
+                {
+                    var dlqResponse = await _sqs.GetQueueUrlAsync(new GetQueueUrlRequest { QueueName = dlqName }, cancellationToken).ConfigureAwait(false);
+                    dlqUrl = dlqResponse.QueueUrl;
+                    _queueUrlCache[dlqName] = dlqUrl;
+                }
+
+                var dlqAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
                 {
                     QueueUrl = dlqUrl,
                     AttributeNames = ["ApproximateNumberOfMessages"]
                 }, cancellationToken).ConfigureAwait(false);
 
-                if (dlqResponse.Attributes.TryGetValue("ApproximateNumberOfMessages", out var dlqStr)
+                if (dlqAttrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var dlqStr)
                     && long.TryParse(dlqStr, out var parsedDlq))
                     deadLetterCount = parsedDlq;
             }
             catch
             {
-                // DLQ may not exist yet
+                // DLQ doesn't exist yet — remember so we don't retry on every poll
+                _dlqNotFound[dlqName] = true;
             }
         }
 

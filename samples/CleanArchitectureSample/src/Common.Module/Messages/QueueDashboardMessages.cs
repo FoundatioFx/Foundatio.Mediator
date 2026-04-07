@@ -6,7 +6,7 @@ public record GetQueues;
 
 public record GetQueue(string QueueName);
 
-public record GetJobDashboard(string QueueName, int? RecentTerminalCount = 20);
+public record GetJobDashboard(string QueueName, int? RecentTerminalCount = 5);
 
 public record GetQueueJobDetail(string JobId);
 
@@ -21,10 +21,11 @@ public record QueueSummary
     public required string QueueName { get; init; }
     public required string MessageType { get; init; }
     public int Concurrency { get; init; }
-    public int MaxRetries { get; init; }
+    public int MaxAttempts { get; init; }
     public required string RetryPolicy { get; init; }
     public bool TrackProgress { get; init; }
-    public bool IsRunning { get; init; }
+    public string? Description { get; init; }
+    public bool? IsRunning { get; init; }
     public long MessagesProcessed { get; init; }
     public long MessagesFailed { get; init; }
     public long MessagesDeadLettered { get; init; }
@@ -42,6 +43,7 @@ public record JobSummary
     public required string Status { get; init; }
     public int Progress { get; init; }
     public string? ProgressMessage { get; init; }
+    public int Attempt { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset? StartedUtc { get; init; }
     public DateTimeOffset? CompletedUtc { get; init; }

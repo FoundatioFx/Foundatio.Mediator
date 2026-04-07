@@ -16,7 +16,7 @@ namespace Common.Module.Handlers;
 /// Decorated with [Queue] so notification delivery is processed asynchronously
 /// via SQS, keeping the request path fast.
 /// </summary>
-[Queue]
+[Queue(Group = "events", Description = "Sends notifications for domain events")]
 public class NotificationEventHandler(INotificationService notificationService, ILogger<NotificationEventHandler> logger)
 {
     private const int LowStockThreshold = 10;

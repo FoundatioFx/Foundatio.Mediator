@@ -25,6 +25,29 @@ namespace Foundatio.Mediator.Distributed;
 ///     }
 /// }
 /// </code>
+/// When <c>AutoComplete</c> is disabled, the handler is responsible for completing
+/// or abandoning the message explicitly:
+/// <code>
+/// [Queue(AutoComplete = false)]
+/// public class ManualAckHandler
+/// {
+///     public async Task HandleAsync(
+///         ProcessPayment message,
+///         QueueContext queueContext,
+///         CancellationToken ct)
+///     {
+///         try
+///         {
+///             await ChargeAsync(message, ct);
+///             await queueContext.CompleteAsync(ct);
+///         }
+///         catch (TransientException)
+///         {
+///             await queueContext.AbandonAsync(TimeSpan.FromSeconds(30), ct);
+///         }
+///     }
+/// }
+/// </code>
 /// </remarks>
 public class QueueContext
 {
@@ -45,10 +68,10 @@ public class QueueContext
     public int DequeueCount { get; init; }
 
     /// <summary>
-    /// The maximum number of retries configured for this queue.
-    /// After <c>MaxRetries + 1</c> total attempts, the message will be dead-lettered.
+    /// The maximum number of attempts configured for this queue.
+    /// After this many attempts, the message will be dead-lettered.
     /// </summary>
-    public int MaxRetries { get; init; }
+    public int MaxAttempts { get; init; }
 
     /// <summary>
     /// When the message was originally enqueued.
@@ -79,6 +102,31 @@ public class QueueContext
     /// or visibility timeout by a specific duration. Set by the worker infrastructure.
     /// </summary>
     internal Func<TimeSpan, CancellationToken, Task>? OnRenewTimeout { get; init; }
+
+    /// <summary>
+    /// Delegate invoked by <see cref="CompleteAsync"/> to remove the message from the queue.
+    /// Set by the worker infrastructure.
+    /// </summary>
+    internal Func<CancellationToken, Task>? OnComplete { get; init; }
+
+    /// <summary>
+    /// Delegate invoked by <see cref="AbandonAsync(TimeSpan, CancellationToken)"/> to
+    /// return the message to the queue for redelivery. Set by the worker infrastructure.
+    /// </summary>
+    internal Func<TimeSpan, CancellationToken, Task>? OnAbandon { get; init; }
+
+    /// <summary>
+    /// Indicates whether the handler explicitly completed the message via <see cref="CompleteAsync"/>.
+    /// When true, the worker infrastructure will skip automatic completion.
+    /// </summary>
+    public bool IsCompleted { get; internal set; }
+
+    /// <summary>
+    /// Indicates whether the handler explicitly abandoned the message via <see cref="AbandonAsync(CancellationToken)"/>
+    /// or <see cref="AbandonAsync(TimeSpan, CancellationToken)"/>.
+    /// When true, the worker infrastructure will skip automatic abandonment.
+    /// </summary>
+    public bool IsAbandoned { get; internal set; }
 
     /// <summary>
     /// Reports that the handler is still actively processing the message.
@@ -117,4 +165,41 @@ public class QueueContext
     /// </summary>
     public Task RenewTimeoutAsync(TimeSpan extension, CancellationToken cancellationToken = default)
         => OnRenewTimeout?.Invoke(extension, cancellationToken) ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Completes the message, removing it from the queue permanently.
+    /// Use this when <c>AutoComplete</c> is disabled and the handler has finished
+    /// processing successfully. If <c>AutoComplete</c> is enabled, the worker
+    /// infrastructure will skip its own completion when this has been called.
+    /// </summary>
+    public async Task CompleteAsync(CancellationToken cancellationToken = default)
+    {
+        if (OnComplete is not null)
+            await OnComplete(cancellationToken).ConfigureAwait(false);
+
+        IsCompleted = true;
+    }
+
+    /// <summary>
+    /// Abandons the message so it becomes immediately visible for redelivery.
+    /// Use this when <c>AutoComplete</c> is disabled and the handler cannot
+    /// process the message successfully.
+    /// </summary>
+    public Task AbandonAsync(CancellationToken cancellationToken = default)
+        => AbandonAsync(TimeSpan.Zero, cancellationToken);
+
+    /// <summary>
+    /// Abandons the message so it becomes visible for redelivery after the specified delay.
+    /// Use this when <c>AutoComplete</c> is disabled and the handler wants to retry
+    /// the message after a backoff period.
+    /// </summary>
+    /// <param name="delay">How long before the message becomes visible again. Use <see cref="TimeSpan.Zero"/> for immediate redelivery.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    public async Task AbandonAsync(TimeSpan delay, CancellationToken cancellationToken = default)
+    {
+        if (OnAbandon is not null)
+            await OnAbandon(delay, cancellationToken).ConfigureAwait(false);
+
+        IsAbandoned = true;
+    }
 }

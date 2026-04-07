@@ -41,8 +41,8 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        services.AddMediatorDistributedNotifications();
+        services.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications();
 
         await using var provider = services.BuildServiceProvider();
         var hostedServices = provider.GetServices<IHostedService>().ToList();
@@ -85,16 +85,16 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         servicesA.AddLogging();
         servicesA.AddSingleton(signalA);
         servicesA.AddSingleton<IPubSubClient>(sharedBus);
-        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesA.AddMediatorDistributedNotifications(opts => opts.HostId = "node-a");
+        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-a");
 
         // ── Node B ──
         var servicesB = new ServiceCollection();
         servicesB.AddLogging();
         servicesB.AddSingleton(signalB);
         servicesB.AddSingleton<IPubSubClient>(sharedBus);
-        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesB.AddMediatorDistributedNotifications(opts => opts.HostId = "node-b");
+        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-b");
 
         await using var providerA = servicesA.BuildServiceProvider();
         await using var providerB = servicesB.BuildServiceProvider();
@@ -153,16 +153,16 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         servicesA.AddLogging();
         servicesA.AddSingleton(signalA);
         servicesA.AddSingleton<IPubSubClient>(countingBus);
-        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesA.AddMediatorDistributedNotifications(opts => opts.HostId = "node-a");
+        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-a");
 
         // ── Node B (also uses counting bus) ──
         var servicesB = new ServiceCollection();
         servicesB.AddLogging();
         servicesB.AddSingleton(signalB);
         servicesB.AddSingleton<IPubSubClient>(countingBus);
-        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesB.AddMediatorDistributedNotifications(opts => opts.HostId = "node-b");
+        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-b");
 
         await using var providerA = servicesA.BuildServiceProvider();
         await using var providerB = servicesB.BuildServiceProvider();
@@ -219,8 +219,8 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         services.AddLogging();
         services.AddSingleton(signal);
         services.AddSingleton<IPubSubClient>(countingBus);
-        services.AddMediator(b => b.AddAssembly<NonDistributedEventHandler>());
-        services.AddMediatorDistributedNotifications();
+        services.AddMediator(b => b.AddAssembly<NonDistributedEventHandler>())
+            .AddDistributedNotifications();
 
         await using var provider = services.BuildServiceProvider();
         var hostedServices = provider.GetServices<IHostedService>().ToList();
@@ -263,8 +263,8 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        services.AddMediatorDistributedNotifications(opts => opts.HostId = "self");
+        services.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "self");
 
         await using var provider = services.BuildServiceProvider();
         var hostedServices = provider.GetServices<IHostedService>().ToList();
@@ -308,15 +308,15 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         servicesA.AddLogging();
         servicesA.AddSingleton(signalA);
         servicesA.AddSingleton<IPubSubClient>(sharedBus);
-        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesA.AddMediatorDistributedNotifications(opts => opts.HostId = "node-a");
+        servicesA.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-a");
 
         var servicesB = new ServiceCollection();
         servicesB.AddLogging();
         servicesB.AddSingleton(signalB);
         servicesB.AddSingleton<IPubSubClient>(sharedBus);
-        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>());
-        servicesB.AddMediatorDistributedNotifications(opts => opts.HostId = "node-b");
+        servicesB.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
+            .AddDistributedNotifications(opts => opts.HostId = "node-b");
 
         await using var providerA = servicesA.BuildServiceProvider();
         await using var providerB = servicesB.BuildServiceProvider();

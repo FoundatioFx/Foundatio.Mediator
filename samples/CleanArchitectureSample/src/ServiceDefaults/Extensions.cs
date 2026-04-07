@@ -45,7 +45,9 @@ public static class Extensions
             {
                 tracing.AddAspNetCoreInstrumentation(o =>
                     {
-                        o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/api/events");
+                        o.Filter = ctx =>
+                            !ctx.Request.Path.StartsWithSegments("/api/events")
+                            && !ctx.Request.Path.StartsWithSegments("/api/queues");
                     })
                     .AddHttpClientInstrumentation(o =>
                     {
@@ -90,7 +92,7 @@ public static class Extensions
         return builder;
     }
 
-    public static WebApplication MapDefaultEndpoints(this WebApplication app)
+    public static WebApplication MapHealthCheckEndpoints(this WebApplication app)
     {
         app.MapHealthChecks("/health");
         app.MapHealthChecks("/alive", new HealthCheckOptions

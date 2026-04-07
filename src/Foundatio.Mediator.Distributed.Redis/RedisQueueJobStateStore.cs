@@ -12,11 +12,15 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly RedisJobStateStoreOptions _options;
+    private readonly string _keyPrefix;
 
     public RedisQueueJobStateStore(IConnectionMultiplexer redis, RedisJobStateStoreOptions? options = null)
     {
         _redis = redis;
         _options = options ?? new RedisJobStateStoreOptions();
+        _keyPrefix = string.IsNullOrEmpty(_options.ResourcePrefix)
+            ? _options.KeyPrefix
+            : $"{_options.ResourcePrefix}:{_options.KeyPrefix}";
     }
 
     public async Task SetJobStateAsync(QueueJobState state, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
@@ -82,7 +86,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         return ParseJobState(entries);
     }
 
-    public async Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    public async Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
         var key = JobKey(jobId);
@@ -113,6 +117,8 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             updates.Add(new HashEntry("ErrorMessage", errorMessage));
         if (progress.HasValue)
             updates.Add(new HashEntry("Progress", progress.Value.ToString(CultureInfo.InvariantCulture)));
+        if (attempt.HasValue)
+            updates.Add(new HashEntry("Attempt", attempt.Value.ToString(CultureInfo.InvariantCulture)));
 
         await db.HashSetAsync(key, updates.ToArray()).ConfigureAwait(false);
 
@@ -270,11 +276,11 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         return new QueueCounterStats { Totals = totals, Buckets = buckets };
     }
 
-    private string JobKey(string jobId) => $"{_options.KeyPrefix}:{jobId}";
-    private string CancelKey(string jobId) => $"{_options.KeyPrefix}:{jobId}:cancel";
-    private string QueueSetKey(string queueName) => $"{_options.KeyPrefix}:queues:{queueName}";
-    private string StatusSetKey(string queueName, QueueJobStatus status) => $"{_options.KeyPrefix}:queues:{queueName}:status:{(int)status}";
-    private string CounterBucketKey(string queueName, DateTimeOffset timestamp) => $"{_options.KeyPrefix}:counters:{queueName}:{TruncateToHour(timestamp):yyyy-MM-ddTHH}";
+    private string JobKey(string jobId) => $"{_keyPrefix}:{jobId}";
+    private string CancelKey(string jobId) => $"{_keyPrefix}:{jobId}:cancel";
+    private string QueueSetKey(string queueName) => $"{_keyPrefix}:queues:{queueName}";
+    private string StatusSetKey(string queueName, QueueJobStatus status) => $"{_keyPrefix}:queues:{queueName}:status:{(int)status}";
+    private string CounterBucketKey(string queueName, DateTimeOffset timestamp) => $"{_keyPrefix}:counters:{queueName}:{TruncateToHour(timestamp):yyyy-MM-ddTHH}";
 
     private static DateTimeOffset TruncateToHour(DateTimeOffset timestamp)
         => new(timestamp.Year, timestamp.Month, timestamp.Day, timestamp.Hour, 0, 0, TimeSpan.Zero);
@@ -330,6 +336,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             StartedUtc = ParseNullableDateTimeOffset(dict.GetValueOrDefault("StartedUtc")),
             CompletedUtc = ParseNullableDateTimeOffset(dict.GetValueOrDefault("CompletedUtc")),
             ErrorMessage = NullIfEmpty(dict.GetValueOrDefault("ErrorMessage")),
+            Attempt = int.TryParse(dict.GetValueOrDefault("Attempt"), out var a) ? a : 0,
             LastUpdatedUtc = ParseDateTimeOffset(dict.GetValueOrDefault("LastUpdatedUtc"))
         };
     }

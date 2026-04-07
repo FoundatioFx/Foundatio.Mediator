@@ -2,10 +2,11 @@ export interface QueueSummary {
   queueName: string;
   messageType: string;
   concurrency: number;
-  maxRetries: number;
+  maxAttempts: number;
   retryPolicy: string;
   trackProgress: boolean;
-  isRunning: boolean;
+  description: string | null;
+  isRunning: boolean | null;
   messagesProcessed: number;
   messagesFailed: number;
   messagesDeadLettered: number;
@@ -24,6 +25,7 @@ export interface JobSummary {
   status: JobStatus;
   progress: number;
   progressMessage: string | null;
+  attempt: number;
   createdUtc: string;
   startedUtc: string | null;
   completedUtc: string | null;

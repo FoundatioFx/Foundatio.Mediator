@@ -70,8 +70,8 @@ public class QueueWorkerIntegrationTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -108,8 +108,8 @@ public class QueueWorkerIntegrationTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -148,8 +148,8 @@ public class QueueWorkerIntegrationTests(ITestOutputHelper output) : TestWithLog
         services.AddLogging();
         services.AddSingleton(signal);
         services.AddSingleton<IQueueClient>(queueClient);
-        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
@@ -180,8 +180,8 @@ public class QueueWorkerIntegrationTests(ITestOutputHelper output) : TestWithLog
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(signal);
-        services.AddMediator(b => b.AddAssembly<QueueContextCheckHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<QueueContextCheckHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -233,7 +233,7 @@ public class QueueContextCheckHandler(HandlerSignal signal)
 
 public record PoisonMessage(string Value);
 
-[Queue(MaxRetries = 2, RetryPolicy = QueueRetryPolicy.None)]
+[Queue(MaxAttempts = 3, RetryPolicy = QueueRetryPolicy.None)]
 public class PoisonMessageHandler(HandlerSignal signal)
 {
     public void Handle(PoisonMessage message)
@@ -259,7 +259,7 @@ public class TransientFailureTracker
     public int Increment() => Interlocked.Increment(ref _callCount);
 }
 
-[Queue(MaxRetries = 2, RetryPolicy = QueueRetryPolicy.None)]
+[Queue(MaxAttempts = 3, RetryPolicy = QueueRetryPolicy.None)]
 public class TransientMessageHandler(HandlerSignal signal, TransientFailureTracker tracker)
 {
     public void Handle(TransientMessage message)
@@ -272,11 +272,11 @@ public class TransientMessageHandler(HandlerSignal signal, TransientFailureTrack
     }
 }
 
-// ── Handler for MaxRetries=0 (no retries, immediate dead-letter) ─────
+// ── Handler for MaxAttempts=1 (no retries, immediate dead-letter) ─────
 
 public record NoRetryMessage(string Value);
 
-[Queue(MaxRetries = 0, RetryPolicy = QueueRetryPolicy.None)]
+[Queue(MaxAttempts = 1, RetryPolicy = QueueRetryPolicy.None)]
 public class NoRetryMessageHandler(HandlerSignal signal)
 {
     public void Handle(NoRetryMessage message)
@@ -291,7 +291,7 @@ public class NoRetryMessageHandler(HandlerSignal signal)
 public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     [Fact]
-    public async Task FailedMessage_IsDeadLettered_AfterMaxRetries()
+    public async Task FailedMessage_IsDeadLettered_AfterMaxAttempts()
     {
         var signal = new HandlerSignal();
         var queueClient = new InMemoryQueueClient();
@@ -299,8 +299,8 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
         services.AddLogging();
         services.AddSingleton(signal);
         services.AddSingleton<IQueueClient>(queueClient);
-        services.AddMediator(b => b.AddAssembly<PoisonMessageHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<PoisonMessageHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -314,7 +314,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
             var mediator = provider.GetRequiredService<IMediator>();
             await mediator.InvokeAsync(new PoisonMessage("test"), cts.Token);
 
-            // Handler throws every time. MaxRetries=2 means 3 attempts (1 initial + 2 retries)
+            // Handler throws every time. MaxAttempts=3 means 3 attempts
             // then dead-lettered on the 4th receive.
             // Wait for the handler to be called (up to 3 times) + dead-letter
             await signal.WaitAsync(count: 3, timeout: TimeSpan.FromSeconds(10));
@@ -330,7 +330,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
 
             var dlqMessages = queueClient.DrainDeadLetterMessages("PoisonMessage");
             Assert.Single(dlqMessages);
-            Assert.Contains("max retries", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("max attempts", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -350,8 +350,8 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
         services.AddSingleton(signal);
         services.AddSingleton(tracker);
         services.AddSingleton<IQueueClient>(queueClient);
-        services.AddMediator(b => b.AddAssembly<TransientMessageHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<TransientMessageHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -386,7 +386,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
     }
 
     [Fact]
-    public async Task MaxRetriesZero_DeadLettersOnFirstFailure()
+    public async Task MaxAttemptsOne_DeadLettersOnFirstFailure()
     {
         var signal = new HandlerSignal();
         var queueClient = new InMemoryQueueClient();
@@ -394,8 +394,8 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
         services.AddLogging();
         services.AddSingleton(signal);
         services.AddSingleton<IQueueClient>(queueClient);
-        services.AddMediator(b => b.AddAssembly<NoRetryMessageHandler>());
-        services.AddMediatorDistributed();
+        services.AddMediator(b => b.AddAssembly<NoRetryMessageHandler>())
+            .AddDistributedQueues();
 
         await using var provider = services.BuildServiceProvider();
 
@@ -409,7 +409,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
             var mediator = provider.GetRequiredService<IMediator>();
             await mediator.InvokeAsync(new NoRetryMessage("no-retry"), cts.Token);
 
-            // MaxRetries=0 means 1 attempt only; handler is called once, then dead-lettered on 2nd receive
+            // MaxAttempts=1 means 1 attempt only; handler is called once, then dead-lettered on 2nd receive
             await signal.WaitAsync(count: 1, timeout: TimeSpan.FromSeconds(10));
 
             // Give the worker time to dead-letter
@@ -422,7 +422,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
 
             var dlqMessages = queueClient.DrainDeadLetterMessages("NoRetryMessage");
             Assert.Single(dlqMessages);
-            Assert.Contains("max retries", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("max attempts", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

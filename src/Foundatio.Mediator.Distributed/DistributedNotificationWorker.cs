@@ -40,6 +40,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
     /// </summary>
     private readonly ConcurrentDictionary<object, byte> _inboundMessages = new(ReferenceEqualityComparer.Instance);
 
+    private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
 
     public DistributedNotificationWorker(
@@ -48,6 +49,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         DistributedNotificationOptions options,
         ILogger<DistributedNotificationWorker> logger,
         MessageTypeResolver? typeResolver = null,
+        DistributedInfrastructureReady? infraReady = null,
         TimeProvider? timeProvider = null)
     {
         _scopeFactory = scopeFactory;
@@ -56,14 +58,22 @@ public sealed class DistributedNotificationWorker : BackgroundService
         _jsonOptions = options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _logger = logger;
         _typeResolver = typeResolver;
+        _infraReady = infraReady;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Wait for topics to be created before subscribing
+        if (_infraReady is not null)
+        {
+            try { await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+        }
+
         _logger.LogInformation(
             "Distributed notification worker starting (HostId={HostId}, Topic={Topic})",
-            _options.HostId, _options.Topic);
+            _options.HostId, _options.EffectiveTopic);
 
         var outboundTask = RunOutboundLoopAsync(stoppingToken);
         var inboundTask = RunInboundLoopAsync(stoppingToken);
@@ -128,7 +138,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
                             headers[MessageHeaders.TraceState] = traceState;
                     }
 
-                    await _bus.PublishAsync(_options.Topic, new PubSubEntry { Body = body, Headers = headers }, stoppingToken).ConfigureAwait(false);
+                    await _bus.PublishAsync(_options.EffectiveTopic, new PubSubEntry { Body = body, Headers = headers }, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -155,7 +165,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         IAsyncDisposable? subscription = null;
         try
         {
-            subscription = await _bus.SubscribeAsync(_options.Topic, async (message, ct) =>
+            subscription = await _bus.SubscribeAsync(_options.EffectiveTopic, async (message, ct) =>
             {
                 await ProcessInboundMessageAsync(message, ct).ConfigureAwait(false);
             }, stoppingToken).ConfigureAwait(false);

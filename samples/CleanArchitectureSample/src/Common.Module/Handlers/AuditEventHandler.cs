@@ -15,7 +15,7 @@ namespace Common.Module.Handlers;
 /// Decorated with [Queue] so audit logging is processed asynchronously via SQS,
 /// keeping the request path fast.
 /// </summary>
-[Queue]
+[Queue(Group = "events", Description = "Logs audit trail entries for tracked operations")]
 public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHandler> logger)
 {
     // Order events

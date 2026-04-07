@@ -436,11 +436,30 @@ internal static class HandlerGenerator
             source.AppendLine("};");
         }
 
-        // Execute the outermost delegate and cast result
+        // Execute the outermost delegate and safely convert the result.
+        // Execute middleware returns object? — the actual type may differ from the handler's
+        // declared return type (e.g. middleware may return a non-generic Result while the
+        // handler declares Result<T>). We use a safe conversion instead of a hard cast.
         string finalDelegate = reversed.Count > 0 ? $"wrapped{reversed.Count - 1}" : "pipelineDelegate";
         if (handler.HasReturnValue)
         {
-            source.AppendLine($"{resultVar} = ({handler.ReturnType.UnwrappedFullName})(await {finalDelegate}())!;");
+            if (handler.ReturnType.IsResult)
+            {
+                // Handler returns Result or Result<T> — safe conversion from any IResult
+                // (preserves Status, Message, Location, ValidationErrors)
+                source.AppendLine($"var __executeRaw = await {finalDelegate}();");
+                source.AppendLine($"if (__executeRaw is {handler.ReturnType.UnwrappedFullName} __executeTyped)");
+                source.AppendLine($"    {resultVar} = __executeTyped;");
+                source.AppendLine($"else if (__executeRaw is Foundatio.Mediator.IResult __executeResult)");
+                source.AppendLine($"    {resultVar} = {handler.ReturnType.UnwrappedFullName}.FromResult(__executeResult);");
+                source.AppendLine($"else if (__executeRaw is not null)");
+                source.AppendLine($"    throw new System.InvalidOperationException($\"Execute middleware returned {{__executeRaw.GetType().Name}}, expected {handler.ReturnType.UnwrappedFullName}\");");
+            }
+            else
+            {
+                // Non-Result return types (tuples, raw types) — direct cast
+                source.AppendLine($"{resultVar} = ({handler.ReturnType.UnwrappedFullName})(await {finalDelegate}())!;");
+            }
         }
         else
         {
@@ -595,7 +614,6 @@ internal static class HandlerGenerator
             return;
 
         source.AppendLine();
-        source.AppendLine("// Authorization check (skipped for publish/event dispatch)");
         source.AppendLine("if (!skipAuthorization)");
         source.AppendLine("{");
         source.IncrementIndent();

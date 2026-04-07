@@ -47,7 +47,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
         return Task.FromResult<QueueJobState?>(null);
     }
 
-    public Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    public Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
     {
         if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry))
             return Task.CompletedTask;
@@ -61,6 +61,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
             CompletedUtc = completedUtc ?? entry.State.CompletedUtc,
             ErrorMessage = errorMessage ?? entry.State.ErrorMessage,
             Progress = progress ?? entry.State.Progress,
+            Attempt = attempt ?? entry.State.Attempt,
             LastUpdatedUtc = now
         };
 

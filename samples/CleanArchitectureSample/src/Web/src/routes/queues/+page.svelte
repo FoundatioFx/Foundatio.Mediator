@@ -65,7 +65,7 @@
           if (result.data) dashboard = result.data;
         } catch { /* ignore */ }
       }
-    }, 1000);
+    }, 2000);
   }
 
   function stopJobPolling() {
@@ -188,7 +188,6 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Throughput</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Queued</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">In Flight</th>
@@ -204,31 +203,13 @@
               onclick={() => selectQueue(worker.queueName)}
             >
               <td class="px-4 py-2">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-900">{worker.queueName}</span>
-                  <span class="text-xs text-gray-400">×{worker.concurrency}{#if worker.trackProgress} · tracked{/if}</span>
-                </div>
-              </td>
-              <td class="px-4 py-2">
-                {#if worker.isRunning}
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="relative flex h-2 w-2">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
-                    <span class="text-sm text-green-700">Running</span>
-                  </span>
-                {:else}
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="inline-flex rounded-full h-2 w-2 bg-gray-400"></span>
-                    <span class="text-sm text-gray-500">Stopped</span>
-                  </span>
-                {/if}
+                <span class="text-sm font-medium text-gray-900" title="Concurrency: {worker.concurrency} · Attempts: {worker.maxAttempts} ({worker.retryPolicy}){worker.trackProgress ? ' · Tracked' : ''}{worker.description ? '\n' + worker.description : ''}">{worker.queueName}</span>
               </td>
               <td class="px-4 py-2">
                 <div class="flex items-center gap-3">
                   <Sparkline data={bucketValues(worker.counterStats, 'processed')} color="#22c55e" label="processed" />
                   <Sparkline data={bucketValues(worker.counterStats, 'failed')} color="#ef4444" label="failed" />
+                  <Sparkline data={bucketValues(worker.counterStats, 'dead_lettered')} color="#f97316" label="dead-lettered" />
                 </div>
               </td>
               <td class="px-4 py-2 text-right text-sm text-gray-700 tabular-nums">{worker.activeCount.toLocaleString()}</td>
@@ -248,7 +229,7 @@
           <div>
             <h2 class="text-lg font-semibold text-gray-900">{selectedQueue}</h2>
             <p class="text-xs text-gray-500 mt-0.5">
-              Retry: {queueWorker?.retryPolicy} · Max retries: {queueWorker?.maxRetries}
+              Retry: {queueWorker?.retryPolicy} · Max attempts: {queueWorker?.maxAttempts}
             </p>
           </div>
           <Button variant="ghost" size="sm" onclick={() => { selectedQueue = null; dashboard = null; stopJobPolling(); }}>
@@ -284,6 +265,11 @@
                       <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium {JOB_STATUS_COLORS[job.status] ?? 'bg-gray-100 text-gray-800'}">
                         {job.status}
                       </span>
+                      {#if job.attempt > 1}
+                        <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800" title="This message has been retried">
+                          Retry #{job.attempt - 1}
+                        </span>
+                      {/if}
                       <span class="text-xs text-gray-500 font-mono">{job.jobId.slice(0, 12)}…</span>
                     </div>
                     <div class="flex items-center gap-3">
@@ -325,6 +311,11 @@
                       <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium {JOB_STATUS_COLORS[job.status] ?? 'bg-gray-100 text-gray-800'}">
                         {job.status}
                       </span>
+                      {#if job.attempt > 1}
+                        <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800" title="This message was retried">
+                          Retry #{job.attempt - 1}
+                        </span>
+                      {/if}
                       <span class="text-xs text-gray-500 font-mono">{job.jobId.slice(0, 12)}…</span>
                     </div>
                     <span class="text-xs text-gray-400">

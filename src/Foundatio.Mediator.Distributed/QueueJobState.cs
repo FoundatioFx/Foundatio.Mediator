@@ -52,6 +52,12 @@ public sealed record QueueJobState
     public DateTimeOffset? CompletedUtc { get; init; }
 
     /// <summary>
+    /// The current processing attempt (1 = first attempt, 2+ = retry).
+    /// Set when the worker picks up the message from the queue.
+    /// </summary>
+    public int Attempt { get; init; }
+
+    /// <summary>
     /// Error message when the job has failed.
     /// </summary>
     public string? ErrorMessage { get; init; }

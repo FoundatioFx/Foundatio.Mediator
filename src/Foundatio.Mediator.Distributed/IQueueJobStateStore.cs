@@ -28,9 +28,10 @@ public interface IQueueJobStateStore
     /// <param name="completedUtc">When the job reached a terminal state.</param>
     /// <param name="errorMessage">Error details (set when transitioning to <see cref="QueueJobStatus.Failed"/>).</param>
     /// <param name="progress">Progress percentage to set alongside the status change.</param>
+    /// <param name="attempt">The processing attempt number (1 = first try, 2+ = retry).</param>
     /// <param name="expiry">Optional sliding expiry for the entry.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
     /// <summary>

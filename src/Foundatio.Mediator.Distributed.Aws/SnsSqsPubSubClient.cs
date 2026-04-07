@@ -19,10 +19,13 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
     private readonly IAmazonSQS _sqs;
     private readonly SnsSqsPubSubClientOptions _options;
     private readonly string _hostId;
+    private readonly string? _resourcePrefix;
     private readonly ILogger<SnsSqsPubSubClient> _logger;
     private readonly ConcurrentDictionary<string, string> _topicArnCache = new();
     private readonly ConcurrentDictionary<string, SubscriptionSetup> _subscriptionSetupCache = new();
     private readonly ConcurrentBag<SubscriptionHandle> _activeSubscriptions = [];
+    private readonly SemaphoreSlim _queueSetupLock = new(1, 1);
+    private (string QueueName, string QueueUrl, string QueueArn)? _sharedQueue;
 
     public SnsSqsPubSubClient(
         IAmazonSimpleNotificationService sns,
@@ -35,6 +38,7 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
         _sqs = sqs;
         _options = options;
         _hostId = notificationOptions.HostId;
+        _resourcePrefix = notificationOptions.ResourcePrefix;
         _logger = logger;
     }
 
@@ -82,7 +86,54 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
 
     /// <summary>
     /// Ensures per-node subscription infrastructure is created for a topic.
-    /// Creates the SNS topic, a per-node SQS queue, sets the queue policy,
+    /// Ensures the shared per-node SQS queue exists (created once, cached).
+    /// </summary>
+    private async Task<(string QueueName, string QueueUrl, string QueueArn)> EnsureSharedQueueAsync(CancellationToken cancellationToken)
+    {
+        if (_sharedQueue is not null)
+            return _sharedQueue.Value;
+
+        await _queueSetupLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_sharedQueue is not null)
+                return _sharedQueue.Value;
+
+            var queuePrefix = string.IsNullOrEmpty(_resourcePrefix)
+                ? _options.QueuePrefix
+                : $"{_resourcePrefix}-{_options.QueuePrefix}";
+            var queueName = $"{queuePrefix}-{_hostId}";
+            var stepSw = System.Diagnostics.Stopwatch.StartNew();
+
+            var createResponse = await _sqs.CreateQueueAsync(new CreateQueueRequest
+            {
+                QueueName = queueName
+            }, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug("EnsureSharedQueue: CreateQueue completed in {ElapsedMs}ms", stepSw.ElapsedMilliseconds);
+            stepSw.Restart();
+
+            // Get the queue ARN — needed for the SNS subscription policy
+            var queueAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+            {
+                QueueUrl = createResponse.QueueUrl,
+                AttributeNames = ["QueueArn"]
+            }, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug("EnsureSharedQueue: GetQueueAttributes completed in {ElapsedMs}ms", stepSw.ElapsedMilliseconds);
+
+            _sharedQueue = (queueName, createResponse.QueueUrl, queueAttrs.QueueARN);
+            return _sharedQueue.Value;
+        }
+        finally
+        {
+            _queueSetupLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ensures per-node subscription infrastructure is created for a topic.
+    /// Creates the SNS topic, reuses the shared per-node SQS queue, sets the queue policy,
     /// and subscribes the queue to the topic. Results are cached so subsequent
     /// calls (including from <see cref="SubscribeAsync"/>) make no API calls.
     /// </summary>
@@ -92,54 +143,14 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
             return cached;
 
         var topicArn = await GetOrCreateTopicArnAsync(topic, cancellationToken).ConfigureAwait(false);
-
-        // Create a per-node SQS queue
-        var queueName = $"{_options.QueuePrefix}-{_hostId}";
-        var createResponse = await _sqs.CreateQueueAsync(new CreateQueueRequest
-        {
-            QueueName = queueName
-        }, cancellationToken).ConfigureAwait(false);
-        var queueUrl = createResponse.QueueUrl;
-
-        // Get queue ARN for the subscription policy
-        var queueAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
-        {
-            QueueUrl = queueUrl,
-            AttributeNames = ["QueueArn"]
-        }, cancellationToken).ConfigureAwait(false);
-        var queueArn = queueAttrs.QueueARN;
-
-        // Set the SQS queue policy to allow SNS to send messages
-        var policy = $$"""
-        {
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": {"Service": "sns.amazonaws.com"},
-                "Action": "sqs:SendMessage",
-                "Resource": "{{queueArn}}",
-                "Condition": {
-                    "ArnEquals": { "aws:SourceArn": "{{topicArn}}" }
-                }
-            }]
-        }
-        """;
-
-        await _sqs.SetQueueAttributesAsync(new SetQueueAttributesRequest
-        {
-            QueueUrl = queueUrl,
-            Attributes = new Dictionary<string, string>
-            {
-                ["Policy"] = policy
-            }
-        }, cancellationToken).ConfigureAwait(false);
+        var queue = await EnsureSharedQueueAsync(cancellationToken).ConfigureAwait(false);
 
         // Subscribe the SQS queue to the SNS topic
         var subscribeResponse = await _sns.SubscribeAsync(new SubscribeRequest
         {
             TopicArn = topicArn,
             Protocol = "sqs",
-            Endpoint = queueArn,
+            Endpoint = queue.QueueArn,
             Attributes = new Dictionary<string, string>
             {
                 // Enable raw message delivery so we get the message directly without SNS wrapper
@@ -150,9 +161,9 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
 
         _logger.LogInformation(
             "Subscribed to SNS topic {TopicArn} via SQS queue {QueueName} (subscription={SubscriptionArn})",
-            topicArn, queueName, subscriptionArn);
+            topicArn, queue.QueueName, subscriptionArn);
 
-        var setup = new SubscriptionSetup(topicArn, queueName, queueUrl, subscriptionArn);
+        var setup = new SubscriptionSetup(topicArn, queue.QueueName, queue.QueueUrl, subscriptionArn);
         _subscriptionSetupCache[topic] = setup;
         return setup;
     }
@@ -242,6 +253,8 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
         if (_topicArnCache.TryGetValue(topic, out var cached))
             return cached;
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         if (_options.AutoCreate)
         {
             var response = await _sns.CreateTopicAsync(new CreateTopicRequest
@@ -249,12 +262,16 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
                 Name = topic
             }, cancellationToken).ConfigureAwait(false);
 
+            _logger.LogDebug("CreateTopic {Topic} completed in {ElapsedMs}ms", topic, sw.ElapsedMilliseconds);
+
             _topicArnCache[topic] = response.TopicArn;
             return response.TopicArn;
         }
 
         // Find existing topic
         var findResponse = await _sns.FindTopicAsync(topic).ConfigureAwait(false);
+        _logger.LogDebug("FindTopic {Topic} completed in {ElapsedMs}ms", topic, sw.ElapsedMilliseconds);
+
         if (findResponse?.TopicArn is null)
             throw new InvalidOperationException($"SNS topic '{topic}' not found and AutoCreate is disabled.");
 
@@ -263,11 +280,56 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public Task EnsureTopicsAsync(IReadOnlyList<string> topics, CancellationToken cancellationToken = default)
+    public async Task EnsureTopicsAsync(IReadOnlyList<string> topics, CancellationToken cancellationToken = default)
     {
-        // Pre-create topics and per-node subscription infrastructure so
-        // SubscribeAsync later makes zero API calls (all results are cached).
-        return Task.WhenAll(topics.Select(topic => EnsureSubscriptionSetupAsync(topic, cancellationToken)));
+        if (topics.Count == 0)
+            return;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // 1. Create the shared per-node SQS queue and all SNS topics in parallel
+        var queueTask = EnsureSharedQueueAsync(cancellationToken);
+        var topicTasks = topics.Select(t => GetOrCreateTopicArnAsync(t, cancellationToken)).ToArray();
+
+        await Task.WhenAll(topicTasks).ConfigureAwait(false);
+        var queue = await queueTask.ConfigureAwait(false);
+
+        _logger.LogInformation("EnsureTopics: queue + topics created in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+        var topicArns = topicTasks.Select(t => t.Result).ToList();
+
+        // 2. Set a single SQS policy allowing ALL SNS topics to send messages
+        var arnList = string.Join("\", \"", topicArns);
+        var policy = $$"""
+        {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "sns.amazonaws.com"},
+                "Action": "sqs:SendMessage",
+                "Resource": "{{queue.QueueArn}}",
+                "Condition": {
+                    "ArnEquals": { "aws:SourceArn": ["{{arnList}}"] }
+                }
+            }]
+        }
+        """;
+
+        await _sqs.SetQueueAttributesAsync(new SetQueueAttributesRequest
+        {
+            QueueUrl = queue.QueueUrl,
+            Attributes = new Dictionary<string, string>
+            {
+                ["Policy"] = policy
+            }
+        }, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("EnsureTopics: policy set in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+        // 3. Subscribe the queue to all topics in parallel
+        await Task.WhenAll(topics.Select(topic => EnsureSubscriptionSetupAsync(topic, cancellationToken))).ConfigureAwait(false);
+
+        _logger.LogInformation("EnsureTopics: complete in {ElapsedMs}ms ({Count} topics)", sw.ElapsedMilliseconds, topics.Count);
     }
 
     private record SubscriptionSetup(string TopicArn, string QueueName, string QueueUrl, string SubscriptionArn);

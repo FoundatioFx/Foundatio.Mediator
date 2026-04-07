@@ -40,4 +40,21 @@ public class DistributedNotificationOptions
     /// and avoid dropping notifications.
     /// </summary>
     public BoundedChannelFullMode FullMode { get; set; } = BoundedChannelFullMode.Wait;
+
+    /// <summary>
+    /// Optional prefix applied to topic and per-node queue names for app-level scoping.
+    /// When set, topic names become <c>"{ResourcePrefix}-{Topic}"</c>.
+    /// When <c>null</c> or empty (default), names are used as-is.
+    /// </summary>
+    /// <remarks>
+    /// Use this to isolate multiple applications sharing the same infrastructure
+    /// (e.g., <c>"myapp"</c> produces topic <c>"myapp-distributed-notifications"</c>).
+    /// </remarks>
+    public string? ResourcePrefix { get; set; }
+
+    /// <summary>
+    /// Returns <see cref="Topic"/> with <see cref="ResourcePrefix"/> applied when configured.
+    /// </summary>
+    internal string EffectiveTopic =>
+        string.IsNullOrEmpty(ResourcePrefix) ? Topic : $"{ResourcePrefix}-{Topic}";
 }

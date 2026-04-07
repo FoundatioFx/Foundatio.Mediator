@@ -9,9 +9,11 @@ var localstack = builder.AddContainer("localstack", "localstack/localstack", "la
 // Redis for shared persistence and distributed caching
 var redis = builder.AddRedis("redis");
 
-// The API project with 3 replicas to demonstrate distributed pub/sub fan-out
+// API project — serves HTTP endpoints and the SPA frontend, but no queue workers.
+// Queue messages are still enqueued to SQS; the worker resource below processes them.
 var api = builder.AddProject<Projects.Api>("api")
-    // Expose dynamic API endpoints externally so dashboard links and references resolve correctly.
+    .WithHttpEndpoint()
+    .WithHttpsEndpoint()
     .WithExternalHttpEndpoints()
     .WithReplicas(3)
     .WaitFor(localstack)
@@ -19,8 +21,22 @@ var api = builder.AddProject<Projects.Api>("api")
     .WithReference(localstack.GetEndpoint("main"))
     .WithReference(redis)
     .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
-    // Disable per-replica SpaProxy startup; AppHost owns a single frontend process.
-    .WithEnvironment("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", string.Empty);
+    // API-only mode — no queue workers in this process
+    .WithArgs("--mode", "api");
+
+// Worker project — processes all queues, exposes only health checks (no API/UI).
+// Runs the same Api project in worker mode so it shares handler code and module registrations.
+builder.AddProject<Projects.Api>("worker")
+    .WithHttpEndpoint()
+    .WithHttpsEndpoint()
+    .WithReplicas(3)
+    .WaitFor(localstack)
+    .WaitFor(redis)
+    .WithReference(localstack.GetEndpoint("main"))
+    .WithReference(redis)
+    .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
+    // Worker mode — health checks only, all queue workers active
+    .WithArgs("--mode", "worker");
 
 // Run a single Vite frontend for all API replicas in distributed mode.
 builder.AddViteApp("web", "../Web")

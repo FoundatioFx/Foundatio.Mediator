@@ -4,27 +4,30 @@ using StackExchange.Redis;
 namespace Foundatio.Mediator.Distributed.Redis;
 
 /// <summary>
-/// Extension methods for registering the Redis-backed queue job state store.
+/// Extension methods for configuring Redis-backed services on <see cref="IMediatorBuilder"/>.
 /// </summary>
-public static class RedisServiceExtensions
+public static class RedisBuilderExtensions
 {
     /// <summary>
     /// Registers a Redis-backed <see cref="IQueueJobStateStore"/> for tracking queue job state.
     /// Requires an <see cref="IConnectionMultiplexer"/> to be registered in DI.
     /// </summary>
-    /// <param name="services">The service collection.</param>
+    /// <param name="builder">The mediator builder.</param>
     /// <param name="configure">Optional configuration callback.</param>
-    /// <returns>The service collection for chaining.</returns>
+    /// <returns>The mediator builder for chaining.</returns>
     /// <example>
     /// <code>
     /// services.AddSingleton&lt;IConnectionMultiplexer&gt;(ConnectionMultiplexer.Connect("localhost"));
-    /// services.AddMediatorRedisJobStateStore();
+    /// services.AddMediator()
+    ///     .AddDistributedQueues()
+    ///     .UseRedisJobState();
     /// </code>
     /// </example>
-    public static IServiceCollection AddMediatorRedisJobStateStore(
-        this IServiceCollection services,
+    public static IMediatorBuilder UseRedisJobState(
+        this IMediatorBuilder builder,
         Action<RedisJobStateStoreOptions>? configure = null)
     {
+        var services = builder.Services;
         var options = new RedisJobStateStoreOptions();
         configure?.Invoke(options);
 
@@ -34,6 +37,6 @@ public static class RedisServiceExtensions
                 sp.GetRequiredService<IConnectionMultiplexer>(),
                 sp.GetService<RedisJobStateStoreOptions>()));
 
-        return services;
+        return builder;
     }
 }

@@ -1,4 +1,5 @@
 using Common.Module.Messages;
+using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
 
@@ -7,6 +8,10 @@ namespace Common.Module.Handlers;
 /// <summary>
 /// Queue dashboard handler — exposes queue workers, job tracking, and cancellation
 /// as mediator endpoints under <c>/api/queues</c>.
+///
+/// Uses <c>[Cached]</c> on read-heavy endpoints so multiple browser tabs or
+/// overlapping poll intervals share a single SQS/Redis call instead of each
+/// hitting the transport independently.
 /// </summary>
 [HandlerEndpointGroup("Queues")]
 [HandlerAllowAnonymous]
@@ -15,42 +20,45 @@ public class QueueDashboardHandler
     private readonly IQueueWorkerRegistry _registry;
     private readonly IQueueClient _queueClient;
     private readonly IQueueJobStateStore? _stateStore;
+    private readonly DistributedInfrastructureReady? _infraReady;
 
-    public QueueDashboardHandler(IQueueWorkerRegistry registry, IQueueClient queueClient, IQueueJobStateStore? stateStore = null)
+    public QueueDashboardHandler(
+        IQueueWorkerRegistry registry,
+        IQueueClient queueClient,
+        IQueueJobStateStore? stateStore = null,
+        DistributedInfrastructureReady? infraReady = null)
     {
         _registry = registry;
         _queueClient = queueClient;
         _stateStore = stateStore;
+        _infraReady = infraReady;
     }
 
+    [Cached(DurationSeconds = 2)]
     public async Task<Result<List<QueueSummary>>> HandleAsync(GetQueues query, CancellationToken ct)
     {
         var workers = _registry.GetWorkers();
-        var results = new List<QueueSummary>(workers.Count);
 
-        foreach (var worker in workers)
+        // Fetch all queue stats in parallel — each is an independent SQS call.
+        var tasks = new Task<QueueSummary>[workers.Count];
+        for (int i = 0; i < workers.Count; i++)
         {
-            QueueStats? stats = null;
-            try { stats = await _queueClient.GetQueueStatsAsync(worker.QueueName, ct).ConfigureAwait(false); }
-            catch { /* Transport may not support stats */ }
-
-            results.Add(await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false));
+            var worker = workers[i];
+            tasks[i] = BuildSummaryAsync(worker, ct);
         }
 
-        return results;
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return results.ToList();
     }
 
+    [Cached(DurationSeconds = 2)]
     public async Task<Result<QueueSummary>> HandleAsync(GetQueue query, CancellationToken ct)
     {
         var worker = _registry.GetWorker(query.QueueName);
         if (worker is null)
             return Result.NotFound($"Queue worker '{query.QueueName}' not found");
 
-        QueueStats? stats = null;
-        try { stats = await _queueClient.GetQueueStatsAsync(query.QueueName, ct).ConfigureAwait(false); }
-        catch { /* Transport may not support stats */ }
-
-        return await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false);
+        return await BuildSummaryAsync(worker, ct).ConfigureAwait(false);
     }
 
     public async Task<Result<JobDashboardView>> HandleAsync(GetJobDashboard query, CancellationToken ct)
@@ -137,6 +145,21 @@ public class QueueDashboardHandler
         return new DemoJobEnqueued(lastJobId ?? string.Empty);
     }
 
+    private async Task<QueueSummary> BuildSummaryAsync(QueueWorkerInfo worker, CancellationToken ct)
+    {
+        // Wait for queues to be created before hitting SQS for stats.
+        // Without this, cold-start dashboard requests trigger slow/failing
+        // GetQueueAttributes calls for queues that don't exist yet.
+        if (_infraReady is not null)
+            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
+
+        QueueStats? stats = null;
+        try { stats = await _queueClient.GetQueueStatsAsync(worker.QueueName, ct).ConfigureAwait(false); }
+        catch { /* Transport may not support stats */ }
+
+        return await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false);
+    }
+
     private async Task<QueueSummary> ToSummaryAsync(QueueWorkerInfo worker, QueueStats? stats, CancellationToken ct)
     {
         QueueCounterStats? counterStats = null;
@@ -172,15 +195,16 @@ public class QueueDashboardHandler
             QueueName = worker.QueueName,
             MessageType = worker.MessageTypeName,
             Concurrency = worker.Concurrency,
-            MaxRetries = worker.MaxRetries,
+            MaxAttempts = worker.MaxAttempts,
             RetryPolicy = worker.RetryPolicy.ToString(),
             TrackProgress = worker.TrackProgress,
-            IsRunning = worker.IsRunning,
+            Description = worker.Description,
+            IsRunning = worker.WorkerRegistered ? worker.IsRunning : null,
             MessagesProcessed = counterStats?.Totals.GetValueOrDefault("processed") ?? worker.MessagesProcessed,
             MessagesFailed = counterStats?.Totals.GetValueOrDefault("failed") ?? worker.MessagesFailed,
             MessagesDeadLettered = counterStats?.Totals.GetValueOrDefault("dead_lettered") ?? worker.MessagesDeadLettered,
             ActiveCount = stats?.ActiveCount ?? 0,
-            DeadLetterCount = stats?.DeadLetterCount ?? 0,
+            DeadLetterCount = counterStats?.Totals.GetValueOrDefault("dead_lettered") ?? stats?.DeadLetterCount ?? 0,
             InFlightCount = processingCount ?? stats?.InFlightCount ?? 0,
             CounterStats = counterStatsView
         };
@@ -194,6 +218,7 @@ public class QueueDashboardHandler
         Status = s.Status.ToString(),
         Progress = s.Progress,
         ProgressMessage = s.ProgressMessage,
+        Attempt = s.Attempt,
         CreatedUtc = s.CreatedUtc,
         StartedUtc = s.StartedUtc,
         CompletedUtc = s.CompletedUtc,

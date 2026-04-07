@@ -27,9 +27,9 @@ public sealed class QueueWorkerInfo
     public int PrefetchCount { get; init; }
 
     /// <summary>
-    /// Maximum retry attempts before dead-lettering.
+    /// Maximum number of attempts before dead-lettering.
     /// </summary>
-    public int MaxRetries { get; init; }
+    public int MaxAttempts { get; init; }
 
     /// <summary>
     /// Message visibility timeout.
@@ -51,12 +51,24 @@ public sealed class QueueWorkerInfo
     /// </summary>
     public bool TrackProgress { get; init; }
 
+    /// <summary>
+    /// A human-readable description of the queue.
+    /// </summary>
+    public string? Description { get; init; }
+
     // --- Runtime stats (updated atomically by QueueWorker) ---
 
     private long _messagesProcessed;
     private long _messagesFailed;
     private long _messagesDeadLettered;
     private volatile bool _isRunning;
+
+    /// <summary>
+    /// Whether a <see cref="QueueWorker"/> hosted service was registered for this queue
+    /// in the current process. When <c>false</c>, the worker metadata is available for
+    /// dashboard visibility but no local processing occurs (e.g., API-only nodes).
+    /// </summary>
+    public bool WorkerRegistered { get; internal set; }
 
     /// <summary>
     /// Total messages processed successfully since startup.

@@ -28,6 +28,7 @@ public class QueueMiddleware
     private readonly HandlerRegistry _registry;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
+    private readonly string? _resourcePrefix;
     private readonly ConcurrentDictionary<string, QueueHandlerMetadata> _metadataCache = new(StringComparer.Ordinal);
 
     public QueueMiddleware(IQueueClient client, HandlerRegistry registry, DistributedQueueOptions? options = null, IQueueJobStateStore? stateStore = null, TimeProvider? timeProvider = null)
@@ -37,6 +38,7 @@ public class QueueMiddleware
         _stateStore = stateStore;
         _jsonOptions = options?.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _resourcePrefix = options?.ResourcePrefix;
     }
 
     public async ValueTask<object?> ExecuteAsync(
@@ -104,8 +106,18 @@ public class QueueMiddleware
 
         await _client.SendAsync(metadata.QueueName, entry, cancellationToken).ConfigureAwait(false);
 
+        // Validate that the handler's declared return type is compatible with queue processing.
+        // Queue handlers can only return void/Task/ValueTask, Result, or Result<T>.
+        if (!string.IsNullOrEmpty(metadata.ReturnTypeName)
+            && !metadata.ReturnTypeName.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Queue handler '{handlerInfo.DescriptorId}' returns '{metadata.ReturnTypeName}' which is incompatible with queue processing. " +
+                "Queue handlers must return void, Task, Result, or Result<T>.");
+        }
+
         if (jobId is not null)
-            return Result.Accepted(jobId);
+            return Result.Accepted("Message queued", jobId);
 
         return Result.Accepted("Message queued");
     }
@@ -114,18 +126,31 @@ public class QueueMiddleware
     {
         return _metadataCache.GetOrAdd(descriptorId, static (id, state) =>
         {
-            var (registry, fallbackName) = state;
+            var (registry, fallbackName, prefix) = state;
+            string queueName;
+            bool trackProgress;
+            string? returnTypeName = null;
+
             if (registry.TryGetHandlerByDescriptorId(id, out var registration) && registration is not null)
             {
                 var queueAttr = registration.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute;
-                return new QueueHandlerMetadata(
-                    !string.IsNullOrWhiteSpace(queueAttr?.QueueName) ? queueAttr!.QueueName! : fallbackName,
-                    queueAttr?.TrackProgress ?? false);
+                queueName = !string.IsNullOrWhiteSpace(queueAttr?.QueueName) ? queueAttr!.QueueName! : fallbackName;
+                trackProgress = queueAttr?.TrackProgress ?? false;
+                returnTypeName = registration.ReturnTypeName;
+            }
+            else
+            {
+                queueName = fallbackName;
+                trackProgress = false;
             }
 
-            return new QueueHandlerMetadata(fallbackName, false);
-        }, (_registry, messageType.Name));
+            // Apply resource prefix for app-level scoping
+            if (!string.IsNullOrEmpty(prefix))
+                queueName = $"{prefix}-{queueName}";
+
+            return new QueueHandlerMetadata(queueName, trackProgress, returnTypeName);
+        }, (_registry, messageType.Name, _resourcePrefix));
     }
 
-    private sealed record QueueHandlerMetadata(string QueueName, bool TrackProgress);
+    private sealed record QueueHandlerMetadata(string QueueName, bool TrackProgress, string? ReturnTypeName);
 }

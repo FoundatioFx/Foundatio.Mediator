@@ -17,7 +17,7 @@ public class LocalStackFixture : IAsyncLifetime
     {
         var builder = DistributedApplicationTestingBuilder.Create();
 
-        builder.AddContainer("localstack", "localstack/localstack", "latest")
+        builder.AddContainer("localstack", "localstack/localstack", "3.8.1")
             .WithHttpEndpoint(targetPort: 4566, name: "main")
             .WithHttpHealthCheck("/_localstack/health", endpointName: "main")
             .WithEnvironment("SERVICES", "sqs,sns");

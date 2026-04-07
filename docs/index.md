@@ -97,7 +97,7 @@ app.MapMediatorEndpoints();
 // That's it — routes, methods, and parameter binding are all generated for you.
 ```
 
-Go distributed — offload work to a background queue with one attribute:
+Go distributed — ready to scale out? Offload work to a background queue with one attribute:
 
 ```csharp
 public record SendEmail(string To, string Subject, string Body);

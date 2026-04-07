@@ -87,7 +87,7 @@ Routes, HTTP methods, parameter binding, and OpenAPI metadata are all inferred f
 
 ### Go distributed
 
-Need to scale out? Add `[Queue]` to any handler — same code, now processed asynchronously via a background queue:
+Ready to scale out? Add `[Queue]` to any handler — same code, now processed asynchronously via a background queue:
 
 ```csharp
 public record SendEmail(string To, string Subject, string Body);

@@ -110,10 +110,6 @@ public record ProductPriceChanged(string ProductId, decimal NewPrice) : IDistrib
 
 Your handlers, middleware, DI, and error handling all work exactly the same — the distributed layer just changes _where_ execution happens. Pluggable transports for AWS SQS/SNS, with more coming soon.
 
-```bash
-dotnet add package Foundatio.Mediator.Distributed
-dotnet add package Foundatio.Mediator.Distributed.Aws   # For AWS SQS/SNS
-```
 
 **👉 [Getting Started Guide](https://mediator.foundatio.dev/guide/getting-started.html)** — step-by-step setup with code samples for ASP.NET Core and console apps.
 

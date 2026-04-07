@@ -115,8 +115,6 @@ dotnet add package Foundatio.Mediator.Distributed
 dotnet add package Foundatio.Mediator.Distributed.Aws   # For AWS SQS/SNS
 ```
 
-**📖 [Distributed Guide](https://mediator.foundatio.dev/guide/distributed-overview.html)** — queues, notifications, transport providers, and worker configuration.
-
 **👉 [Getting Started Guide](https://mediator.foundatio.dev/guide/getting-started.html)** — step-by-step setup with code samples for ASP.NET Core and console apps.
 
 **📖 [Complete Documentation](https://mediator.foundatio.dev)**

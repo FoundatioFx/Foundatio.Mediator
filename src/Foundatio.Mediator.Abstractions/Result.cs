@@ -62,6 +62,19 @@ public sealed class Result : IResult
     };
 
     /// <summary>
+    /// Creates a Result from an <see cref="IResult"/>.
+    /// </summary>
+    /// <param name="result">The result to convert.</param>
+    /// <returns>A Result instance.</returns>
+    public static Result FromResult(IResult result) => new()
+    {
+        Status = result.Status,
+        Message = result.Message,
+        Location = result.Location,
+        ValidationErrors = result.ValidationErrors
+    };
+
+    /// <summary>
     /// Creates a successful result.
     /// </summary>
     /// <returns>A successful result.</returns>
@@ -121,6 +134,19 @@ public sealed class Result : IResult
     {
         Status = ResultStatus.Accepted,
         Message = message
+    };
+
+    /// <summary>
+    /// Creates a result indicating the request has been accepted for processing with a message and location.
+    /// </summary>
+    /// <param name="message">A message describing the accepted request.</param>
+    /// <param name="location">The location for tracking the accepted request (e.g. a job ID or status URL).</param>
+    /// <returns>A result with Accepted status, message, and location.</returns>
+    public static Result Accepted(string message, string location) => new()
+    {
+        Status = ResultStatus.Accepted,
+        Message = message,
+        Location = location
     };
 
     /// <summary>

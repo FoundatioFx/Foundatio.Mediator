@@ -13,13 +13,13 @@ public class LoggingIntegrationTests(ITestOutputHelper output) : TestWithLogging
     {
         // Arrange: register mediator with a debug-level logger to ensure logging
         // infrastructure doesn't interfere with handler dispatch
-        var services = new ServiceCollection()
-            .AddLogging(b =>
+        var services = new ServiceCollection();
+        services.AddLogging(b =>
             {
                 b.SetMinimumLevel(LogLevel.Debug);
                 b.AddTestLogger(_output);
-            })
-            .AddMediator();
+            });
+        services.AddMediator();
 
         using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();
@@ -38,13 +38,13 @@ public class LoggingIntegrationTests(ITestOutputHelper output) : TestWithLogging
     [Fact]
     public async Task Handler_InvokeAsync_Works_With_Logging_Configured()
     {
-        var services = new ServiceCollection()
-            .AddLogging(b =>
+        var services = new ServiceCollection();
+        services.AddLogging(b =>
             {
                 b.SetMinimumLevel(LogLevel.Trace);
                 b.AddTestLogger(_output);
-            })
-            .AddMediator();
+            });
+        services.AddMediator();
 
         await using var serviceProvider = services.BuildServiceProvider();
         var mediator = serviceProvider.GetRequiredService<IMediator>();

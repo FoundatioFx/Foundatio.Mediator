@@ -175,4 +175,34 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
         var result = await response.Content.ReadFromJsonAsync<string>(TestCancellationToken);
         Assert.Equal("test-user", result);
     }
+
+    // ── Result.Accepted with Location header ──────────────────────────────
+
+    public record CreateExportJob(string Name);
+
+    public class ExportJobHandler
+    {
+        public Result<string> Handle(CreateExportJob command)
+            => Result<string>.Accepted("Export queued", "/api/exports/status/job-123");
+    }
+
+    [Fact]
+    public async Task Endpoint_ResultAcceptedWithLocation_Returns202WithLocationHeader()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddMediator(b => b.AddAssembly<ExportJobHandler>());
+
+        await using var app = builder.Build();
+        app.MapMediatorEndpoints();
+        await app.StartAsync(TestCancellationToken);
+
+        var client = app.GetTestClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/export-jobs", new { Name = "Q1 Report" }, TestCancellationToken);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("/api/exports/status/job-123", response.Headers.Location?.ToString());
+    }
 }

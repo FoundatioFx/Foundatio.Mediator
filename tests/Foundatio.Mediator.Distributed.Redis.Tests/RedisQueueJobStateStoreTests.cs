@@ -362,7 +362,7 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         // Verify the key has a TTL set (we can't easily wait for expiry in integration tests,
         // but we can verify the TTL was applied)
         var db = fixture.Connection.GetDatabase();
-        var ttl = await db.KeyTimeToLiveAsync($"test:{store.GetHashCode()}"); // Can't access private key, just verify state exists
+        _ = await db.KeyTimeToLiveAsync($"test:{store.GetHashCode()}"); // Can't access private key, just verify state exists
         var state = await store.GetJobStateAsync("job-1", CT);
         Assert.NotNull(state);
     }

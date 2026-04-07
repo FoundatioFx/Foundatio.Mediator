@@ -214,8 +214,8 @@ public sealed class QueueWorker : BackgroundService
                 _logger.LogWarning("Failed to deserialize message {MessageId} from {QueueName} as {MessageType}",
                     message.Id, _options.QueueName, _options.MessageType.Name);
 
-                if (jobId is not null && _stateStore is not null)
-                    await _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: $"Deserialization returned null for type {_options.MessageType.Name}", expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
+                if (jobId is not null)
+                    await _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: $"Deserialization returned null for type {_options.MessageType.Name}", expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
                 await DeadLetterAsync(message, $"Deserialization returned null for type {_options.MessageType.Name}").ConfigureAwait(false);
                 return;
             }
@@ -262,8 +262,8 @@ public sealed class QueueWorker : BackgroundService
                     _logger.LogWarning("Handler returned retryable status {Status} for message {MessageId} on {QueueName}: {Message}",
                         result.Status, message.Id, _options.QueueName, errorMessage);
 
-                    if (jobId is not null && _stateStore is not null)
-                        await _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
+                    if (jobId is not null)
+                        await _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
 
                     if (_options.AutoComplete)
                         await AbandonAsync(message, stoppingToken).ConfigureAwait(false);
@@ -281,8 +281,8 @@ public sealed class QueueWorker : BackgroundService
                     _logger.LogWarning("Handler returned non-retryable status {Status} for message {MessageId} on {QueueName}: {Message}",
                         result.Status, message.Id, _options.QueueName, errorMessage);
 
-                    if (jobId is not null && _stateStore is not null)
-                        await _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
+                    if (jobId is not null)
+                        await _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
 
                     _workerInfo?.IncrementDeadLettered();
 
@@ -303,8 +303,8 @@ public sealed class QueueWorker : BackgroundService
                 await _stateStore.IncrementCounterAsync(_options.QueueName, "processed", 1, stoppingToken).ConfigureAwait(false);
 
             // Update state to Completed
-            if (jobId is not null && _stateStore is not null)
-                await _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed, completedUtc: _timeProvider.GetUtcNow(), progress: 100, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
+            if (jobId is not null)
+                await _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed, completedUtc: _timeProvider.GetUtcNow(), progress: 100, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -336,8 +336,7 @@ public sealed class QueueWorker : BackgroundService
 
                 _workerInfo?.IncrementFailed();
 
-                if (_stateStore is not null)
-                    await _stateStore.IncrementCounterAsync(_options.QueueName, "failed", 1, stoppingToken).ConfigureAwait(false);
+                await _stateStore!.IncrementCounterAsync(_options.QueueName, "failed", 1, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -357,8 +356,8 @@ public sealed class QueueWorker : BackgroundService
             _logger.LogError(ex, "Error processing message {MessageId} on {QueueName} (attempt {DequeueCount}/{MaxAttempts})",
                 message.Id, _options.QueueName, message.DequeueCount, _options.MaxAttempts);
 
-            if (jobId is not null && _stateStore is not null)
-                await _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: ex.Message, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
+            if (jobId is not null)
+                await _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: ex.Message, expiry: s_defaultStateExpiry, cancellationToken: stoppingToken).ConfigureAwait(false);
 
             if (_options.AutoComplete && !queueContext.IsCompleted && !queueContext.IsAbandoned)
                 await AbandonAsync(message, stoppingToken).ConfigureAwait(false);

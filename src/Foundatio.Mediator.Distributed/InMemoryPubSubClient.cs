@@ -49,7 +49,7 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
 
         // Start consumer task that reads from the channel and invokes the handler
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var consumerTask = Task.Run(async () =>
+        _ = Task.Run(async () =>
         {
             try
             {

@@ -25,11 +25,11 @@ public static class MediatorExtensions
     /// </remarks>
     /// <param name="services">The service collection to add the mediator to.</param>
     /// <param name="options">Optional configuration options for the mediator.</param>
-    /// <returns>The updated service collection with Foundatio.Mediator registered.</returns>
-    public static IServiceCollection AddMediator(this IServiceCollection services, MediatorOptions? options = null)
+    /// <returns>A <see cref="IMediatorBuilder"/> for further configuration.</returns>
+    public static IMediatorBuilder AddMediator(this IServiceCollection services, MediatorOptions? options = null)
     {
         if (services.Any(sd => sd.ServiceType == typeof(IMediator)))
-            return services;
+            return new MediatorBuilder(services);
 
         options ??= new MediatorOptions();
 
@@ -83,13 +83,13 @@ public static class MediatorExtensions
         services.TryAddSingleton<IHandlerAuthorizationService, DefaultHandlerAuthorizationService>();
         services.TryAddSingleton<IAuthorizationContextProvider, DefaultAuthorizationContextProvider>();
 
-        return services;
+        return new MediatorBuilder(services);
     }
 
     /// <summary>
     /// Adds Foundatio.Mediator to the service collection with a configuration builder.
     /// </summary>
-    public static IServiceCollection AddMediator(this IServiceCollection services, Action<MediatorOptionsBuilder> builder)
+    public static IMediatorBuilder AddMediator(this IServiceCollection services, Action<MediatorOptionsBuilder> builder)
     {
         var optionsBuilder = new MediatorOptionsBuilder();
         builder(optionsBuilder);

@@ -217,6 +217,19 @@ public sealed class Result<T> : IResult
     };
 
     /// <summary>
+    /// Creates a result indicating the request has been accepted for processing with a message and location.
+    /// </summary>
+    /// <param name="message">A message describing the accepted request.</param>
+    /// <param name="location">The location for tracking the accepted request (e.g. a job ID or status URL).</param>
+    /// <returns>A result with Accepted status, message, and location.</returns>
+    public static Result<T> Accepted(string message, string location) => new()
+    {
+        Status = ResultStatus.Accepted,
+        Message = message,
+        Location = location
+    };
+
+    /// <summary>
     /// Creates a result indicating successful creation of a resource with a location.
     /// </summary>
     /// <param name="value">The created resource.</param>

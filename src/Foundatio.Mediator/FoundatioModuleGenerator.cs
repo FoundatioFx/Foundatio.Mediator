@@ -10,7 +10,7 @@ internal static class FoundatioModuleGenerator
     /// This attribute is used by MetadataMiddlewareScanner to discover middleware in referenced assemblies.
     /// Also generates the AddHandlers extension method for DI registration.
     /// </summary>
-    public static void Execute(SourceProductionContext context, CompilationInfo compilationInfo, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration)
+    public static void Execute(SourceProductionContext context, CompilationInfo compilationInfo, List<HandlerInfo> handlers, ImmutableArray<MiddlewareInfo> middleware, GeneratorConfiguration configuration, EndpointDefaultsInfo? endpointDefaults = null)
     {
         var assemblyName = compilationInfo.AssemblyName;
         var safeAssemblyName = assemblyName.ToIdentifier();
@@ -200,6 +200,19 @@ internal static class FoundatioModuleGenerator
                         source.AppendLine();
                     }
                 }
+            }
+
+            // Register API version matcher policy when ASP.NET Core application project has versioning enabled
+            if (compilationInfo.IsApplication && compilationInfo.IsAspNetCore && endpointDefaults != null && endpointDefaults.Value.ApiVersions.Any())
+            {
+                source.AppendLines("""
+                    // Register API version context and matcher policy for endpoint disambiguation
+                    services.TryAddScoped<Foundatio.Mediator.ApiVersionContext>();
+                    services.TryAddScoped<Foundatio.Mediator.IApiVersionContext>(sp => sp.GetRequiredService<Foundatio.Mediator.ApiVersionContext>());
+                    services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Routing.MatcherPolicy, ApiVersionMatcherPolicy>());
+                    services.TryAddEnumerable(ServiceDescriptor.Transient<Microsoft.AspNetCore.Mvc.ApiExplorer.IApiDescriptionProvider, ApiVersionOpenApiProvider>());
+                    """);
+                source.AppendLine();
             }
 
             // Register HttpContext-based authorization context provider when ASP.NET Core is available

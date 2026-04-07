@@ -202,6 +202,27 @@ internal static class RouteConventions
     }
 
     /// <summary>
+    /// Checks whether a suffix looks like a version indicator (e.g., "V1", "V2", "V10").
+    /// Used to avoid creating sub-routes for versioned message types like GetWidgetV2.
+    /// </summary>
+    private static bool IsVersionSuffix(string suffix)
+    {
+        if (suffix.Length < 2)
+            return false;
+
+        if (suffix[0] is not ('V' or 'v'))
+            return false;
+
+        for (int i = 1; i < suffix.Length; i++)
+        {
+            if (!char.IsDigit(suffix[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Extracts the entity prefix from a handler class name by stripping the Handler/Consumer suffix.
     /// Returns null if the name doesn't end with a recognized suffix.
     /// </summary>
@@ -313,9 +334,19 @@ internal static class RouteConventions
                 entityName.Length > handlerPrefix.Length &&
                 char.IsUpper(entityName[handlerPrefix.Length]))
             {
-                // Sub-entity: e.g., "TodoItems" in "Todo" group → add "items" sub-route
-                entityMatchesGroup = true;
-                entitySubRoute = entityName.Substring(handlerPrefix.Length).SimplePluralize().ToKebabCase();
+                var remainder = entityName.Substring(handlerPrefix.Length);
+                // Version-like suffixes (V1, V2, etc.) should not create sub-routes —
+                // they differentiate message types for header-based version dispatch.
+                if (IsVersionSuffix(remainder))
+                {
+                    entityMatchesGroup = true;
+                }
+                else
+                {
+                    // Sub-entity: e.g., "TodoItems" in "Todo" group → add "items" sub-route
+                    entityMatchesGroup = true;
+                    entitySubRoute = remainder.SimplePluralize().ToKebabCase();
+                }
             }
         }
 

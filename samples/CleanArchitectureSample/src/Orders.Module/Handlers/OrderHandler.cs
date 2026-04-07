@@ -15,7 +15,7 @@ namespace Orders.Module.Handlers;
 /// Following Clean Architecture, this handler orchestrates use cases
 /// and delegates persistence to the IOrderRepository abstraction.
 /// </summary>
-[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]
+[HandlerEndpointGroup(EndpointFilters = [typeof(SetRequestedByFilter)])]
 public class OrderHandler(IOrderRepository repository)
 {
     /// <summary>

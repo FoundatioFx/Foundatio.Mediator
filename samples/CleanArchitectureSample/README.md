@@ -17,7 +17,7 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 | **Authorization** | `[HandlerAuthorize(Roles = ["Admin"])]`, `[HandlerAllowAnonymous]`, global `AuthorizationRequired = true` |
 | **Message validation** | `[Required]`, `[Range]`, `[StringLength]` on message records, enforced by `ValidationMiddleware` |
 | **Endpoint generation** | `MapMediatorEndpoints()` auto-generates minimal API routes from handlers |
-| **Endpoint groups & filters** | `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]` |
+| **Endpoint groups & filters** | `[HandlerEndpointGroup(EndpointFilters = [typeof(SetRequestedByFilter)])]` |
 | **Middleware ordering** | `OrderBefore`/`OrderAfter` declarative dependencies between middleware |
 | **Module-scoped middleware** | `OrdersModuleMiddleware`, `ProductsModuleMiddleware` run only for their module's messages |
 | **Multiple cascading events** | `UpdateProduct` returns `(Result<Product>, ProductUpdated?, ProductStockChanged?)` |
@@ -394,7 +394,7 @@ The pieces that make this work:
 When any handler in any module publishes a cascading event marked with `IDispatchToClient`, it automatically appears in the SSE stream — no additional wiring needed. The frontend connects using the browser's `EventSource` API:
 
 ```javascript
-const source = new EventSource('/events/stream');
+const source = new EventSource('/api/events');
 source.onmessage = (e) => {
     const event = JSON.parse(e.data);
     console.log(event.eventType, event.data);
@@ -467,27 +467,27 @@ The SPA Proxy starts the Vite dev server automatically.
 | URL | Description |
 | --- | ----------- |
 | `https://localhost:5173` | SvelteKit frontend |
-| `https://localhost:58702/api/*` | Backend API |
-| `https://localhost:58702/scalar/v1` | API docs (Scalar) |
+| `https://localhost:5702/api/*` | Backend API |
+| `https://localhost:5702/scalar` | API docs (Scalar, latest) |
 
 ### Try the API
 
 ```bash
 # Create a product (requires Admin login)
-curl -X POST https://localhost:58702/api/products \
+curl -X POST https://localhost:5702/api/products \
   -H "Content-Type: application/json" \
   -d '{"name":"Widget","description":"A great widget","price":29.99,"stockQuantity":50}'
 
 # Create an order
-curl -X POST https://localhost:58702/api/orders \
+curl -X POST https://localhost:5702/api/orders \
   -H "Content-Type: application/json" \
   -d '{"customerId":"customer-123","amount":29.99,"description":"Widget purchase"}'
 
 # Dashboard report (aggregates from both modules)
-curl https://localhost:58702/api/reports
+curl https://localhost:5702/api/reports
 
 # Search across modules
-curl "https://localhost:58702/api/reports/search-catalog?searchTerm=widget"
+curl "https://localhost:5702/api/reports/search-catalog?searchTerm=widget"
 ```
 
 Demo users: `admin`/`admin` (Admin role), `user`/`user` (User role).

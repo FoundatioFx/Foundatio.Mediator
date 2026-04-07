@@ -539,6 +539,33 @@ internal static class HandlerAnalyzer
         }
 
         // Extract endpoint info (method takes precedence over class)
+        // Extract API versioning configuration (method → class group cascade)
+        var methodApiVersions = GetStringArrayProperty(methodEndpointAttr, "ApiVersions");
+        var methodApiVersion = GetStringProperty(methodEndpointAttr, "ApiVersion");
+        var classApiVersions = GetStringArrayProperty(classEndpointAttr, "ApiVersions");
+        var classApiVersion = GetStringProperty(classEndpointAttr, "ApiVersion");
+        var groupApiVersions = GetStringArrayProperty(groupAttr, "ApiVersions");
+        var groupApiVersion = GetStringProperty(groupAttr, "ApiVersion");
+
+        // Cascade: method ApiVersions > method ApiVersion > class ApiVersions > class ApiVersion > group ApiVersions > group ApiVersion
+        var methodApiVersionArray = methodApiVersion is not null ? new[] { methodApiVersion } : null;
+        var classApiVersionArray = classApiVersion is not null ? new[] { classApiVersion } : null;
+        var groupApiVersionArray = groupApiVersion is not null ? new[] { groupApiVersion } : null;
+
+        var resolvedApiVersions = methodApiVersions
+            ?? methodApiVersionArray
+            ?? classApiVersions
+            ?? classApiVersionArray
+            ?? groupApiVersions
+            ?? groupApiVersionArray
+            ?? Array.Empty<string>();
+
+        // Deprecation: method overrides class overrides group
+        var deprecated = GetBoolProperty(methodEndpointAttr, "Deprecated")
+                      ?? GetBoolProperty(classEndpointAttr, "Deprecated")
+                      ?? GetBoolProperty(groupAttr, "Deprecated")
+                      ?? false;
+
         // Extract streaming configuration
         var streamingEnumValue = GetIntProperty(methodEndpointAttr, "Streaming") ??
                                  GetIntProperty(classEndpointAttr, "Streaming") ?? 0;
@@ -746,6 +773,8 @@ internal static class HandlerAnalyzer
             StreamingFormat = streamingFormat,
             StreamingItemType = streamingItemType,
             SseEventType = sseEventType,
+            ApiVersions = new(resolvedApiVersions),
+            Deprecated = deprecated,
         };
     }
 

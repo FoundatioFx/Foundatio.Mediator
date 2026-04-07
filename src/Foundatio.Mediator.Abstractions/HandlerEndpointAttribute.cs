@@ -104,4 +104,29 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// the browser <c>EventSource</c> API fires the default <c>"message"</c> event.
     /// </summary>
     public string? SseEventType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the API version for this endpoint.
+    /// When set, this handler only serves requests matching this version (via the
+    /// <c>Api-Version</c> request header). Overrides the group-level version from
+    /// <see cref="HandlerEndpointGroupAttribute"/>.
+    /// When both <see cref="ApiVersion"/> and <see cref="ApiVersions"/> are set, <see cref="ApiVersions"/> takes precedence.
+    /// When null and no group-level version is set, the endpoint serves all declared API versions.
+    /// </summary>
+    public string? ApiVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the API versions this endpoint serves (e.g., <c>["1", "2"]</c>).
+    /// When set, this handler only serves requests matching one of these versions.
+    /// Overrides the group-level versions from <see cref="HandlerEndpointGroupAttribute"/>.
+    /// Takes precedence over <see cref="ApiVersion"/> if both are set.
+    /// </summary>
+    public string[]? ApiVersions { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this endpoint is deprecated.
+    /// When <c>true</c>, the endpoint is marked as deprecated in OpenAPI metadata.
+    /// Overrides the group-level deprecation from <see cref="HandlerEndpointGroupAttribute"/>.
+    /// </summary>
+    public bool Deprecated { get; set; }
 }

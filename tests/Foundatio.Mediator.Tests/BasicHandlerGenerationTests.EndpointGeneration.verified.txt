@@ -163,46 +163,40 @@ public static class Tests_MediatorEndpoints
 [ExcludeFromCodeCoverage]
 public static class MediatorEndpointResultMapper_Tests
 {
-    /// <summary>
-    /// Converts a Foundatio.Mediator.IResult to an HTTP result.
-    /// </summary>
-    public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result)
+    public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result) => result.Status switch
     {
-        return result.Status switch
+        Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
         {
-            Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
-            {
-                Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
-                    file.Stream, file.ContentType, file.FileName),
-                { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
-                _ => Microsoft.AspNetCore.Http.Results.Ok()
-            },
-            Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
-                result.Location ?? "", result.GetValue()),
-            Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
-                null, result.GetValue()),
-            Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
-            Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
-                string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-            Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
-                result.ValidationErrors
-                    .GroupBy(e => e.Identifier ?? "")
-                    .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
-            Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
-                string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-            Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
-            Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
-            Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
-                string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-            Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
-                result.Message ?? "An error occurred", statusCode: 500),
-            Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
-                result.Message ?? "A critical error occurred", statusCode: 500),
-            Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
-                result.Message ?? "Service unavailable", statusCode: 503),
-            _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
-        };
-    }
+            Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
+                file.Stream, file.ContentType, file.FileName),
+            { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
+            _ => Microsoft.AspNetCore.Http.Results.Ok()
+        },
+        Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
+            result.Location ?? "", result.GetValue()),
+        Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
+            null, result.GetValue()),
+        Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
+        Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
+            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+        Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
+            result.ValidationErrors
+                .GroupBy(e => e.Identifier ?? "")
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
+        Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
+            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+        Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
+        Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
+        Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
+            string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+        Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
+            result.Message ?? "An error occurred", statusCode: 500),
+        Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
+            result.Message ?? "A critical error occurred", statusCode: 500),
+        Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
+            result.Message ?? "Service unavailable", statusCode: 503),
+        _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
+    };
 }
 
     },

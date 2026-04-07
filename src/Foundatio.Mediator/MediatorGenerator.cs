@@ -115,6 +115,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var policies = Array.Empty<string>();
         var roles = Array.Empty<string>();
         string summaryStyle = "Exact";
+        var apiVersions = Array.Empty<string>();
+        string apiVersionHeader = "Api-Version";
         bool endpointConfigured = false;
 
         if (configAttr != null)
@@ -182,6 +184,15 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "EndpointSummaryStyle" when arg.Value.Value is int v:
                         summaryStyle = v switch { 1 => "Spaced", _ => "Exact" };
                         break;
+                    case "ApiVersions" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                        apiVersions = arg.Value.Values
+                            .Where(v => v.Value is string)
+                            .Select(v => (string)v.Value!)
+                            .ToArray();
+                        break;
+                    case "ApiVersionHeader" when arg.Value.Value is string s:
+                        apiVersionHeader = s;
+                        break;
                 }
             }
         }
@@ -202,6 +213,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             Policies = new(policies),
             Roles = new(roles),
             SummaryStyle = summaryStyle,
+            ApiVersions = new(apiVersions),
+            ApiVersionHeader = apiVersionHeader,
             IsConfigured = endpointConfigured
         };
 
@@ -311,10 +324,11 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             // Always generate diagnostics related to call sites, including cross-assembly handler validation
             HandlerGenerator.ValidateGlobalCallSites(context, handlersWithInfo, callSites, crossAssemblyHandlerList);
 
-            // Generate assembly attribute and handlers registration if there are handlers or middleware (enables cross-assembly discovery)
-            if (handlersWithInfo.Count > 0 || middleware.Length > 0)
+            // Generate assembly attribute and handlers registration if there are handlers, middleware, or versioning is enabled (enables cross-assembly discovery)
+            bool versioningEnabled = endpointDefaults.ApiVersions.Any();
+            if (handlersWithInfo.Count > 0 || middleware.Length > 0 || (versioningEnabled && compilationInfo.IsApplication && compilationInfo.IsAspNetCore))
             {
-                FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration);
+                FoundatioModuleGenerator.Execute(context, compilationInfo, handlersWithInfo, filteredMiddleware, configuration, endpointDefaults);
             }
 
             // Generate the InterceptsLocation attribute if we need interceptors (for local, cross-assembly, or publish handlers)

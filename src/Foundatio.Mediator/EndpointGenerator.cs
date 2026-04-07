@@ -48,6 +48,16 @@ internal static class EndpointGenerator
         {
             var aggSource = GenerateAggregatorCode(configuration, compilationInfo);
             context.AddSource("_MediatorEndpointAggregator.g.cs", aggSource);
+
+            // Generate the API version matcher policy and OpenAPI provider when versioning is enabled
+            if (endpointDefaults.ApiVersions.Any())
+            {
+                var policySource = GenerateMatcherPolicyCode(configuration, endpointDefaults);
+                context.AddSource("_ApiVersionMatcherPolicy.g.cs", policySource);
+
+                var providerSource = GenerateOpenApiProviderCode(configuration, endpointDefaults);
+                context.AddSource("_ApiVersionOpenApiProvider.g.cs", providerSource);
+            }
         }
     }
 
@@ -133,6 +143,51 @@ internal static class EndpointGenerator
                     handler.MessageType.FullName,
                     endpoint.HttpMethod,
                     endpoint.Route));
+            }
+        }
+
+        // FMED017: Overlapping API versions on the same route.
+        // When versioning is enabled, multiple endpoints sharing a route+method must not
+        // serve the same API version — that would make routing nondeterministic.
+        if (endpointDefaults.ApiVersions.Any())
+        {
+            var byRouteMethod = handlers
+                .Where(h => h.Endpoint!.Value.ApiVersions.Any())
+                .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant())
+                .Select(g => g.ToList())
+                .Where(endpointsInGroup => endpointsInGroup.Count >= 2);
+
+            foreach (var endpointsInGroup in byRouteMethod)
+            {
+                // Collect all versions per handler and find overlaps
+                for (var i = 0; i < endpointsInGroup.Count; i++)
+                {
+                    var versionsA = endpointsInGroup[i].Endpoint!.Value.ApiVersions;
+                    for (var j = i + 1; j < endpointsInGroup.Count; j++)
+                    {
+                        var versionsB = endpointsInGroup[j].Endpoint!.Value.ApiVersions;
+                        var overlap = versionsA.Intersect(versionsB, StringComparer.OrdinalIgnoreCase).ToList();
+                        if (overlap.Count > 0)
+                        {
+                            context.ReportDiagnostic(Diagnostic.Create(
+                                new DiagnosticDescriptor(
+                                    "FMED017",
+                                    "Ambiguous API version on endpoint route",
+                                    "Handlers '{0}' and '{1}' both serve version(s) {2} on {3} {4}. " +
+                                    "Each version must map to exactly one handler for a given route. " +
+                                    "Remove the overlapping version from one of the handlers.",
+                                    "Foundatio.Mediator",
+                                    DiagnosticSeverity.Error,
+                                    isEnabledByDefault: true),
+                                Location.None,
+                                endpointsInGroup[i].Identifier + "." + endpointsInGroup[i].MethodName,
+                                endpointsInGroup[j].Identifier + "." + endpointsInGroup[j].MethodName,
+                                string.Join(", ", overlap),
+                                endpointsInGroup[i].Endpoint!.Value.HttpMethod,
+                                endpointsInGroup[i].Endpoint!.Value.Route));
+                        }
+                    }
+                }
             }
         }
 
@@ -341,101 +396,15 @@ internal static class EndpointGenerator
             parentGroupVar = "rootGroup";
         }
 
-        // Group handlers by endpoint group
-        var handlersByGroup = handlers
-            .GroupBy(h => h.Endpoint?.Group ?? "Default")
-            .OrderBy(g => g.Key)
-            .ToList();
-
         // Collect endpoint info for startup logging
         var endpointLogEntries = new List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)>();
 
-        foreach (var endpointGroup in handlersByGroup)
-        {
-            var groupName = endpointGroup.Key;
-            var groupHandlers = endpointGroup.ToList();
-
-            // Get Group route prefix from first handler
-            var firstEndpoint = groupHandlers.First().Endpoint!.Value;
-            var routePrefix = firstEndpoint.GroupRoutePrefix ?? "";
-
-            // When the group uses an absolute prefix (leading /), bypass the global route prefix
-            var groupParent = (firstEndpoint.GroupBypassGlobalPrefix && hasGlobalGroup)
-                ? "endpoints"
-                : parentGroupVar;
-
-            source.AppendLine();
-            source.AppendLine($"// {groupName} endpoints");
-
-            // Create route group for the group
-            var groupVarName = $"{groupName.ToCamelCase()}Group";
-
-            source.Append($"var {groupVarName} = {groupParent}.MapGroup(\"{routePrefix}\")");
-
-            // Only add tag if group is explicitly defined (not "Default")
-            if (groupName != "Default")
-            {
-                var groupTags = firstEndpoint.GroupTags;
-                if (groupTags.Any())
-                {
-                    var tagsArgs = string.Join(", ", groupTags.Select(t => $"\"{t}\""));
-                    source.Append($".WithTags({tagsArgs})");
-                }
-                else
-                {
-                    source.Append($".WithTags(\"{groupName}\")");
-                }
-            }
-
-            // Add Group-level auth if the group requires auth (and global doesn't already)
-            var groupRequireAuth = firstEndpoint.RequireAuth && !endpointDefaults.RequireAuth;
-            if (groupRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any())
-            {
-                source.Append(".RequireAuthorization()");
-            }
-
-            source.AppendLine(";");
-
-            // Apply Group-level filters
-            var groupFilters = firstEndpoint.GroupFilters;
-            foreach (var filter in groupFilters)
-            {
-                source.AppendLine($"{groupVarName}.AddEndpointFilter<{filter}>();");
-            }
-
-            source.AppendLine();
-
-            // Detect duplicate routes within this group and resolve conflicts
-            var routeOverrides = ResolveDuplicateRoutes(groupHandlers);
-
-            // Generate endpoint for each handler in the group
-            foreach (var handler in groupHandlers)
-            {
-                // Check if this handler needs a route override due to conflict
-                // Use the unique handler key that includes message type
-                var handlerKey = HandlerGenerator.GetHandlerClassName(handler);
-                routeOverrides.TryGetValue(handlerKey, out var routeOverride);
-
-                // When the explicit route is absolute (leading /), bypass all prefixes
-                var targetGroup = handler.Endpoint!.Value.RouteBypassPrefixes
-                    ? "endpoints"
-                    : groupVarName;
-
-                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
-
-                // Collect endpoint info for logging
-                var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
-                var fullRoute = ComputeFullDisplayRoute(
-                    endpointDefaults.RoutePrefix, routePrefix, endpointRoute,
-                    firstEndpoint.GroupBypassGlobalPrefix,
-                    handler.Endpoint!.Value.RouteBypassPrefixes);
-                endpointLogEntries.Add((
-                    handler.Endpoint!.Value.HttpMethod,
-                    fullRoute,
-                    $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})",
-                    handler.Endpoint!.Value.HasExplicitRoute));
-            }
-        }
+        // All handlers are emitted on flat routes (no version path segments).
+        // Version dispatch is handled via request headers when multiple handlers
+        // map to the same route with different ApiVersions.
+        EmitGroupEndpoints(source, handlers, parentGroupVar, hasGlobalGroup,
+            endpointDefaults, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi,
+            assemblySuffix, endpointLogEntries);
 
         // Collect skipped handler info for logging
         var skippedLogEntries = new List<(string HandlerInfo, string Reason)>();
@@ -451,6 +420,117 @@ internal static class EndpointGenerator
 
         source.DecrementIndent();
         source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Emits grouped endpoint registrations under a given parent group variable.
+    /// When header-based versioning is enabled, detects route collisions across versions
+    /// and emits version dispatch endpoints that read the Api-Version header.
+    /// </summary>
+    private static void EmitGroupEndpoints(
+        IndentedStringBuilder source,
+        List<HandlerInfo> handlers,
+        string parentGroupVar,
+        bool hasGlobalGroup,
+        EndpointDefaultsInfo endpointDefaults,
+        bool hasAsParametersAttribute,
+        bool hasFromBodyAttribute,
+        bool hasWithOpenApi,
+        string assemblySuffix,
+        List<(string HttpMethod, string FullRoute, string HandlerInfo, bool IsExplicitRoute)> endpointLogEntries)
+    {
+        if (handlers.Count == 0)
+            return;
+
+        // Group handlers by group name
+        var handlersByGroup = handlers
+            .GroupBy(h => h.Endpoint?.Group ?? "Default")
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        foreach (var handlerGroup in handlersByGroup)
+        {
+            var group = handlerGroup.Key;
+            var groupHandlers = handlerGroup.ToList();
+
+            // Get group route prefix from first handler
+            var firstEndpoint = groupHandlers.First().Endpoint!.Value;
+            var routePrefix = firstEndpoint.GroupRoutePrefix ?? "";
+
+            // When the group uses an absolute prefix (leading /), bypass the global route prefix
+            var groupParent = (firstEndpoint.GroupBypassGlobalPrefix && hasGlobalGroup)
+                ? "endpoints"
+                : parentGroupVar;
+
+            source.AppendLine();
+            source.AppendLine($"// {group} endpoints");
+
+            // Create route group
+            var groupVarName = $"{group.ToCamelCase()}Group";
+
+            source.Append($"var {groupVarName} = {groupParent}.MapGroup(\"{routePrefix}\")");
+
+            // Only add tag if group is explicitly defined (not "Default")
+            if (group != "Default")
+            {
+                var groupTags = firstEndpoint.GroupTags;
+                if (groupTags.Any())
+                {
+                    var tagsArgs = string.Join(", ", groupTags.Select(t => $"\"{t}\""));
+                    source.Append($".WithTags({tagsArgs})");
+                }
+                else
+                {
+                    source.Append($".WithTags(\"{group}\")");
+                }
+            }
+
+            // Add group-level auth if the group requires auth (and global doesn't already)
+            var groupRequireAuth = firstEndpoint.RequireAuth && !endpointDefaults.RequireAuth;
+            if (groupRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any())
+            {
+                source.Append(".RequireAuthorization()");
+            }
+
+            source.AppendLine(";");
+
+            // Apply group-level filters
+            var groupFilters = firstEndpoint.GroupFilters;
+            foreach (var filter in groupFilters)
+            {
+                source.AppendLine($"{groupVarName}.AddEndpointFilter<{filter}>();");
+            }
+
+            source.AppendLine();
+
+            // Detect duplicate routes and resolve conflicts (version-aware)
+            var routeOverrides = ResolveDuplicateRoutes(groupHandlers);
+
+            // Generate endpoints — each handler becomes its own endpoint
+            // When versioning is enabled, the MatcherPolicy disambiguates same-route endpoints
+            foreach (var handler in groupHandlers)
+            {
+                var handlerKey = HandlerGenerator.GetHandlerClassName(handler);
+                routeOverrides.TryGetValue(handlerKey, out var routeOverride);
+
+                var targetGroup = handler.Endpoint!.Value.RouteBypassPrefixes
+                    ? "endpoints"
+                    : groupVarName;
+
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults, routeOverride);
+
+                var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
+                var fullRoute = ComputeFullDisplayRoute(
+                    endpointDefaults.RoutePrefix, routePrefix, endpointRoute,
+                    firstEndpoint.GroupBypassGlobalPrefix,
+                    handler.Endpoint!.Value.RouteBypassPrefixes);
+                endpointLogEntries.Add((
+                    handler.Endpoint!.Value.HttpMethod,
+                    fullRoute,
+                    $"{handler.Identifier}.{handler.MethodName}({handler.MessageType.Identifier})",
+                    handler.Endpoint!.Value.HasExplicitRoute));
+            }
+        }
     }
 
     /// <summary>
@@ -545,6 +625,8 @@ internal static class EndpointGenerator
     /// Detects duplicate routes within a group and returns overrides for conflicting handlers.
     /// Only handlers without an explicitly-set route will be given an override.
     /// The first handler in each duplicate group keeps its original route.
+    /// When versioning is enabled, handlers on the same route with different version constraints
+    /// are NOT considered duplicates (the MatcherPolicy disambiguates them at routing time).
     /// </summary>
     private static Dictionary<string, string> ResolveDuplicateRoutes(List<HandlerInfo> handlers)
     {
@@ -560,20 +642,40 @@ internal static class EndpointGenerator
                 // Use unique handler key that includes message type
                 UniqueKey = HandlerGenerator.GetHandlerClassName(h)
             })
-            .GroupBy(x => $"{x.Endpoint.HttpMethod}:{x.Route}")
-            .Where(g => g.Count() > 1) // Only care about duplicates
+            .GroupBy(x => $"{x.Endpoint.HttpMethod}:{x.Route.TrimStart('/')}")
             .ToList();
 
         foreach (var group in routeGroups)
         {
-            // Skip the first handler - it keeps its original route
-            // Only give non-explicit routes a message-based path for subsequent duplicates
-            foreach (var item in group.Skip(1).Where(x => !x.Endpoint.HasExplicitRoute))
+            if (group.Count() <= 1)
+                continue;
+
+            // Within a route group, partition by version sets to find true duplicates.
+            // Handlers with non-overlapping version constraints are handled by MatcherPolicy.
+            var versionGroups = group
+                .GroupBy(x =>
+                {
+                    var versions = x.Endpoint.ApiVersions;
+                    return versions.Any()
+                        ? string.Join(",", versions.OrderBy(v => v))
+                        : ""; // empty = unversioned/fallback
+                })
+                .ToList();
+
+            // If every handler has a unique version set, no duplicates
+            if (versionGroups.All(vg => vg.Count() == 1))
+                continue;
+
+            // Reroute duplicates within each version group
+            foreach (var vg in versionGroups.Where(vg => vg.Count() > 1))
             {
-                // Use kebab-case message name as the route
-                var messageName = item.Handler.MessageType.Identifier;
-                var kebabRoute = "/" + messageName.ToKebabCase();
-                routeOverrides[item.UniqueKey] = kebabRoute;
+                foreach (var item in vg.Skip(1).Where(x => !x.Endpoint.HasExplicitRoute))
+                {
+                    // Use kebab-case message name as the route
+                    var messageName = item.Handler.MessageType.Identifier;
+                    var kebabRoute = "/" + messageName.ToKebabCase();
+                    routeOverrides[item.UniqueKey] = kebabRoute;
+                }
             }
         }
 
@@ -593,6 +695,7 @@ internal static class EndpointGenerator
         bool groupRequireAuth,
         string assemblySuffix,
         string summaryStyle,
+        EndpointDefaultsInfo endpointDefaults,
         string? routeOverride = null)
     {
         var endpoint = handler.Endpoint!.Value;
@@ -621,7 +724,35 @@ internal static class EndpointGenerator
         source.IncrementIndent();
 
         // Add metadata
-        source.AppendLine($".WithName(\"{endpoint.Name}\")");
+        var endpointName = endpoint.Name;
+        bool versioningEnabled = endpointDefaults.ApiVersions.Any();
+        bool handlerHasVersions = endpoint.ApiVersions.Any();
+
+        // Append version suffix to endpoint name for versioned handlers
+        if (versioningEnabled && handlerHasVersions)
+        {
+            var versionSuffix = endpoint.ApiVersions.Length == 1
+                ? endpoint.ApiVersions[0]
+                : string.Join("_", endpoint.ApiVersions);
+            endpointName = $"{endpointName}_v{versionSuffix}";
+        }
+
+        source.AppendLine($".WithName(\"{endpointName}\")");
+
+        // Add version metadata for MatcherPolicy disambiguation
+        if (versioningEnabled)
+        {
+            var defaultVersion = endpointDefaults.ApiVersions.Last();
+            if (handlerHasVersions)
+            {
+                var versionsArray = string.Join(", ", endpoint.ApiVersions.Select(v => $"\"{v}\""));
+                source.AppendLine($".WithMetadata(new Foundatio.Mediator.ApiVersionMetadata(new[] {{ {versionsArray} }}, \"{endpointDefaults.ApiVersionHeader}\", \"{defaultVersion}\"))");
+            }
+            else
+            {
+                source.AppendLine($".WithMetadata(new Foundatio.Mediator.ApiVersionMetadata(System.Array.Empty<string>(), \"{endpointDefaults.ApiVersionHeader}\", \"{defaultVersion}\"))");
+            }
+        }
 
         var messageName = summaryStyle == "Spaced"
             ? SplitPascalCase(handler.MessageType.Identifier)
@@ -634,6 +765,12 @@ internal static class EndpointGenerator
         {
             var escapedDescription = EscapeString(descriptionText!);
             source.AppendLine($".WithDescription(\"{escapedDescription}\")");
+        }
+
+        // Mark endpoint as deprecated in OpenAPI metadata
+        if (endpoint.Deprecated)
+        {
+            source.AppendLine(".WithMetadata(new System.ObsoleteAttribute(\"This API version is deprecated.\"))");
         }
 
         // Add AllowAnonymous if handler opts out of group-level auth
@@ -953,60 +1090,46 @@ internal static class EndpointGenerator
     private static void GenerateResultMapperClass(IndentedStringBuilder source, string assemblySuffix)
     {
         source.AddGeneratedCodeAttribute();
-        source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine($"public static class MediatorEndpointResultMapper_{assemblySuffix}");
-        source.AppendLine("{");
-        source.IncrementIndent();
-
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Converts a Foundatio.Mediator.IResult to an HTTP result.");
-        source.AppendLine("/// </summary>");
-        source.AppendLine("public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result)");
-        source.AppendLine("{");
-        source.IncrementIndent();
-
-        source.AppendLine("""
-            return result.Status switch
+        source.AppendLines($$"""
+            [ExcludeFromCodeCoverage]
+            public static class MediatorEndpointResultMapper_{{assemblySuffix}}
             {
-                Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
+                public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result) => result.Status switch
                 {
-                    Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
-                        file.Stream, file.ContentType, file.FileName),
-                    { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
-                    _ => Microsoft.AspNetCore.Http.Results.Ok()
-                },
-                Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
-                    result.Location ?? "", result.GetValue()),
-                Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
-                    null, result.GetValue()),
-                Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
-                Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
-                    string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
-                    result.ValidationErrors
-                        .GroupBy(e => e.Identifier ?? "")
-                        .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
-                Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
-                    string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
-                Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
-                Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
-                    string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
-                Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
-                    result.Message ?? "An error occurred", statusCode: 500),
-                Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
-                    result.Message ?? "A critical error occurred", statusCode: 500),
-                Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
-                    result.Message ?? "Service unavailable", statusCode: 503),
-                _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
-            };
+                    Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch
+                    {
+                        Foundatio.Mediator.FileResult file => Microsoft.AspNetCore.Http.Results.File(
+                            file.Stream, file.ContentType, file.FileName),
+                        { } v => Microsoft.AspNetCore.Http.Results.Ok(v),
+                        _ => Microsoft.AspNetCore.Http.Results.Ok()
+                    },
+                    Foundatio.Mediator.ResultStatus.Created => Microsoft.AspNetCore.Http.Results.Created(
+                        result.Location ?? "", result.GetValue()),
+                    Foundatio.Mediator.ResultStatus.Accepted => Microsoft.AspNetCore.Http.Results.Accepted(
+                        null, result.GetValue()),
+                    Foundatio.Mediator.ResultStatus.NoContent => Microsoft.AspNetCore.Http.Results.NoContent(),
+                    Foundatio.Mediator.ResultStatus.BadRequest => Microsoft.AspNetCore.Http.Results.BadRequest(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Invalid => Microsoft.AspNetCore.Http.Results.ValidationProblem(
+                        result.ValidationErrors
+                            .GroupBy(e => e.Identifier ?? "")
+                            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray())),
+                    Foundatio.Mediator.ResultStatus.NotFound => Microsoft.AspNetCore.Http.Results.NotFound(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Unauthorized => Microsoft.AspNetCore.Http.Results.Unauthorized(),
+                    Foundatio.Mediator.ResultStatus.Forbidden => Microsoft.AspNetCore.Http.Results.Forbid(),
+                    Foundatio.Mediator.ResultStatus.Conflict => Microsoft.AspNetCore.Http.Results.Conflict(
+                        string.IsNullOrEmpty(result.Message) ? null : new { message = result.Message }),
+                    Foundatio.Mediator.ResultStatus.Error => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "An error occurred", statusCode: 500),
+                    Foundatio.Mediator.ResultStatus.CriticalError => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "A critical error occurred", statusCode: 500),
+                    Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
+                        result.Message ?? "Service unavailable", statusCode: 503),
+                    _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
+                };
+            }
             """);
-
-        source.DecrementIndent();
-        source.AppendLine("}");
-
-        source.DecrementIndent();
-        source.AppendLine("}");
     }
 
     /// <summary>
@@ -1058,6 +1181,269 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
+    /// Generates the API version matcher policy that disambiguates endpoints by version header.
+    /// Only emitted in application projects when API versioning is enabled.
+    /// </summary>
+    private static string GenerateMatcherPolicyCode(GeneratorConfiguration configuration, EndpointDefaultsInfo endpointDefaults)
+    {
+        var source = new IndentedStringBuilder();
+
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_ApiVersionMatcherPolicy.g.cs");
+        source.AppendLine("""
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+            using Microsoft.AspNetCore.Routing.Matching;
+            using Microsoft.Extensions.DependencyInjection;
+            using System;
+            using System.Collections.Generic;
+            using System.Diagnostics.CodeAnalysis;
+            using System.Linq;
+            using System.Threading.Tasks;
+
+            namespace Foundatio.Mediator;
+            """);
+
+        // Emit the all-versions array as a static field
+        var allVersionsLiteral = string.Join(", ", endpointDefaults.ApiVersions.Select(v => $"\"{v}\""));
+
+        source.AppendLine();
+        source.AddGeneratedCodeAttribute();
+        source.AppendLines($$"""
+            [ExcludeFromCodeCoverage]
+            internal sealed class ApiVersionMatcherPolicy : MatcherPolicy, IEndpointSelectorPolicy
+            {
+                private static readonly string[] s_allVersions = new[] { {{allVersionsLiteral}} };
+
+                public override int Order => -100;
+
+                public bool AppliesToEndpoints(IReadOnlyList<Endpoint> endpoints)
+                {
+                    for (var i = 0; i < endpoints.Count; i++)
+                    {
+                        if (endpoints[i].Metadata.GetMetadata<ApiVersionMetadata>() != null)
+                            return true;
+                    }
+                    return false;
+                }
+
+                public Task ApplyAsync(HttpContext httpContext, CandidateSet candidates)
+                {
+                    // Collect candidate version arrays and resolve the requested version
+                    string? requestedVersion = null;
+                    bool headerWasExplicit = false;
+                    string? versionHeader = null;
+                    var candidateVersions = new string[]?[candidates.Count];
+
+                    for (var i = 0; i < candidates.Count; i++)
+                    {
+                        if (!candidates.IsValidCandidate(i)) continue;
+                        var meta = candidates[i].Endpoint.Metadata.GetMetadata<ApiVersionMetadata>();
+                        if (meta == null) continue;
+
+                        candidateVersions[i] = meta.Versions;
+
+                        // Resolve the requested version once from the first annotated candidate
+                        if (requestedVersion == null)
+                        {
+                            versionHeader = meta.VersionHeader;
+                            var headerValue = httpContext.Request.Headers[meta.VersionHeader].FirstOrDefault();
+                            if (headerValue != null)
+                            {
+                                requestedVersion = headerValue;
+                                headerWasExplicit = true;
+                            }
+                            else
+                            {
+                                requestedVersion = meta.DefaultVersion;
+                            }
+                        }
+                    }
+
+                    if (requestedVersion == null) return Task.CompletedTask;
+
+                    // Reject explicitly-provided versions that are not in the declared set
+                    if (headerWasExplicit && Array.IndexOf(s_allVersions, requestedVersion) < 0)
+                    {
+                        // Case-insensitive check
+                        bool found = false;
+                        for (int i = 0; i < s_allVersions.Length; i++)
+                        {
+                            if (string.Equals(s_allVersions[i], requestedVersion, StringComparison.OrdinalIgnoreCase))
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if (!found)
+                        {
+                            httpContext.Response.StatusCode = 400;
+                            httpContext.Response.ContentType = "application/json";
+                            httpContext.Response.Headers["Api-Version-Supported"] = string.Join(", ", s_allVersions);
+                            // Invalidate all candidates to prevent handler execution
+                            for (var i = 0; i < candidates.Count; i++)
+                                candidates.SetValidity(i, false);
+                            // Write body to start the response and prevent the routing pipeline from overwriting the status code
+                            return httpContext.Response.WriteAsync("{\"error\":\"Unsupported API version. Check Api-Version-Supported response header for valid versions.\"}");
+                        }
+                    }
+
+                    // Set version context for downstream middleware and handlers
+                    var versionContext = httpContext.RequestServices.GetService<Foundatio.Mediator.ApiVersionContext>();
+                    if (versionContext != null)
+                        versionContext.Current = requestedVersion;
+
+                    var (winner, hasVersioned) = ApiVersionMetadata.ResolveWinner(candidateVersions, requestedVersion, s_allVersions);
+
+                    if (!hasVersioned) return Task.CompletedTask;
+
+                    // Invalidate non-winning candidates
+                    for (var i = 0; i < candidates.Count; i++)
+                    {
+                        if (i == winner || !candidates.IsValidCandidate(i)) continue;
+                        if (candidates[i].Endpoint.Metadata.GetMetadata<ApiVersionMetadata>() != null)
+                            candidates.SetValidity(i, false);
+                    }
+
+                    return Task.CompletedTask;
+                }
+            }
+            """);
+
+        return source.ToString();
+    }
+
+    /// <summary>
+    /// Generates an IApiDescriptionProvider that assigns OpenAPI group names based on ApiVersionMetadata.
+    /// Versioned endpoints are assigned to their version's group; fallback endpoints are cloned into all groups.
+    /// This ensures each per-version OpenAPI document contains the correct endpoints.
+    /// </summary>
+    private static string GenerateOpenApiProviderCode(GeneratorConfiguration configuration, EndpointDefaultsInfo endpointDefaults)
+    {
+        var source = new IndentedStringBuilder();
+
+        source.AddGeneratedFileHeader(configuration.GenerationCounterEnabled, "_ApiVersionOpenApiProvider.g.cs");
+        source.AppendLine("""
+            using System;
+            using System.Collections.Generic;
+            using System.Diagnostics.CodeAnalysis;
+            using System.Linq;
+
+            namespace Foundatio.Mediator;
+            """);
+
+        var versionsLiteral = string.Join(", ", endpointDefaults.ApiVersions.Select(v => $"\"{v}\""));
+
+        source.AppendLine();
+        source.AddGeneratedCodeAttribute();
+        source.AppendLines($$"""
+            [ExcludeFromCodeCoverage]
+            internal sealed class ApiVersionOpenApiProvider : Microsoft.AspNetCore.Mvc.ApiExplorer.IApiDescriptionProvider
+            {
+                private static readonly string[] DeclaredVersions = new[] { {{versionsLiteral}} };
+
+                public int Order => 1000;
+
+                public void OnProvidersExecuting(Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescriptionProviderContext context) { }
+
+                public void OnProvidersExecuted(Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescriptionProviderContext context)
+                {
+                    // Pass 1: Collect versioned route signatures so fallbacks can be skipped when superseded
+                    var versionedRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var result in context.Results)
+                    {
+                        ApiVersionMetadata? vm = null;
+                        if (result.ActionDescriptor.EndpointMetadata is { } m1)
+                        {
+                            foreach (var obj in m1)
+                            {
+                                if (obj is ApiVersionMetadata m2) { vm = m2; break; }
+                            }
+                        }
+                        if (vm != null && vm.Versions.Length > 0)
+                        {
+                            foreach (var v in vm.Versions)
+                                versionedRoutes.Add(result.HttpMethod + "|" + (result.RelativePath ?? "") + "|" + v);
+                        }
+                    }
+
+                    // Pass 2: Assign version groups
+                    var toAdd = new List<Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription>();
+                    var toRemove = new List<Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription>();
+
+                    foreach (var result in context.Results)
+                    {
+                        ApiVersionMetadata? versionMeta = null;
+                        if (result.ActionDescriptor.EndpointMetadata is { } meta)
+                        {
+                            foreach (var obj in meta)
+                            {
+                                if (obj is ApiVersionMetadata m) { versionMeta = m; break; }
+                            }
+                        }
+
+                        if (versionMeta != null)
+                        {
+                            if (versionMeta.Versions.Length > 0)
+                            {
+                                // Versioned endpoint: assign to first version group, clone for additional versions
+                                result.GroupName = ToGroupName(versionMeta.Versions[0]);
+                                for (int i = 1; i < versionMeta.Versions.Length; i++)
+                                    toAdd.Add(CloneWithGroupName(result, ToGroupName(versionMeta.Versions[i])));
+                            }
+                            else
+                            {
+                                // Fallback endpoint: only include in versions without a versioned replacement
+                                var assigned = false;
+                                for (int i = 0; i < DeclaredVersions.Length; i++)
+                                {
+                                    var key = result.HttpMethod + "|" + (result.RelativePath ?? "") + "|" + DeclaredVersions[i];
+                                    if (versionedRoutes.Contains(key)) continue;
+                                    if (!assigned) { result.GroupName = ToGroupName(DeclaredVersions[i]); assigned = true; }
+                                    else toAdd.Add(CloneWithGroupName(result, ToGroupName(DeclaredVersions[i])));
+                                }
+                                if (!assigned) toRemove.Add(result);
+                            }
+                        }
+                        else if (result.GroupName == null)
+                        {
+                            // Non-mediator ungrouped endpoint: clone into every version group
+                            result.GroupName = ToGroupName(DeclaredVersions[0]);
+                            for (int i = 1; i < DeclaredVersions.Length; i++)
+                                toAdd.Add(CloneWithGroupName(result, ToGroupName(DeclaredVersions[i])));
+                        }
+                    }
+
+                    foreach (var d in toAdd) context.Results.Add(d);
+                    foreach (var d in toRemove) context.Results.Remove(d);
+                }
+
+                private static string ToGroupName(string version)
+                    => version.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? version : "v" + version;
+
+                private static Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription CloneWithGroupName(
+                    Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription source, string groupName)
+                {
+                    var clone = new Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription
+                    {
+                        ActionDescriptor = source.ActionDescriptor,
+                        GroupName = groupName,
+                        HttpMethod = source.HttpMethod,
+                        RelativePath = source.RelativePath,
+                    };
+                    foreach (var p in source.ParameterDescriptions) clone.ParameterDescriptions.Add(p);
+                    foreach (var f in source.SupportedRequestFormats) clone.SupportedRequestFormats.Add(f);
+                    foreach (var f in source.SupportedResponseTypes) clone.SupportedResponseTypes.Add(f);
+                    foreach (var kv in source.Properties) clone.Properties[kv.Key] = kv.Value;
+                    return clone;
+                }
+            }
+            """);
+
+        return source.ToString();
+    }
+
+    /// <summary>
     /// Derives a clean project name from the assembly name for use as a suffix
     /// in generated endpoint method names. Takes the last meaningful segment,
     /// strips common suffixes like Api/Web/Module/Service/Server, and sanitizes.
@@ -1084,68 +1470,55 @@ internal static class EndpointGenerator
 
         source.AppendLine();
         source.AddGeneratedCodeAttribute();
-        source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine("public static class MediatorEndpointExtensions");
-        source.AppendLine("{");
-        source.IncrementIndent();
+        source.AppendLines("""
+            [ExcludeFromCodeCoverage]
+            public static class MediatorEndpointExtensions
+            {
+                /// <summary>
+                /// Maps all discovered mediator handler endpoints from all referenced assemblies.
+                /// Discovers endpoint modules automatically via <see cref="FoundatioModuleAttribute"/> and naming convention.
+                /// </summary>
+                /// <param name="endpoints">The endpoint route builder.</param>
+                /// <param name="configure">Optional configuration to select assemblies and enable logging.</param>
+                /// <returns>The endpoint route builder for chaining.</returns>
+                public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)
+                {
+                    MediatorEndpointOptions? options = null;
+                    if (configure != null)
+                    {
+                        var builder = new MediatorEndpointOptionsBuilder();
+                        configure(builder);
+                        options = builder.Build();
+                    }
 
-        source.AppendLine("/// <summary>");
-        source.AppendLine("/// Maps all discovered mediator handler endpoints from all referenced assemblies.");
-        source.AppendLine("/// Discovers endpoint modules automatically via <see cref=\"FoundatioModuleAttribute\"/> and naming convention.");
-        source.AppendLine("/// </summary>");
-        source.AppendLine("/// <param name=\"endpoints\">The endpoint route builder.</param>");
-        source.AppendLine("/// <param name=\"configure\">Optional configuration to select assemblies and enable logging.</param>");
-        source.AppendLine("/// <returns>The endpoint route builder for chaining.</returns>");
-        source.AppendLine("public static IEndpointRouteBuilder MapMediatorEndpoints(this IEndpointRouteBuilder endpoints, Action<MediatorEndpointOptionsBuilder>? configure = null)");
-        source.AppendLine("{");
-        source.IncrementIndent();
+                    var logEndpoints = options?.LogEndpoints ?? false;
 
-        source.AppendLine("MediatorEndpointOptions? options = null;");
-        source.AppendLine("if (configure != null)");
-        source.AppendLine("{");
-        source.IncrementIndent();
-        source.AppendLine("var builder = new MediatorEndpointOptionsBuilder();");
-        source.AppendLine("configure(builder);");
-        source.AppendLine("options = builder.Build();");
-        source.DecrementIndent();
-        source.AppendLine("}");
-        source.AppendLine();
-        source.AppendLine("var logEndpoints = options?.LogEndpoints ?? false;");
-        source.AppendLine();
-        source.AppendLine("if (options?.Assemblies == null || options.Assemblies.Count == 0)");
-        source.AppendLine("    MediatorExtensions.EnsureReferencedAssembliesLoaded();");
-        source.AppendLine();
-        source.AppendLine("var assemblies = options?.Assemblies != null && options.Assemblies.Count > 0");
-        source.AppendLine("    ? options.Assemblies");
-        source.AppendLine("    : AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic).ToList();");
-        source.AppendLine();
-        source.AppendLine("foreach (var assembly in assemblies)");
-        source.AppendLine("{");
-        source.IncrementIndent();
+                    if (options?.Assemblies == null || options.Assemblies.Count == 0)
+                        MediatorExtensions.EnsureReferencedAssembliesLoaded();
 
-        source.AppendLine("if (!assembly.GetCustomAttributes(typeof(FoundatioModuleAttribute), false).Any())");
-        source.AppendLine("    continue;");
-        source.AppendLine();
-        source.AppendLine("foreach (var type in assembly.GetExportedTypes())");
-        source.AppendLine("{");
-        source.IncrementIndent();
-        source.AppendLine("if (!type.Name.EndsWith(\"_MediatorEndpoints\", StringComparison.Ordinal))");
-        source.AppendLine("    continue;");
-        source.AppendLine();
-        source.AppendLine("var method = type.GetMethod(\"MapEndpoints\", BindingFlags.Public | BindingFlags.Static);");
-        source.AppendLine("method?.Invoke(null, new object[] { endpoints, logEndpoints });");
-        source.DecrementIndent();
-        source.AppendLine("}");
+                    var assemblies = options?.Assemblies != null && options.Assemblies.Count > 0
+                        ? options.Assemblies
+                        : AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic).ToList();
 
-        source.DecrementIndent();
-        source.AppendLine("}");
+                    foreach (var assembly in assemblies)
+                    {
+                        if (!assembly.GetCustomAttributes(typeof(FoundatioModuleAttribute), false).Any())
+                            continue;
 
-        source.AppendLine("return endpoints;");
-        source.DecrementIndent();
-        source.AppendLine("}");
+                        foreach (var type in assembly.GetExportedTypes())
+                        {
+                            if (!type.Name.EndsWith("_MediatorEndpoints", StringComparison.Ordinal))
+                                continue;
 
-        source.DecrementIndent();
-        source.AppendLine("}");
+                            var method = type.GetMethod("MapEndpoints", BindingFlags.Public | BindingFlags.Static);
+                            method?.Invoke(null, new object[] { endpoints, logEndpoints });
+                        }
+                    }
+
+                    return endpoints;
+                }
+            }
+            """);
 
         return source.ToString();
     }

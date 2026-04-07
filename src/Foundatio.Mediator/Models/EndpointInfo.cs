@@ -192,6 +192,19 @@ internal readonly record struct EndpointInfo
     /// When 0, the status code is auto-detected from handler body analysis.
     /// </summary>
     public int ExplicitSuccessStatusCode { get; init; }
+
+    /// <summary>
+    /// The API versions this endpoint belongs to (e.g., ["1", "2"]).
+    /// When empty, the endpoint is unversioned and generated without a version prefix.
+    /// Resolved by cascading method-level → group-level attributes.
+    /// </summary>
+    public EquatableArray<string> ApiVersions { get; init; }
+
+    /// <summary>
+    /// Whether this endpoint is marked as deprecated.
+    /// When true, the generated endpoint includes deprecation metadata for OpenAPI.
+    /// </summary>
+    public bool Deprecated { get; init; }
 }
 
 /// <summary>

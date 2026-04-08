@@ -26,7 +26,10 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 | **Assembly configuration** | `[assembly: MediatorConfiguration(AuthorizationRequired = true, ...)]` per module |
 | **Distributed notifications** | Domain events implement `IDistributedNotification` — fan out across all replicas via SNS+SQS |
 | **Async queue handlers** | `[Queue]` on `AuditEventHandler` / `NotificationEventHandler` — processed via SQS |
-| **Aspire orchestration** | `AppHost` runs 3 API replicas + LocalStack (SQS/SNS) for local development |
+| **Job progress tracking** | `DemoExportJobHandler` with `TrackProgress = true`, progress reporting via `QueueContext` |
+| **Queue dashboard** | `QueueDashboardHandler` — built-in endpoints for listing queues, job state, counters, and cancellation |
+| **Queue dashboard UI** | SvelteKit page with real-time throughput sparklines, job progress bars, and cancellation |
+| **Aspire orchestration** | `AppHost` runs 3 API replicas + LocalStack (SQS/SNS) + Redis for local development |
 
 ## Project Structure
 
@@ -38,6 +41,8 @@ src/
 │   ├── Handlers/
 │   │   ├── AuditEventHandler.cs        # [Queue] — async audit logging via SQS
 │   │   ├── NotificationEventHandler.cs # [Queue] — async notification delivery via SQS
+│   │   ├── DemoExportJobHandler.cs     # [Queue(TrackProgress=true)] — long-running job with progress
+│   │   ├── QueueDashboardHandler.cs    # Queue monitoring endpoints (list, stats, cancel)
 │   │   └── HealthHandler.cs            # [HandlerAllowAnonymous] health check
 │   ├── Middleware/
 │   │   ├── ObservabilityMiddleware.cs  # Before/After/Finally with Stopwatch state
@@ -77,7 +82,7 @@ src/
 │   └── Handlers/
 │       └── ClientEventStreamHandler.cs  # Streaming SSE endpoint for real-time events
 │
-├── AppHost/                     # Aspire orchestrator (3 API replicas + LocalStack)
+├── AppHost/                     # Aspire orchestrator (3 API replicas + LocalStack + Redis)
 │   └── Program.cs
 │
 ├── ServiceDefaults/             # Aspire service defaults (OpenTelemetry, health checks)
@@ -443,17 +448,11 @@ public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHan
 The distributed infrastructure is wired up in `Program.cs`:
 
 ```csharp
-// AWS clients (LocalStack via Aspire or real AWS)
-builder.Services.AddSingleton<IAmazonSQS>(_ => new AmazonSQSClient(...));
-builder.Services.AddSingleton<IAmazonSimpleNotificationService>(_ => new AmazonSimpleNotificationServiceClient(...));
-
-// Async queue processing via SQS
-builder.Services.AddMediatorSqs();
-builder.Services.AddMediatorDistributed();
-
-// Distributed notification fan-out via SNS+SQS
-builder.Services.AddMediatorSnsSqsPubSub();
-builder.Services.AddMediatorDistributedNotifications();
+builder.Services.AddMediator()
+    .AddDistributedQueues()
+    .AddDistributedNotifications()
+    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
+    .UseRedisJobState();
 ```
 
 ### 12. Result Pattern
@@ -471,6 +470,65 @@ public async Task<Result<Order>> HandleAsync(GetOrder query, CancellationToken c
     return order;  // Implicit conversion to Result<Order>
 }
 ```
+
+### 13. Job Progress Tracking
+
+The `DemoExportJobHandler` shows a long-running queue job with progress reporting. The `[Queue(TrackProgress = true)]` attribute enables the job state store (Redis in this sample) to track status, progress percentage, and support cancellation:
+
+```csharp
+[Queue(TrackProgress = true, Concurrency = 5, TimeoutSeconds = 10)]
+public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
+{
+    public async Task<Result> HandleAsync(DemoExportJob message, QueueContext queueContext, CancellationToken ct)
+    {
+        for (int i = 1; i <= message.Steps; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            await Task.Delay(message.StepDelayMs, ct);
+
+            int percent = (int)((double)i / message.Steps * 100);
+            await queueContext.ReportProgressAsync(percent, $"Step {i}/{message.Steps}");
+        }
+
+        return Result.Ok();
+    }
+}
+```
+
+Key points:
+
+- **`QueueContext`** is injected as a handler parameter — provides `ReportProgressAsync()`, `AcknowledgeAsync()`, `RejectAsync()`, `DeferAsync()`
+- **`Result.Error()`** tells the worker to abandon and retry; **`Result.CriticalError()`** dead-letters immediately
+- **Cancellation** is checked via `CancellationToken` — the queue dashboard can request cancellation through the job state store
+
+### 14. Queue Dashboard
+
+The `QueueDashboardHandler` exposes queue monitoring as mediator endpoints under `/api/queues`. The SvelteKit frontend provides a real-time dashboard with throughput sparklines, job progress bars, and cancellation:
+
+```csharp
+[HandlerEndpointGroup("Queues")]
+[HandlerAllowAnonymous]
+public class QueueDashboardHandler
+{
+    // GET /api/queues/queues — list all registered queue workers with stats
+    [Cached(DurationSeconds = 2)]
+    public async Task<Result<List<QueueSummary>>> HandleAsync(GetQueues query, ...) { ... }
+
+    // GET /api/queues/job-dashboard — job state with active/recent jobs
+    [Cached(DurationSeconds = 2)]
+    public async Task<Result<JobDashboardView>> HandleAsync(GetJobDashboard query, ...) { ... }
+
+    // POST /api/queues/cancel-job — request job cancellation
+    public async Task<Result> HandleAsync(CancelJob command, ...) { ... }
+}
+```
+
+The frontend (`/queues` route) polls these endpoints and renders:
+
+- **Per-queue throughput** — processed/failed/dead-lettered sparkline charts
+- **Active jobs** — progress bars with percentage and status message
+- **Recent jobs** — completed/failed/cancelled with duration
 
 ## Module Dependencies
 
@@ -500,11 +558,11 @@ Common.Module (no module dependencies)
 
 - .NET 10 SDK
 - Node.js 20+ (for the frontend)
-- Docker (for Aspire + LocalStack)
+- Docker (for Aspire, LocalStack, and Redis)
 
-### Quick Start (with Aspire)
+### Quick Start
 
-The recommended way to run uses Aspire to orchestrate 3 API replicas with a LocalStack container providing SQS and SNS:
+The sample runs via Aspire, which orchestrates separate API and worker processes with LocalStack (SQS/SNS) and Redis:
 
 ```bash
 cd samples/CleanArchitectureSample/src/AppHost
@@ -513,56 +571,44 @@ dotnet run
 
 This starts:
 
-- **3 API replicas** — demonstrating distributed notification fan-out
+- **3 API replicas** — serve HTTP endpoints and the SPA frontend (no queue workers)
+- **3 Worker replicas** — process all queues (no API endpoints)
 - **LocalStack** — provides SQS (async queue processing) and SNS (pub/sub notifications)
-- **Aspire Dashboard** — view traces, logs, and metrics at the URL shown in terminal output
+- **Redis** — shared persistence, distributed caching, and job state tracking
+- **Vite frontend** — SvelteKit SPA at `https://localhost:5199`
+- **Aspire Dashboard** — traces, logs, and metrics at the URL shown in terminal output
 
-### Quick Start (standalone)
-
-To run a single instance without Aspire/Docker:
-
-1. **Install frontend dependencies** (first time only):
-
-   ```bash
-   cd samples/CleanArchitectureSample/src/Web
-   npm install
-   ```
-
-2. **Run the application:**
-   - **VS Code**: Run the "Clean Architecture Sample" launch configuration
-   - **Visual Studio**: Set `Api` as startup project and press F5
-   - **CLI**: `dotnet run --project samples/CleanArchitectureSample/src/Api`
-
-Without the `AWS:ServiceURL` environment variable, the app falls back to in-memory queue and pub/sub client implementations.
-
-The SPA Proxy starts the Vite dev server automatically.
+The API and worker processes share the same `Api` project — the `--mode api`/`--mode worker` argument controls which features are active.
 
 ### URLs
 
+All URLs are assigned dynamically by Aspire — check the Aspire Dashboard for the actual ports. The frontend is the exception:
+
 | URL | Description |
 | --- | ----------- |
-| `https://localhost:5173` | SvelteKit frontend |
-| `https://localhost:58702/api/*` | Backend API |
-| `https://localhost:58702/scalar/v1` | API docs (Scalar) |
+| `https://localhost:5199` | SvelteKit frontend (fixed port) |
+| Aspire Dashboard | API endpoints, traces, logs, metrics |
 
 ### Try the API
 
+Use the frontend at `https://localhost:5199` or call the API directly (find the API URL from the Aspire Dashboard):
+
 ```bash
 # Create a product (requires Admin login)
-curl -X POST https://localhost:58702/api/products \
+curl -X POST https://localhost:{port}/api/products \
   -H "Content-Type: application/json" \
   -d '{"name":"Widget","description":"A great widget","price":29.99,"stockQuantity":50}'
 
 # Create an order
-curl -X POST https://localhost:58702/api/orders \
+curl -X POST https://localhost:{port}/api/orders \
   -H "Content-Type: application/json" \
   -d '{"customerId":"customer-123","amount":29.99,"description":"Widget purchase"}'
 
 # Dashboard report (aggregates from both modules)
-curl https://localhost:58702/api/reports
+curl https://localhost:{port}/api/reports
 
 # Search across modules
-curl "https://localhost:58702/api/reports/search-catalog?searchTerm=widget"
+curl "https://localhost:{port}/api/reports/search-catalog?searchTerm=widget"
 ```
 
 Demo users: `admin`/`admin` (Admin role), `user`/`user` (User role).
@@ -581,4 +627,4 @@ dbug: Sending order confirmation notification for order abc123
 
 ### Frontend
 
-The SvelteKit frontend (Svelte 5, Tailwind CSS, TypeScript) provides a dashboard, CRUD pages for Orders and Products, and reporting views. During development, Vite proxies `/api/*` requests to the backend.
+The SvelteKit frontend (Svelte 5, Tailwind CSS, TypeScript) provides a dashboard, CRUD pages for Orders and Products, a queue dashboard with live job progress, and a live events page. Aspire runs the Vite dev server and proxies `/api/*` requests to the API replicas.

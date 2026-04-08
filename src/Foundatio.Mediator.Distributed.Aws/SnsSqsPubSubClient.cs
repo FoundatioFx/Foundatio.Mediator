@@ -76,8 +76,8 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
         }, cts.Token);
 
         var handle = new SubscriptionHandle(
-            setup.QueueUrl, setup.QueueName, setup.SubscriptionArn, setup.TopicArn, cts, pollTask,
-            _sqs, _sns, _options, _logger);
+            setup.SubscriptionArn, setup.TopicArn, cts, pollTask,
+            _sns, _options, _logger);
 
         _activeSubscriptions.Add(handle);
 
@@ -338,6 +338,26 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
     {
         foreach (var handle in _activeSubscriptions)
             await handle.DisposeAsync().ConfigureAwait(false);
+
+        // Clean up the shared per-node SQS queue if configured.
+        // Individual SubscriptionHandle disposals unsubscribe from SNS, but the
+        // shared queue is owned by this client and must be deleted here.
+        if (_sharedQueue is not null && _options.CleanupOnDispose)
+        {
+            try
+            {
+                await _sqs.DeleteQueueAsync(new DeleteQueueRequest
+                {
+                    QueueUrl = _sharedQueue.Value.QueueUrl
+                }).ConfigureAwait(false);
+
+                _logger.LogInformation("Deleted shared per-node SQS queue {QueueName}", _sharedQueue.Value.QueueName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete shared per-node SQS queue {QueueName}", _sharedQueue.Value.QueueName);
+            }
+        }
     }
 
     private sealed class MessageEnvelope
@@ -347,13 +367,10 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
     }
 
     private sealed class SubscriptionHandle(
-        string queueUrl,
-        string queueName,
         string subscriptionArn,
         string topicArn,
         CancellationTokenSource cts,
         Task pollTask,
-        IAmazonSQS sqs,
         IAmazonSimpleNotificationService sns,
         SnsSqsPubSubClientOptions options,
         ILogger logger) : IAsyncDisposable
@@ -387,20 +404,7 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
                     subscriptionArn, topicArn);
             }
 
-            // Delete per-node SQS queue
-            try
-            {
-                await sqs.DeleteQueueAsync(new DeleteQueueRequest
-                {
-                    QueueUrl = queueUrl
-                }).ConfigureAwait(false);
-
-                logger.LogInformation("Deleted per-node SQS queue {QueueName}", queueName);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to delete per-node SQS queue {QueueName}", queueName);
-            }
+            // Shared per-node SQS queue is cleaned up by SnsSqsPubSubClient.DisposeAsync()
         }
     }
 }

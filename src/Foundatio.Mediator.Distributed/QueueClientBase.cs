@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
@@ -19,6 +22,19 @@ namespace Foundatio.Mediator.Distributed;
 /// </remarks>
 public abstract class QueueClientBase : IQueueClient
 {
+    /// <summary>
+    /// Logger available for derived classes. Defaults to <see cref="NullLogger.Instance"/>.
+    /// </summary>
+    protected ILogger Logger { get; }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="QueueClientBase"/>.
+    /// </summary>
+    /// <param name="logger">Optional logger for diagnostics. Defaults to <see cref="NullLogger.Instance"/>.</param>
+    protected QueueClientBase(ILogger? logger = null)
+    {
+        Logger = logger ?? NullLogger.Instance;
+    }
     /// <inheritdoc />
     public abstract Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default);
 
@@ -55,10 +71,20 @@ public abstract class QueueClientBase : IQueueClient
     /// Default implementation sends the original message (with dead-letter metadata headers)
     /// to <c>{queueName}-dead-letter</c>, then completes the original message.
     /// Override if the transport has native dead-letter support (e.g., Azure Service Bus).
+    /// <para>
+    /// <b>Important:</b> Transport implementations that do not support dead-letter queues
+    /// should override this method. The default behaviour discards the message after
+    /// sending it to a DLQ queue name that may not exist for the transport.
+    /// </para>
     /// </remarks>
     public virtual async Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default)
     {
         var dlqName = $"{message.QueueName}-dead-letter";
+
+        Logger.LogWarning(
+            "Using default DeadLetterAsync for queue {QueueName}: forwarding to {DlqName}. " +
+            "Override DeadLetterAsync to use transport-native dead-letter support.",
+            message.QueueName, dlqName);
 
         var headers = new Dictionary<string, string>(message.Headers)
         {

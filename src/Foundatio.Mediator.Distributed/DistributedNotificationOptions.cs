@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -83,6 +84,7 @@ public class DistributedNotificationOptions
     public DistributedNotificationOptions Include<T>()
     {
         IncludedTypes.Add(typeof(T));
+        _shouldDistributeCache.TryRemove(typeof(T), out _);
         return this;
     }
 
@@ -94,6 +96,7 @@ public class DistributedNotificationOptions
     public DistributedNotificationOptions Include(Type type)
     {
         IncludedTypes.Add(type);
+        _shouldDistributeCache.TryRemove(type, out _);
         return this;
     }
 
@@ -109,7 +112,10 @@ public class DistributedNotificationOptions
         foreach (var type in typeof(T).Assembly.GetExportedTypes())
         {
             if (typeof(INotification).IsAssignableFrom(type) && type is { IsAbstract: false, IsInterface: false })
+            {
                 IncludedTypes.Add(type);
+                _shouldDistributeCache.TryRemove(type, out _);
+            }
         }
 
         return this;
@@ -120,27 +126,35 @@ public class DistributedNotificationOptions
     /// </summary>
     internal HashSet<Type> IncludedTypes { get; } = [];
 
+    private readonly ConcurrentDictionary<Type, bool> _shouldDistributeCache = new();
+
     /// <summary>
     /// Determines whether a given message type should be distributed via pub/sub.
     /// Evaluation order: explicit includes → <see cref="IDistributedNotification"/> →
     /// <see cref="DistributedNotificationAttribute"/> → <see cref="MessageFilter"/> →
     /// <see cref="IncludeAllNotifications"/>.
     /// </summary>
+    /// <remarks>
+    /// Results are cached per type to avoid repeated reflection on the hot path.
+    /// </remarks>
     public bool ShouldDistribute(Type messageType)
     {
-        if (IncludedTypes.Contains(messageType))
-            return true;
+        return _shouldDistributeCache.GetOrAdd(messageType, static (type, self) =>
+        {
+            if (self.IncludedTypes.Contains(type))
+                return true;
 
-        if (typeof(IDistributedNotification).IsAssignableFrom(messageType))
-            return true;
+            if (typeof(IDistributedNotification).IsAssignableFrom(type))
+                return true;
 
-        if (messageType.GetCustomAttribute<DistributedNotificationAttribute>() is not null)
-            return true;
+            if (type.GetCustomAttribute<DistributedNotificationAttribute>() is not null)
+                return true;
 
-        if (MessageFilter is not null)
-            return MessageFilter(messageType);
+            if (self.MessageFilter is not null)
+                return self.MessageFilter(type);
 
-        return IncludeAllNotifications;
+            return self.IncludeAllNotifications;
+        }, this);
     }
 
     /// <summary>

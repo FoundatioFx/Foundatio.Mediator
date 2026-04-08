@@ -59,12 +59,24 @@ public class QueueMiddleware
 
         // Enqueue path: serialize and send to the queue
         var messageType = message.GetType();
-        var body = JsonSerializer.SerializeToUtf8Bytes(message, messageType, _jsonOptions);
         var metadata = GetMetadata(handlerInfo.DescriptorId, messageType);
+
+        // Validate that the handler's declared return type is compatible with queue processing.
+        // Queue handlers can only return void/Task/ValueTask, Result, or Result<T>.
+        // This must be checked before sending to avoid enqueueing messages for incompatible handlers.
+        if (!string.IsNullOrEmpty(metadata.ReturnTypeName)
+            && !metadata.ReturnTypeName.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Queue handler '{handlerInfo.DescriptorId}' returns '{metadata.ReturnTypeName}' which is incompatible with queue processing. " +
+                "Queue handlers must return void, Task, Result, or Result<T>.");
+        }
+
+        var body = JsonSerializer.SerializeToUtf8Bytes(message, messageType, _jsonOptions);
 
         var headers = new Dictionary<string, string>
         {
-            [MessageHeaders.MessageType] = messageType.AssemblyQualifiedName!,
+            [MessageHeaders.MessageType] = messageType.FullName!,
             [MessageHeaders.EnqueuedAt] = _timeProvider.GetUtcNow().ToString("O")
         };
 
@@ -105,16 +117,6 @@ public class QueueMiddleware
         };
 
         await _client.SendAsync(metadata.QueueName, entry, cancellationToken).ConfigureAwait(false);
-
-        // Validate that the handler's declared return type is compatible with queue processing.
-        // Queue handlers can only return void/Task/ValueTask, Result, or Result<T>.
-        if (!string.IsNullOrEmpty(metadata.ReturnTypeName)
-            && !metadata.ReturnTypeName.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Queue handler '{handlerInfo.DescriptorId}' returns '{metadata.ReturnTypeName}' which is incompatible with queue processing. " +
-                "Queue handlers must return void, Task, Result, or Result<T>.");
-        }
 
         if (jobId is not null)
             return Result.Accepted("Message queued", jobId);

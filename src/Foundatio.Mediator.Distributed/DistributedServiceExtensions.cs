@@ -168,7 +168,7 @@ public static class DistributedServiceExtensions
                 continue;
 
             // Mark that a worker is actually running on this node
-            workerInfo.WorkerRegistered = true;
+            workerInfo.Stats.SetWorkerRegistered(true);
 
             // Register as a hosted service using a factory so each worker gets its own options
             services.AddSingleton<IHostedService>(sp => new QueueWorker(
@@ -244,9 +244,9 @@ public static class DistributedServiceExtensions
 
         // Register known notification types in the type resolver
         var registry = services.GetHandlerRegistry();
+        var typeResolver = GetOrAddTypeResolver(services);
         if (registry is not null)
         {
-            var typeResolver = GetOrAddTypeResolver(services);
             foreach (var reg in registry.Registrations)
             {
                 if (reg.MessageType is not null && options.ShouldDistribute(reg.MessageType))
@@ -268,8 +268,7 @@ public static class DistributedServiceExtensions
 
         foreach (var type in options.IncludedTypes)
         {
-            var typeResolver2 = GetOrAddTypeResolver(services);
-            typeResolver2.Register(type);
+            typeResolver.Register(type);
             distributedTypes.Add(type);
         }
 

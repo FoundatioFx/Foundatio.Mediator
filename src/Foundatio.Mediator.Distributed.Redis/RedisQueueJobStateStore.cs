@@ -12,12 +12,14 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly RedisJobStateStoreOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly string _keyPrefix;
 
-    public RedisQueueJobStateStore(IConnectionMultiplexer redis, RedisJobStateStoreOptions? options = null)
+    public RedisQueueJobStateStore(IConnectionMultiplexer redis, RedisJobStateStoreOptions? options = null, TimeProvider? timeProvider = null)
     {
         _redis = redis;
         _options = options ?? new RedisJobStateStoreOptions();
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _keyPrefix = string.IsNullOrEmpty(_options.ResourcePrefix)
             ? _options.KeyPrefix
             : $"{_options.ResourcePrefix}:{_options.KeyPrefix}";
@@ -90,19 +92,19 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
     {
         var db = _redis.GetDatabase();
         var key = JobKey(jobId);
+        var now = _timeProvider.GetUtcNow();
 
-        // Read old status + queue name for sorted set migration
-        var fields = await db.HashGetAsync(key, ["Status", "QueueName", "CreatedUtc"]).ConfigureAwait(false);
+        // Read queue name, created score, and current status for sorted set migration.
+        var fields = await db.HashGetAsync(key, ["QueueName", "CreatedUtc", "Status"]).ConfigureAwait(false);
         if (fields[0].IsNullOrEmpty)
             return; // Job doesn't exist
 
-        var queueName = fields[1].ToString();
-        var createdScore = long.TryParse(fields[2].ToString(), out var cs) ? cs : 0d;
-        var oldStatusInt = int.TryParse(fields[0].ToString(), out var osi) ? osi : -1;
+        var queueName = fields[0].ToString();
+        var createdScore = long.TryParse(fields[1].ToString(), out var cs) ? cs : 0L;
+        var oldStatusInt = int.TryParse(fields[2].ToString(), out var osi) ? osi : -1;
         var oldStatus = (QueueJobStatus)oldStatusInt;
-        var now = DateTimeOffset.UtcNow;
 
-        // Build only the fields that need updating
+        // Build hash field updates
         var updates = new List<HashEntry>
         {
             new("Status", ((int)status).ToString(CultureInfo.InvariantCulture)),
@@ -110,32 +112,36 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         };
 
         if (startedUtc.HasValue)
-            updates.Add(new HashEntry("StartedUtc", startedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
+            updates.Add(new("StartedUtc", startedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
         if (completedUtc.HasValue)
-            updates.Add(new HashEntry("CompletedUtc", completedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
+            updates.Add(new("CompletedUtc", completedUtc.Value.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
         if (errorMessage is not null)
-            updates.Add(new HashEntry("ErrorMessage", errorMessage));
+            updates.Add(new("ErrorMessage", errorMessage));
         if (progress.HasValue)
-            updates.Add(new HashEntry("Progress", progress.Value.ToString(CultureInfo.InvariantCulture)));
+            updates.Add(new("Progress", progress.Value.ToString(CultureInfo.InvariantCulture)));
         if (attempt.HasValue)
-            updates.Add(new HashEntry("Attempt", attempt.Value.ToString(CultureInfo.InvariantCulture)));
+            updates.Add(new("Attempt", attempt.Value.ToString(CultureInfo.InvariantCulture)));
 
-        await db.HashSetAsync(key, updates.ToArray()).ConfigureAwait(false);
-
-        // Migrate sorted sets if status changed
-        if (oldStatus != status)
-        {
-            await db.SortedSetRemoveAsync(StatusSetKey(queueName, oldStatus), jobId).ConfigureAwait(false);
-            await db.SortedSetAddAsync(StatusSetKey(queueName, status), jobId, createdScore).ConfigureAwait(false);
-        }
-
-        // Refresh TTL
         var ttl = expiry ?? _options.DefaultExpiry;
+        var newStatusSetKey = StatusSetKey(queueName, status);
+
+        // All writes in a single MULTI/EXEC transaction — atomic without Lua
+        var txn = db.CreateTransaction();
+        txn.AddCondition(Condition.KeyExists(key));
+
+        _ = txn.HashSetAsync(key, updates.ToArray());
+
+        if (oldStatus != status)
+            _ = txn.SortedSetRemoveAsync(StatusSetKey(queueName, oldStatus), jobId);
+        _ = txn.SortedSetAddAsync(newStatusSetKey, jobId, createdScore);
+
         if (ttl.HasValue)
         {
-            await db.KeyExpireAsync(key, ttl.Value).ConfigureAwait(false);
-            await db.KeyExpireAsync(StatusSetKey(queueName, status), ttl.Value).ConfigureAwait(false);
+            _ = txn.KeyExpireAsync(key, ttl.Value);
+            _ = txn.KeyExpireAsync(newStatusSetKey, ttl.Value);
         }
+
+        await txn.ExecuteAsync().ConfigureAwait(false);
     }
 
     public async Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
@@ -146,7 +152,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         if (!await db.KeyExistsAsync(key).ConfigureAwait(false))
             return;
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         var updates = new HashEntry[]
         {
             new("Progress", progress.ToString(CultureInfo.InvariantCulture)),
@@ -223,7 +229,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
     public Task IncrementCounterAsync(string queueName, string counterName, long value = 1, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var bucketKey = CounterBucketKey(queueName, DateTimeOffset.UtcNow);
+        var bucketKey = CounterBucketKey(queueName, _timeProvider.GetUtcNow());
         var task = db.HashIncrementAsync(bucketKey, counterName, value);
 
         // Auto-expire each hourly bucket after 48h so old buckets clean themselves up
@@ -235,7 +241,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
     public async Task<QueueCounterStats> GetCounterStatsAsync(string queueName, TimeSpan? window = null, CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         var effectiveWindow = window ?? TimeSpan.FromHours(24);
         var startHour = TruncateToHour(now - effectiveWindow);
         var endHour = TruncateToHour(now);

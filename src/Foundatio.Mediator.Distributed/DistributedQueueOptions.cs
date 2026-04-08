@@ -61,6 +61,6 @@ public class DistributedQueueOptions
     /// Applies <see cref="ResourcePrefix"/> to the given queue name.
     /// Returns the name unchanged when no prefix is configured.
     /// </summary>
-    internal string ApplyPrefix(string name) =>
+    public string ApplyPrefix(string name) =>
         string.IsNullOrEmpty(ResourcePrefix) ? name : $"{ResourcePrefix}-{name}";
 }

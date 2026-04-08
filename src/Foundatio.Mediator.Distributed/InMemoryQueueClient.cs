@@ -58,13 +58,13 @@ public sealed class InMemoryQueueClient : IQueueClient
         }
 
         var now = _timeProvider.GetUtcNow();
-        first.DequeueCount++;
+        first.IncrementDequeueCount();
         results.Add(ToQueueMessage(first, queueName, now));
 
         // Try to read more without waiting
         while (results.Count < maxCount && channel.Reader.TryRead(out var entry))
         {
-            entry.DequeueCount++;
+            entry.IncrementDequeueCount();
             results.Add(ToQueueMessage(entry, queueName, now));
         }
 
@@ -191,7 +191,9 @@ public sealed class InMemoryQueueClient : IQueueClient
         public required string Id { get; init; }
         public required ReadOnlyMemory<byte> Body { get; init; }
         public required Dictionary<string, string> Headers { get; init; }
-        public int DequeueCount { get; set; }
+        private int _dequeueCount;
+        public int DequeueCount { get => _dequeueCount; set => _dequeueCount = value; }
+        public int IncrementDequeueCount() => Interlocked.Increment(ref _dequeueCount);
         public DateTimeOffset EnqueuedAt { get; init; }
     }
 }

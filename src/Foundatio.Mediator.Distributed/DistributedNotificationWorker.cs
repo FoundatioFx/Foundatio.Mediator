@@ -41,6 +41,12 @@ public sealed class DistributedNotificationWorker : BackgroundService
     /// </summary>
     private readonly ConcurrentDictionary<object, byte> _inboundMessages = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>
+    /// Safety cap for <see cref="_inboundMessages"/>. Under normal operation the outbound
+    /// loop removes entries quickly, but if it stalls this prevents unbounded memory growth.
+    /// </summary>
+    private const int MaxInboundTrackingEntries = 10_000;
+
     private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
 
@@ -122,7 +128,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
 
                     var headers = new Dictionary<string, string>
                     {
-                        [MessageHeaders.MessageType] = messageType.AssemblyQualifiedName!,
+                        [MessageHeaders.MessageType] = messageType.FullName!,
                         [MessageHeaders.OriginHostId] = _options.HostId,
                         [MessageHeaders.PublishedAt] = _timeProvider.GetUtcNow().ToString("O")
                     };
@@ -231,6 +237,15 @@ public sealed class DistributedNotificationWorker : BackgroundService
         // Mark by reference so the outbound loop skips this message.
         // Removal happens in the outbound loop (TryRemove) to avoid a race where this
         // finally block runs before the outbound loop reads from the channel.
+        if (_inboundMessages.Count >= MaxInboundTrackingEntries)
+        {
+            _logger.LogWarning(
+                "Inbound message tracking dictionary exceeded {MaxEntries} entries — clearing to prevent unbounded growth. " +
+                "This may briefly allow a re-broadcast of an in-flight notification.",
+                MaxInboundTrackingEntries);
+            _inboundMessages.Clear();
+        }
+
         _inboundMessages.TryAdd(notification, 0);
         bool published = false;
         try

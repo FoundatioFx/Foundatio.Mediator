@@ -31,8 +31,7 @@ public interface IQueueJobStateStore
     /// <param name="attempt">The processing attempt number (1 = first try, 2+ = retry).</param>
     /// <param name="expiry">Optional sliding expiry for the entry.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+    Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Atomically updates job progress and optional message without requiring a prior read.

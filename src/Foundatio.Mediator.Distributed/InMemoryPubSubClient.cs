@@ -11,6 +11,7 @@ namespace Foundatio.Mediator.Distributed;
 public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
 {
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, SubscriptionEntry>> _subscriptions = new();
+    private readonly ConcurrentBag<CancellationTokenSource> _activeCts = [];
 
     /// <inheritdoc />
     public Task PublishAsync(string topic, PubSubEntry entry, CancellationToken cancellationToken = default)
@@ -49,13 +50,26 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
 
         // Start consumer task that reads from the channel and invokes the handler
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _activeCts.Add(cts);
         _ = Task.Run(async () =>
         {
             try
             {
                 await foreach (var msg in channel.Reader.ReadAllAsync(cts.Token).ConfigureAwait(false))
                 {
-                    await handler(msg, cts.Token).ConfigureAwait(false);
+                    try
+                    {
+                        await handler(msg, cts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch
+                    {
+                        // Swallow handler exceptions to keep the subscription alive.
+                        // In-memory client is for dev/testing; production transports log errors.
+                    }
                 }
             }
             catch (OperationCanceledException) { }
@@ -75,6 +89,12 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
 
     public void Dispose()
     {
+        // Cancel all active subscription consumer tasks
+        foreach (var cts in _activeCts)
+        {
+            try { cts.Cancel(); cts.Dispose(); } catch { }
+        }
+
         foreach (var topicEntries in _subscriptions.Values)
         {
             foreach (var entry in topicEntries.Values)

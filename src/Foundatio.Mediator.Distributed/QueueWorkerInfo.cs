@@ -1,7 +1,8 @@
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Describes a registered queue worker and its runtime statistics.
+/// Describes a registered queue worker's configuration and provides access to runtime statistics.
+/// Configuration properties are immutable after initialization.
 /// Exposed via <see cref="IQueueWorkerRegistry"/> for dashboard and monitoring.
 /// </summary>
 public sealed class QueueWorkerInfo
@@ -56,42 +57,8 @@ public sealed class QueueWorkerInfo
     /// </summary>
     public string? Description { get; init; }
 
-    // --- Runtime stats (updated atomically by QueueWorker) ---
-
-    private long _messagesProcessed;
-    private long _messagesFailed;
-    private long _messagesDeadLettered;
-    private volatile bool _isRunning;
-
     /// <summary>
-    /// Whether a <see cref="QueueWorker"/> hosted service was registered for this queue
-    /// in the current process. When <c>false</c>, the worker metadata is available for
-    /// dashboard visibility but no local processing occurs (e.g., API-only nodes).
+    /// Runtime statistics for this worker. Updated atomically by the worker during message processing.
     /// </summary>
-    public bool WorkerRegistered { get; internal set; }
-
-    /// <summary>
-    /// Total messages processed successfully since startup.
-    /// </summary>
-    public long MessagesProcessed => Interlocked.Read(ref _messagesProcessed);
-
-    /// <summary>
-    /// Total messages that failed processing since startup.
-    /// </summary>
-    public long MessagesFailed => Interlocked.Read(ref _messagesFailed);
-
-    /// <summary>
-    /// Total messages dead-lettered since startup.
-    /// </summary>
-    public long MessagesDeadLettered => Interlocked.Read(ref _messagesDeadLettered);
-
-    /// <summary>
-    /// Whether the worker is currently running.
-    /// </summary>
-    public bool IsRunning => _isRunning;
-
-    internal void IncrementProcessed() => Interlocked.Increment(ref _messagesProcessed);
-    internal void IncrementFailed() => Interlocked.Increment(ref _messagesFailed);
-    internal void IncrementDeadLettered() => Interlocked.Increment(ref _messagesDeadLettered);
-    internal void SetRunning(bool running) => _isRunning = running;
+    public QueueWorkerStats Stats { get; } = new();
 }

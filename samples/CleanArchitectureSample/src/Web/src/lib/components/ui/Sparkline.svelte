@@ -46,6 +46,6 @@
     />
   </svg>
   {#if label}
-    <span class="text-xs text-gray-500 tabular-nums">{total.toLocaleString()}</span>
+    <span class="text-xs text-gray-500 tabular-nums min-w-8 text-right">{total.toLocaleString()}</span>
   {/if}
 </div>

@@ -328,9 +328,9 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
 
             var worker = registry.GetWorker("TrackedCommand");
             Assert.NotNull(worker);
-            Assert.Equal(2, worker.MessagesProcessed);
-            Assert.Equal(0, worker.MessagesFailed);
-            Assert.True(worker.IsRunning);
+            Assert.Equal(2, worker.Stats.MessagesProcessed);
+            Assert.Equal(0, worker.Stats.MessagesFailed);
+            Assert.True(worker.Stats.IsRunning);
         }
         finally
         {

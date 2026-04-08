@@ -35,7 +35,8 @@ public static class RedisBuilderExtensions
         services.AddSingleton<IQueueJobStateStore>(sp =>
             new RedisQueueJobStateStore(
                 sp.GetRequiredService<IConnectionMultiplexer>(),
-                sp.GetService<RedisJobStateStoreOptions>()));
+                sp.GetService<RedisJobStateStoreOptions>(),
+                sp.GetService<TimeProvider>()));
 
         return builder;
     }

@@ -28,9 +28,16 @@ public sealed class SqsQueueClient : IQueueClient
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SqsQueueClient>.Instance;
     }
 
+    /// <summary>
+    /// SQS allows a maximum of 10 message attributes per message.
+    /// </summary>
+    private const int MaxSqsMessageAttributes = 10;
+
     public async Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default)
     {
         var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
+
+        ValidateHeaderCount(entry.Headers, queueName);
 
         var request = new SendMessageRequest
         {
@@ -74,6 +81,9 @@ public sealed class SqsQueueClient : IQueueClient
             for (int j = i; j < end; j++)
             {
                 var entry = entries[j];
+
+                ValidateHeaderCount(entry.Headers, queueName);
+
                 var batchEntry = new SendMessageBatchRequestEntry
                 {
                     Id = j.ToString(CultureInfo.InvariantCulture),
@@ -362,4 +372,11 @@ public sealed class SqsQueueClient : IQueueClient
         => message.NativeMessage as Message
            ?? throw new InvalidOperationException(
                "QueueMessage.NativeMessage is not an SQS Message. This QueueMessage was not created by SqsQueueClient.");
+
+    private static void ValidateHeaderCount(Dictionary<string, string>? headers, string queueName)
+    {
+        if (headers is { Count: > MaxSqsMessageAttributes })
+            throw new InvalidOperationException(
+                $"Message for queue '{queueName}' has {headers.Count} headers, but SQS allows a maximum of {MaxSqsMessageAttributes} message attributes.");
+    }
 }

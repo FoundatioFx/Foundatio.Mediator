@@ -73,7 +73,7 @@ public static class InfrastructureExtensions
         if (workerRegistry is not null)
         {
             var allWorkers = workerRegistry.GetWorkers();
-            var activeWorkers = allWorkers.Where(w => w.WorkerRegistered).ToList();
+            var activeWorkers = allWorkers.Where(w => w.Stats.WorkerRegistered).ToList();
             logger.LogInformation("Queue workers: {ActiveCount}/{TotalCount} registered ({QueueNames})",
                 activeWorkers.Count, allWorkers.Count,
                 activeWorkers.Count > 0

@@ -13,26 +13,26 @@ namespace Foundatio.Mediator.Distributed.Aws;
 /// per-node SQS queues for subscription. Each subscriber creates a dedicated SQS queue
 /// subscribed to the SNS topic, enabling true pub/sub fan-out across nodes.
 /// </summary>
-public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
+public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
 {
     private readonly IAmazonSimpleNotificationService _sns;
     private readonly IAmazonSQS _sqs;
-    private readonly SnsSqsPubSubClientOptions _options;
+    private readonly SqsPubSubClientOptions _options;
     private readonly string _hostId;
     private readonly string? _resourcePrefix;
-    private readonly ILogger<SnsSqsPubSubClient> _logger;
+    private readonly ILogger<SqsPubSubClient> _logger;
     private readonly ConcurrentDictionary<string, string> _topicArnCache = new();
     private readonly ConcurrentDictionary<string, SubscriptionSetup> _subscriptionSetupCache = new();
     private readonly ConcurrentBag<SubscriptionHandle> _activeSubscriptions = [];
     private readonly SemaphoreSlim _queueSetupLock = new(1, 1);
     private (string QueueName, string QueueUrl, string QueueArn)? _sharedQueue;
 
-    public SnsSqsPubSubClient(
+    public SqsPubSubClient(
         IAmazonSimpleNotificationService sns,
         IAmazonSQS sqs,
-        SnsSqsPubSubClientOptions options,
+        SqsPubSubClientOptions options,
         DistributedNotificationOptions notificationOptions,
-        ILogger<SnsSqsPubSubClient> logger)
+        ILogger<SqsPubSubClient> logger)
     {
         _sns = sns;
         _sqs = sqs;
@@ -372,7 +372,7 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
         CancellationTokenSource cts,
         Task pollTask,
         IAmazonSimpleNotificationService sns,
-        SnsSqsPubSubClientOptions options,
+        SqsPubSubClientOptions options,
         ILogger logger) : IAsyncDisposable
     {
         private int _disposed;
@@ -404,7 +404,7 @@ public sealed class SnsSqsPubSubClient : IPubSubClient, IAsyncDisposable
                     subscriptionArn, topicArn);
             }
 
-            // Shared per-node SQS queue is cleaned up by SnsSqsPubSubClient.DisposeAsync()
+            // Shared per-node SQS queue is cleaned up by SqsPubSubClient.DisposeAsync()
         }
     }
 }

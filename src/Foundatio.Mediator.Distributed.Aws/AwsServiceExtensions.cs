@@ -96,11 +96,11 @@ public static class AwsBuilderExtensions
     }
 
     /// <summary>
-    /// Registers <see cref="SnsSqsPubSubClient"/> as the <see cref="IPubSubClient"/> implementation.
+    /// Registers <see cref="SqsPubSubClient"/> as the <see cref="IPubSubClient"/> implementation.
     /// Requires <c>IAmazonSimpleNotificationService</c> and <c>IAmazonSQS</c> to be registered in DI.
     /// </summary>
     /// <param name="builder">The mediator builder.</param>
-    /// <param name="configure">Optional configuration for <see cref="SnsSqsPubSubClientOptions"/>.</param>
+    /// <param name="configure">Optional configuration for <see cref="SqsPubSubClientOptions"/>.</param>
     /// <returns>The mediator builder for chaining.</returns>
     /// <example>
     /// <code>
@@ -113,19 +113,19 @@ public static class AwsBuilderExtensions
     /// </example>
     public static IMediatorBuilder UseAwsNotifications(
         this IMediatorBuilder builder,
-        Action<SnsSqsPubSubClientOptions>? configure = null)
+        Action<SqsPubSubClientOptions>? configure = null)
     {
         var services = builder.Services;
-        var options = new SnsSqsPubSubClientOptions();
+        var options = new SqsPubSubClientOptions();
         configure?.Invoke(options);
 
         services.AddSingleton(options);
-        services.AddSingleton<IPubSubClient>(sp => new SnsSqsPubSubClient(
+        services.AddSingleton<IPubSubClient>(sp => new SqsPubSubClient(
             sp.GetRequiredService<IAmazonSimpleNotificationService>(),
             sp.GetRequiredService<IAmazonSQS>(),
             options,
             sp.GetRequiredService<DistributedNotificationOptions>(),
-            sp.GetRequiredService<ILogger<SnsSqsPubSubClient>>()));
+            sp.GetRequiredService<ILogger<SqsPubSubClient>>()));
 
         return builder;
     }

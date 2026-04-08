@@ -35,7 +35,7 @@ public class AwsTransportOptions
     public SqsQueueClientOptions Queues { get; set; } = new();
 
     /// <summary>
-    /// Options for the SNS/SQS pub/sub client. See <see cref="SnsSqsPubSubClientOptions"/>.
+    /// Options for the SNS/SQS pub/sub client. See <see cref="SqsPubSubClientOptions"/>.
     /// </summary>
-    public SnsSqsPubSubClientOptions Notifications { get; set; } = new();
+    public SqsPubSubClientOptions Notifications { get; set; } = new();
 }

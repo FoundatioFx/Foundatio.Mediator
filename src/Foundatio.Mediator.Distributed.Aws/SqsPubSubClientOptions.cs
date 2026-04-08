@@ -3,7 +3,7 @@ namespace Foundatio.Mediator.Distributed.Aws;
 /// <summary>
 /// Options for configuring the SNS+SQS pub/sub client.
 /// </summary>
-public class SnsSqsPubSubClientOptions
+public class SqsPubSubClientOptions
 {
     /// <summary>
     /// The SNS topic name. This is used to create or look up the topic.

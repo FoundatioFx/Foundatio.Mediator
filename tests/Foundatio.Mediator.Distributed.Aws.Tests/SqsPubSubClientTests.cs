@@ -12,10 +12,10 @@ namespace Foundatio.Mediator.Distributed.Aws.Tests;
 /// <summary>
 /// SNS+SQS pub/sub client tests running against LocalStack managed by Aspire.
 /// </summary>
-public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper output)
+public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper output)
     : TestWithLoggingBase(output), IClassFixture<LocalStackFixture>
 {
-    private SnsSqsPubSubClient CreateClient(string? hostId = null)
+    private SqsPubSubClient CreateClient(string? hostId = null)
     {
         var credentials = new BasicAWSCredentials("test", "test");
 
@@ -27,7 +27,7 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
             credentials,
             new AmazonSQSConfig { ServiceURL = fixture.ServiceUrl });
 
-        var options = new SnsSqsPubSubClientOptions
+        var options = new SqsPubSubClientOptions
         {
             AutoCreate = true,
             WaitTimeSeconds = 1,
@@ -40,12 +40,12 @@ public class SnsSqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelpe
             Topic = $"test-topic-{Guid.NewGuid():N}"
         };
 
-        return new SnsSqsPubSubClient(
+        return new SqsPubSubClient(
             snsClient,
             sqsClient,
             options,
             notificationOptions,
-            Log.CreateLogger<SnsSqsPubSubClient>());
+            Log.CreateLogger<SqsPubSubClient>());
     }
 
     [Fact]

@@ -44,6 +44,7 @@ var app = builder.Build();
 
 app.LogStartupDiagnostics(options);
 app.MapHealthCheckEndpoints();
+app.UseSuppressInstrumentation("/api/queues/queues", "/api/queues/job-dashboard", "/api/events");
 
 if (options.IsApiEnabled)
 {

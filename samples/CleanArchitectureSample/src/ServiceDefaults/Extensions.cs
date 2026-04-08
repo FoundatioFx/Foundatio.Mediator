@@ -45,9 +45,12 @@ public static class Extensions
             {
                 tracing.AddAspNetCoreInstrumentation(o =>
                     {
+                        // Drop the root HTTP span for noisy polling endpoints.
+                        // The SuppressInstrumentation middleware in Program.cs prevents child spans.
                         o.Filter = ctx =>
                             !ctx.Request.Path.StartsWithSegments("/api/events")
-                            && !ctx.Request.Path.StartsWithSegments("/api/queues");
+                            && ctx.Request.Path != "/api/queues/queues"
+                            && ctx.Request.Path != "/api/queues/job-dashboard";
                     })
                     .AddHttpClientInstrumentation(o =>
                     {
@@ -60,11 +63,16 @@ public static class Extensions
                     {
                         o.SuppressDownstreamInstrumentation = true;
                     })
-                    .AddSource("Foundatio.Mediator");
+                    .AddSource("Foundatio.Mediator")
+                    .AddRedisInstrumentation();
 
-                // Drop noisy SQS polling/housekeeping spans from the AWS SDK instrumentation
+                // Drop noisy background spans:
+                // - SQS polling from queue workers
+                // - Orphaned Redis spans from job state store operations (keep Redis spans that are
+                //   children of an application trace, drop root-level infrastructure noise)
                 tracing.AddProcessor(new FilteringProcessor(activity =>
-                    activity.OperationName is not "SQS.ReceiveMessage" and not "SQS.DeleteMessage"));
+                    activity.OperationName is not "SQS.ReceiveMessage" and not "SQS.DeleteMessage"
+                    && !(activity.Source.Name == "OpenTelemetry.Instrumentation.StackExchangeRedis" && activity.Parent is null)));
             });
 
         builder.AddOpenTelemetryExporters();
@@ -102,10 +110,37 @@ public static class Extensions
 
         return app;
     }
+
+    /// <summary>
+    /// Suppresses all OpenTelemetry instrumentation for requests matching the given paths.
+    /// No activities (spans) are created for the request or any downstream calls (Redis, SQS, etc.).
+    /// </summary>
+    public static WebApplication UseSuppressInstrumentation(this WebApplication app, params string[] pathPrefixes)
+    {
+        app.Use(async (context, next) =>
+        {
+            foreach (var prefix in pathPrefixes)
+            {
+                if (context.Request.Path.StartsWithSegments(prefix))
+                {
+                    using (SuppressInstrumentationScope.Begin())
+                    {
+                        await next();
+                    }
+                    return;
+                }
+            }
+
+            await next();
+        });
+
+        return app;
+    }
 }
 
 /// <summary>
-/// Drops activities that don't match the predicate so they are never exported.
+/// Drops activities that match the predicate so they are never exported.
+/// Used for background worker spans (SQS polling) that aren't HTTP requests.
 /// </summary>
 internal sealed class FilteringProcessor(Func<Activity, bool> predicate) : BaseProcessor<Activity>
 {

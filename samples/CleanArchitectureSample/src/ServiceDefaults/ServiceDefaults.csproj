@@ -21,6 +21,7 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AWS" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.15.0-beta.1" />
   </ItemGroup>
 
 </Project>

@@ -72,15 +72,14 @@
     }
   }
 
-  // Reload products whenever the user navigates to this page (including back from edit/create)
-  // Reload on SPA navigations back to this page
-  afterNavigate((nav) => {
-    if (nav.from) loadProducts();
+  // Reload products on SPA navigations back to this page
+  afterNavigate(({ type }) => {
+    // Skip the initial navigation — onMount handles the first load
+    if (type === 'enter') return;
+    loadProducts();
   });
 
   onMount(() => {
-    // Initial data load — afterNavigate may miss the first render when
-    // the layout delays mounting children (e.g. auth check)
     loadProducts();
 
     const unsubCreated = eventStream.onProductCreated((event) => {

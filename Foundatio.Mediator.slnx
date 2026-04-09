@@ -12,6 +12,8 @@
     <Project Path="samples/CleanArchitectureSample/src/Products.Module/Products.Module.csproj" />
     <Project Path="samples/CleanArchitectureSample/src/Reports.Module/Reports.Module.csproj" />
     <Project Path="samples/CleanArchitectureSample/src/Web/Web.esproj" />
+    <Project Path="samples/CleanArchitectureSample/src/ServiceDefaults/ServiceDefaults.csproj" />
+    <Project Path="samples/CleanArchitectureSample/src/AppHost/AppHost.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".github/copilot-instructions.md" />
@@ -21,8 +23,15 @@
   <Folder Name="/src/">
     <Project Path="src/Foundatio.Mediator.Abstractions/Foundatio.Mediator.Abstractions.csproj" />
     <Project Path="src/Foundatio.Mediator/Foundatio.Mediator.csproj" />
+    <Project Path="src/Foundatio.Mediator.Distributed/Foundatio.Mediator.Distributed.csproj" />
+    <Project Path="src/Foundatio.Mediator.Distributed.Aws/Foundatio.Mediator.Distributed.Aws.csproj" />
+    <Project Path="src/Foundatio.Mediator.Distributed.Redis/Foundatio.Mediator.Distributed.Redis.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />
+    <Project Path="tests/Foundatio.Mediator.Distributed.Tests/Foundatio.Mediator.Distributed.Tests.csproj" />
+    <Project Path="tests/Foundatio.Mediator.Distributed.Aws.Tests/Foundatio.Mediator.Distributed.Aws.Tests.csproj" />
+    <Project Path="tests/Foundatio.Mediator.Distributed.Redis.Tests/Foundatio.Mediator.Distributed.Redis.Tests.csproj" />
+
   </Folder>
 </Solution>

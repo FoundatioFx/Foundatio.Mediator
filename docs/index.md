@@ -23,7 +23,7 @@ features:
     link: /guide/what-is-foundatio-mediator
   - icon: 🔗
     title: Compose with Events
-    details: Publish an event and any number of handlers react — without knowing about each other. Add new behavior to your app without modifying existing code.
+    details: Publish an event and any number of handlers react — without knowing about each other. Return tuples to automatically cascade follow-on events through your system.
     link: /guide/events-and-notifications
   - icon: 🧪
     title: Easy to Test
@@ -57,10 +57,10 @@ features:
     title: Middleware Pipeline
     details: Before/After/Finally/Execute hooks with state passing and short-circuiting capabilities.
     link: /guide/middleware
-  - icon: 🔄
-    title: Automatic Message Cascading
-    details: Return tuples to automatically publish additional messages in sequence — ideal for event-driven workflows.
-    link: /guide/cascading-messages
+  - icon: �
+    title: Scale Out When You're Ready
+    details: Need to offload work to background queues or broadcast events across nodes? Add an attribute or marker interface — same handlers, same middleware, now distributed.
+    link: /guide/distributed-overview
   - icon: 🔒
     title: Compile-Time Safety & Debugging
     details: Comprehensive diagnostics catch errors early. Short, simple call stacks with minimal indirection make debugging straightforward.
@@ -95,4 +95,17 @@ Turn your message handlers into API endpoints automatically:
 ```csharp
 app.MapMediatorEndpoints();
 // That's it — routes, methods, and parameter binding are all generated for you.
+```
+
+Go distributed — ready to scale out? Offload work to a background queue with one attribute:
+
+```csharp
+public record SendEmail(string To, string Subject, string Body);
+
+[Queue]
+public class SendEmailHandler(IEmailService email)
+{
+    public async Task HandleAsync(SendEmail msg, CancellationToken ct)
+        => await email.SendAsync(msg.To, msg.Subject, msg.Body, ct);
+}
 ```

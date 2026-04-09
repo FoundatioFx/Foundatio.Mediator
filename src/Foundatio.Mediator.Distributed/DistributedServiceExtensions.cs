@@ -101,7 +101,7 @@ public static class DistributedServiceExtensions
 
             // Always register infrastructure (queues must exist for enqueuing from API-only nodes).
             // Dead-letter queues are created lazily on first dead-letter to reduce startup latency.
-            infraOptions.QueueNames.Add(queueName);
+            infraOptions.QueueNames.Add(new QueueDefinition { Name = queueName });
 
             var visibilityTimeout = TimeSpan.FromSeconds(queueAttr?.TimeoutSeconds ?? 30);
             var retryDelay = TimeSpan.FromSeconds(queueAttr?.RetryDelaySeconds ?? 5);
@@ -236,7 +236,7 @@ public static class DistributedServiceExtensions
 
         // Collect topic name for startup initialization
         var infraOptions = GetOrAddInfrastructureOptions(services);
-        infraOptions.TopicNames.Add(options.EffectiveTopic);
+        infraOptions.TopicNames.Add(new TopicDefinition { Name = options.EffectiveTopic });
 
         // Register the background worker
         // Build the resolved set of distributed types for the worker to filter on.

@@ -7,14 +7,10 @@ namespace Foundatio.Mediator.Distributed;
 public interface IQueueClient : IAsyncDisposable
 {
     /// <summary>
-    /// Sends a single message to the specified queue.
+    /// Sends one or more messages to the specified queue.
+    /// Implementations may use transport-native batch APIs for better throughput.
     /// </summary>
-    Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sends a batch of messages to the specified queue.
-    /// </summary>
-    Task SendBatchAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default);
+    Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Receives up to <paramref name="maxCount"/> messages from the specified queue.
@@ -67,14 +63,14 @@ public interface IQueueClient : IAsyncDisposable
     /// Ensures the specified queues exist, creating them if necessary.
     /// Implementations may batch the operations for efficiency.
     /// </summary>
-    Task EnsureQueuesAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
-    /// Gets transport-level statistics for the specified queue.
+    /// Gets transport-level statistics for the specified queues.
     /// Not all transports support all metrics; unsupported values will be zero.
     /// </summary>
-    Task<QueueStats> GetQueueStatsAsync(string queueName, CancellationToken cancellationToken = default)
-        => Task.FromResult(new QueueStats { QueueName = queueName });
+    Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<QueueStats>>(queueNames.Select(n => new QueueStats { QueueName = n }).ToList());
 
     /// <inheritdoc />
     ValueTask IAsyncDisposable.DisposeAsync() => default;

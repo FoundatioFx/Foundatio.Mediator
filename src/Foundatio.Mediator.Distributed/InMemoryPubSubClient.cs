@@ -14,21 +14,24 @@ public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
     private readonly ConcurrentBag<CancellationTokenSource> _activeCts = [];
 
     /// <inheritdoc />
-    public Task PublishAsync(string topic, PubSubEntry entry, CancellationToken cancellationToken = default)
+    public Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> entries, CancellationToken cancellationToken = default)
     {
-        if (!_subscriptions.TryGetValue(topic, out var entries))
+        if (!_subscriptions.TryGetValue(topic, out var subs))
             return Task.CompletedTask;
 
-        var message = new PubSubMessage
+        foreach (var entry in entries)
         {
-            Body = entry.Body,
-            Headers = entry.Headers is not null
-                ? new Dictionary<string, string>(entry.Headers)
-                : new Dictionary<string, string>()
-        };
+            var message = new PubSubMessage
+            {
+                Body = entry.Body,
+                Headers = entry.Headers is not null
+                    ? new Dictionary<string, string>(entry.Headers)
+                    : new Dictionary<string, string>()
+            };
 
-        foreach (var sub in entries.Values)
-            sub.Writer.TryWrite(message);
+            foreach (var sub in subs.Values)
+                sub.Writer.TryWrite(message);
+        }
 
         return Task.CompletedTask;
     }

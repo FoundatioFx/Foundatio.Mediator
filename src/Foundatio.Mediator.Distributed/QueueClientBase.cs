@@ -15,7 +15,7 @@ namespace Foundatio.Mediator.Distributed;
 ///   <see cref="CompleteAsync"/>, <see cref="AbandonAsync"/>.</item>
 /// <item><b>Recommended</b>: <see cref="RenewTimeoutAsync"/> (if the transport supports visibility timeouts),
 ///   <see cref="EnsureQueuesAsync"/> (if infrastructure pre-creation is beneficial).</item>
-/// <item><b>Optional</b>: <see cref="SendBatchAsync"/> (default loops <see cref="SendAsync"/>),
+/// <item><b>Optional</b>:
 ///   <see cref="DeadLetterAsync"/> (default sends to <c>{queueName}-dead-letter</c> then completes),
 ///   <see cref="GetQueueStatsAsync"/> (default returns zeroed stats).</item>
 /// </list>
@@ -36,18 +36,7 @@ public abstract class QueueClientBase : IQueueClient
         Logger = logger ?? NullLogger.Instance;
     }
     /// <inheritdoc />
-    public abstract Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default);
-
-    /// <inheritdoc />
-    /// <remarks>
-    /// Default implementation sends entries one at a time via <see cref="SendAsync"/>.
-    /// Override to use transport-native batch APIs for better throughput.
-    /// </remarks>
-    public virtual async Task SendBatchAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
-    {
-        foreach (var entry in entries)
-            await SendAsync(queueName, entry, cancellationToken).ConfigureAwait(false);
-    }
+    public abstract Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default);
 
     /// <inheritdoc />
     public abstract Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default);
@@ -100,7 +89,7 @@ public abstract class QueueClientBase : IQueueClient
             Headers = headers
         };
 
-        await SendAsync(dlqName, entry, cancellationToken).ConfigureAwait(false);
+        await SendAsync(dlqName, [entry], cancellationToken).ConfigureAwait(false);
         await CompleteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
@@ -108,7 +97,7 @@ public abstract class QueueClientBase : IQueueClient
     /// <remarks>
     /// Default implementation is a no-op. Override to pre-create queue infrastructure at startup.
     /// </remarks>
-    public virtual Task EnsureQueuesAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+    public virtual Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
     /// <inheritdoc />
@@ -116,8 +105,8 @@ public abstract class QueueClientBase : IQueueClient
     /// Default implementation returns zeroed stats. Override if the transport provides
     /// queue metrics (approximate message count, in-flight count, etc.).
     /// </remarks>
-    public virtual Task<QueueStats> GetQueueStatsAsync(string queueName, CancellationToken cancellationToken = default)
-        => Task.FromResult(new QueueStats { QueueName = queueName });
+    public virtual Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<QueueStats>>(queueNames.Select(n => new QueueStats { QueueName = n }).ToList());
 
     /// <inheritdoc />
     public virtual ValueTask DisposeAsync() => default;

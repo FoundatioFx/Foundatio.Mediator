@@ -43,24 +43,27 @@ public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async Task PublishAsync(string topic, PubSubEntry message, CancellationToken cancellationToken = default)
+    public async Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> messages, CancellationToken cancellationToken = default)
     {
         var topicArn = await GetOrCreateTopicArnAsync(topic, cancellationToken).ConfigureAwait(false);
 
-        // Wrap body + headers into a single JSON envelope for SNS
-        var envelope = new MessageEnvelope
+        foreach (var message in messages)
         {
-            Body = Convert.ToBase64String(message.Body.Span),
-            Headers = message.Headers is not null ? new Dictionary<string, string>(message.Headers) : null
-        };
+            // Wrap body + headers into a single JSON envelope for SNS
+            var envelope = new MessageEnvelope
+            {
+                Body = Convert.ToBase64String(message.Body.Span),
+                Headers = message.Headers is not null ? new Dictionary<string, string>(message.Headers) : null
+            };
 
-        var json = JsonSerializer.Serialize(envelope);
+            var json = JsonSerializer.Serialize(envelope);
 
-        await _sns.PublishAsync(new PublishRequest
-        {
-            TopicArn = topicArn,
-            Message = json
-        }, cancellationToken).ConfigureAwait(false);
+            await _sns.PublishAsync(new PublishRequest
+            {
+                TopicArn = topicArn,
+                Message = json
+            }, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -280,7 +283,7 @@ public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async Task EnsureTopicsAsync(IReadOnlyList<string> topics, CancellationToken cancellationToken = default)
+    public async Task EnsureTopicsAsync(IReadOnlyList<TopicDefinition> topics, CancellationToken cancellationToken = default)
     {
         if (topics.Count == 0)
             return;
@@ -289,7 +292,7 @@ public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
 
         // 1. Create the shared per-node SQS queue and all SNS topics in parallel
         var queueTask = EnsureSharedQueueAsync(cancellationToken);
-        var topicTasks = topics.Select(t => GetOrCreateTopicArnAsync(t, cancellationToken)).ToArray();
+        var topicTasks = topics.Select(t => GetOrCreateTopicArnAsync(t.Name, cancellationToken)).ToArray();
 
         await Task.WhenAll(topicTasks).ConfigureAwait(false);
         var queue = await queueTask.ConfigureAwait(false);
@@ -327,7 +330,7 @@ public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
         _logger.LogInformation("EnsureTopics: policy set in {ElapsedMs}ms", sw.ElapsedMilliseconds);
 
         // 3. Subscribe the queue to all topics in parallel
-        await Task.WhenAll(topics.Select(topic => EnsureSubscriptionSetupAsync(topic, cancellationToken))).ConfigureAwait(false);
+        await Task.WhenAll(topics.Select(topic => EnsureSubscriptionSetupAsync(topic.Name, cancellationToken))).ConfigureAwait(false);
 
         _logger.LogInformation("EnsureTopics: complete in {ElapsedMs}ms ({Count} topics)", sw.ElapsedMilliseconds, topics.Count);
     }

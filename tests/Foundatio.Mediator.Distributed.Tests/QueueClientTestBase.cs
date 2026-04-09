@@ -28,11 +28,11 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
             [MessageHeaders.EnqueuedAt] = DateTimeOffset.UtcNow.ToString("O")
         };
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = body,
             Headers = headers
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
 
@@ -52,7 +52,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         var queueName = TestQueueName;
         var body = """{"Value":42}"""u8.ToArray();
 
-        await client.SendAsync(queueName, new QueueEntry { Body = body }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = body }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
 
@@ -82,10 +82,10 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         // Send 5 messages
         for (int i = 0; i < 5; i++)
         {
-            await client.SendAsync(queueName, new QueueEntry
+            await client.SendAsync(queueName, [new QueueEntry
             {
                 Body = Encoding.UTF8.GetBytes($"message-{i}")
-            }, TestCancellationToken);
+            }], TestCancellationToken);
         }
 
         // Request only 2
@@ -102,7 +102,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "hello"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "hello"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);
@@ -123,7 +123,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "requeue-me"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "requeue-me"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);
@@ -147,7 +147,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "timeout-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "timeout-test"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);
@@ -159,10 +159,10 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         await client.CompleteAsync(messages[0], TestCancellationToken);
     }
 
-    // ── SendBatch ──────────────────────────────────────────────────────────
+    // ── Send Batch ─────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task SendBatchAsync_SendsAllMessages()
+    public async Task SendAsync_Batch_SendsAllMessages()
     {
         var client = CreateClient();
         var queueName = TestQueueName;
@@ -173,7 +173,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
             Headers = new Dictionary<string, string> { ["index"] = i.ToString() }
         }).ToList();
 
-        await client.SendBatchAsync(queueName, entries, TestCancellationToken);
+        await client.SendAsync(queueName, entries, TestCancellationToken);
 
         // Receive all — may need multiple receives for SQS
         var received = new List<QueueMessage>();
@@ -203,11 +203,11 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
             ["custom-header"] = "custom-value"
         };
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = "{}"u8.ToArray(),
             Headers = headers
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);
@@ -227,7 +227,7 @@ public abstract class QueueClientTestBase(ITestOutputHelper output) : TestWithLo
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "meta-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "meta-test"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);

@@ -122,6 +122,6 @@ public sealed class DistributedInfrastructureReady
 /// </summary>
 internal sealed class DistributedInfrastructureOptions
 {
-    public List<string> QueueNames { get; } = [];
-    public List<string> TopicNames { get; } = [];
+    public List<QueueDefinition> QueueNames { get; } = [];
+    public List<TopicDefinition> TopicNames { get; } = [];
 }

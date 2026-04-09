@@ -10,7 +10,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
     {
         using var bus = new InMemoryPubSubClient();
 
-        await bus.PublishAsync("test-topic", new PubSubEntry { Body = "hello"u8.ToArray() }, TestCancellationToken);
+        await bus.PublishAsync("test-topic", [new PubSubEntry { Body = "hello"u8.ToArray() }], TestCancellationToken);
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         }, TestCancellationToken);
 
         var headers = new Dictionary<string, string> { ["key"] = "value" };
-        await bus.PublishAsync("test-topic", new PubSubEntry { Body = "hello"u8.ToArray(), Headers = headers }, TestCancellationToken);
+        await bus.PublishAsync("test-topic", [new PubSubEntry { Body = "hello"u8.ToArray(), Headers = headers }], TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.NotNull(received);
@@ -59,7 +59,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await bus.PublishAsync("topic", new PubSubEntry { Body = "data"u8.ToArray() }, TestCancellationToken);
+        await bus.PublishAsync("topic", [new PubSubEntry { Body = "data"u8.ToArray() }], TestCancellationToken);
 
         // Wait for both subscribers
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -90,7 +90,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await bus.PublishAsync("topic-a", new PubSubEntry { Body = "only-a"u8.ToArray() }, TestCancellationToken);
+        await bus.PublishAsync("topic-a", [new PubSubEntry { Body = "only-a"u8.ToArray() }], TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(5)));
         // Give a moment to ensure topic-b doesn't fire
@@ -115,14 +115,14 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await bus.PublishAsync("topic", new PubSubEntry { Body = "msg1"u8.ToArray() }, TestCancellationToken);
+        await bus.PublishAsync("topic", [new PubSubEntry { Body = "msg1"u8.ToArray() }], TestCancellationToken);
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, count);
 
         // Dispose subscription
         await sub.DisposeAsync();
 
-        await bus.PublishAsync("topic", new PubSubEntry { Body = "msg2"u8.ToArray() }, TestCancellationToken);
+        await bus.PublishAsync("topic", [new PubSubEntry { Body = "msg2"u8.ToArray() }], TestCancellationToken);
         await Task.Delay(200, TestCancellationToken);
 
         Assert.Equal(1, count); // Should not have received msg2
@@ -143,11 +143,11 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
             return Task.CompletedTask;
         }, TestCancellationToken);
 
-        await bus.PublishAsync("topic", new PubSubEntry
+        await bus.PublishAsync("topic", [new PubSubEntry
         {
             Body = "test"u8.ToArray(),
             Headers = new Dictionary<string, string> { ["h1"] = "v1", ["h2"] = "v2" }
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.NotNull(received);

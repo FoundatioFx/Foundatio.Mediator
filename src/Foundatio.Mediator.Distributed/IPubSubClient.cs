@@ -18,12 +18,13 @@ namespace Foundatio.Mediator.Distributed;
 public interface IPubSubClient : IAsyncDisposable
 {
     /// <summary>
-    /// Publishes a message to all subscribers of the specified topic.
+    /// Publishes one or more messages to all subscribers of the specified topic.
+    /// Implementations may use transport-native batch APIs for better throughput.
     /// </summary>
     /// <param name="topic">The topic to publish to.</param>
-    /// <param name="message">The outbound message containing body and optional headers.</param>
+    /// <param name="messages">The outbound messages containing body and optional headers.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    Task PublishAsync(string topic, PubSubEntry message, CancellationToken cancellationToken = default);
+    Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> messages, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Subscribes to a topic. The returned <see cref="IAsyncDisposable"/> unsubscribes when disposed.
@@ -39,7 +40,7 @@ public interface IPubSubClient : IAsyncDisposable
     /// Implementations create topics, per-node queues, and subscriptions so that
     /// <see cref="SubscribeAsync"/> can skip to polling without additional API calls.
     /// </summary>
-    Task EnsureTopicsAsync(IReadOnlyList<string> topics, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    Task EnsureTopicsAsync(IReadOnlyList<TopicDefinition> topics, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <inheritdoc />
     ValueTask IAsyncDisposable.DisposeAsync() => default;

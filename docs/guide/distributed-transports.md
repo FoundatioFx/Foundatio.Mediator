@@ -168,22 +168,23 @@ All state transitions are atomic operations.
 Implement `IQueueClient` for custom queue transports and `IPubSubClient` for custom pub/sub transports:
 
 ```csharp
-public interface IQueueClient
+public interface IQueueClient : IAsyncDisposable
 {
-    Task SendAsync(string queueName, QueueMessage message, CancellationToken ct = default);
-    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken ct = default);
-    Task CompleteAsync(string queueName, QueueMessage message, CancellationToken ct = default);
-    Task AbandonAsync(string queueName, QueueMessage message, TimeSpan? delay = null, CancellationToken ct = default);
-    Task DeadLetterAsync(string queueName, QueueMessage message, string reason, CancellationToken ct = default);
-    Task RenewTimeoutAsync(string queueName, QueueMessage message, TimeSpan extension, CancellationToken ct = default);
-    Task EnsureQueueAsync(string queueName, CancellationToken ct = default);
+    Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken ct = default);
+    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken ct = default);
+    Task CompleteAsync(QueueMessage message, CancellationToken ct = default);
+    Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default);
+    Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken ct = default);
+    Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken ct = default);
+    Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken ct = default);
+    Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct = default);
 }
 
-public interface IPubSubClient
+public interface IPubSubClient : IAsyncDisposable
 {
-    Task PublishAsync(string topic, PubSubMessage message, CancellationToken ct = default);
+    Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> messages, CancellationToken ct = default);
     Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken ct = default);
-    Task EnsureTopicsAsync(IEnumerable<string> topics, CancellationToken ct = default);
+    Task EnsureTopicsAsync(IReadOnlyList<TopicDefinition> topics, CancellationToken ct = default);
 }
 ```
 

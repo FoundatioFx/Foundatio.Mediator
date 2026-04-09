@@ -34,9 +34,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.SQS" Version="4.0.2.20" />
-    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.2.22" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.5.0" />
+    <PackageReference Include="AWSSDK.SQS" Version="4.0.2.24" />
+    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.2.26" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.4.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.5" />
     <PackageReference Include="MiniValidation" Version="0.9.2" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />

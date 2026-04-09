@@ -39,12 +39,23 @@ public class QueueDashboardHandler
     {
         var workers = _registry.GetWorkers();
 
-        // Fetch all queue stats in parallel — each is an independent SQS call.
+        if (_infraReady is not null)
+            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
+
+        // Batch-fetch stats for all queues in a single call.
+        var queueNames = workers.Select(w => w.QueueName).ToList();
+        IReadOnlyList<QueueStats> allStats = [];
+        try { allStats = await _queueClient.GetQueueStatsAsync(queueNames, ct).ConfigureAwait(false); }
+        catch { /* Transport may not support stats */ }
+
+        var statsMap = allStats.ToDictionary(s => s.QueueName);
+
         var tasks = new Task<QueueSummary>[workers.Count];
         for (int i = 0; i < workers.Count; i++)
         {
             var worker = workers[i];
-            tasks[i] = BuildSummaryAsync(worker, ct);
+            statsMap.TryGetValue(worker.QueueName, out var stats);
+            tasks[i] = ToSummaryAsync(worker, stats, ct);
         }
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -58,7 +69,18 @@ public class QueueDashboardHandler
         if (worker is null)
             return Result.NotFound($"Queue worker '{query.QueueName}' not found");
 
-        return await BuildSummaryAsync(worker, ct).ConfigureAwait(false);
+        if (_infraReady is not null)
+            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
+
+        QueueStats? stats = null;
+        try
+        {
+            var statsList = await _queueClient.GetQueueStatsAsync([query.QueueName], ct).ConfigureAwait(false);
+            stats = statsList.FirstOrDefault();
+        }
+        catch { /* Transport may not support stats */ }
+
+        return await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false);
     }
 
     public async Task<Result<JobDashboardView>> HandleAsync(GetJobDashboard query, CancellationToken ct)
@@ -143,21 +165,6 @@ public class QueueDashboardHandler
         }
 
         return new DemoJobEnqueued(lastJobId ?? string.Empty);
-    }
-
-    private async Task<QueueSummary> BuildSummaryAsync(QueueWorkerInfo worker, CancellationToken ct)
-    {
-        // Wait for queues to be created before hitting SQS for stats.
-        // Without this, cold-start dashboard requests trigger slow/failing
-        // GetQueueAttributes calls for queues that don't exist yet.
-        if (_infraReady is not null)
-            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
-
-        QueueStats? stats = null;
-        try { stats = await _queueClient.GetQueueStatsAsync(worker.QueueName, ct).ConfigureAwait(false); }
-        catch { /* Transport may not support stats */ }
-
-        return await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false);
     }
 
     private async Task<QueueSummary> ToSummaryAsync(QueueWorkerInfo worker, QueueStats? stats, CancellationToken ct)

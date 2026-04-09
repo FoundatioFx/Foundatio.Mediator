@@ -149,7 +149,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
                             headers[MessageHeaders.TraceState] = traceState;
                     }
 
-                    await _bus.PublishAsync(_options.EffectiveTopic, new PubSubEntry { Body = body, Headers = headers }, stoppingToken).ConfigureAwait(false);
+                    await _bus.PublishAsync(_options.EffectiveTopic, [new PubSubEntry { Body = body, Headers = headers }], stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

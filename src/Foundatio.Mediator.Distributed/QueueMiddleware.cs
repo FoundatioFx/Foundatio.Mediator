@@ -116,7 +116,7 @@ public class QueueMiddleware
             Headers = headers
         };
 
-        await _client.SendAsync(metadata.QueueName, entry, cancellationToken).ConfigureAwait(false);
+        await _client.SendAsync(metadata.QueueName, [entry], cancellationToken).ConfigureAwait(false);
 
         if (jobId is not null)
             return Result.Accepted("Message queued", jobId);

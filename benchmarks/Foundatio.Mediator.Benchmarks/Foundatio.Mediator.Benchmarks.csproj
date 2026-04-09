@@ -32,12 +32,12 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageReference Include="Immediate.Handlers" Version="3.3.0" />
-    <PackageReference Include="MassTransit" Version="9.0.1" />
+    <PackageReference Include="Immediate.Handlers" Version="3.4.0" />
+    <PackageReference Include="MassTransit" Version="9.1.0" />
     <PackageReference Include="MediatR" Version="14.1.0" />
     <PackageReference Include="RhoMicro.BdnLogging" Version="1.0.3" />
-    <PackageReference Include="WolverineFx" Version="5.27.0" />
-    <PackageReference Include="Scriban" Version="7.0.3" /> <!-- Override transitive Scriban to fix NU1902/NU1903 vulnerabilities -->
+    <PackageReference Include="WolverineFx" Version="5.29.0" />
+    <PackageReference Include="Scriban" Version="7.1.0" /> <!-- Override transitive Scriban to fix NU1902/NU1903 vulnerabilities -->
     <PackageReference Include="Mediator.Abstractions" Version="3.0.2" />
     <PackageReference Include="Mediator.SourceGenerator" Version="3.0.2" PrivateAssets="All" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.5" />

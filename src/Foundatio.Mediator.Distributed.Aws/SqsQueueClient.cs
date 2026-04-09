@@ -33,35 +33,7 @@ public sealed class SqsQueueClient : IQueueClient
     /// </summary>
     private const int MaxSqsMessageAttributes = 10;
 
-    public async Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default)
-    {
-        var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
-
-        ValidateHeaderCount(entry.Headers, queueName);
-
-        var request = new SendMessageRequest
-        {
-            QueueUrl = queueUrl,
-            MessageBody = Convert.ToBase64String(entry.Body.Span),
-            MessageAttributes = new Dictionary<string, MessageAttributeValue>()
-        };
-
-        if (entry.Headers is { Count: > 0 })
-        {
-            foreach (var (key, value) in entry.Headers)
-            {
-                request.MessageAttributes[key] = new MessageAttributeValue
-                {
-                    DataType = "String",
-                    StringValue = value
-                };
-            }
-        }
-
-        await _sqs.SendMessageAsync(request, cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task SendBatchAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
+    public async Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
     {
         if (entries.Count == 0)
             return;
@@ -220,7 +192,7 @@ public sealed class SqsQueueClient : IQueueClient
         };
 
         // Send to DLQ then complete the original message
-        await SendAsync(dlqName, entry, cancellationToken).ConfigureAwait(false);
+        await SendAsync(dlqName, [entry], cancellationToken).ConfigureAwait(false);
         _dlqNotFound.TryRemove(dlqName, out _);
         await CompleteAsync(message, cancellationToken).ConfigureAwait(false);
     }
@@ -291,81 +263,87 @@ public sealed class SqsQueueClient : IQueueClient
     }
 
     /// <inheritdoc />
-    public async Task EnsureQueuesAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+    public async Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        await Task.WhenAll(queueNames.Select(name => GetQueueUrlAsync(name, cancellationToken))).ConfigureAwait(false);
+        await Task.WhenAll(queues.Select(q => GetQueueUrlAsync(q.Name, cancellationToken))).ConfigureAwait(false);
 
-        _logger.LogInformation("EnsureQueues: {Count} queues ready in {ElapsedMs}ms", queueNames.Count, sw.ElapsedMilliseconds);
+        _logger.LogInformation("EnsureQueues: {Count} queues ready in {ElapsedMs}ms", queues.Count, sw.ElapsedMilliseconds);
     }
 
     /// <inheritdoc />
-    public async Task<QueueStats> GetQueueStatsAsync(string queueName, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
     {
-        var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
-
-        var response = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+        var results = new List<QueueStats>(queueNames.Count);
+        foreach (var queueName in queueNames)
         {
-            QueueUrl = queueUrl,
-            AttributeNames = ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
-        }, cancellationToken).ConfigureAwait(false);
+            var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
 
-        long activeCount = 0;
-        if (response.Attributes.TryGetValue("ApproximateNumberOfMessages", out var activeStr)
-            && long.TryParse(activeStr, out var parsedActive))
-            activeCount = parsedActive;
-
-        long inFlightCount = 0;
-        if (response.Attributes.TryGetValue("ApproximateNumberOfMessagesNotVisible", out var inFlightStr)
-            && long.TryParse(inFlightStr, out var parsedInFlight))
-            inFlightCount = parsedInFlight;
-
-        // Try to get dead-letter queue stats (DLQ is created lazily on first dead-letter)
-        long deadLetterCount = 0;
-        var dlqName = $"{queueName}-dead-letter";
-        // Skip lookup if we already know the DLQ doesn't exist.
-        // The negative cache is cleared when DeadLetterAsync creates the queue.
-        if (!_dlqNotFound.ContainsKey(dlqName))
-        {
-            try
+            var response = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
             {
-                string dlqUrl;
-                if (_queueUrlCache.TryGetValue(dlqName, out var cachedDlqUrl))
-                {
-                    dlqUrl = cachedDlqUrl;
-                }
-                else
-                {
-                    var dlqResponse = await _sqs.GetQueueUrlAsync(new GetQueueUrlRequest { QueueName = dlqName }, cancellationToken).ConfigureAwait(false);
-                    dlqUrl = dlqResponse.QueueUrl;
-                    _queueUrlCache[dlqName] = dlqUrl;
-                }
+                QueueUrl = queueUrl,
+                AttributeNames = ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
+            }, cancellationToken).ConfigureAwait(false);
 
-                var dlqAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
-                {
-                    QueueUrl = dlqUrl,
-                    AttributeNames = ["ApproximateNumberOfMessages"]
-                }, cancellationToken).ConfigureAwait(false);
+            long activeCount = 0;
+            if (response.Attributes.TryGetValue("ApproximateNumberOfMessages", out var activeStr)
+                && long.TryParse(activeStr, out var parsedActive))
+                activeCount = parsedActive;
 
-                if (dlqAttrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var dlqStr)
-                    && long.TryParse(dlqStr, out var parsedDlq))
-                    deadLetterCount = parsedDlq;
-            }
-            catch
+            long inFlightCount = 0;
+            if (response.Attributes.TryGetValue("ApproximateNumberOfMessagesNotVisible", out var inFlightStr)
+                && long.TryParse(inFlightStr, out var parsedInFlight))
+                inFlightCount = parsedInFlight;
+
+            // Try to get dead-letter queue stats (DLQ is created lazily on first dead-letter)
+            long deadLetterCount = 0;
+            var dlqName = $"{queueName}-dead-letter";
+            // Skip lookup if we already know the DLQ doesn't exist.
+            // The negative cache is cleared when DeadLetterAsync creates the queue.
+            if (!_dlqNotFound.ContainsKey(dlqName))
             {
-                // DLQ doesn't exist yet — remember so we don't retry on every poll
-                _dlqNotFound[dlqName] = true;
+                try
+                {
+                    string dlqUrl;
+                    if (_queueUrlCache.TryGetValue(dlqName, out var cachedDlqUrl))
+                    {
+                        dlqUrl = cachedDlqUrl;
+                    }
+                    else
+                    {
+                        var dlqResponse = await _sqs.GetQueueUrlAsync(new GetQueueUrlRequest { QueueName = dlqName }, cancellationToken).ConfigureAwait(false);
+                        dlqUrl = dlqResponse.QueueUrl;
+                        _queueUrlCache[dlqName] = dlqUrl;
+                    }
+
+                    var dlqAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+                    {
+                        QueueUrl = dlqUrl,
+                        AttributeNames = ["ApproximateNumberOfMessages"]
+                    }, cancellationToken).ConfigureAwait(false);
+
+                    if (dlqAttrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var dlqStr)
+                        && long.TryParse(dlqStr, out var parsedDlq))
+                        deadLetterCount = parsedDlq;
+                }
+                catch
+                {
+                    // DLQ doesn't exist yet — remember so we don't retry on every poll
+                    _dlqNotFound[dlqName] = true;
+                }
             }
+
+            results.Add(new QueueStats
+            {
+                QueueName = queueName,
+                ActiveCount = activeCount,
+                InFlightCount = inFlightCount,
+                DeadLetterCount = deadLetterCount
+            });
         }
 
-        return new QueueStats
-        {
-            QueueName = queueName,
-            ActiveCount = activeCount,
-            InFlightCount = inFlightCount,
-            DeadLetterCount = deadLetterCount
-        };
+        return results;
     }
 
     private static Message GetNativeMessage(QueueMessage message)

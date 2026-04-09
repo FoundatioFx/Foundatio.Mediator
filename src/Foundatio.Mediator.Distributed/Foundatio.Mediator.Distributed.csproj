@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.5" />
   </ItemGroup>
 
 </Project>

@@ -20,25 +20,22 @@ public sealed class InMemoryQueueClient : IQueueClient
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public Task SendAsync(string queueName, QueueEntry entry, CancellationToken cancellationToken = default)
+    public async Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
     {
         var channel = GetOrCreateChannel(queueName);
-        var internalEntry = new InMemoryEntry
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Body = entry.Body,
-            Headers = entry.Headers != null ? new Dictionary<string, string>(entry.Headers) : new(),
-            DequeueCount = 0,
-            EnqueuedAt = _timeProvider.GetUtcNow()
-        };
-
-        return channel.Writer.WriteAsync(internalEntry, cancellationToken).AsTask();
-    }
-
-    public async Task SendBatchAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
-    {
         foreach (var entry in entries)
-            await SendAsync(queueName, entry, cancellationToken).ConfigureAwait(false);
+        {
+            var internalEntry = new InMemoryEntry
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Body = entry.Body,
+                Headers = entry.Headers != null ? new Dictionary<string, string>(entry.Headers) : new(),
+                DequeueCount = 0,
+                EnqueuedAt = _timeProvider.GetUtcNow()
+            };
+
+            await channel.Writer.WriteAsync(internalEntry, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
@@ -157,22 +154,28 @@ public sealed class InMemoryQueueClient : IQueueClient
             new UnboundedChannelOptions { SingleReader = false, SingleWriter = false }));
 
     /// <inheritdoc />
-    public Task<QueueStats> GetQueueStatsAsync(string queueName, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
     {
-        int activeCount = 0;
-        if (_channels.TryGetValue(queueName, out var channel))
-            activeCount = channel.Reader.Count;
-
-        int deadLetterCount = 0;
-        if (_deadLetterChannels.TryGetValue(queueName, out var dlqChannel))
-            deadLetterCount = dlqChannel.Reader.Count;
-
-        return Task.FromResult(new QueueStats
+        var results = new List<QueueStats>(queueNames.Count);
+        foreach (var queueName in queueNames)
         {
-            QueueName = queueName,
-            ActiveCount = activeCount,
-            DeadLetterCount = deadLetterCount
-        });
+            int activeCount = 0;
+            if (_channels.TryGetValue(queueName, out var channel))
+                activeCount = channel.Reader.Count;
+
+            int deadLetterCount = 0;
+            if (_deadLetterChannels.TryGetValue(queueName, out var dlqChannel))
+                deadLetterCount = dlqChannel.Reader.Count;
+
+            results.Add(new QueueStats
+            {
+                QueueName = queueName,
+                ActiveCount = activeCount,
+                DeadLetterCount = deadLetterCount
+            });
+        }
+
+        return Task.FromResult<IReadOnlyList<QueueStats>>(results);
     }
 
     private static QueueMessage ToQueueMessage(InMemoryEntry entry, string queueName, DateTimeOffset dequeuedAt) => new()

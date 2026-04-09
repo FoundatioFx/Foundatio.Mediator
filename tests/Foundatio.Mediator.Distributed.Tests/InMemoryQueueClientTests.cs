@@ -14,8 +14,8 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var q1 = $"queue-a-{Guid.NewGuid():N}";
         var q2 = $"queue-b-{Guid.NewGuid():N}";
 
-        await client.SendAsync(q1, new QueueEntry { Body = "a"u8.ToArray() }, TestCancellationToken);
-        await client.SendAsync(q2, new QueueEntry { Body = "b"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(q1, [new QueueEntry { Body = "a"u8.ToArray() }], TestCancellationToken);
+        await client.SendAsync(q2, [new QueueEntry { Body = "b"u8.ToArray() }], TestCancellationToken);
 
         var msgs1 = await client.ReceiveAsync(q1, 10, TestCancellationToken);
         var msgs2 = await client.ReceiveAsync(q2, 10, TestCancellationToken);
@@ -32,7 +32,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "retry-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "retry-test"u8.ToArray() }], TestCancellationToken);
 
         // Receive, abandon, receive again — dequeue count should increase
         var first = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
@@ -55,7 +55,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "complete-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "complete-test"u8.ToArray() }], TestCancellationToken);
         var msgs = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         await client.CompleteAsync(msgs[0], TestCancellationToken);
 
@@ -65,7 +65,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
     }
 
     [Fact]
-    public async Task SendBatchAsync_Ordering_PreservedApproximately()
+    public async Task SendAsync_Batch_Ordering_PreservedApproximately()
     {
         var client = CreateClient();
         var queueName = TestQueueName;
@@ -75,7 +75,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
             Body = new byte[] { (byte)i }
         }).ToList();
 
-        await client.SendBatchAsync(queueName, entries, TestCancellationToken);
+        await client.SendAsync(queueName, entries, TestCancellationToken);
 
         var received = new List<QueueMessage>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -100,7 +100,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
 
         // Send concurrently
         var sendTasks = Enumerable.Range(0, messageCount).Select(i =>
-            client.SendAsync(queueName, new QueueEntry { Body = new byte[] { (byte)(i % 256) } }, TestCancellationToken));
+            client.SendAsync(queueName, [new QueueEntry { Body = new byte[] { (byte)(i % 256) } }], TestCancellationToken));
         await Task.WhenAll(sendTasks);
 
         // Receive all
@@ -123,11 +123,11 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = (InMemoryQueueClient)CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = "poison"u8.ToArray(),
             Headers = new Dictionary<string, string> { ["custom"] = "value" }
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(messages);
@@ -151,7 +151,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = (InMemoryQueueClient)CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = "test"u8.ToArray(),
             Headers = new Dictionary<string, string>
@@ -159,7 +159,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
                 [MessageHeaders.MessageType] = "MyMessage",
                 ["custom-key"] = "custom-value"
             }
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         await client.DeadLetterAsync(messages[0], "Test reason", TestCancellationToken);
@@ -184,7 +184,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = (InMemoryQueueClient)CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "dlq-count"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "dlq-count"u8.ToArray() }], TestCancellationToken);
 
         // Receive and abandon twice to bump dequeue count
         var msg = (await client.ReceiveAsync(queueName, 1, TestCancellationToken))[0];
@@ -212,7 +212,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         // Dead-letter three messages
         for (int i = 0; i < 3; i++)
         {
-            await client.SendAsync(queueName, new QueueEntry { Body = new byte[] { (byte)i } }, TestCancellationToken);
+            await client.SendAsync(queueName, [new QueueEntry { Body = new byte[] { (byte)i } }], TestCancellationToken);
             var msg = (await client.ReceiveAsync(queueName, 1, TestCancellationToken))[0];
             await client.DeadLetterAsync(msg, $"reason-{i}", TestCancellationToken);
         }
@@ -229,7 +229,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = new InMemoryQueueClient(fakeTime);
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "delayed"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "delayed"u8.ToArray() }], TestCancellationToken);
         var msg = (await client.ReceiveAsync(queueName, 1, TestCancellationToken))[0];
 
         // Start abandon with 30s delay — it will block on Task.Delay
@@ -258,7 +258,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = new InMemoryQueueClient(fakeTime);
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "instant"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "instant"u8.ToArray() }], TestCancellationToken);
         var msg = (await client.ReceiveAsync(queueName, 1, TestCancellationToken))[0];
 
         await client.AbandonAsync(msg, cancellationToken: TestCancellationToken);
@@ -276,7 +276,7 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         var client = new InMemoryQueueClient(fakeTime);
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "time-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "time-test"u8.ToArray() }], TestCancellationToken);
 
         // Advance 5 minutes before receiving
         fakeTime.Advance(TimeSpan.FromMinutes(5));

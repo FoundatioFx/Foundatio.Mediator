@@ -43,11 +43,11 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         for (int i = 0; i < 10; i++)
             headers[$"header-{i}"] = $"value-{i}-{new string('x', 100)}";
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = "test"u8.ToArray(),
             Headers = headers
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 10, TestCancellationToken);
         Assert.Single(messages);
@@ -65,7 +65,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "abandon-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "abandon-test"u8.ToArray() }], TestCancellationToken);
 
         var first = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(first);
@@ -85,7 +85,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "delete-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "delete-test"u8.ToArray() }], TestCancellationToken);
 
         var msgs = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(msgs);
@@ -99,7 +99,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
     }
 
     [Fact]
-    public async Task SendBatchAsync_SendsUpToTenMessages()
+    public async Task SendAsync_Batch_SendsUpToTenMessages()
     {
         var client = CreateClient();
         var queueName = TestQueueName;
@@ -111,7 +111,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
             Headers = new Dictionary<string, string> { ["index"] = i.ToString() }
         }).ToList();
 
-        await client.SendBatchAsync(queueName, entries, TestCancellationToken);
+        await client.SendAsync(queueName, entries, TestCancellationToken);
 
         var received = new List<QueueMessage>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -125,7 +125,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
     }
 
     [Fact]
-    public async Task SendBatchAsync_MoreThanTen_SplitsIntoBatches()
+    public async Task SendAsync_Batch_MoreThanTen_SplitsIntoBatches()
     {
         var client = CreateClient();
         var queueName = TestQueueName;
@@ -136,7 +136,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
             Body = System.Text.Encoding.UTF8.GetBytes($"big-batch-{i}")
         }).ToList();
 
-        await client.SendBatchAsync(queueName, entries, TestCancellationToken);
+        await client.SendAsync(queueName, entries, TestCancellationToken);
 
         var received = new List<QueueMessage>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -155,7 +155,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "metadata-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "metadata-test"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(messages);
@@ -178,7 +178,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "renew-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "renew-test"u8.ToArray() }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(messages);
@@ -199,11 +199,11 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var queueName = TestQueueName;
         var dlqName = $"{queueName}-dead-letter";
 
-        await client.SendAsync(queueName, new QueueEntry
+        await client.SendAsync(queueName, [new QueueEntry
         {
             Body = "poison"u8.ToArray(),
             Headers = new Dictionary<string, string> { ["custom"] = "value" }
-        }, TestCancellationToken);
+        }], TestCancellationToken);
 
         var messages = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(messages);
@@ -235,7 +235,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        await client.SendAsync(queueName, new QueueEntry { Body = "delay-test"u8.ToArray() }, TestCancellationToken);
+        await client.SendAsync(queueName, [new QueueEntry { Body = "delay-test"u8.ToArray() }], TestCancellationToken);
 
         var first = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(first);

@@ -1,11 +1,11 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
 using Foundatio.Xunit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.TestHost;
-using System.Net;
-using System.Net.Http.Json;
-using System.Security.Claims;
 
 namespace Foundatio.Mediator.Tests.Integration;
 

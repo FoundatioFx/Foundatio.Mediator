@@ -15,7 +15,7 @@ public class DemoUserService : IDemoUserService
     private readonly Dictionary<string, DemoUser> _users = new(StringComparer.OrdinalIgnoreCase)
     {
         ["admin"] = new("admin", "admin", "Alice Admin", "Admin"),
-        ["user"]  = new("user",  "user",  "Bob User",   "User"),
+        ["user"] = new("user", "user", "Bob User", "User"),
     };
 
     public bool TryGetUser(string username, out DemoUser user)

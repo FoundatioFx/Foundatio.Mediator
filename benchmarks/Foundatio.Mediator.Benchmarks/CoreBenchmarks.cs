@@ -5,9 +5,6 @@ using Foundatio.Mediator.Benchmarks.Handlers.MediatorNet;
 using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
 using MassTransit;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Wolverine;
 using MediatorLib = Mediator;
 

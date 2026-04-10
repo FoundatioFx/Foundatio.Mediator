@@ -1,6 +1,6 @@
+using System.Globalization;
 using Foundatio.Mediator.Models;
 using Foundatio.Mediator.Utility;
-using System.Globalization;
 
 namespace Foundatio.Mediator;
 

@@ -672,10 +672,10 @@ internal static class HandlerGenerator
             authorizationExpression = "Foundatio.Mediator.AuthorizationRequirements.Default";
         }
 
-                var descriptorId = GetHandlerDescriptorId(handler);
+        var descriptorId = GetHandlerDescriptorId(handler);
 
-                source.AppendLine()
-              .AppendLines($$"""
+        source.AppendLine()
+      .AppendLines($$"""
                 private static Foundatio.Mediator.HandlerExecutionInfo? _cachedHandlerExecutionInfo;
 
                 [DebuggerStepThrough]

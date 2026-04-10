@@ -4,7 +4,6 @@
 
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Tests.Integration;
 
@@ -133,7 +132,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
         await mediator.PublishAsync(new UnrelatedEvent("nope"));
 
         // Brief pause to confirm nothing arrives, then cancel.
-        await Task.Delay(100);
+        await Task.Delay(100, TestCancellationToken);
         cts.Cancel();
         await subscriberTask;
 
@@ -255,7 +254,7 @@ public class E2E_SubscribeAsyncTests(ITestOutputHelper output) : TestWithLogging
 
         // Wait for at least one item, then give extra time for draining.
         await WaitUntilAsync(() => received.Count > 0);
-        await Task.Delay(100);
+        await Task.Delay(100, TestCancellationToken);
         cts.Cancel();
         await subscriberTask;
 

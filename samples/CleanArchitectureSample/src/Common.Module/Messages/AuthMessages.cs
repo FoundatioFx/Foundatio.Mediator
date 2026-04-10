@@ -1,5 +1,3 @@
-using Foundatio.Mediator;
-
 namespace Common.Module.Messages;
 
 /// <summary>

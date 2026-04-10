@@ -442,7 +442,7 @@ public class AsyncHandler
 {
     public async Task<string> HandleAsync(GetMessage query)
     {
-        await Task.Delay(100);
+       await Task.Delay(100, TestCancellationToken);
         return "Result";
     }
 }

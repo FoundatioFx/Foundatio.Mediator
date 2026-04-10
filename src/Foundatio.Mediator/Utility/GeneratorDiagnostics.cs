@@ -29,7 +29,7 @@ internal static class GeneratorDiagnostics
     static GeneratorDiagnostics()
     {
         var envValue = Environment.GetEnvironmentVariable("FOUNDATIO_MEDIATOR_DIAGNOSTICS");
-        
+
         if (string.IsNullOrEmpty(envValue))
         {
             IsEnabled = false;
@@ -97,7 +97,7 @@ internal static class GeneratorDiagnostics
     public static void LogPredicateCall(string analyzerName)
     {
         if (!IsEnabled) return;
-        
+
         // Only log every 1000th call to avoid overwhelming the log
         var count = Interlocked.Increment(ref _predicateCallCount);
         if (count % 1000 == 0)
@@ -130,7 +130,7 @@ internal static class GeneratorDiagnostics
     public static string GetSummary()
     {
         if (!IsEnabled) return "Diagnostics disabled";
-        
+
         return $"""
             Execute calls: {_executeCount}
             Predicate evaluations: {_predicateCallCount}
@@ -145,7 +145,7 @@ internal static class GeneratorDiagnostics
     public static void WriteSummary()
     {
         if (!IsEnabled) return;
-        
+
         WriteLog($"""
             
             ================================================================================
@@ -163,7 +163,7 @@ internal static class GeneratorDiagnostics
     private static void WriteLogRaw(string message)
     {
         if (LogPath == null) return;
-        
+
         lock (Lock)
         {
             try

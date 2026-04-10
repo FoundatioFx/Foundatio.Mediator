@@ -1,9 +1,5 @@
 using Foundatio.Mediator.Utility;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System.Collections.Immutable;
 
 namespace Foundatio.Mediator;
 
@@ -343,7 +339,11 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         var actionVerb = RouteConventions.GetActionVerb(messageType.Name);
         var inferredHttpMethod = httpMethodEnum switch
         {
-            1 => "GET", 2 => "POST", 3 => "PUT", 4 => "DELETE", 5 => "PATCH",
+            1 => "GET",
+            2 => "POST",
+            3 => "PUT",
+            4 => "DELETE",
+            5 => "PATCH",
             _ => isStreaming ? "GET" : RouteConventions.InferHttpMethod(messageType.Name)
         };
         var routeParamNames = GetRouteParameterNames(messageType, inferredHttpMethod, actionVerb != null);

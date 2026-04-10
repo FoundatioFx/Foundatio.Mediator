@@ -1,5 +1,3 @@
-using System.Security.Claims;
-
 namespace Foundatio.Mediator;
 
 /// <summary>

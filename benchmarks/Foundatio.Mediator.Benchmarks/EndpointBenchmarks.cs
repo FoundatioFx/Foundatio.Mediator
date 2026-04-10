@@ -1,9 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using Foundatio.Mediator.Benchmarks.Services;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Benchmarks;
 

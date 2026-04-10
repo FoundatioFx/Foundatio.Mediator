@@ -49,4 +49,4 @@ public record GetOrders() : IQuery<Result<List<Order>>>;
 /// </summary>
 public record ProcessPayment(
     [Required] string OrderId,
-    [Required] [Range(0.01, 1000000)] decimal Amount) : ICommand<Result<string>>;
+    [Required][Range(0.01, 1000000)] decimal Amount) : ICommand<Result<string>>;

@@ -67,7 +67,7 @@ public class E2E_AuthorizationTests(ITestOutputHelper output) : TestWithLoggingB
     /// </summary>
     public class AuthRoleHandler
     {
-        [HandlerAuthorize(Roles = [ "Admin", "Manager" ])]
+        [HandlerAuthorize(Roles = ["Admin", "Manager"])]
         public Result<AuthAdminResult> Handle(AuthAdminAction cmd) => new AuthAdminResult("done");
     }
 

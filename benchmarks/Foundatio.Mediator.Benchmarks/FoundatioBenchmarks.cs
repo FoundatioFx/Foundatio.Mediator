@@ -1,7 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using Foundatio.Mediator.Benchmarks.Messages;
 using Foundatio.Mediator.Benchmarks.Services;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Benchmarks;
 

@@ -1,7 +1,6 @@
+using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Microsoft.Extensions.Logging;
-
-using Common.Module.Middleware;
 
 namespace Orders.Module.Middleware;
 

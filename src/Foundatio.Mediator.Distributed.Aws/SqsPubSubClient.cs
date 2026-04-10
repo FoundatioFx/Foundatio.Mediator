@@ -93,14 +93,16 @@ public sealed class SqsPubSubClient : IPubSubClient, IAsyncDisposable
     /// </summary>
     private async Task<(string QueueName, string QueueUrl, string QueueArn)> EnsureSharedQueueAsync(CancellationToken cancellationToken)
     {
-        if (_sharedQueue is not null)
-            return _sharedQueue.Value;
+        var current = _sharedQueue;
+        if (current is not null)
+            return current.Value;
 
         await _queueSetupLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_sharedQueue is not null)
-                return _sharedQueue.Value;
+            current = _sharedQueue;
+            if (current is not null)
+                return current.Value;
 
             var queuePrefix = string.IsNullOrEmpty(_resourcePrefix)
                 ? _options.QueuePrefix

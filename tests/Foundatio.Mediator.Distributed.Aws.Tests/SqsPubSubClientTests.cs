@@ -63,7 +63,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var topic = $"test-{Guid.NewGuid():N}";
 
         PubSubMessage? received = null;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await client.SubscribeAsync(topic, (msg, ct) =>
         {
@@ -89,7 +89,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var topic = $"test-{Guid.NewGuid():N}";
 
         var received = new List<string>();
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await client.SubscribeAsync(topic, (msg, ct) =>
         {
@@ -117,7 +117,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var topic = $"test-{Guid.NewGuid():N}";
 
         PubSubMessage? received = null;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await client.SubscribeAsync(topic, (msg, ct) =>
         {
@@ -148,7 +148,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var topic = $"test-{Guid.NewGuid():N}";
 
         int count = 0;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         var sub = await client.SubscribeAsync(topic, (msg, ct) =>
         {
@@ -177,7 +177,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var topic = $"test-{Guid.NewGuid():N}";
 
         PubSubMessage? received = null;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await client.SubscribeAsync(topic, (msg, ct) =>
         {

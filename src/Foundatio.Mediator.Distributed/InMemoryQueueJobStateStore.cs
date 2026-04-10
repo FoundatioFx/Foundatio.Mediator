@@ -34,15 +34,15 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
 
     public Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        if (_jobs.TryGetValue(jobId, out var entry) && !IsExpired(entry))
+        if (!_jobs.TryGetValue(jobId, out var entry))
+            return Task.FromResult<QueueJobState?>(null);
+
+        if (!IsExpired(entry))
             return Task.FromResult<QueueJobState?>(entry.State);
 
         // Remove expired entry on access
-        if (entry is not null)
-        {
-            _jobs.TryRemove(jobId, out _);
-            _cancellations.TryRemove(jobId, out _);
-        }
+        _jobs.TryRemove(jobId, out _);
+        _cancellations.TryRemove(jobId, out _);
 
         return Task.FromResult<QueueJobState?>(null);
     }

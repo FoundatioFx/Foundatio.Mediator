@@ -19,7 +19,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         using var bus = new InMemoryPubSubClient();
 
         PubSubMessage? received = null;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await bus.SubscribeAsync("test-topic", (msg, ct) =>
         {
@@ -43,7 +43,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         using var bus = new InMemoryPubSubClient();
 
         int count1 = 0, count2 = 0;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub1 = await bus.SubscribeAsync("topic", (msg, ct) =>
         {
@@ -74,7 +74,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         using var bus = new InMemoryPubSubClient();
 
         int topicACount = 0, topicBCount = 0;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var subA = await bus.SubscribeAsync("topic-a", (msg, ct) =>
         {
@@ -106,7 +106,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         using var bus = new InMemoryPubSubClient();
 
         int count = 0;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         var sub = await bus.SubscribeAsync("topic", (msg, ct) =>
         {
@@ -134,7 +134,7 @@ public class InMemoryPubSubClientTests(ITestOutputHelper output) : TestWithLoggi
         using var bus = new InMemoryPubSubClient();
 
         PubSubMessage? received = null;
-        var signal = new SemaphoreSlim(0);
+        using var signal = new SemaphoreSlim(0);
 
         await using var sub = await bus.SubscribeAsync("topic", (msg, ct) =>
         {

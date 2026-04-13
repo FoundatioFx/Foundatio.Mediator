@@ -32,7 +32,7 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageReference Include="Immediate.Handlers" Version="3.3.0" />
+    <PackageReference Include="Immediate.Handlers" Version="3.4.0" />
     <PackageReference Include="MassTransit" Version="9.0.1" />
     <PackageReference Include="MediatR" Version="14.1.0" />
     <PackageReference Include="RhoMicro.BdnLogging" Version="1.0.3" />

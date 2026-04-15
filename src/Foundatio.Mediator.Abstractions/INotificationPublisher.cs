@@ -12,11 +12,21 @@ namespace Foundatio.Mediator;
 public delegate ValueTask PublishAsyncDelegate(IMediator mediator, object message, CancellationToken cancellationToken);
 
 /// <summary>
+/// Delegate for publishing a batch of notification messages to a batch handler.
+/// </summary>
+/// <param name="mediator">The mediator instance.</param>
+/// <param name="messages">The batch of notification messages.</param>
+/// <param name="cancellationToken">The cancellation token.</param>
+public delegate ValueTask PublishBatchAsyncDelegate(IMediator mediator, IReadOnlyList<object> messages, CancellationToken cancellationToken);
+
+/// <summary>
 /// Interface for publishing notifications.
 /// </summary>
 public interface INotificationPublisher
 {
     ValueTask PublishAsync(IMediator mediator, PublishAsyncDelegate[] handlers, object message, CancellationToken cancellationToken);
+
+    ValueTask PublishBatchAsync(IMediator mediator, PublishBatchAsyncDelegate[] batchHandlers, IReadOnlyList<object> messages, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -104,6 +114,82 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
 
         throw new AggregateException(exceptions);
     }
+
+    public ValueTask PublishBatchAsync(IMediator mediator, PublishBatchAsyncDelegate[] batchHandlers, IReadOnlyList<object> messages, CancellationToken cancellationToken)
+    {
+        if (batchHandlers.Length == 0)
+            return default;
+
+        for (int i = 0; i < batchHandlers.Length; i++)
+        {
+            ValueTask task;
+            try
+            {
+                task = batchHandlers[i](mediator, messages, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return AwaitRemainingBatchAfterSyncThrowAsync(ex, mediator, batchHandlers, messages, cancellationToken, i + 1);
+            }
+
+            if (!task.IsCompletedSuccessfully)
+            {
+                return AwaitRemainingBatchAsync(task, mediator, batchHandlers, messages, cancellationToken, i + 1);
+            }
+        }
+
+        return default;
+    }
+
+    private static async ValueTask AwaitRemainingBatchAsync(ValueTask current, IMediator mediator, PublishBatchAsyncDelegate[] handlers, IReadOnlyList<object> messages, CancellationToken cancellationToken, int startIndex)
+    {
+        List<Exception>? exceptions = null;
+
+        try
+        {
+            await current.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            exceptions ??= [];
+            exceptions.Add(ex);
+        }
+
+        for (int i = startIndex; i < handlers.Length; i++)
+        {
+            try
+            {
+                await handlers[i](mediator, messages, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions ??= [];
+                exceptions.Add(ex);
+            }
+        }
+
+        if (exceptions != null)
+            throw new AggregateException(exceptions);
+    }
+
+    private static async ValueTask AwaitRemainingBatchAfterSyncThrowAsync(Exception syncException, IMediator mediator, PublishBatchAsyncDelegate[] handlers, IReadOnlyList<object> messages, CancellationToken cancellationToken, int startIndex)
+    {
+        List<Exception> exceptions = [syncException];
+
+        for (int i = startIndex; i < handlers.Length; i++)
+        {
+            try
+            {
+                await handlers[i](mediator, messages, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+        }
+
+        throw new AggregateException(exceptions);
+    }
 }
 
 /// <summary>
@@ -142,6 +228,41 @@ public sealed class TaskWhenAllPublisher : INotificationPublisher
             return AwaitAllWithSyncExceptionsAsync(tasks, syncExceptions);
 
         // Check if all completed synchronously and successfully
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            if (!tasks[i].IsCompletedSuccessfully)
+                return AwaitAllAsync(tasks);
+        }
+
+        return default;
+    }
+
+    public ValueTask PublishBatchAsync(IMediator mediator, PublishBatchAsyncDelegate[] batchHandlers, IReadOnlyList<object> messages, CancellationToken cancellationToken)
+    {
+        if (batchHandlers.Length == 0)
+            return default;
+        if (batchHandlers.Length == 1)
+            return batchHandlers[0](mediator, messages, cancellationToken);
+
+        var tasks = new ValueTask[batchHandlers.Length];
+        List<Exception>? syncExceptions = null;
+        for (int i = 0; i < batchHandlers.Length; i++)
+        {
+            try
+            {
+                tasks[i] = batchHandlers[i](mediator, messages, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                syncExceptions ??= [];
+                syncExceptions.Add(ex);
+                tasks[i] = default;
+            }
+        }
+
+        if (syncExceptions != null)
+            return AwaitAllWithSyncExceptionsAsync(tasks, syncExceptions);
+
         for (int i = 0; i < tasks.Length; i++)
         {
             if (!tasks[i].IsCompletedSuccessfully)
@@ -221,6 +342,27 @@ public sealed class FireAndForgetPublisher : INotificationPublisher
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "Fire-and-forget handler failed for message type {MessageType}", message.GetType().Name);
+                }
+            }, CancellationToken.None);
+        }
+
+        return default;
+    }
+
+    public ValueTask PublishBatchAsync(IMediator mediator, PublishBatchAsyncDelegate[] batchHandlers, IReadOnlyList<object> messages, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < batchHandlers.Length; i++)
+        {
+            var batchHandler = batchHandlers[i];
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await batchHandler(mediator, messages, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Fire-and-forget batch handler failed for {Count} message(s)", messages.Count);
                 }
             }, CancellationToken.None);
         }

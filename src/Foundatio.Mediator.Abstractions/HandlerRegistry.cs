@@ -26,6 +26,7 @@ public sealed class HandlerRegistry : IDisposable
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeAsyncResponseDelegate> _invokeAsyncWithResponseCache = new();
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
     private readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
+    private readonly ConcurrentDictionary<Type, (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch)> _partitionedPublishCache = new();
     private readonly ConcurrentDictionary<Type, HandlerRegistration?> _openGenericClosedCache = new();
 
     // Subscription type → array of entries (copy-on-write per group).
@@ -33,6 +34,8 @@ public sealed class HandlerRegistry : IDisposable
     // Message type → matching subscription types (invalidated when subscription types change).
     private readonly ConcurrentDictionary<Type, Type[]> _messageTypeMatchCache = new();
     private readonly object _subscriptionWriteLock = new();
+    // Cached delegates: Type → (object → T[1]) for wrapping single messages into typed arrays.
+    private static readonly ConcurrentDictionary<Type, Func<object, object>> _singleBatchWrapperCache = new();
     private volatile bool _disposed;
     private volatile bool _startupLogged;
 
@@ -248,6 +251,7 @@ public sealed class HandlerRegistry : IDisposable
             var handler = FormatHandlerColumn(r).PadRight(maxHandler);
             var ret = (r.ReturnTypeName ?? "").PadRight(maxReturn);
             var flags = r.IsAsync ? "  [async]" : "";
+            if (r.IsBatchHandler) flags += "  [batch]";
             writeLog($"  {msg}  \u2192 {handler}  {ret}{flags}");
         }
     }
@@ -487,6 +491,45 @@ public sealed class HandlerRegistry : IDisposable
         return _publishCache.GetOrAdd(messageType, handlers);
     }
 
+    internal (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch) GetPartitionedHandlers(Type messageType)
+    {
+        if (_partitionedPublishCache.TryGetValue(messageType, out var cached))
+            return cached;
+
+        return BuildAndCachePartitionedHandlers(messageType);
+    }
+
+    private (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch) BuildAndCachePartitionedHandlers(Type messageType)
+    {
+        var allHandlers = new List<HandlerRegistration>();
+        allHandlers.AddRange(GetHandlersForType(messageType));
+
+        foreach (var interfaceType in messageType.GetInterfaces())
+        {
+            allHandlers.AddRange(GetHandlersForType(interfaceType));
+        }
+
+        var currentType = messageType.BaseType;
+        while (currentType != null && currentType != typeof(object))
+        {
+            allHandlers.AddRange(GetHandlersForType(currentType));
+            currentType = currentType.BaseType;
+        }
+
+        var sorted = TopologicalSort.Sort(
+            allHandlers.Distinct().ToList(),
+            h => h.HandlerClassName,
+            h => h.OrderBefore,
+            h => h.OrderAfter,
+            h => h.Order);
+
+        var singleHandlers = sorted.Where(h => !h.IsBatchHandler).Select(h => h.PublishAsync).ToArray();
+        var batchHandlers = sorted.Where(h => h.IsBatchHandler && h.PublishBatchAsync != null).Select(h => h.PublishBatchAsync!).ToArray();
+
+        var result = (singleHandlers, batchHandlers);
+        return _partitionedPublishCache.GetOrAdd(messageType, result);
+    }
+
     private static HandlerRegistration? ConstructClosedRegistration(Type closedMessageType, OpenGenericHandlerDescriptor descriptor)
     {
         try
@@ -685,6 +728,29 @@ public sealed class HandlerRegistry : IDisposable
                     entries[j].Write(message, context);
             }
         }
+    }
+
+    /// <summary>
+    /// Wraps a single message in a typed single-item array (<c>T[1]</c>) and writes it
+    /// to batch subscribers (<c>IReadOnlyList&lt;T&gt;</c> or <c>T[]</c>).
+    /// </summary>
+    /// <param name="message">The notification that was just published individually.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void TryWriteSingleAsBatchSubscription(object message)
+    {
+        var groups = _subscriptionGroups;
+        if (groups.Count == 0)
+            return;
+
+        var wrapper = _singleBatchWrapperCache.GetOrAdd(message.GetType(), static type =>
+            msg =>
+            {
+                var array = Array.CreateInstance(type, 1);
+                array.SetValue(msg, 0);
+                return array;
+            });
+
+        TryWriteSubscription(wrapper(message));
     }
 
     private void AddSubscription(Type subscriptionType, SubscriptionEntry entry)

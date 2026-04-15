@@ -89,19 +89,32 @@ internal static class HandlerGenerator
 
         // Generate public entry point methods that include scope + handler invocation + cascading
         // Each method is a single async state machine to minimize allocations
-        GenerateHandleMethod(source, handler, allHandlers, configuration);
-
-        // Generate HandleItem2Async, HandleItem3Async, etc. for tuple handlers
-        if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1)
+        if (handler.IsBatchHandler)
         {
-            GenerateHandleItemMethods(source, handler, allHandlers, configuration);
+            // Batch handlers use different entry points
+            GenerateBatchHandleMethod(source, handler, configuration);
+            GenerateBatchUntypedHandleMethod(source, handler, configuration);
+            GenerateBatchPublishMethods(source, handler, configuration);
+        }
+        else
+        {
+            GenerateHandleMethod(source, handler, allHandlers, configuration);
+
+            // Generate HandleItem2Async, HandleItem3Async, etc. for tuple handlers
+            if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 1)
+            {
+                GenerateHandleItemMethods(source, handler, allHandlers, configuration);
+            }
+
+            // Generate UntypedHandleAsync (uses PublishCascadingMessagesAsync for runtime dispatch)
+            GenerateUntypedHandleMethod(source, handler, configuration);
         }
 
-        // Generate UntypedHandleAsync (uses PublishCascadingMessagesAsync for runtime dispatch)
-        GenerateUntypedHandleMethod(source, handler, configuration);
-
         // Generate interceptor methods that delegate to HandleAsync/HandleItemNAsync
-        GenerateInterceptorMethods(source, handler, allHandlers, configuration);
+        if (!handler.IsBatchHandler)
+        {
+            GenerateInterceptorMethods(source, handler, allHandlers, configuration);
+        }
 
         if (!handler.IsStatic)
         {
@@ -1091,6 +1104,120 @@ internal static class HandlerGenerator
         {
             source.AppendLine("return null;");
         }
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Generates the typed HandleAsync entry point for batch handlers.
+    /// Accepts the batch collection type (IReadOnlyList&lt;T&gt; or T[]) and calls the handler directly.
+    /// </summary>
+    private static void GenerateBatchHandleMethod(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
+    {
+        if (!handler.IsBatchHandler || handler.BatchItemType == null)
+            return;
+
+        var batchItemType = handler.BatchItemType.Value;
+        string messageParamType = handler.Parameters[0].Type.FullName;
+
+        source.AppendLine($"public static async ValueTask HandleAsync(Foundatio.Mediator.IMediator mediator, {messageParamType} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        EmitHandlerInvocationCode(source, handler, configuration, "result", "message", isUntypedMethod: false, callContextVar: "callContext");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Generates UntypedHandleAsync for batch handlers.
+    /// Wraps a single message in a single-item collection matching the handler's parameter type.
+    /// </summary>
+    private static void GenerateBatchUntypedHandleMethod(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
+    {
+        if (!handler.IsBatchHandler || handler.BatchItemType == null)
+            return;
+
+        var batchItemType = handler.BatchItemType.Value;
+        string messageParamType = handler.Parameters[0].Type.FullName;
+        bool paramIsArray = messageParamType.EndsWith("[]");
+
+        source.AppendLine("public static async ValueTask<object?> UntypedHandleAsync(IMediator mediator, object message, Foundatio.Mediator.CallContext? callContext, CancellationToken cancellationToken, Type? responseType, bool skipAuthorization = false)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        // Wrap single message into a single-item collection of the handler's parameter type
+        if (paramIsArray)
+        {
+            source.AppendLine($"var typedMessage = new {batchItemType.FullName}[] {{ ({batchItemType.FullName})message }};");
+        }
+        else
+        {
+            source.AppendLine($"var typedMessage = new List<{batchItemType.FullName}> {{ ({batchItemType.FullName})message }};");
+        }
+
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessage", isUntypedMethod: true, callContextVar: "callContext");
+        source.AppendLine("return null;");
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Generates PublishBatchAsync and PublishSingleAsBatchAsync methods for batch handlers.
+    /// <list type="bullet">
+    /// <item><c>PublishBatchAsync</c>: Accepts <c>IReadOnlyList&lt;object&gt;</c>, casts to typed list, and calls the handler.</item>
+    /// <item><c>PublishSingleAsBatchAsync</c>: Wraps a single message in a single-item list and calls the handler.</item>
+    /// </list>
+    /// </summary>
+    private static void GenerateBatchPublishMethods(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration)
+    {
+        if (!handler.IsBatchHandler || handler.BatchItemType == null)
+            return;
+
+        var batchItemType = handler.BatchItemType.Value;
+        string messageParamType = handler.Parameters[0].Type.FullName; // IReadOnlyList<T> or T[]
+        bool paramIsArray = messageParamType.EndsWith("[]");
+
+        source.AppendLine();
+        source.AppendLine("/// <summary>Batch publish delegate: casts IReadOnlyList&lt;object&gt; to typed list and invokes handler.</summary>");
+        source.AppendLine("public static async ValueTask PublishBatchAsync(IMediator mediator, IReadOnlyList<object> messages, CancellationToken cancellationToken)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        // Cast from IReadOnlyList<object> to the handler's parameter type
+        if (paramIsArray)
+        {
+            source.AppendLine($"var typedMessages = new {batchItemType.FullName}[messages.Count];");
+            source.AppendLine("for (int i = 0; i < messages.Count; i++)");
+            source.AppendLine($"    typedMessages[i] = ({batchItemType.FullName})messages[i];");
+        }
+        else
+        {
+            source.AppendLine($"var typedMessages = new List<{batchItemType.FullName}>(messages.Count);");
+            source.AppendLine("for (int i = 0; i < messages.Count; i++)");
+            source.AppendLine($"    typedMessages.Add(({batchItemType.FullName})messages[i]);");
+        }
+
+        // Get service provider and invoke the handler
+        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessages", isUntypedMethod: true, callContextVar: null);
+
+        source.DecrementIndent();
+        source.AppendLine("}");
+
+        source.AppendLine();
+        source.AppendLine("/// <summary>Single-message publish delegate: wraps a single message into a single-item batch and invokes handler.</summary>");
+        source.AppendLine("public static ValueTask PublishSingleAsBatchAsync(IMediator mediator, object message, CancellationToken cancellationToken)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+
+        source.AppendLine($"var messages = new object[] {{ message }};");
+        source.AppendLine("return PublishBatchAsync(mediator, messages, cancellationToken);");
 
         source.DecrementIndent();
         source.AppendLine("}");

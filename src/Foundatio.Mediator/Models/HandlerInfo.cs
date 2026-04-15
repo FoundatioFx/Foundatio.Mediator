@@ -76,6 +76,18 @@ internal readonly record struct HandlerInfo
     public bool HasConstructorParameters { get; init; }
 
     /// <summary>
+    /// Whether this handler accepts a batch of messages as its first parameter
+    /// (<c>IReadOnlyList&lt;T&gt;</c> or <c>T[]</c>).
+    /// </summary>
+    public bool IsBatchHandler { get; init; }
+
+    /// <summary>
+    /// The inner item type for batch handlers (the <c>T</c> in <c>IReadOnlyList&lt;T&gt;</c> or <c>T[]</c>).
+    /// Null for non-batch handlers.
+    /// </summary>
+    public TypeSymbolInfo? BatchItemType { get; init; }
+
+    /// <summary>
     /// Endpoint metadata for generating minimal API endpoints.
     /// Null if endpoint generation is disabled for this handler.
     /// </summary>

@@ -48,6 +48,17 @@ internal static class CallSiteAnalyzer
         bool isPublish = methodName.Equals("PublishAsync", StringComparison.Ordinal);
         bool isAsyncMethod = methodName.EndsWith("Async", StringComparison.Ordinal);
 
+        // Skip batch publish overload PublishAsync<T>(IEnumerable<T>) — handled at runtime, not intercepted
+        if (isPublish && methodSymbol?.Parameters.Length > 0)
+        {
+            var firstParamType = methodSymbol.Parameters[0].Type;
+            if (firstParamType is INamedTypeSymbol { IsGenericType: true } enumParamType &&
+                enumParamType.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>")
+            {
+                return null;
+            }
+        }
+
         var firstArgument = invocation.ArgumentList.Arguments[0];
         var argumentType = semanticModel.GetTypeInfo(firstArgument.Expression);
         if (argumentType.Type == null)

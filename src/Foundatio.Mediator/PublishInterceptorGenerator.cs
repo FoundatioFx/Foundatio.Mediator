@@ -99,8 +99,8 @@ internal static class PublishInterceptorGenerator
         source.IncrementIndent();
 
         source.AppendLine($"var registry = ((global::Foundatio.Mediator.Mediator)mediator).Registry;");
-        source.AppendLine($"if (registry.HasSubscribers) registry.TryWriteSubscription(message);");
-        source.AppendLine($"var handlers = registry.GetPublishHandlersForType(typeof(global::{messageType.FullName}));");
+        source.AppendLine($"if (registry.HasSubscribers) {{ registry.TryWriteSubscription(message); registry.TryWriteSingleAsBatchSubscription(message); }}");
+        source.AppendLine($"var handlers = registry.GetPublishHandlersForType(typeof(global::{messageType.QualifiedName}));");
         source.AppendLine();
 
         switch (configuration.NotificationPublishStrategy)

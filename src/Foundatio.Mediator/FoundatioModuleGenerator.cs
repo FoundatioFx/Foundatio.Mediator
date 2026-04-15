@@ -174,12 +174,16 @@ internal static class FoundatioModuleGenerator
                         if (hasOrderConstraints)
                         {
                             source.AppendLine($"        {handler.Order},");
+                            if (handler.IsBatchHandler)
+                                source.AppendLine($"        publishAsync: {handlerClassName}.PublishSingleAsBatchAsync,");
                             source.AppendLine($"        orderBefore: {FormatStringArray(handler.OrderBefore)},");
                             source.AppendLine($"        orderAfter: {FormatStringArray(handler.OrderAfter)},");
                         }
                         else
                         {
                             source.AppendLine($"        {handler.Order},");
+                            if (handler.IsBatchHandler)
+                                source.AppendLine($"        publishAsync: {handlerClassName}.PublishSingleAsBatchAsync,");
                         }
 
                         // Emit display metadata for diagnostic logging
@@ -191,11 +195,29 @@ internal static class FoundatioModuleGenerator
                             source.AppendLine($"        sourceHandlerTypeName: \"{EscapeStringLiteral(handler.FullName)}\",");
                             source.AppendLine($"        sourceMethodParameterTypeNames: {FormatStringArray(handler.Parameters.Select(p => p.Type.QualifiedName))},");
                             source.AppendLine($"        returnTypeName: \"{returnDisplay}\",");
-                            source.AppendLine($"        attributeMetadata: {FormatAttributeMetadata(handler)}));");
+                            if (handler.IsBatchHandler)
+                            {
+                                source.AppendLine($"        attributeMetadata: {FormatAttributeMetadata(handler)},");
+                                source.AppendLine($"        isBatchHandler: true,");
+                                source.AppendLine($"        publishBatchAsync: {handlerClassName}.PublishBatchAsync));");
+                            }
+                            else
+                            {
+                                source.AppendLine($"        attributeMetadata: {FormatAttributeMetadata(handler)}));");
+                            }
                         }
                         else
                         {
-                            source.AppendLine($"        returnTypeName: \"{returnDisplay}\"));");
+                            if (handler.IsBatchHandler)
+                            {
+                                source.AppendLine($"        returnTypeName: \"{returnDisplay}\",");
+                                source.AppendLine($"        isBatchHandler: true,");
+                                source.AppendLine($"        publishBatchAsync: {handlerClassName}.PublishBatchAsync));");
+                            }
+                            else
+                            {
+                                source.AppendLine($"        returnTypeName: \"{returnDisplay}\"));");
+                            }
                         }
                         source.AppendLine();
                     }

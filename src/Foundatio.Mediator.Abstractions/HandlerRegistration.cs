@@ -30,8 +30,10 @@ public sealed class HandlerRegistration
     /// <param name="sourceMethodParameterTypeNames">Fully qualified source handler method parameter type names in declaration order.</param>
     /// <param name="descriptorId">Stable descriptor id for the registration. Defaults to the generated handler class name when not provided.</param>
     /// <param name="attributeMetadata">Feature-agnostic metadata for attributes discovered on the handler type/method.</param>
+    /// <param name="isBatchHandler">Whether this handler processes a batch of messages.</param>
+    /// <param name="publishBatchAsync">The delegate for batch publish scenarios. Null for non-batch handlers.</param>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null, string? sourceHandlerName = null, string? methodName = null, string? returnTypeName = null, string? sourceHandlerTypeName = null, IReadOnlyList<string>? sourceMethodParameterTypeNames = null, string? descriptorId = null, IReadOnlyList<HandlerAttributeMetadata>? attributeMetadata = null)
+    public HandlerRegistration(string messageTypeName, string handlerClassName, HandleAsyncDelegate handleAsync, HandleDelegate? handle, bool isAsync, int order = int.MaxValue, PublishAsyncDelegate? publishAsync = null, string[]? orderBefore = null, string[]? orderAfter = null, string? sourceHandlerName = null, string? methodName = null, string? returnTypeName = null, string? sourceHandlerTypeName = null, IReadOnlyList<string>? sourceMethodParameterTypeNames = null, string? descriptorId = null, IReadOnlyList<HandlerAttributeMetadata>? attributeMetadata = null, bool isBatchHandler = false, PublishBatchAsyncDelegate? publishBatchAsync = null)
     {
         if (string.IsNullOrWhiteSpace(messageTypeName))
             throw new ArgumentException("Message type name is required.", nameof(messageTypeName));
@@ -62,6 +64,8 @@ public sealed class HandlerRegistration
         _lazyHandlerMethod = new Lazy<MethodInfo?>(ResolveHandlerMethod, LazyThreadSafetyMode.ExecutionAndPublication);
         // If no publish delegate provided, create a wrapper that discards the result
         PublishAsync = publishAsync ?? CreatePublishDelegate(handleAsync);
+        IsBatchHandler = isBatchHandler;
+        PublishBatchAsync = publishBatchAsync;
     }
 
     private static PublishAsyncDelegate CreatePublishDelegate(HandleAsyncDelegate handleAsync)
@@ -109,6 +113,16 @@ public sealed class HandlerRegistration
     /// The delegate for publish scenarios (discards return value, avoids allocation when sync)
     /// </summary>
     public PublishAsyncDelegate PublishAsync { get; }
+
+    /// <summary>
+    /// Whether this handler processes a batch of messages (<c>IReadOnlyList&lt;T&gt;</c> or <c>T[]</c> as first parameter).
+    /// </summary>
+    public bool IsBatchHandler { get; }
+
+    /// <summary>
+    /// The delegate for batch publish scenarios. Null for non-batch handlers.
+    /// </summary>
+    public PublishBatchAsyncDelegate? PublishBatchAsync { get; }
 
     /// <summary>
     /// Whether the handler supports async operations

@@ -76,10 +76,77 @@ public sealed class Mediator : IMediator, IServiceProvider
     public ValueTask PublishAsync(object message, CancellationToken cancellationToken = default)
     {
         if (_registry.HasSubscribers)
+        {
             _registry.TryWriteSubscription(message);
+            _registry.TryWriteSingleAsBatchSubscription(message);
+        }
 
         var handlers = _registry.GetAllApplicableHandlers(message);
         return _notificationPublisher.PublishAsync(this, handlers, message, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask PublishAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default)
+    {
+        var list = messages as T[] ?? messages.ToArray();
+        if (list.Length == 0)
+            return default;
+
+        // Notify streaming subscribers
+        if (_registry.HasSubscribers)
+        {
+            // Individual T subscribers get each message
+            for (int i = 0; i < list.Length; i++)
+                _registry.TryWriteSubscription(list[i]!);
+
+            // Batch subscribers (IReadOnlyList<T> / T[]) get the full batch
+            _registry.TryWriteSubscription(list);
+        }
+
+        var (singleHandlers, batchHandlers) = _registry.GetPartitionedHandlers(typeof(T));
+
+        // Both empty → nothing to do
+        if (singleHandlers.Length == 0 && batchHandlers.Length == 0)
+            return default;
+
+        // Only single handlers → dispatch each message individually
+        if (batchHandlers.Length == 0)
+            return PublishToSingleHandlersAsync(list, singleHandlers, cancellationToken);
+
+        // Only batch handlers → dispatch once with the full batch
+        if (singleHandlers.Length == 0)
+        {
+            var boxed = BoxMessages(list);
+            return _notificationPublisher.PublishBatchAsync(this, batchHandlers, boxed, cancellationToken);
+        }
+
+        // Mixed → dispatch to both
+        return PublishMixedAsync(list, singleHandlers, batchHandlers, cancellationToken);
+    }
+
+    private async ValueTask PublishToSingleHandlersAsync<T>(T[] messages, PublishAsyncDelegate[] handlers, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < messages.Length; i++)
+            await _notificationPublisher.PublishAsync(this, handlers, messages[i]!, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask PublishMixedAsync<T>(T[] messages, PublishAsyncDelegate[] singleHandlers, PublishBatchAsyncDelegate[] batchHandlers, CancellationToken cancellationToken)
+    {
+        // Single handlers: per-message
+        for (int i = 0; i < messages.Length; i++)
+            await _notificationPublisher.PublishAsync(this, singleHandlers, messages[i]!, cancellationToken).ConfigureAwait(false);
+
+        // Batch handlers: full batch
+        var boxed = BoxMessages(messages);
+        await _notificationPublisher.PublishBatchAsync(this, batchHandlers, boxed, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<object> BoxMessages<T>(T[] messages)
+    {
+        var boxed = new object[messages.Length];
+        for (int i = 0; i < messages.Length; i++)
+            boxed[i] = messages[i]!;
+        return boxed;
     }
 
     /// <inheritdoc />

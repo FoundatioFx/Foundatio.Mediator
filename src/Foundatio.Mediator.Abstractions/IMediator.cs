@@ -120,6 +120,17 @@ public interface IMediator
     ValueTask PublishAsync(object message, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Asynchronously publishes a batch of notification messages to zero or more handlers.
+    /// Single handlers are invoked once per message. Batch handlers (those accepting <c>IReadOnlyList&lt;T&gt;</c>
+    /// or <c>T[]</c> as their first parameter) are invoked once with the full batch.
+    /// </summary>
+    /// <typeparam name="T">The message type.</typeparam>
+    /// <param name="messages">The messages to publish.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    ValueTask PublishAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a dynamic subscription that yields published notifications assignable to
     /// <typeparamref name="T"/> as an async stream. The subscription is automatically
     /// removed when <paramref name="cancellationToken"/> is cancelled.

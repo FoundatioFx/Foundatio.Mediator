@@ -112,6 +112,29 @@ internal static class HandlerAnalyzer
             var messageParameter = handlerMethod.Parameters[0];
             var messageType = messageParameter.Type;
 
+            // Detect batch handlers: first parameter is IReadOnlyList<T> or T[]
+            bool isBatchHandler = false;
+            ITypeSymbol? batchItemType = null;
+
+            if (messageType is IArrayTypeSymbol arrayType)
+            {
+                // T[] parameter
+                isBatchHandler = true;
+                batchItemType = arrayType.ElementType;
+            }
+            else if (messageType is INamedTypeSymbol namedParamType && namedParamType.IsGenericType)
+            {
+                var genericDef = namedParamType.ConstructedFrom?.ToDisplayString();
+                if (genericDef == "System.Collections.Generic.IReadOnlyList<T>")
+                {
+                    isBatchHandler = true;
+                    batchItemType = namedParamType.TypeArguments[0];
+                }
+            }
+
+            // For batch handlers, use the inner item type as the message type for registration
+            var effectiveMessageType = isBatchHandler && batchItemType != null ? batchItemType : messageType;
+
             var parameterInfos = new List<ParameterInfo>();
 
             foreach (var parameter in handlerMethod.Parameters)
@@ -128,7 +151,7 @@ internal static class HandlerAnalyzer
 
             string? messageGenericDefinition = null;
             int messageGenericArity = 0;
-            if (messageType is INamedTypeSymbol namedMsg && namedMsg.IsGenericType)
+            if (effectiveMessageType is INamedTypeSymbol namedMsg && namedMsg.IsGenericType)
             {
                 messageGenericDefinition = namedMsg.ConstructUnboundGenericType().ToDisplayString();
                 messageGenericArity = namedMsg.TypeArguments.Length;
@@ -150,7 +173,7 @@ internal static class HandlerAnalyzer
             var messageInterfaces = new List<string>();
             var messageBaseClasses = new List<string>();
 
-            if (messageType is INamedTypeSymbol namedMessageType)
+            if (effectiveMessageType is INamedTypeSymbol namedMessageType)
             {
                 foreach (var iface in namedMessageType.AllInterfaces)
                 {
@@ -247,7 +270,7 @@ internal static class HandlerAnalyzer
                 Identifier = classSymbol.Name.ToIdentifier(),
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
-                MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
+                MessageType = TypeSymbolInfo.From(effectiveMessageType, context.SemanticModel.Compilation),
                 MessageInterfaces = new(messageInterfaces.ToArray()),
                 MessageBaseClasses = new(messageBaseClasses.ToArray()),
                 ReturnType = TypeSymbolInfo.From(handlerMethod.ReturnType, context.SemanticModel.Compilation),
@@ -269,6 +292,8 @@ internal static class HandlerAnalyzer
                 OrderAfter = new(orderAfter),
                 Lifetime = lifetime,
                 HasConstructorParameters = hasConstructorParameters,
+                IsBatchHandler = isBatchHandler,
+                BatchItemType = batchItemType != null ? TypeSymbolInfo.From(batchItemType, context.SemanticModel.Compilation) : null,
                 Authorization = authorizationInfo,
                 Endpoint = endpointInfo,
                 XmlDocSummary = xmlDocSummary,

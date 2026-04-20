@@ -40,7 +40,7 @@
     <PackageReference Include="Scriban" Version="7.1.0" /> <!-- Override transitive Scriban to fix NU1902/NU1903 vulnerabilities -->
     <PackageReference Include="Mediator.Abstractions" Version="3.0.2" />
     <PackageReference Include="Mediator.SourceGenerator" Version="3.0.2" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.6" />
   </ItemGroup>
 
 </Project>

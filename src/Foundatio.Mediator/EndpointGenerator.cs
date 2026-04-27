@@ -633,9 +633,9 @@ internal static class EndpointGenerator
 
         source.AppendLine($"// {httpMethod} {route} - {handler.MessageType.Identifier}");
 
-        // When conventions exist, capture the builder in a variable
+        var epVarName = $"ep_{SanitizeIdentifier(handler.MessageType.QualifiedName)}";
         if (endpointConventions.Length > 0)
-            source.Append($"var ep_{handler.MessageType.Identifier} = {groupVarName}.{mapMethod}(\"{route}\", ");
+            source.Append($"var {epVarName} = {groupVarName}.{mapMethod}(\"{route}\", ");
         else
             source.Append($"{groupVarName}.{mapMethod}(\"{route}\", ");
 
@@ -739,7 +739,6 @@ internal static class EndpointGenerator
         // Apply endpoint-level conventions (IEndpointConvention<RouteHandlerBuilder> etc.)
         if (endpointConventions.Length > 0)
         {
-            var epVarName = $"ep_{handler.MessageType.Identifier}";
             foreach (var convention in endpointConventions)
             {
                 EmitConventionCall(source, convention, epVarName);
@@ -1260,5 +1259,19 @@ internal static class EndpointGenerator
             .Replace("\"", "\\\"")
             .Replace("\r", "\\r")
             .Replace("\n", "\\n");
+    }
+
+    /// <summary>
+    /// Sanitizes a fully-qualified type name into a valid C# identifier
+    /// by replacing non-identifier characters with underscores.
+    /// </summary>
+    private static string SanitizeIdentifier(string qualifiedName)
+    {
+        var sb = new System.Text.StringBuilder(qualifiedName.Length);
+        foreach (var ch in qualifiedName)
+        {
+            sb.Append(char.IsLetterOrDigit(ch) || ch == '_' ? ch : '_');
+        }
+        return sb.ToString();
     }
 }

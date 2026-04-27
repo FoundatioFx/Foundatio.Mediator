@@ -403,13 +403,13 @@ internal static class HandlerAnalyzer
             return $"typeof({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})";
 
         if (constant.Value is string str)
-            return $"\"{str.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+            return SymbolDisplay.FormatLiteral(str, true);
 
         if (constant.Value is bool boolean)
             return boolean ? "true" : "false";
 
         if (constant.Value is char c)
-            return $"'{c}'";
+            return SymbolDisplay.FormatLiteral(c, true);
 
         if (constant.Value is float f)
             return f.ToString("R", CultureInfo.InvariantCulture) + "f";

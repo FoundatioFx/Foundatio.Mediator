@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="..\Foundatio.Mediator.CodeFixes\bin\$(Configuration)\netstandard2.0\Foundatio.Mediator.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     <None Include="..\Foundatio.Mediator.Abstractions\bin\$(Configuration)\netstandard2.0\Foundatio.Mediator.Abstractions.dll" Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
     <Content Include="Foundatio.Mediator.targets" Pack="true" PackagePath="build" Visible="true" />
   </ItemGroup>

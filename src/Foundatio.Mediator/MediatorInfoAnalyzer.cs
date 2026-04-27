@@ -135,9 +135,21 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         if (syntaxRef?.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             location = methodSyntax.Identifier.GetLocation();
 
+        // Pass computed route info as diagnostic properties for the code fix
+        var hasGroupAttr = containingType.GetAttributes()
+            .Any(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
+        var properties = ImmutableDictionary.CreateBuilder<string, string?>();
+        properties.Add("Route", route.Value.Route);
+        properties.Add("GroupName", route.Value.GroupName);
+        properties.Add("GroupRoutePrefix", route.Value.GroupRoutePrefix);
+        properties.Add("HttpMethod", route.Value.HttpMethod);
+        properties.Add("HasExplicitRoute", route.Value.HasExplicitRoute ? "true" : "false");
+        properties.Add("HasGroupAttribute", hasGroupAttr ? "true" : "false");
+
         ctx.ReportDiagnostic(Diagnostic.Create(
             EndpointRouteInfo,
             location,
+            properties.ToImmutable(),
             route.Value.HttpMethod,
             route.Value.FullRoute));
     }
@@ -293,7 +305,13 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
 
     #region Route Computation
 
-    private readonly record struct RouteResult(string HttpMethod, string FullRoute);
+    private readonly record struct RouteResult(
+        string HttpMethod,
+        string FullRoute,
+        string Route,
+        string? GroupName,
+        string? GroupRoutePrefix,
+        bool HasExplicitRoute);
 
     private static RouteResult? ComputeEndpointRoute(
         IMethodSymbol method,
@@ -317,8 +335,10 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
                           ?? GetIntProperty(classEndpointAttr, "HttpMethod")
                           ?? 0;
 
-        // Explicit route from attributes
-        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route")
+        // Explicit route from attributes (constructor arg takes precedence, then named property)
+        var explicitRoute = GetConstructorStringArg(methodEndpointAttr, 0)
+                         ?? GetStringProperty(methodEndpointAttr, "Route")
+                         ?? GetConstructorStringArg(classEndpointAttr, 0)
                          ?? GetStringProperty(classEndpointAttr, "Route");
 
         // Group info from [HandlerEndpointGroup]
@@ -364,7 +384,13 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             IsStreaming = isStreaming,
         });
 
-        return new RouteResult(result.HttpMethod, result.FullRoute);
+        return new RouteResult(
+            result.HttpMethod,
+            result.FullRoute,
+            result.Route,
+            result.GroupName,
+            result.GroupRoutePrefix,
+            result.HasExplicitRoute);
     }
 
     /// <summary>
@@ -518,6 +544,14 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         if (attr == null) return null;
         var arg = attr.NamedArguments.FirstOrDefault(a => a.Key == name);
         return arg.Value.Value as bool?;
+    }
+
+    private static string? GetConstructorStringArg(AttributeData? attr, int index)
+    {
+        if (attr == null || attr.ConstructorArguments.Length <= index)
+            return null;
+
+        return attr.ConstructorArguments[index].Value as string;
     }
 
     private static string? GetStringProperty(AttributeData? attr, string name)

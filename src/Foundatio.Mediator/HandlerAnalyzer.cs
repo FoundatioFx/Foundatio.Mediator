@@ -617,7 +617,9 @@ internal static class HandlerAnalyzer
         var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod") ??
                              GetIntProperty(classEndpointAttr, "HttpMethod") ?? 0;
 
-        var explicitRoute = GetStringProperty(methodEndpointAttr, "Route") ??
+        var explicitRoute = GetConstructorStringArg(methodEndpointAttr, 0) ??
+                            GetStringProperty(methodEndpointAttr, "Route") ??
+                            GetConstructorStringArg(classEndpointAttr, 0) ??
                             GetStringProperty(classEndpointAttr, "Route");
 
         // Detect action verb early (needed for route param extraction)
@@ -1174,6 +1176,14 @@ internal static class HandlerAnalyzer
     #endregion
 
     #region Attribute Helper Methods
+
+    private static string? GetConstructorStringArg(AttributeData? attr, int index)
+    {
+        if (attr == null || attr.ConstructorArguments.Length <= index)
+            return null;
+
+        return attr.ConstructorArguments[index].Value as string;
+    }
 
     private static string? GetStringProperty(AttributeData? attr, string propertyName)
     {

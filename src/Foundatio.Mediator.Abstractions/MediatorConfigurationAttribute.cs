@@ -1,8 +1,9 @@
 namespace Foundatio.Mediator;
 
 /// <summary>
-/// Configures Foundatio.Mediator for a project. Apply once per assembly to control handler discovery,
-/// dependency injection lifetimes, endpoint generation, and other behavior.
+/// Configures the Foundatio.Mediator source generator for this assembly. Must be declared in each
+/// project that contains handlers or middleware — settings do not cascade across project references.
+/// Controls handler discovery, dependency injection lifetimes, endpoint generation, and other behavior.
 /// </summary>
 /// <example>
 /// <code>

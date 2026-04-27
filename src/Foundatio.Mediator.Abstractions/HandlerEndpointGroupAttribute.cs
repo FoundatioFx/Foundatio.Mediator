@@ -9,8 +9,9 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="HandlerEndpointGroupAttribute"/> class.
-    /// When no name is provided, the group name is auto-derived from the handler class name
-    /// (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
+    /// When no name is provided, the group name is auto-derived by stripping the Handler/Consumer
+    /// suffix and pluralizing (e.g., <c>OrderHandler</c> → <c>"Orders"</c>).
+    /// Uncountable nouns such as "Auth" and "Health" are not pluralized.
     /// </summary>
     public HandlerEndpointGroupAttribute() { }
 
@@ -25,7 +26,10 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the group name used for API grouping and OpenAPI tags.
-    /// When null, auto-derived from the handler class name (e.g., <c>AuthHandler</c> → <c>"Auth"</c>).
+    /// When null, auto-derived by stripping the Handler/Consumer suffix and pluralizing
+    /// (e.g., <c>OrderHandler</c> → <c>"Orders"</c>). Uncountable nouns stay singular
+    /// (e.g., <c>AuthHandler</c> → <c>"Auth"</c>). For production APIs, set this explicitly
+    /// to avoid surprises from the pluralizer.
     /// </summary>
     public string? Name { get; set; }
 

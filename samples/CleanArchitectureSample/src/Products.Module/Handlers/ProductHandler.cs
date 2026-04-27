@@ -21,7 +21,7 @@ public class ProductHandler(IProductRepository repository)
     /// Creates a new product (requires Admin or Manager role, retries with custom inline settings)
     /// </summary>
     [Retry(MaxAttempts = 5, DelayMs = 200)]
-    [RateLimited("strict")]
+    [EndpointRateLimiter("strict")]
     [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<(Result<Product>, ProductCreated?)> HandleAsync(CreateProduct command, CancellationToken cancellationToken)
     {

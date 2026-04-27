@@ -20,13 +20,13 @@ namespace Common.Module.Middleware;
 /// </code>
 /// </example>
 [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
-public sealed class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+public sealed class EndpointRateLimiterAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
 {
     /// <summary>
-    /// Creates a new <see cref="RateLimitedAttribute"/> with an optional policy name.
+    /// Creates a new <see cref="EndpointRateLimiterAttribute"/> with an optional policy name.
     /// </summary>
     /// <param name="policyName">The rate limiting policy name. When null, applies the default policy.</param>
-    public RateLimitedAttribute(string? policyName = null)
+    public EndpointRateLimiterAttribute(string? policyName = null)
     {
         PolicyName = policyName;
     }

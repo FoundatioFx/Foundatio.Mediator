@@ -22,7 +22,7 @@ public class OrderHandler(IOrderRepository repository)
     /// Creates a new order (retries on transient failure, requires User or Admin role)
     /// </summary>
     [Retry]
-    [RateLimited("strict")]
+    [EndpointRateLimiter("strict")]
     [HandlerAuthorize(Roles = ["User", "Admin"])]
     public async Task<(Result<Order>, OrderCreated?)> HandleAsync(CreateOrder command, ILogger<OrderHandler> logger, CancellationToken cancellationToken)
     {

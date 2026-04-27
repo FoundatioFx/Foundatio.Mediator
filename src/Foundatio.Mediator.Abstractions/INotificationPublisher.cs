@@ -20,6 +20,27 @@ public delegate ValueTask PublishAsyncDelegate(IMediator mediator, object messag
 public delegate ValueTask PublishBatchAsyncDelegate(IMediator mediator, IReadOnlyList<object> messages, CancellationToken cancellationToken);
 
 /// <summary>
+/// Represents a single handler in a sorted publish pipeline, tagged as either single-message or batch.
+/// Preserves topological ordering across both kinds.
+/// </summary>
+internal readonly struct OrderedPublishHandler
+{
+    public readonly bool IsBatch;
+    public readonly PublishAsyncDelegate? PublishSingle;
+    public readonly PublishBatchAsyncDelegate? PublishBatch;
+
+    private OrderedPublishHandler(bool isBatch, PublishAsyncDelegate? single, PublishBatchAsyncDelegate? batch)
+    {
+        IsBatch = isBatch;
+        PublishSingle = single;
+        PublishBatch = batch;
+    }
+
+    public static OrderedPublishHandler Single(PublishAsyncDelegate handler) => new(false, handler, null);
+    public static OrderedPublishHandler Batch(PublishBatchAsyncDelegate handler) => new(true, null, handler);
+}
+
+/// <summary>
 /// Interface for publishing notifications.
 /// </summary>
 public interface INotificationPublisher
@@ -127,6 +148,7 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
             {
                 task = batchHandlers[i](mediator, messages, cancellationToken);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 return AwaitRemainingBatchAfterSyncThrowAsync(ex, mediator, batchHandlers, messages, cancellationToken, i + 1);
@@ -149,6 +171,7 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
         {
             await current.ConfigureAwait(false);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             exceptions ??= [];
@@ -161,6 +184,7 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
             {
                 await handlers[i](mediator, messages, cancellationToken).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 exceptions ??= [];
@@ -182,6 +206,7 @@ public sealed class ForeachAwaitPublisher : INotificationPublisher
             {
                 await handlers[i](mediator, messages, cancellationToken).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 exceptions.Add(ex);
@@ -252,6 +277,7 @@ public sealed class TaskWhenAllPublisher : INotificationPublisher
             {
                 tasks[i] = batchHandlers[i](mediator, messages, cancellationToken);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 syncExceptions ??= [];
@@ -359,6 +385,10 @@ public sealed class FireAndForgetPublisher : INotificationPublisher
                 try
                 {
                     await batchHandler(mediator, messages, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger?.LogDebug("Fire-and-forget batch handler was cancelled for {Count} message(s)", messages.Count);
                 }
                 catch (Exception ex)
                 {

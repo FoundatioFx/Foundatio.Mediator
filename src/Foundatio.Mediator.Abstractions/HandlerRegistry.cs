@@ -26,7 +26,7 @@ public sealed class HandlerRegistry : IDisposable
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeAsyncResponseDelegate> _invokeAsyncWithResponseCache = new();
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
     private readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
-    private readonly ConcurrentDictionary<Type, (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch)> _partitionedPublishCache = new();
+    private readonly ConcurrentDictionary<Type, OrderedPublishHandler[]> _orderedPublishCache = new();
     private readonly ConcurrentDictionary<Type, HandlerRegistration?> _openGenericClosedCache = new();
 
     // Subscription type → array of entries (copy-on-write per group).
@@ -491,15 +491,15 @@ public sealed class HandlerRegistry : IDisposable
         return _publishCache.GetOrAdd(messageType, handlers);
     }
 
-    internal (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch) GetPartitionedHandlers(Type messageType)
+    internal OrderedPublishHandler[] GetOrderedHandlers(Type messageType)
     {
-        if (_partitionedPublishCache.TryGetValue(messageType, out var cached))
+        if (_orderedPublishCache.TryGetValue(messageType, out var cached))
             return cached;
 
-        return BuildAndCachePartitionedHandlers(messageType);
+        return BuildAndCacheOrderedHandlers(messageType);
     }
 
-    private (PublishAsyncDelegate[] Single, PublishBatchAsyncDelegate[] Batch) BuildAndCachePartitionedHandlers(Type messageType)
+    private OrderedPublishHandler[] BuildAndCacheOrderedHandlers(Type messageType)
     {
         var allHandlers = new List<HandlerRegistration>();
         allHandlers.AddRange(GetHandlersForType(messageType));
@@ -523,11 +523,16 @@ public sealed class HandlerRegistry : IDisposable
             h => h.OrderAfter,
             h => h.Order);
 
-        var singleHandlers = sorted.Where(h => !h.IsBatchHandler).Select(h => h.PublishAsync).ToArray();
-        var batchHandlers = sorted.Where(h => h.IsBatchHandler && h.PublishBatchAsync != null).Select(h => h.PublishBatchAsync!).ToArray();
+        var ordered = new OrderedPublishHandler[sorted.Count];
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            var h = sorted[i];
+            ordered[i] = h.IsBatchHandler && h.PublishBatchAsync != null
+                ? OrderedPublishHandler.Batch(h.PublishBatchAsync)
+                : OrderedPublishHandler.Single(h.PublishAsync);
+        }
 
-        var result = (singleHandlers, batchHandlers);
-        return _partitionedPublishCache.GetOrAdd(messageType, result);
+        return _orderedPublishCache.GetOrAdd(messageType, ordered);
     }
 
     private static HandlerRegistration? ConstructClosedRegistration(Type closedMessageType, OpenGenericHandlerDescriptor descriptor)

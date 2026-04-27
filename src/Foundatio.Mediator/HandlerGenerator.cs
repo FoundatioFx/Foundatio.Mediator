@@ -1118,7 +1118,6 @@ internal static class HandlerGenerator
         if (!handler.IsBatchHandler || handler.BatchItemType == null)
             return;
 
-        var batchItemType = handler.BatchItemType.Value;
         string messageParamType = handler.Parameters[0].Type.FullName;
 
         source.AppendLine($"public static async ValueTask HandleAsync(Foundatio.Mediator.IMediator mediator, {messageParamType} message, Foundatio.Mediator.CallContext? callContext, System.Threading.CancellationToken cancellationToken, bool skipAuthorization = false)");

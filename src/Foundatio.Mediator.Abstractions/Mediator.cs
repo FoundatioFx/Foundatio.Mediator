@@ -103,42 +103,124 @@ public sealed class Mediator : IMediator, IServiceProvider
             _registry.TryWriteSubscription(list);
         }
 
-        var (singleHandlers, batchHandlers) = _registry.GetPartitionedHandlers(typeof(T));
+        // Group messages by runtime type to ensure derived-type handlers fire correctly.
+        // This mirrors PublishAsync(object) which uses message.GetType().
+        return PublishGroupedByRuntimeTypeAsync(list, cancellationToken);
+    }
 
-        // Both empty → nothing to do
-        if (singleHandlers.Length == 0 && batchHandlers.Length == 0)
-            return default;
+    private async ValueTask PublishGroupedByRuntimeTypeAsync<T>(T[] messages, CancellationToken cancellationToken)
+    {
+        var groups = GroupMessagesByRuntimeType(messages);
 
-        // Only single handlers → dispatch each message individually
-        if (batchHandlers.Length == 0)
-            return PublishToSingleHandlersAsync(list, singleHandlers, cancellationToken);
-
-        // Only batch handlers → dispatch once with the full batch
-        if (singleHandlers.Length == 0)
+        for (int g = 0; g < groups.Count; g++)
         {
-            var boxed = BoxMessages(list);
-            return _notificationPublisher.PublishBatchAsync(this, batchHandlers, boxed, cancellationToken);
+            var (messageType, groupMessages) = groups[g];
+            var handlers = _registry.GetOrderedHandlers(messageType);
+            if (handlers.Length == 0)
+                continue;
+
+            // Check if we have only singles or only batches for optimized paths
+            bool hasAnySingle = false, hasAnyBatch = false;
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                if (handlers[i].IsBatch) hasAnyBatch = true;
+                else hasAnySingle = true;
+                if (hasAnySingle && hasAnyBatch) break;
+            }
+
+            if (!hasAnyBatch)
+            {
+                // Only single handlers → use publisher strategy
+                var delegates = ExtractSingleDelegates(handlers);
+                for (int i = 0; i < groupMessages.Count; i++)
+                    await _notificationPublisher.PublishAsync(this, delegates, groupMessages[i], cancellationToken).ConfigureAwait(false);
+            }
+            else if (!hasAnySingle)
+            {
+                // Only batch handlers → use publisher strategy
+                var delegates = ExtractBatchDelegates(handlers);
+                await _notificationPublisher.PublishBatchAsync(this, delegates, groupMessages, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // Mixed → execute in sorted order to preserve cross-kind ordering
+                await PublishMixedOrderedAsync(groupMessages, handlers, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask PublishMixedOrderedAsync(IReadOnlyList<object> messages, OrderedPublishHandler[] handlers, CancellationToken cancellationToken)
+    {
+        for (int h = 0; h < handlers.Length; h++)
+        {
+            var handler = handlers[h];
+            if (handler.IsBatch)
+            {
+                await handler.PublishBatch!(this, messages, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                for (int i = 0; i < messages.Count; i++)
+                    await handler.PublishSingle!(this, messages[i], cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static List<(Type MessageType, IReadOnlyList<object> Messages)> GroupMessagesByRuntimeType<T>(T[] messages)
+    {
+        // Fast path: check if all messages are the exact same type
+        var firstType = messages[0]!.GetType();
+        bool allSameType = true;
+        for (int i = 1; i < messages.Length; i++)
+        {
+            if (messages[i]!.GetType() != firstType)
+            {
+                allSameType = false;
+                break;
+            }
         }
 
-        // Mixed → dispatch to both
-        return PublishMixedAsync(list, singleHandlers, batchHandlers, cancellationToken);
+        if (allSameType)
+        {
+            var boxed = BoxMessages(messages);
+            return [( firstType, boxed )];
+        }
+
+        var groups = new List<(Type MessageType, IReadOnlyList<object> Messages)>();
+        var groupIndexes = new Dictionary<Type, int>();
+
+        for (int i = 0; i < messages.Length; i++)
+        {
+            object message = messages[i]!;
+            var messageType = message.GetType();
+
+            if (!groupIndexes.TryGetValue(messageType, out var groupIndex))
+            {
+                groupIndex = groups.Count;
+                groups.Add((messageType, new List<object>()));
+                groupIndexes[messageType] = groupIndex;
+            }
+
+            ((List<object>)groups[groupIndex].Messages).Add(message);
+        }
+
+        return groups;
     }
 
-    private async ValueTask PublishToSingleHandlersAsync<T>(T[] messages, PublishAsyncDelegate[] handlers, CancellationToken cancellationToken)
+    private static PublishAsyncDelegate[] ExtractSingleDelegates(OrderedPublishHandler[] handlers)
     {
-        for (int i = 0; i < messages.Length; i++)
-            await _notificationPublisher.PublishAsync(this, handlers, messages[i]!, cancellationToken).ConfigureAwait(false);
+        var delegates = new PublishAsyncDelegate[handlers.Length];
+        for (int i = 0; i < handlers.Length; i++)
+            delegates[i] = handlers[i].PublishSingle!;
+        return delegates;
     }
 
-    private async ValueTask PublishMixedAsync<T>(T[] messages, PublishAsyncDelegate[] singleHandlers, PublishBatchAsyncDelegate[] batchHandlers, CancellationToken cancellationToken)
+    private static PublishBatchAsyncDelegate[] ExtractBatchDelegates(OrderedPublishHandler[] handlers)
     {
-        // Single handlers: per-message
-        for (int i = 0; i < messages.Length; i++)
-            await _notificationPublisher.PublishAsync(this, singleHandlers, messages[i]!, cancellationToken).ConfigureAwait(false);
-
-        // Batch handlers: full batch
-        var boxed = BoxMessages(messages);
-        await _notificationPublisher.PublishBatchAsync(this, batchHandlers, boxed, cancellationToken).ConfigureAwait(false);
+        var delegates = new PublishBatchAsyncDelegate[handlers.Length];
+        for (int i = 0; i < handlers.Length; i++)
+            delegates[i] = handlers[i].PublishBatch!;
+        return delegates;
     }
 
     private static IReadOnlyList<object> BoxMessages<T>(T[] messages)

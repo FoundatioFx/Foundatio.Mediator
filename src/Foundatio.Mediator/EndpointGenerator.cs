@@ -801,9 +801,10 @@ internal static class EndpointGenerator
                 source.Append("}");
             }
         }
-        else if (endpoint.SupportsAsParameters && hasAsParametersAttribute)
+        else if (endpoint.SupportsAsParameters && hasAsParametersAttribute
+            && (endpoint.RouteParameters.Length > 0 || endpoint.QueryParameters.Length > 0 || endpoint.BindingParameters.Length > 0))
         {
-            // GET/DELETE with [AsParameters] - message type supports it
+            // GET/DELETE with [AsParameters] - message type supports it and has bindable properties
             // ASP.NET natively respects [FromHeader]/[FromQuery]/[FromRoute] on the type's properties
             source.Append($"{asyncKeyword}([Microsoft.AspNetCore.Http.AsParameters] {messageType} message, ");
             source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
@@ -864,9 +865,18 @@ internal static class EndpointGenerator
             // Construct the message from parameters
             if (allParams.Count > 0)
             {
-                source.Append($"var message = new {messageType}(");
-                source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName}: {p.Name}")));
-                source.AppendLine(");");
+                if (handler.MessageType.IsRecord)
+                {
+                    source.Append($"var message = new {messageType}(");
+                    source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName}: {p.Name}")));
+                    source.AppendLine(");");
+                }
+                else
+                {
+                    source.Append($"var message = new {messageType} {{ ");
+                    source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName} = {p.Name}")));
+                    source.AppendLine(" };");
+                }
             }
             else
             {

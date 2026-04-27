@@ -403,6 +403,17 @@ internal static class EndpointGenerator
                 source.AppendLine($"{groupVarName}.AddEndpointFilter<{filter}>();");
             }
 
+            // Apply Group-level conventions (IEndpointConvention<RouteGroupBuilder> from class + assembly-level attributes)
+            var allGroupConventions = firstEndpoint.Conventions
+                .Concat(endpointDefaults.Conventions)
+                .Where(c => c.Scope != ConventionScope.Method && IsGroupBuilderConvention(c))
+                .ToArray();
+            var groupConventions = DeduplicateConventions(allGroupConventions);
+            foreach (var convention in groupConventions)
+            {
+                EmitConventionCall(source, convention, groupVarName);
+            }
+
             source.AppendLine();
 
             // Detect duplicate routes within this group and resolve conflicts
@@ -421,7 +432,7 @@ internal static class EndpointGenerator
                     ? "endpoints"
                     : groupVarName;
 
-                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, routeOverride);
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults.Conventions, routeOverride);
 
                 // Collect endpoint info for logging
                 var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
@@ -593,6 +604,7 @@ internal static class EndpointGenerator
         bool groupRequireAuth,
         string assemblySuffix,
         string summaryStyle,
+        EquatableArray<EndpointConventionInfo> assemblyConventions,
         string? routeOverride = null)
     {
         var endpoint = handler.Endpoint!.Value;
@@ -611,8 +623,21 @@ internal static class EndpointGenerator
             _ => "MapPost"
         };
 
+        // Merge handler conventions with assembly-level conventions, then apply most-derived-wins dedup.
+        // For endpoint builders: method + class + assembly-level endpoint conventions.
+        var allEndpointConventions = endpoint.Conventions
+            .Concat(assemblyConventions)
+            .Where(c => c.Scope == ConventionScope.Method || IsEndpointBuilderConvention(c))
+            .ToArray();
+        var endpointConventions = DeduplicateConventions(allEndpointConventions);
+
         source.AppendLine($"// {httpMethod} {route} - {handler.MessageType.Identifier}");
-        source.Append($"{groupVarName}.{mapMethod}(\"{route}\", ");
+
+        // When conventions exist, capture the builder in a variable
+        if (endpointConventions.Length > 0)
+            source.Append($"var ep_{handler.MessageType.Identifier} = {groupVarName}.{mapMethod}(\"{route}\", ");
+        else
+            source.Append($"{groupVarName}.{mapMethod}(\"{route}\", ");
 
         // Generate the lambda
         GenerateEndpointLambda(source, handler, endpoint, hasAsParametersAttribute, hasFromBodyAttribute, wrapperClassName, assemblySuffix);
@@ -710,7 +735,80 @@ internal static class EndpointGenerator
 
         source.DecrementIndent();
         source.AppendLine(";");
+
+        // Apply endpoint-level conventions (IEndpointConvention<RouteHandlerBuilder> etc.)
+        if (endpointConventions.Length > 0)
+        {
+            var epVarName = $"ep_{handler.MessageType.Identifier}";
+            foreach (var convention in endpointConventions)
+            {
+                EmitConventionCall(source, convention, epVarName);
+            }
+        }
+
         source.AppendLine();
+    }
+
+    /// <summary>
+    /// Determines if a convention targets an endpoint builder (RouteHandlerBuilder or IEndpointConventionBuilder).
+    /// </summary>
+    private static bool IsEndpointBuilderConvention(EndpointConventionInfo convention)
+    {
+        // RouteHandlerBuilder or IEndpointConventionBuilder (which RouteHandlerBuilder implements)
+        return convention.BuilderTypeName.Contains("RouteHandlerBuilder")
+            || convention.BuilderTypeName.Contains("IEndpointConventionBuilder");
+    }
+
+    /// <summary>
+    /// Determines if a convention targets a group builder (RouteGroupBuilder).
+    /// </summary>
+    private static bool IsGroupBuilderConvention(EndpointConventionInfo convention)
+    {
+        return convention.BuilderTypeName.Contains("RouteGroupBuilder");
+    }
+
+    /// <summary>
+    /// Applies most-derived-wins deduplication to conventions. For each attribute type,
+    /// only the convention from the most specific scope is kept (Method &gt; Class &gt; Assembly).
+    /// </summary>
+    private static EndpointConventionInfo[] DeduplicateConventions(EndpointConventionInfo[] conventions)
+    {
+        if (conventions.Length <= 1)
+            return conventions;
+
+        return conventions
+            .GroupBy(c => c.AttributeTypeName)
+            .Select(g => g.OrderByDescending(c => c.Scope).First())
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Emits code to instantiate a convention attribute and call Configure on the builder.
+    /// </summary>
+    private static void EmitConventionCall(
+        IndentedStringBuilder source,
+        EndpointConventionInfo convention,
+        string builderVarName)
+    {
+        // Build constructor arguments string
+        var ctorArgs = string.Join(", ", convention.ConstructorArguments
+            .Select(a => a.Value ?? "default"));
+
+        // Build property initializer list
+        var namedArgs = convention.NamedArguments
+            .Where(na => na.Value != null)
+            .Select(na => $"{na.Name} = {na.Value}")
+            .ToArray();
+
+        var initializerBlock = namedArgs.Length > 0
+            ? $" {{ {string.Join(", ", namedArgs)} }}"
+            : "";
+
+        // Determine which Configure method to call when the attribute implements multiple IEndpointConvention<T>
+        var interfaceCast = $"(Foundatio.Mediator.IEndpointConvention<{convention.BuilderTypeName}>)";
+
+        source.AppendLine(
+            $"({interfaceCast}new {convention.AttributeTypeName}({ctorArgs}){initializerBlock}).Configure({builderVarName});");
     }
 
     /// <summary>

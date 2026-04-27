@@ -22,6 +22,7 @@ public class OrderHandler(IOrderRepository repository)
     /// Creates a new order (retries on transient failure, requires User or Admin role)
     /// </summary>
     [Retry]
+    [RateLimited("strict")]
     [HandlerAuthorize(Roles = ["User", "Admin"])]
     public async Task<(Result<Order>, OrderCreated?)> HandleAsync(CreateOrder command, ILogger<OrderHandler> logger, CancellationToken cancellationToken)
     {
@@ -43,7 +44,7 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Gets an order by ID (anonymous - allows dashboard and public access)
+    /// Gets an order by ID (anonymous - allows dashboard and public access, rate limited)
     /// </summary>
     [HandlerAllowAnonymous]
     public async Task<Result<Order>> HandleAsync(GetOrder query, CancellationToken cancellationToken)
@@ -57,7 +58,7 @@ public class OrderHandler(IOrderRepository repository)
     }
 
     /// <summary>
-    /// Gets all orders (anonymous - allows dashboard and public access)
+    /// Gets all orders (anonymous - allows dashboard and public access, rate limited)
     /// </summary>
     [HandlerAllowAnonymous]
     public async Task<Result<List<Order>>> HandleAsync(GetOrders query, CancellationToken cancellationToken)

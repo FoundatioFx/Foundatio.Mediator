@@ -1,10 +1,12 @@
 using Common.Module;
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
 using Orders.Module;
 using Products.Module;
 using Reports.Module;
 using Scalar.AspNetCore;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +36,28 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
+// Rate limiting policies — applied to endpoints via the [RateLimited] attribute
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Default policy: 10 requests per 10-second window
+    options.AddFixedWindowLimiter("default", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromSeconds(10);
+        limiter.QueueLimit = 0;
+    });
+
+    // Strict policy: 3 requests per 30-second window (for write operations)
+    options.AddFixedWindowLimiter("strict", limiter =>
+    {
+        limiter.PermitLimit = 3;
+        limiter.Window = TimeSpan.FromSeconds(30);
+        limiter.QueueLimit = 0;
+    });
+});
+
 // Add Foundatio.Mediator — all referenced module assemblies are auto-discovered
 builder.Services.AddMediator();
 
@@ -57,6 +81,8 @@ app.MapOpenApi();
 app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

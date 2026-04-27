@@ -192,6 +192,12 @@ internal readonly record struct EndpointInfo
     /// When 0, the status code is auto-detected from handler body analysis.
     /// </summary>
     public int ExplicitSuccessStatusCode { get; init; }
+
+    /// <summary>
+    /// Endpoint convention attributes that implement <c>IEndpointConvention&lt;TBuilder&gt;</c>.
+    /// These are instantiated and called with the endpoint or group builder at startup.
+    /// </summary>
+    public EquatableArray<EndpointConventionInfo> Conventions { get; init; }
 }
 
 /// <summary>

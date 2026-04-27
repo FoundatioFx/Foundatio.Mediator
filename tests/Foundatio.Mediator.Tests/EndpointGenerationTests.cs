@@ -2344,5 +2344,309 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Should merge the query param into the message
         Assert.Contains("message with { ApiVersion = apiVersion }", endpointSource);
     }
+
+    [Fact]
+    public void EndpointConvention_OnMethod_EmitsConventionCall()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
+            public class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string PolicyName { get; set; } = "fixed";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetProduct(string Id);
+
+            public class ProductHandler
+            {
+                [RateLimited(PolicyName = "strict")]
+                public string Handle(GetProduct query) => "product";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Should capture the endpoint builder in a variable
+        Assert.Contains("var ep_GetProduct =", endpointSource);
+        // Should instantiate the attribute with the named argument and call Configure
+        Assert.Contains("new global::RateLimitedAttribute()", endpointSource);
+        Assert.Contains("PolicyName = \"strict\"", endpointSource);
+        Assert.Contains(".Configure(ep_GetProduct)", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_OnClass_EmitsConventionCallPerEndpoint()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
+            public class CorsAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string Origin { get; set; } = "*";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetOrder(string Id);
+            public record CreateOrder(string Name);
+
+            [Cors(Origin = "https://example.com")]
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+                public string Handle(CreateOrder cmd) => "created";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Class-level convention targeting RouteHandlerBuilder should apply to each endpoint
+        Assert.Contains("var ep_GetOrder =", endpointSource);
+        Assert.Contains("var ep_CreateOrder =", endpointSource);
+        Assert.Contains(".Configure(ep_GetOrder)", endpointSource);
+        Assert.Contains(".Configure(ep_CreateOrder)", endpointSource);
+    }
+
+    [Fact]
+    public void GroupConvention_OnClass_EmitsConventionCallOnGroup()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Routing;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            [AttributeUsage(AttributeTargets.Class)]
+            public class GroupCorsAttribute : Attribute, IEndpointConvention<RouteGroupBuilder>
+            {
+                public void Configure(RouteGroupBuilder builder) { }
+            }
+
+            public record GetItem(string Id);
+
+            [HandlerEndpointGroup("Items")]
+            [GroupCors]
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => "item";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Group convention should be applied to the group variable, not individual endpoints
+        Assert.Contains("new global::GroupCorsAttribute()", endpointSource);
+        Assert.Contains(".Configure(itemsGroup)", endpointSource);
+        // Should NOT capture endpoint in variable since no endpoint-level convention
+        Assert.DoesNotContain("var ep_GetItem =", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_NoConventions_NoVariable()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetThing(string Id);
+
+            public class ThingHandler
+            {
+                public string Handle(GetThing query) => "thing";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Without conventions, endpoint should NOT be captured in a variable
+        Assert.DoesNotContain("var ep_", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_AssemblyLevel_AppliedToAllEndpoints()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: RateLimited(PolicyName = "global")]
+
+            [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class)]
+            public class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string PolicyName { get; set; } = "default";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetProduct(string Id);
+            public record GetOrder(string Id);
+
+            public class ProductHandler
+            {
+                public string Handle(GetProduct query) => "product";
+            }
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Assembly-level convention should apply to all endpoints
+        Assert.Contains("var ep_GetProduct =", endpointSource);
+        Assert.Contains("var ep_GetOrder =", endpointSource);
+        Assert.Contains(".Configure(ep_GetProduct)", endpointSource);
+        Assert.Contains(".Configure(ep_GetOrder)", endpointSource);
+        Assert.Contains("PolicyName = \"global\"", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_MethodOverridesAssembly()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: RateLimited(PolicyName = "global")]
+
+            [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class)]
+            public class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string PolicyName { get; set; } = "default";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetProduct(string Id);
+
+            public class ProductHandler
+            {
+                [RateLimited(PolicyName = "strict")]
+                public string Handle(GetProduct query) => "product";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // Method-level convention should override assembly-level (most-derived wins)
+        Assert.Contains("var ep_GetProduct =", endpointSource);
+        Assert.Contains("PolicyName = \"strict\"", endpointSource);
+        // Should NOT contain the global policy for this endpoint
+        Assert.DoesNotContain("PolicyName = \"global\"", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_ClassOverridesAssembly()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: RateLimited(PolicyName = "global")]
+
+            [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class)]
+            public class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string PolicyName { get; set; } = "default";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetProduct(string Id);
+            public record GetOrder(string Id);
+
+            [RateLimited(PolicyName = "class-level")]
+            public class ProductHandler
+            {
+                public string Handle(GetProduct query) => "product";
+            }
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // ProductHandler: class-level should override assembly-level
+        Assert.Contains("PolicyName = \"class-level\"", endpointSource);
+        // OrderHandler: should get assembly-level convention
+        Assert.Contains("PolicyName = \"global\"", endpointSource);
+    }
+
+    [Fact]
+    public void EndpointConvention_MethodOverridesClassOverridesAssembly()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Builder;
+            using System;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: RateLimited(PolicyName = "global")]
+
+            [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class)]
+            public class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+            {
+                public string PolicyName { get; set; } = "default";
+
+                public void Configure(RouteHandlerBuilder builder) { }
+            }
+
+            public record GetProduct(string Id);
+            public record CreateProduct(string Name);
+
+            [RateLimited(PolicyName = "class-level")]
+            public class ProductHandler
+            {
+                [RateLimited(PolicyName = "method-level")]
+                public string Handle(GetProduct query) => "product";
+
+                public string Handle(CreateProduct cmd) => "created";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // GetProduct: method-level should win over class and assembly
+        Assert.Contains("PolicyName = \"method-level\"", endpointSource);
+        // CreateProduct: class-level should win over assembly (no method-level)
+        Assert.Contains("PolicyName = \"class-level\"", endpointSource);
+        // Assembly-level "global" should NOT appear since both endpoints have more specific overrides
+        Assert.DoesNotContain("PolicyName = \"global\"", endpointSource);
+    }
 }
 

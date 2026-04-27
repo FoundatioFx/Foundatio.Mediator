@@ -47,6 +47,12 @@ internal readonly record struct EndpointDefaultsInfo
     public string SummaryStyle { get; init; }
 
     /// <summary>
+    /// Assembly-level endpoint conventions (global defaults).
+    /// These apply to all endpoints unless overridden by class or method level conventions.
+    /// </summary>
+    public EquatableArray<EndpointConventionInfo> Conventions { get; init; }
+
+    /// <summary>
     /// Whether the [assembly: MediatorConfiguration] attribute was found.
     /// </summary>
     public bool IsConfigured { get; init; }
@@ -60,6 +66,7 @@ internal readonly record struct EndpointDefaultsInfo
         Policies = EquatableArray<string>.Empty,
         Roles = EquatableArray<string>.Empty,
         SummaryStyle = "Exact",
+        Conventions = EquatableArray<EndpointConventionInfo>.Empty,
         IsConfigured = false
     };
 }

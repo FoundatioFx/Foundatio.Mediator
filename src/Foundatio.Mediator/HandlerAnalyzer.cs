@@ -374,6 +374,61 @@ internal static class HandlerAnalyzer
         return constant.Value?.ToString();
     }
 
+    /// <summary>
+    /// Formats a <see cref="TypedConstant"/> as a valid C# source literal.
+    /// Strings are quoted, booleans lowercase, types use typeof(), etc.
+    /// Used for convention attribute reconstruction in generated code.
+    /// </summary>
+    private static string? FormatTypedConstantAsSourceLiteral(TypedConstant constant)
+    {
+        if (constant.IsNull)
+            return "null";
+
+        if (constant.Kind == TypedConstantKind.Array)
+        {
+            var values = constant.Values
+                .Select(FormatTypedConstantAsSourceLiteral)
+                .ToArray();
+            return "new[] { " + string.Join(", ", values) + " }";
+        }
+
+        if (constant.Kind == TypedConstantKind.Enum)
+        {
+            // Emit as a cast: (EnumType)value
+            var enumType = constant.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return $"({enumType}){constant.Value}";
+        }
+
+        if (constant.Value is ITypeSymbol typeSymbol)
+            return $"typeof({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})";
+
+        if (constant.Value is string str)
+            return SymbolDisplay.FormatLiteral(str, true);
+
+        if (constant.Value is bool boolean)
+            return boolean ? "true" : "false";
+
+        if (constant.Value is char c)
+            return SymbolDisplay.FormatLiteral(c, true);
+
+        if (constant.Value is float f)
+            return f.ToString("R", CultureInfo.InvariantCulture) + "f";
+
+        if (constant.Value is double d)
+            return d.ToString("R", CultureInfo.InvariantCulture) + "d";
+
+        if (constant.Value is decimal m)
+            return m.ToString(CultureInfo.InvariantCulture) + "m";
+
+        if (constant.Value is long l)
+            return l.ToString(CultureInfo.InvariantCulture) + "L";
+
+        if (constant.Value is IFormattable formattable)
+            return formattable.ToString(null, CultureInfo.InvariantCulture);
+
+        return constant.Value?.ToString() ?? "null";
+    }
+
     private static bool IsHandlerMethod(IMethodSymbol method, Compilation compilation, bool treatAsHandlerClass)
     {
         if (method.DeclaredAccessibility != Accessibility.Public)
@@ -640,6 +695,9 @@ internal static class HandlerAnalyzer
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
         var groupFilters = GetTypeArrayProperty(groupAttr, "EndpointFilters") ?? [];
 
+        // Extract endpoint convention attributes (IEndpointConvention<TBuilder>)
+        var conventions = ExtractEndpointConventions(classSymbol, handlerMethod, compilation);
+
         // Extract ProducesStatusCodes from [HandlerEndpoint] attribute (method -> class)
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
                                   GetIntArrayProperty(classEndpointAttr, "ProducesStatusCodes");
@@ -746,6 +804,7 @@ internal static class HandlerAnalyzer
             StreamingFormat = streamingFormat,
             StreamingItemType = streamingItemType,
             SseEventType = sseEventType,
+            Conventions = new(conventions),
         };
     }
 
@@ -804,6 +863,89 @@ internal static class HandlerAnalyzer
             AllowAnonymous = allowAnonymous,
             Roles = new(roles),
             Policies = new(allPolicies),
+        };
+    }
+
+    /// <summary>
+    /// Extracts endpoint convention attributes that implement <c>IEndpointConvention&lt;TBuilder&gt;</c>
+    /// from the handler method and class. These conventions customize endpoint or group builders at startup.
+    /// </summary>
+    private static EndpointConventionInfo[] ExtractEndpointConventions(
+        INamedTypeSymbol classSymbol,
+        IMethodSymbol handlerMethod,
+        Compilation compilation)
+    {
+        var conventions = new List<EndpointConventionInfo>();
+
+        var conventionInterface = compilation.GetTypeByMetadataName(WellKnownTypes.IEndpointConventionOfT);
+        if (conventionInterface == null)
+            return [];
+
+        // Process method-level attributes first
+        foreach (var attr in handlerMethod.GetAttributes())
+        {
+            var convention = TryGetEndpointConvention(attr, conventionInterface, ConventionScope.Method);
+            if (convention != null)
+                conventions.Add(convention.Value);
+        }
+
+        // Process class-level attributes
+        foreach (var attr in classSymbol.GetAttributes())
+        {
+            var convention = TryGetEndpointConvention(attr, conventionInterface, ConventionScope.Class);
+            if (convention != null)
+                conventions.Add(convention.Value);
+        }
+
+        return conventions.ToArray();
+    }
+
+    /// <summary>
+    /// Attempts to extract an endpoint convention from an attribute that implements
+    /// <c>IEndpointConvention&lt;TBuilder&gt;</c>.
+    /// </summary>
+    internal static EndpointConventionInfo? TryGetEndpointConvention(
+        AttributeData attr,
+        INamedTypeSymbol conventionInterface,
+        ConventionScope scope)
+    {
+        var attrClass = attr.AttributeClass;
+        if (attrClass == null)
+            return null;
+
+        // Check if the attribute class implements IEndpointConvention<TBuilder>
+        var implementedConvention = attrClass.AllInterfaces
+            .FirstOrDefault(i => i.IsGenericType &&
+                                  SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, conventionInterface));
+
+        if (implementedConvention == null)
+            return null;
+
+        // Extract TBuilder type argument
+        var builderType = implementedConvention.TypeArguments[0];
+        var builderTypeName = builderType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        var attributeTypeName = attrClass.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        var constructorArguments = attr.ConstructorArguments
+            .Select(value => new AttributeValueInfo { Value = FormatTypedConstantAsSourceLiteral(value) })
+            .ToArray();
+
+        var namedArguments = attr.NamedArguments
+            .Select(na => new NamedAttributeArgumentInfo
+            {
+                Name = na.Key,
+                Value = FormatTypedConstantAsSourceLiteral(na.Value)
+            })
+            .ToArray();
+
+        return new EndpointConventionInfo
+        {
+            AttributeTypeName = attributeTypeName,
+            BuilderTypeName = builderTypeName,
+            Scope = scope,
+            ConstructorArguments = new(constructorArguments),
+            NamedArguments = new(namedArguments),
         };
     }
 

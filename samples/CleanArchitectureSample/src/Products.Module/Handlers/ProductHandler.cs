@@ -21,6 +21,7 @@ public class ProductHandler(IProductRepository repository)
     /// Creates a new product (requires Admin or Manager role, retries with custom inline settings)
     /// </summary>
     [Retry(MaxAttempts = 5, DelayMs = 200)]
+    [RateLimited("strict")]
     [HandlerAuthorize(Roles = ["Admin", "Manager"])]
     public async Task<(Result<Product>, ProductCreated?)> HandleAsync(CreateProduct command, CancellationToken cancellationToken)
     {
@@ -44,7 +45,7 @@ public class ProductHandler(IProductRepository repository)
     }
 
     /// <summary>
-    /// Gets a product by ID (anonymous - public catalog, cached 30s)
+    /// Gets a product by ID (anonymous - public catalog, cached 30s, rate limited)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
@@ -59,7 +60,7 @@ public class ProductHandler(IProductRepository repository)
     }
 
     /// <summary>
-    /// Gets all products (anonymous - public catalog, cached 30s)
+    /// Gets all products (anonymous - public catalog, cached 30s, rate limited)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]

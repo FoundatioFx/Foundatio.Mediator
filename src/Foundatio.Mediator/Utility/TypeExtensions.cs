@@ -293,6 +293,7 @@ internal static class WellKnownTypes
     public const string GeneratedNamespace = "Foundatio.Mediator.Generated";
     public const string IAsyncEnumerableOfT = "System.Collections.Generic.IAsyncEnumerable`1";
     public const string EndpointStreamingEnum = "Foundatio.Mediator.EndpointStreaming";
+    public const string IEndpointConventionOfT = "Foundatio.Mediator.IEndpointConvention`1";
 
     // Lifetime string constants (matching MediatorLifetime enum names)
     public const string LifetimeNone = "None";

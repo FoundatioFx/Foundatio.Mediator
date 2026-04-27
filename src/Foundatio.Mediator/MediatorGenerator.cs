@@ -193,6 +193,25 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var configuration = new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
             openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy);
 
+        // Scan assembly-level attributes for IEndpointConvention<T> implementations
+        var assemblyConventions = Array.Empty<EndpointConventionInfo>();
+        var conventionInterface = compilation.GetTypeByMetadataName(WellKnownTypes.IEndpointConventionOfT);
+        if (conventionInterface != null)
+        {
+            var conventions = new List<EndpointConventionInfo>();
+            foreach (var attr in compilation.Assembly.GetAttributes())
+            {
+                // Skip MediatorConfiguration — it's handled above
+                if (attr.AttributeClass?.ToDisplayString() == WellKnownTypes.MediatorConfigurationAttribute)
+                    continue;
+
+                var convention = HandlerAnalyzer.TryGetEndpointConvention(attr, conventionInterface, ConventionScope.Assembly);
+                if (convention != null)
+                    conventions.Add(convention.Value);
+            }
+            assemblyConventions = conventions.ToArray();
+        }
+
         var endpointDefaults = new EndpointDefaultsInfo
         {
             Discovery = discovery,
@@ -202,6 +221,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             Policies = new(policies),
             Roles = new(roles),
             SummaryStyle = summaryStyle,
+            Conventions = new(assemblyConventions),
             IsConfigured = endpointConfigured
         };
 

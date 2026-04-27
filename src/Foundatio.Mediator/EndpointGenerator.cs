@@ -214,9 +214,10 @@ internal static class EndpointGenerator
             source.AppendLine("using System.Net.ServerSentEvents;");
         }
 
+        source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
+
         if (compilationInfo.HasLoggerFactory)
         {
-            source.AppendLine("using Microsoft.Extensions.DependencyInjection;");
             source.AppendLine("using Microsoft.Extensions.Logging;");
         }
 
@@ -239,8 +240,8 @@ internal static class EndpointGenerator
         source.AppendLine("}");
         source.AppendLine();
 
-        // Generate the result mapper class (uses assembly suffix to avoid collisions)
-        GenerateResultMapperClass(source, assemblySuffix);
+        // Generate the default IMediatorResultMapper implementation with full mapping logic
+        GenerateDefaultResultMapperImpl(source, assemblySuffix);
 
         return source.ToString();
     }
@@ -269,6 +270,10 @@ internal static class EndpointGenerator
         source.AppendLine("public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)");
         source.AppendLine("{");
         source.IncrementIndent();
+
+        // Resolve the result mapper once at startup (captured in closure for zero per-request overhead)
+        source.AppendLine($"var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_{assemblySuffix}();");
+        source.AppendLine();
 
         // Determine the parent variable name for endpoint groups
         string parentGroupVar = "endpoints";
@@ -1010,12 +1015,12 @@ internal static class EndpointGenerator
         else if (handler.ReturnType.IsFileResult)
         {
             source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
-            source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
+            source.AppendLine("return resultMapper.MapResult(result);");
         }
         else if (handler.ReturnType.IsResult)
         {
             source.AppendLine($"var result = {awaitKeyword}global::Foundatio.Mediator.Generated.{wrapperClassName}.{handlerMethodName}(mediator, {messageVar}, callContext, cancellationToken);");
-            source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
+            source.AppendLine("return resultMapper.MapResult(result);");
         }
         else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems.Length > 0)
         {
@@ -1024,7 +1029,7 @@ internal static class EndpointGenerator
             var firstItem = handler.ReturnType.TupleItems[0];
             source.AppendLine($"var result = await mediator.InvokeAsync<{firstItem.TypeFullName}>({messageVar}, cancellationToken);");
             if (firstItem.IsResult)
-                source.AppendLine($"return MediatorEndpointResultMapper_{assemblySuffix}.ToHttpResult(result);");
+                source.AppendLine("return resultMapper.MapResult(result);");
             else
                 source.AppendLine("return Microsoft.AspNetCore.Http.Results.Ok(result);");
         }
@@ -1055,20 +1060,21 @@ internal static class EndpointGenerator
     }
 
     /// <summary>
-    /// Generates the MediatorEndpointResultMapper class.
+    /// Generates the default <see cref="IMediatorResultMapper{TResult}"/> implementation containing the full result-to-HTTP mapping logic.
+    /// Users can replace this by registering their own <c>IMediatorResultMapper&lt;IResult&gt;</c> in DI.
     /// </summary>
-    private static void GenerateResultMapperClass(IndentedStringBuilder source, string assemblySuffix)
+    private static void GenerateDefaultResultMapperImpl(IndentedStringBuilder source, string assemblySuffix)
     {
         source.AddGeneratedCodeAttribute();
         source.AppendLine("[ExcludeFromCodeCoverage]");
-        source.AppendLine($"public static class MediatorEndpointResultMapper_{assemblySuffix}");
+        source.AppendLine($"internal sealed class DefaultMediatorResultMapper_{assemblySuffix} : Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>");
         source.AppendLine("{");
         source.IncrementIndent();
 
         source.AppendLine("/// <summary>");
         source.AppendLine("/// Converts a Foundatio.Mediator.IResult to an HTTP result.");
         source.AppendLine("/// </summary>");
-        source.AppendLine("public static Microsoft.AspNetCore.Http.IResult ToHttpResult(Foundatio.Mediator.IResult result)");
+        source.AppendLine("public Microsoft.AspNetCore.Http.IResult MapResult(Foundatio.Mediator.IResult result)");
         source.AppendLine("{");
         source.IncrementIndent();
 

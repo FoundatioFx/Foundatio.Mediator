@@ -682,6 +682,38 @@ Reserve HTTP type parameters for edge cases where you genuinely need low-level H
 | `CriticalError` | 500 Internal Server Error |
 | `Unavailable` | 503 Service Unavailable |
 
+### Custom Result Mapping
+
+To customize how `Result` statuses are converted to HTTP responses, implement `IMediatorResultMapper<IResult>` and register it before `AddMediator()`:
+
+```csharp
+using Microsoft.AspNetCore.Http;
+
+public class CustomResultMapper : IMediatorResultMapper<IResult>
+{
+    public IResult MapResult(Foundatio.Mediator.IResult result) => result.Status switch
+    {
+        // Use ProblemDetails for NotFound instead of the default anonymous object
+        ResultStatus.NotFound => Results.Problem(
+            detail: result.Message, statusCode: 404, title: "Not Found"),
+
+        ResultStatus.BadRequest => Results.Problem(
+            detail: result.Message, statusCode: 400, title: "Bad Request"),
+
+        // Handle all other statuses
+        _ => Results.Problem(result.Message ?? "An unexpected error occurred", statusCode: 500)
+    };
+}
+```
+
+```csharp
+// Register before AddMediator — your implementation takes priority
+services.AddSingleton<IMediatorResultMapper<IResult>, CustomResultMapper>();
+services.AddMediator();
+```
+
+When no custom mapper is registered, the generated default handles all `ResultStatus` values with sensible HTTP status codes.
+
 ### File Downloads
 
 `Result<FileResult>` automatically produces a file response:

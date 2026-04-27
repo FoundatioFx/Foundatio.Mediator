@@ -200,7 +200,13 @@ public Result<User> Handle(CreateUser command)
 
 ## Integration with ASP.NET Core
 
-Result types work seamlessly with ASP.NET Core controllers:
+When using [endpoint generation](/guide/endpoints), `Result<T>` and `Result` are automatically converted to the correct HTTP status codes — no manual mapping needed. See [Result to HTTP Status Mapping](/guide/endpoints#result-to-http-status-mapping) for the default mapping table.
+
+To customize the mapping, implement `IMediatorResultMapper<IResult>` and register it before `AddMediator()`. See [Custom Result Mapping](/guide/endpoints#custom-result-mapping) for details.
+
+### Manual Mapping (Controllers)
+
+If you use traditional controllers instead of endpoint generation, you can map results manually:
 
 ```csharp
 [ApiController]

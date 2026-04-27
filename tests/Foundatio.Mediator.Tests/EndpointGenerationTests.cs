@@ -657,7 +657,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         Assert.NotNull(endpointSource);
         // File results go through the result mapper which handles FileResult
-        Assert.Contains("ToHttpResult(result)", endpointSource);
+        Assert.Contains("resultMapper.MapResult(result)", endpointSource);
     }
 
     [Fact]
@@ -693,7 +693,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Should use mediator.InvokeAsync<Result<ProductView>> instead of calling wrapper directly
         Assert.Contains("mediator.InvokeAsync<Foundatio.Mediator.Result<ProductView>>", endpointSource);
         // Should use ToHttpResult for proper status code mapping
-        Assert.Contains("ToHttpResult(result)", endpointSource);
+        Assert.Contains("resultMapper.MapResult(result)", endpointSource);
         // Should NOT serialize the raw Result wrapper
         Assert.DoesNotContain("Results.Ok(result)", endpointSource);
     }
@@ -729,7 +729,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Should use mediator.InvokeAsync<Result> for non-generic Result
         Assert.Contains("mediator.InvokeAsync<Foundatio.Mediator.Result>", endpointSource);
         // Should use ToHttpResult for proper status code mapping (e.g., 204 NoContent)
-        Assert.Contains("ToHttpResult(result)", endpointSource);
+        Assert.Contains("resultMapper.MapResult(result)", endpointSource);
     }
 
     [Fact]
@@ -765,7 +765,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.Contains("mediator.InvokeAsync<ItemView>", endpointSource);
         // Should use Results.Ok for plain types (not Result)
         Assert.Contains("Results.Ok(result)", endpointSource);
-        // The endpoint lambda should NOT call ToHttpResult (only the mapper class definition has it)
+        // The endpoint lambda should NOT call a static ToHttpResult — uses resultMapper.MapResult via the interface
         Assert.DoesNotContain("return MediatorEndpointResultMapper", endpointSource);
     }
 

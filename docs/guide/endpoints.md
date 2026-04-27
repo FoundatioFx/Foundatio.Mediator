@@ -828,6 +828,122 @@ app.MapMediatorEndpoints(c =>
 
 Set `EndpointRoutePrefix = ""` to disable the global prefix entirely.
 
+## Endpoint Conventions
+
+Endpoint conventions let you create reusable attributes that configure generated endpoints at startup — rate limiting, CORS, caching headers, or any other endpoint builder customization. Implement `IEndpointConvention<TBuilder>` on an attribute and the source generator handles the rest. No runtime reflection.
+
+### Defining a Convention
+
+Create an attribute that implements `IEndpointConvention<RouteHandlerBuilder>`:
+
+```csharp
+[AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Method | AttributeTargets.Class)]
+public sealed class RateLimitedAttribute : Attribute, IEndpointConvention<RouteHandlerBuilder>
+{
+    public string? PolicyName { get; }
+
+    public RateLimitedAttribute(string? policyName = null) => PolicyName = policyName;
+
+    public void Configure(RouteHandlerBuilder builder)
+    {
+        builder.RequireRateLimiting(PolicyName ?? "default");
+    }
+}
+```
+
+The `Configure` method receives the endpoint builder at startup and can call any builder extension method — `RequireRateLimiting`, `RequireCors`, `CacheOutput`, `WithMetadata`, etc.
+
+### Applying Conventions
+
+Conventions can be applied at three scopes:
+
+```csharp
+// Assembly level — applies to ALL endpoints in this assembly
+[assembly: RateLimited]
+
+// Class level — applies to all endpoints in this handler
+[RateLimited("moderate")]
+public class OrderHandler
+{
+    // Method level — applies to this endpoint only
+    [RateLimited("strict")]
+    public Task<Result<Order>> HandleAsync(CreateOrder cmd) { ... }
+
+    // Inherits class-level "moderate" policy
+    public Task<Result<Order>> HandleAsync(GetOrder query) { ... }
+}
+```
+
+### Most-Derived Wins
+
+When the same convention attribute appears at multiple scopes, the most specific one wins:
+
+| Scope | Priority |
+| --- | --- |
+| **Method** | Highest — overrides class and assembly |
+| **Class** | Overrides assembly |
+| **Assembly** | Lowest — global default |
+
+This lets you set a global default and override it where needed:
+
+```csharp
+// Global default: all endpoints get "default" rate limit
+[assembly: RateLimited]
+
+public class ProductHandler
+{
+    // Inherits assembly default → "default" policy
+    public Result<List<Product>> Handle(GetProducts query) { ... }
+
+    // Overrides with "strict" for write operations
+    [RateLimited("strict")]
+    public Task<Result<Product>> HandleAsync(CreateProduct cmd) { ... }
+}
+```
+
+For each attribute type, only one scope applies per endpoint — there's no stacking. If you need multiple independent behaviors, use separate attribute types.
+
+### Group Conventions
+
+To configure the `RouteGroupBuilder` (shared prefix group) instead of individual endpoints, implement `IEndpointConvention<RouteGroupBuilder>`:
+
+```csharp
+[AttributeUsage(AttributeTargets.Class)]
+public class GroupCorsAttribute : Attribute, IEndpointConvention<RouteGroupBuilder>
+{
+    public string PolicyName { get; } = "default";
+
+    public GroupCorsAttribute(string? policyName = null) => PolicyName = policyName ?? "default";
+
+    public void Configure(RouteGroupBuilder group)
+    {
+        group.RequireCors(PolicyName);
+    }
+}
+
+[HandlerEndpointGroup("Orders")]
+[GroupCors("allow-frontend")]
+public class OrderHandler { ... }
+```
+
+Group conventions applied at the class level configure the group builder, affecting all endpoints in that group.
+
+### How It Works
+
+The source generator:
+
+1. Detects attributes implementing `IEndpointConvention<T>` on methods, classes, and the assembly
+2. Records their constructor arguments and named properties
+3. Emits code that reconstructs each attribute and calls `Configure(builder)` at startup
+
+No reflection is used at runtime. The generated code looks like:
+
+```csharp
+// Generated — you never write this
+var ep = ordersGroup.MapPost("", async (...) => { ... });
+((IEndpointConvention<RouteHandlerBuilder>)new RateLimitedAttribute("strict")).Configure(ep);
+```
+
 ## Troubleshooting
 
 ### Endpoints Not Generated

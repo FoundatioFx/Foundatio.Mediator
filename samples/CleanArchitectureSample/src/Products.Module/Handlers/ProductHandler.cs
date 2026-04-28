@@ -49,6 +49,7 @@ public class ProductHandler(IProductRepository repository)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
+    [HandlerEndpoint(HandlerMethod.Get, "/{productId}")]
     public async Task<Result<Product>> HandleAsync(GetProduct query, CancellationToken cancellationToken)
     {
         var product = await repository.GetByIdAsync(query.ProductId, cancellationToken);

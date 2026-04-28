@@ -614,12 +614,16 @@ internal static class HandlerAnalyzer
             isStreaming = false;
         }
 
-        var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod") ??
-                             GetIntProperty(classEndpointAttr, "HttpMethod") ?? 0;
+        var httpMethodEnum = GetConstructorIntArg(methodEndpointAttr, 0) ??
+                             GetIntProperty(methodEndpointAttr, "Method") ??
+                             GetConstructorIntArg(classEndpointAttr, 0) ??
+                             GetIntProperty(classEndpointAttr, "Method") ?? 0;
 
         var explicitRoute = GetConstructorStringArg(methodEndpointAttr, 0) ??
+                            GetConstructorStringArg(methodEndpointAttr, 1) ??
                             GetStringProperty(methodEndpointAttr, "Route") ??
                             GetConstructorStringArg(classEndpointAttr, 0) ??
+                            GetConstructorStringArg(classEndpointAttr, 1) ??
                             GetStringProperty(classEndpointAttr, "Route");
 
         // Detect action verb early (needed for route param extraction)
@@ -1183,6 +1187,18 @@ internal static class HandlerAnalyzer
             return null;
 
         return attr.ConstructorArguments[index].Value as string;
+    }
+
+    private static int? GetConstructorIntArg(AttributeData? attr, int index)
+    {
+        if (attr == null || attr.ConstructorArguments.Length <= index)
+            return null;
+
+        var value = attr.ConstructorArguments[index].Value;
+        if (value is int i)
+            return i;
+
+        return null;
     }
 
     private static string? GetStringProperty(AttributeData? attr, string propertyName)

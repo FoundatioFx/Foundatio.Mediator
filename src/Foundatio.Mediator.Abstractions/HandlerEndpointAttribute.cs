@@ -33,12 +33,32 @@ public sealed class HandlerEndpointAttribute : Attribute
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="HandlerEndpointAttribute"/> class with an HTTP method and route template.
+    /// </summary>
+    /// <param name="method">The HTTP method for this endpoint.</param>
+    /// <param name="route">
+    /// The route template for this endpoint. Use <c>{propertyName}</c> for route parameters.
+    /// Use a leading <c>/</c> for an absolute route that bypasses global and group prefixes.
+    /// </param>
+    /// <example>
+    /// <code>
+    /// [HandlerEndpoint(HandlerMethod.Get, "/{productId}")]
+    /// public Result&lt;Product&gt; Handle(GetProduct query) { ... }
+    /// </code>
+    /// </example>
+    public HandlerEndpointAttribute(HandlerMethod method, string route)
+    {
+        Method = method;
+        Route = route;
+    }
+
+    /// <summary>
     /// Gets or sets the HTTP method for this endpoint.
-    /// When <see cref="EndpointHttpMethod.Default"/>, the HTTP method is inferred from the message type name:
+    /// When <see cref="HandlerMethod.Default"/>, the HTTP method is inferred from the message type name:
     /// Get*/Find*/Search*/List*/Query* → GET, Create*/Add*/New* → POST,
     /// Update*/Edit*/Modify*/Set* → PUT, Delete*/Remove* → DELETE, Patch* → PATCH.
     /// </summary>
-    public EndpointHttpMethod HttpMethod { get; set; }
+    public HandlerMethod Method { get; set; }
 
     /// <summary>
     /// Gets or sets the route template for this endpoint.

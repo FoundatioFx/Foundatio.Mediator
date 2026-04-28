@@ -1,9 +1,9 @@
 namespace Foundatio.Mediator;
 
 /// <summary>
-/// Specifies the HTTP method for a generated endpoint.
+/// Specifies the HTTP method for a generated handler endpoint.
 /// </summary>
-public enum EndpointHttpMethod
+public enum HandlerMethod
 {
     /// <summary>
     /// The HTTP method is inferred from the message type name prefix

@@ -163,9 +163,11 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
             .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
-        // Add leading trivia (indentation) from the class declaration
-        var leadingTrivia = classDecl.GetLeadingTrivia();
-        attributeList = attributeList.WithLeadingTrivia(leadingTrivia);
+        // Use only the indentation whitespace (not doc comments) from the class declaration
+        var lastWhitespace = classDecl.GetLeadingTrivia()
+            .LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
+        if (lastWhitespace != default)
+            attributeList = attributeList.WithLeadingTrivia(lastWhitespace);
 
         var newClassDecl = classDecl.AddAttributeLists(attributeList);
         return root.ReplaceNode(classDecl, newClassDecl);
@@ -188,27 +190,43 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
         }
 
         diagnostic.Properties.TryGetValue("Route", out var route);
+        diagnostic.Properties.TryGetValue("HttpMethod", out var httpMethod);
         route ??= "";
 
-        // Build [HandlerEndpoint("route")]
-        var attributeArg = SyntaxFactory.AttributeArgument(
+        // Build [HandlerEndpoint(HandlerMethod.Get, "/{route}")]
+        var args = new List<AttributeArgumentSyntax>();
+
+        if (!string.IsNullOrEmpty(httpMethod))
+        {
+            // Map "GET" → "Get", "POST" → "Post", etc. to match HandlerMethod enum members
+            var enumMember = httpMethod!.Substring(0, 1) + httpMethod.Substring(1).ToLowerInvariant();
+            args.Add(SyntaxFactory.AttributeArgument(
+                SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.IdentifierName("HandlerMethod"),
+                    SyntaxFactory.IdentifierName(enumMember))));
+        }
+
+        args.Add(SyntaxFactory.AttributeArgument(
             SyntaxFactory.LiteralExpression(
                 SyntaxKind.StringLiteralExpression,
-                SyntaxFactory.Literal(route)));
+                SyntaxFactory.Literal(route))));
 
         var attribute = SyntaxFactory.Attribute(
             SyntaxFactory.IdentifierName("HandlerEndpoint"),
             SyntaxFactory.AttributeArgumentList(
-                SyntaxFactory.SingletonSeparatedList(attributeArg)));
+                SyntaxFactory.SeparatedList(args)));
 
         var attributeList = SyntaxFactory.AttributeList(
             SyntaxFactory.SingletonSeparatedList(attribute))
             .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
-        // Add leading trivia (indentation) from the method declaration
-        var leadingTrivia = methodDecl.GetLeadingTrivia();
-        attributeList = attributeList.WithLeadingTrivia(leadingTrivia);
+        // Use only the indentation whitespace (not doc comments) from the method declaration
+        var lastWhitespace = methodDecl.GetLeadingTrivia()
+            .LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
+        if (lastWhitespace != default)
+            attributeList = attributeList.WithLeadingTrivia(lastWhitespace);
 
         var newMethodDecl = methodDecl.AddAttributeLists(attributeList);
         return root.ReplaceNode(methodDecl, newMethodDecl);

@@ -180,7 +180,7 @@ GET   /api/v2/products/{productId}  → GetProduct
 public class TodoHandler
 {
     // Override route and HTTP method for an action endpoint
-    [HandlerEndpoint(Route = "{todoId}/complete", HttpMethod = EndpointHttpMethod.Post)]
+    [HandlerEndpoint(HandlerMethod.Post, "{todoId}/complete")]
     public Task<Result> HandleAsync(CompleteTodo command) { ... }
 
     // Custom OpenAPI metadata
@@ -207,7 +207,7 @@ public class TodoHandler
 
 | Property | Purpose |
 | --- | --- |
-| `HttpMethod` | Override inferred HTTP method (`EndpointHttpMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`) |
+| `Method` | Override inferred HTTP method (`HandlerMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`) |
 | `Route` | Custom route template (relative to group prefix; leading `/` for absolute) |
 | `Name` | OpenAPI operation ID |
 | `Summary` | Override XML doc summary for OpenAPI |
@@ -721,7 +721,7 @@ When no custom mapper is registered, the generated default handles all `ResultSt
 ```csharp
 public class ReportHandler
 {
-    [HandlerEndpoint(HttpMethod = EndpointHttpMethod.Get, Route = "/reports/{id}")]
+    [HandlerEndpoint(HandlerMethod.Get, "/reports/{id}")]
     public async Task<Result<FileResult>> HandleAsync(
         GetReport query, IReportService reports, CancellationToken ct)
     {

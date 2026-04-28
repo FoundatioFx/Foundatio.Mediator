@@ -26,6 +26,8 @@
       Include="..\..\..\..\src\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj"
       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.CodeFixes\Foundatio.Mediator.CodeFixes.csproj"
+      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Common.Module\Common.Module.csproj" />
     <!--
       Note: We reference other modules only for their MESSAGE types (queries/events).

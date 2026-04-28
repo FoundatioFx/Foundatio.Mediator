@@ -331,14 +331,18 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == WellKnownTypes.HandlerEndpointGroupAttribute);
 
         // HTTP method enum override from attributes
-        var httpMethodEnum = GetIntProperty(methodEndpointAttr, "HttpMethod")
-                          ?? GetIntProperty(classEndpointAttr, "HttpMethod")
+        var httpMethodEnum = GetConstructorIntArg(methodEndpointAttr, 0)
+                          ?? GetIntProperty(methodEndpointAttr, "Method")
+                          ?? GetConstructorIntArg(classEndpointAttr, 0)
+                          ?? GetIntProperty(classEndpointAttr, "Method")
                           ?? 0;
 
         // Explicit route from attributes (constructor arg takes precedence, then named property)
         var explicitRoute = GetConstructorStringArg(methodEndpointAttr, 0)
+                         ?? GetConstructorStringArg(methodEndpointAttr, 1)
                          ?? GetStringProperty(methodEndpointAttr, "Route")
                          ?? GetConstructorStringArg(classEndpointAttr, 0)
+                         ?? GetConstructorStringArg(classEndpointAttr, 1)
                          ?? GetStringProperty(classEndpointAttr, "Route");
 
         // Group info from [HandlerEndpointGroup]
@@ -552,6 +556,18 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             return null;
 
         return attr.ConstructorArguments[index].Value as string;
+    }
+
+    private static int? GetConstructorIntArg(AttributeData? attr, int index)
+    {
+        if (attr == null || attr.ConstructorArguments.Length <= index)
+            return null;
+
+        var value = attr.ConstructorArguments[index].Value;
+        if (value is int i)
+            return i;
+
+        return null;
     }
 
     private static string? GetStringProperty(AttributeData? attr, string name)

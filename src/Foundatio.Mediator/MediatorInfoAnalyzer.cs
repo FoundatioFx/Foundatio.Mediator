@@ -113,12 +113,10 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         if (IsEndpointExcluded(method, containingType))
             return;
 
-        // If discovery is "Explicit", only show route when [HandlerEndpoint] is present
-        if (config.Discovery == "Explicit")
-        {
-            if (!HasEndpointAttribute(method) && !HasEndpointAttribute(containingType))
-                return;
-        }
+        // If discovery is "Explicit", track whether the handler has opted in
+        var isExplicitMode = config.Discovery == "Explicit";
+        var hasEndpointAttr = HasEndpointAttribute(method) || HasEndpointAttribute(containingType);
+        var isEndpointActive = !isExplicitMode || hasEndpointAttr;
 
         // Compute the route
         var route = ComputeEndpointRoute(method, containingType, messageType, compilation, config);
@@ -145,13 +143,19 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
         properties.Add("HttpMethod", route.Value.HttpMethod);
         properties.Add("HasExplicitRoute", route.Value.HasExplicitRoute ? "true" : "false");
         properties.Add("HasGroupAttribute", hasGroupAttr ? "true" : "false");
+        properties.Add("IsEndpointActive", isEndpointActive ? "true" : "false");
+
+        // Show "(not generated)" suffix when in explicit mode without [HandlerEndpoint]
+        var routeDisplay = isEndpointActive
+            ? route.Value.FullRoute
+            : $"{route.Value.FullRoute} (not generated — add [HandlerEndpoint] to opt in)";
 
         ctx.ReportDiagnostic(Diagnostic.Create(
             EndpointRouteInfo,
             location,
             properties.ToImmutable(),
             route.Value.HttpMethod,
-            route.Value.FullRoute));
+            routeDisplay));
     }
 
     /// <summary>

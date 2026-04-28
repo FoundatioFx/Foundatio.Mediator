@@ -193,6 +193,22 @@ public class TodoHandler
 }
 ```
 
+**Constructor overloads:**
+
+The attribute supports three constructor forms for convenience:
+
+```csharp
+[HandlerEndpoint]                                     // Fully convention-based
+[HandlerEndpoint("/{productId}")]                     // Lock the route only
+[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]  // Lock both the HTTP method and route
+```
+
+All properties (including `Method` and `Route`) are also settable as named arguments for maximum flexibility:
+
+```csharp
+[HandlerEndpoint(Method = HandlerMethod.Post, Route = "{todoId}/complete")]
+```
+
 **When do you need `[HandlerEndpoint]`?**
 
 - To set a **custom route** different from what's auto-generated
@@ -505,6 +521,48 @@ For GET/DELETE requests, non-ID properties become query parameters:
 ```csharp
 public record SearchProducts(string? Category, int? MinPrice, int? MaxPrice);
 // → GET /api/products?category=...&minPrice=...&maxPrice=...
+```
+
+## Locking Endpoint Routes
+
+By default, routes and HTTP methods are derived from conventions — message names, handler class names, and property types. This is great for rapid development, but renaming a message or refactoring a handler class can silently change your API surface.
+
+**Locking** freezes the route and HTTP method into explicit attributes so they won't change when you refactor.
+
+### Using the Code Fix
+
+The analyzer reports an `FMED017` info diagnostic on every handler method that generates (or could generate) an endpoint, showing the computed route:
+
+```text
+Endpoint: GET /api/products/{productId}
+```
+
+Click the lightbulb (or `Ctrl+.`) to see:
+
+- **Lock this endpoint route** — adds `[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]` to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
+- **Lock all endpoint routes in class** — applies the same to every handler method in the class
+- **Fix All** → Document / Project / Solution — locks routes across a wider scope
+
+Once locked, the FMED017 diagnostic still shows the route but the code fix no longer appears (the route is already explicit).
+
+### Explicit Discovery Mode
+
+When `EndpointDiscovery = EndpointDiscovery.Explicit`, only handlers with `[HandlerEndpoint]` generate endpoints. The FMED017 diagnostic still appears on all handler methods — showing what the route _would_ be — so you can use the code fix to opt in:
+
+```text
+Endpoint: GET /api/products/{productId} (not generated — add [HandlerEndpoint] to opt in)
+```
+
+Clicking "Lock this endpoint route" adds the attribute, which simultaneously opts the handler in and freezes the route.
+
+### Manual Locking
+
+You can also add the attributes manually using any of the constructor forms:
+
+```csharp
+[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]   // Lock both verb and route
+[HandlerEndpoint("/{productId}")]                       // Lock route only (verb still inferred)
+[HandlerEndpoint(Method = HandlerMethod.Get)]           // Lock verb only (route still inferred)
 ```
 
 ## Parameter Binding

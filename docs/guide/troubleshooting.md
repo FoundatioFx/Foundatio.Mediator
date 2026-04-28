@@ -371,7 +371,7 @@ public class LoggingMiddleware
 | `FMED012` | Warning | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`. |
 | `FMED014` | Warning | GET/DELETE endpoint message type has no parameterless constructor and no route/query parameters. |
 | `FMED015` | Warning | `HandlerEndpointGroup` `RoutePrefix` starts with the global `EndpointRoutePrefix`, producing a doubled path (e.g. `/api/api/...`). |
-| `FMED017` | Info | Shows the computed endpoint route on a handler method (e.g. `Endpoint: GET /api/products/{productId}`). Provides a "Lock endpoint route" code fix to freeze the route into an explicit attribute. |
+| `FMED017` | Info | Shows the computed endpoint route on a handler method (e.g. `Endpoint: GET /api/products/{productId}`). Provides a "Make endpoint explicit" code fix to freeze the route into an explicit attribute. |
 | `FMED018` | Info | Shows the handler location on a message type declaration (e.g. `Handled by: ProductHandler`). |
 
 ## Getting Help

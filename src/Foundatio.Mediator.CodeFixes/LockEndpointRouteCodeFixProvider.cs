@@ -44,20 +44,20 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
             if (classDecl == null)
                 continue;
 
-            // Register "Lock this endpoint route" for the single method
+            // Register "Make endpoint explicit" for the single method
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: "Lock this endpoint route",
+                    title: "Make endpoint explicit",
                     createChangedDocument: ct => LockMethodRouteAsync(context.Document, methodDecl, classDecl, diagnostic, ct),
-                    equivalenceKey: "LockEndpointRoute"),
+                    equivalenceKey: "MakeEndpointExplicit"),
                 diagnostic);
 
-            // Register "Lock all endpoint routes in class" for the whole class
+            // Register "Make all endpoints in class explicit" for the whole class
             context.RegisterCodeFix(
                 CodeAction.Create(
-                    title: "Lock all endpoint routes in class",
+                    title: "Make all endpoints in class explicit",
                     createChangedDocument: ct => LockAllRoutesInClassAsync(context.Document, classDecl, context.Diagnostics, ct),
-                    equivalenceKey: "LockAllEndpointRoutes"),
+                    equivalenceKey: "MakeAllEndpointsExplicit"),
                 diagnostic);
         }
     }

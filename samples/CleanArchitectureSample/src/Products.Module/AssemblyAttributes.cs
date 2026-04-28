@@ -7,5 +7,6 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(
     AuthorizationRequired = true,
     EnableGenerationCounter = true,
+    EndpointDiscovery = EndpointDiscovery.Explicit,
     MiddlewareLifetime = MediatorLifetime.Singleton
 )]

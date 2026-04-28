@@ -523,11 +523,11 @@ public record SearchProducts(string? Category, int? MinPrice, int? MaxPrice);
 // → GET /api/products?category=...&minPrice=...&maxPrice=...
 ```
 
-## Locking Endpoint Routes
+## Converting to Explicit Endpoints
 
 By default, routes and HTTP methods are derived from conventions — message names, handler class names, and property types. This is great for rapid development, but renaming a message or refactoring a handler class can silently change your API surface.
 
-**Locking** freezes the route and HTTP method into explicit attributes so they won't change when you refactor.
+Converting to **explicit endpoints** freezes the route and HTTP method into attributes so they won't change when you refactor.
 
 ### Using the Code Fix
 
@@ -539,11 +539,11 @@ Endpoint: GET /api/products/{productId}
 
 Click the lightbulb (or `Ctrl+.`) to see:
 
-- **Lock this endpoint route** — adds `[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]` to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
-- **Lock all endpoint routes in class** — applies the same to every handler method in the class
-- **Fix All** → Document / Project / Solution — locks routes across a wider scope
+- **Make endpoint explicit** — adds `[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]` to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
+- **Make all endpoints in class explicit** — applies the same to every handler method in the class
+- **Fix All** → Document / Project / Solution — converts endpoints across a wider scope
 
-Once locked, the FMED017 diagnostic still shows the route but the code fix no longer appears (the route is already explicit).
+Once converted, the FMED017 diagnostic still shows the route but the code fix no longer appears (the endpoint is already explicit).
 
 ### Explicit Discovery Mode
 
@@ -553,16 +553,16 @@ When `EndpointDiscovery = EndpointDiscovery.Explicit`, only handlers with `[Hand
 Endpoint: GET /api/products/{productId} (not generated — add [HandlerEndpoint] to opt in)
 ```
 
-Clicking "Lock this endpoint route" adds the attribute, which simultaneously opts the handler in and freezes the route.
+Clicking "Make endpoint explicit" adds the attribute, which simultaneously opts the handler in and freezes the route.
 
-### Manual Locking
+### Converting Manually
 
 You can also add the attributes manually using any of the constructor forms:
 
 ```csharp
-[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]   // Lock both verb and route
-[HandlerEndpoint("/{productId}")]                       // Lock route only (verb still inferred)
-[HandlerEndpoint(Method = HandlerMethod.Get)]           // Lock verb only (route still inferred)
+[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]   // Explicit verb and route
+[HandlerEndpoint("/{productId}")]                       // Explicit route only (verb still inferred)
+[HandlerEndpoint(Method = HandlerMethod.Get)]           // Explicit verb only (route still inferred)
 ```
 
 ## Parameter Binding

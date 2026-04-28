@@ -374,7 +374,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             5 => "PATCH",
             _ => isStreaming ? "GET" : RouteConventions.InferHttpMethod(messageType.Name)
         };
-        var routeParamNames = GetRouteParameterNames(messageType, inferredHttpMethod, actionVerb != null);
+        var routeParams = GetRouteParameters(messageType, inferredHttpMethod, actionVerb != null);
 
         // Delegate to shared computation
         var result = RouteConventions.ComputeEndpointRouteInfo(new RouteConventions.EndpointRouteInput
@@ -382,7 +382,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             HandlerClassName = containingType.Name,
             MessageTypeName = messageType.Name,
             HandlerMethodCount = CountHandlerMethods(containingType, compilation),
-            RouteParamNames = routeParamNames,
+            RouteParams = routeParams,
             GlobalRoutePrefix = config.RoutePrefix ?? "",
             HasGroupAttribute = groupAttr != null,
             GroupName = groupName,
@@ -402,12 +402,12 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Gets the route parameter names from a message type (simplified version of AnalyzeMessageParameters).
-    /// Only extracts ID properties that become route segments.
+    /// Gets the route parameters from a message type (simplified version of AnalyzeMessageParameters).
+    /// Only extracts ID properties that become route segments, with their CLR type for constraint generation.
     /// </summary>
-    private static string[] GetRouteParameterNames(INamedTypeSymbol messageType, string httpMethod, bool isActionVerb)
+    private static RouteParam[] GetRouteParameters(INamedTypeSymbol messageType, string httpMethod, bool isActionVerb)
     {
-        var routeParams = new List<string>();
+        var routeParams = new List<RouteParam>();
 
         foreach (var member in messageType.GetMembers())
         {
@@ -421,7 +421,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
                 a.AttributeClass?.ToDisplayString() == "Microsoft.AspNetCore.Mvc.FromRouteAttribute");
             if (isExplicitRoute)
             {
-                routeParams.Add(prop.Name.ToCamelCase());
+                routeParams.Add(new RouteParam(prop.Name.ToCamelCase(), prop.Type.ToDisplayString()));
                 continue;
             }
 
@@ -429,7 +429,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
                              || prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
 
             if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
-                routeParams.Add(prop.Name.ToCamelCase());
+                routeParams.Add(new RouteParam(prop.Name.ToCamelCase(), prop.Type.ToDisplayString()));
         }
 
         return routeParams.ToArray();

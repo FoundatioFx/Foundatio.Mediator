@@ -23,6 +23,7 @@ public class ProductHandler(IProductRepository repository)
     [Retry(MaxAttempts = 5, DelayMs = 200)]
     [EndpointRateLimiter("strict")]
     [HandlerAuthorize(Roles = ["Admin", "Manager"])]
+    [HandlerEndpoint(HandlerMethod.Post)]
     public async Task<(Result<Product>, ProductCreated?)> HandleAsync(CreateProduct command, CancellationToken cancellationToken)
     {
         var product = new Product(
@@ -49,6 +50,7 @@ public class ProductHandler(IProductRepository repository)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
+    [HandlerEndpoint(HandlerMethod.Get, "{productId}")]
     public async Task<Result<Product>> HandleAsync(GetProduct query, CancellationToken cancellationToken)
     {
         var product = await repository.GetByIdAsync(query.ProductId, cancellationToken);
@@ -64,6 +66,7 @@ public class ProductHandler(IProductRepository repository)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 30)]
+    [HandlerEndpoint(HandlerMethod.Get)]
     public async Task<Result<List<Product>>> HandleAsync(GetProducts query, CancellationToken cancellationToken)
     {
         var products = await repository.GetAllAsync(cancellationToken);
@@ -74,6 +77,7 @@ public class ProductHandler(IProductRepository repository)
     /// Updates an existing product (requires Admin or Manager role)
     /// </summary>
     [HandlerAuthorize(Roles = ["Admin", "Manager"])]
+    [HandlerEndpoint(HandlerMethod.Put, "{productId}")]
     public async Task<(Result<Product>, ProductUpdated?, ProductStockChanged?)> HandleAsync(UpdateProduct command, CancellationToken cancellationToken)
     {
         var existingProduct = await repository.GetByIdAsync(command.ProductId, cancellationToken);
@@ -114,6 +118,7 @@ public class ProductHandler(IProductRepository repository)
     /// Deletes a product (requires Admin role)
     /// </summary>
     [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Delete, "{productId}")]
     public async Task<(Result, ProductDeleted?)> HandleAsync(DeleteProduct command, CancellationToken cancellationToken)
     {
         var deleted = await repository.DeleteAsync(command.ProductId, cancellationToken);
@@ -136,6 +141,7 @@ public class ProductHandler(IProductRepository repository)
     /// </summary>
     [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 60)]
+    [HandlerEndpoint(HandlerMethod.Get, "catalogs")]
     public async Task<Result<ProductCatalogSummary>> HandleAsync(
         GetProductCatalog query, ILogger<ProductHandler> logger, CancellationToken cancellationToken)
     {
@@ -153,8 +159,30 @@ public class ProductHandler(IProductRepository repository)
     }
 
     /// <summary>
+    /// Gets a product review by ID.
+    /// Demonstrates typed route constraints — the Guid ReviewId parameter generates {reviewId:guid} in the route.
+    /// Route: GET /api/products/{productId}/reviews/{reviewId:guid}
+    /// </summary>
+    [HandlerAllowAnonymous]
+    [HandlerEndpoint(HandlerMethod.Get, "{productId}/reviews/{reviewId:guid}")]
+    public Task<Result<ProductReview>> HandleAsync(GetProductReview query, CancellationToken cancellationToken)
+    {
+        // Stub implementation — returns a sample review
+        var review = new ProductReview(
+            ReviewId: query.ReviewId,
+            ProductId: query.ProductId,
+            Author: "Sample Reviewer",
+            Content: "Great product!",
+            Rating: 5,
+            CreatedAt: DateTime.UtcNow);
+
+        return Task.FromResult<Result<ProductReview>>(review);
+    }
+
+    /// <summary>
     /// Handles entity actions for products
     /// </summary>
+    [HandlerEndpoint(HandlerMethod.Post, "action/entity-action")]
     public async Task<Result> HandleAsync(EntityAction<Product> command, ILogger<ProductHandler> logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Handling entity action {Action} for product {ProductId}", command.Action, command.Entity.Id);

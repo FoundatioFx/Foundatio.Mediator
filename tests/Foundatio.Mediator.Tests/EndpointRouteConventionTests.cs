@@ -1560,4 +1560,142 @@ public class EndpointRouteConventionTests(ITestOutputHelper output) : GeneratorT
         // Multi-handler class should have group tag
         Assert.Contains(".WithTags(\"Orders\")", endpointSource);
     }
+
+    #region Route Constraints
+
+    [Fact]
+    public void IntId_GeneratesIntConstraint()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(int WidgetId);
+            public record GetWidgets();
+
+            public class WidgetHandler
+            {
+                public string Handle(GetWidget query) => "widget";
+                public string[] Handle(GetWidgets query) => [];
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", "/api/widgets/{widgetId:int}");
+        AssertEndpoint(endpointSource, "GET", "/api/widgets");
+    }
+
+    [Fact]
+    public void GuidId_GeneratesGuidConstraint()
+    {
+        var source = """
+            using System;
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrder(Guid OrderId);
+            public record GetOrders();
+            public record DeleteOrder(Guid OrderId);
+
+            public class OrderHandler
+            {
+                public string Handle(GetOrder query) => "order";
+                public string[] Handle(GetOrders query) => [];
+                public void Handle(DeleteOrder command) { }
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", "/api/orders/{orderId:guid}");
+        AssertEndpoint(endpointSource, "DELETE", "/api/orders/{orderId:guid}");
+        AssertEndpoint(endpointSource, "GET", "/api/orders");
+    }
+
+    [Fact]
+    public void LongId_GeneratesLongConstraint()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetItem(long ItemId);
+
+            public class ItemHandler
+            {
+                public string Handle(GetItem query) => "item";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", "/api/items/{itemId:long}");
+    }
+
+    [Fact]
+    public void StringId_NoConstraint()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetTodo(string TodoId);
+
+            public class TodoHandler
+            {
+                public string Handle(GetTodo query) => "todo";
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        // String should have no constraint
+        AssertEndpoint(endpointSource, "GET", "/api/todos/{todoId}");
+    }
+
+    [Fact]
+    public void MultipleTypedParams_AllGetConstraints()
+    {
+        var source = """
+            using System;
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(int WidgetId);
+            public record GetWidgets();
+            public record CreateWidget(string Name);
+            public record UpdateWidget(int WidgetId, string Name);
+            public record DeleteWidget(int WidgetId);
+
+            public class WidgetHandler
+            {
+                public string Handle(GetWidget query) => "widget";
+                public string[] Handle(GetWidgets query) => [];
+                public string Handle(CreateWidget command) => "created";
+                public string Handle(UpdateWidget command) => "updated";
+                public void Handle(DeleteWidget command) { }
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        AssertEndpoint(endpointSource, "GET", "/api/widgets/{widgetId:int}");
+        AssertEndpoint(endpointSource, "GET", "/api/widgets");
+        AssertEndpoint(endpointSource, "POST", "/api/widgets");
+        AssertEndpoint(endpointSource, "PUT", "/api/widgets/{widgetId:int}");
+        AssertEndpoint(endpointSource, "DELETE", "/api/widgets/{widgetId:int}");
+    }
+
+    #endregion
 }

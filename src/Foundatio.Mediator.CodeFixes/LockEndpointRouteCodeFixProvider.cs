@@ -193,7 +193,11 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
         diagnostic.Properties.TryGetValue("HttpMethod", out var httpMethod);
         route ??= "";
 
-        // Build [HandlerEndpoint(HandlerMethod.Get, "/{route}")]
+        // Convention routes start with "/" (e.g., "/", "/{productId}") but in the attribute
+        // "/" means absolute (bypass all prefixes), so strip the leading "/" to keep it relative.
+        route = route.TrimStart('/');
+
+        // Build [HandlerEndpoint(HandlerMethod.Get, "{route}")] or [HandlerEndpoint(HandlerMethod.Get)] when route is empty
         var args = new List<AttributeArgumentSyntax>();
 
         if (!string.IsNullOrEmpty(httpMethod))
@@ -207,10 +211,14 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
                     SyntaxFactory.IdentifierName(enumMember))));
         }
 
-        args.Add(SyntaxFactory.AttributeArgument(
-            SyntaxFactory.LiteralExpression(
-                SyntaxKind.StringLiteralExpression,
-                SyntaxFactory.Literal(route))));
+        // Only include route argument when there's an actual route segment
+        if (!string.IsNullOrEmpty(route))
+        {
+            args.Add(SyntaxFactory.AttributeArgument(
+                SyntaxFactory.LiteralExpression(
+                    SyntaxKind.StringLiteralExpression,
+                    SyntaxFactory.Literal(route))));
+        }
 
         var attribute = SyntaxFactory.Attribute(
             SyntaxFactory.IdentifierName("HandlerEndpoint"),
@@ -222,13 +230,18 @@ public sealed class LockEndpointRouteCodeFixProvider : CodeFixProvider
             .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
             .WithAdditionalAnnotations(Formatter.Annotation);
 
-        // Use only the indentation whitespace (not doc comments) from the method declaration
-        var lastWhitespace = methodDecl.GetLeadingTrivia()
+        var leadingTrivia = methodDecl.GetLeadingTrivia();
+        var lastWhitespace = leadingTrivia
             .LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
         if (lastWhitespace != default)
             attributeList = attributeList.WithLeadingTrivia(lastWhitespace);
 
-        var newMethodDecl = methodDecl.AddAttributeLists(attributeList);
+        var strippedMethod = lastWhitespace != default
+            ? methodDecl.WithLeadingTrivia(SyntaxTriviaList.Create(lastWhitespace))
+            : methodDecl.WithLeadingTrivia(SyntaxTriviaList.Empty);
+
+        var newMethodDecl = strippedMethod.AddAttributeLists(attributeList);
+        newMethodDecl = newMethodDecl.WithLeadingTrivia(leadingTrivia);
         return root.ReplaceNode(methodDecl, newMethodDecl);
     }
 }

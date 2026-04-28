@@ -1,4 +1,11 @@
+using System.Collections.Generic;
+
 namespace Foundatio.Mediator.Utility;
+
+/// <summary>
+/// A route parameter name with its CLR type, used to generate route constraints.
+/// </summary>
+internal readonly record struct RouteParam(string Name, string? TypeName);
 
 /// <summary>
 /// Shared route convention logic used by both the source generator (<see cref="HandlerAnalyzer"/>)
@@ -254,7 +261,7 @@ internal static class RouteConventions
         string messageTypeName,
         string? groupRoutePrefix,
         string? groupName,
-        string[] routeParamNames,
+        RouteParam[] routeParams,
         string httpMethod,
         string? actionVerb = null,
         string? handlerClassName = null)
@@ -284,8 +291,8 @@ internal static class RouteConventions
 
             parts.Add(messageTypeName.ToKebabCase());
 
-            foreach (var param in routeParamNames)
-                parts.Add($"{{{param}}}");
+            foreach (var param in routeParams)
+                parts.Add(FormatRouteParam(param));
 
             if (parts.Count == 0)
                 return "/";
@@ -340,8 +347,8 @@ internal static class RouteConventions
         if (lookupSuffix != null)
             parts.Add(lookupSuffix);
 
-        foreach (var param in routeParamNames)
-            parts.Add($"{{{param}}}");
+        foreach (var param in routeParams)
+            parts.Add(FormatRouteParam(param));
 
         if (actionVerb != null)
         {
@@ -355,6 +362,44 @@ internal static class RouteConventions
             return "/";
 
         return "/" + string.Join("/", parts.Where(p => !string.IsNullOrEmpty(p)));
+    }
+
+    /// <summary>
+    /// Formats a route parameter as <c>{name}</c> or <c>{name:constraint}</c> when the CLR type
+    /// maps to a known ASP.NET Core route constraint.
+    /// </summary>
+    private static string FormatRouteParam(RouteParam param)
+    {
+        var constraint = GetRouteConstraint(param.TypeName);
+        return constraint != null ? $"{{{param.Name}:{constraint}}}" : $"{{{param.Name}}}";
+    }
+
+    /// <summary>
+    /// Maps a fully-qualified CLR type name to an ASP.NET Core route constraint name.
+    /// Returns null for <c>string</c> (no constraint needed) or unknown types.
+    /// </summary>
+    internal static string? GetRouteConstraint(string? typeName)
+    {
+        if (string.IsNullOrEmpty(typeName))
+            return null;
+
+        // Strip nullable suffix (e.g., "int?" → "int", "System.Guid?" → "System.Guid")
+        if (typeName!.EndsWith("?"))
+            typeName = typeName.Substring(0, typeName.Length - 1);
+
+        return typeName switch
+        {
+            "System.Int32" or "int" => "int",
+            "System.Int64" or "long" => "long",
+            "System.Guid" or "Guid" => "guid",
+            "System.Boolean" or "bool" => "bool",
+            "System.DateTime" or "DateTime" => "datetime",
+            "System.DateOnly" or "DateOnly" => "datetime",
+            "System.Decimal" or "decimal" => "decimal",
+            "System.Double" or "double" => "double",
+            "System.Single" or "float" => "float",
+            _ => null  // string and unknown types — no constraint
+        };
     }
 
     /// <summary>
@@ -405,8 +450,8 @@ internal static class RouteConventions
         /// <summary>Number of handler methods on the class.</summary>
         public int HandlerMethodCount { get; init; }
 
-        /// <summary>Route parameter names (camelCase) extracted from the message type (ID properties, [FromRoute]).</summary>
-        public string[] RouteParamNames { get; init; }
+        /// <summary>Route parameters (camelCase name + CLR type) extracted from the message type (ID properties, [FromRoute]).</summary>
+        public RouteParam[] RouteParams { get; init; }
 
         /// <summary>Global route prefix from [assembly: MediatorConfiguration(EndpointRoutePrefix = "...")].</summary>
         public string GlobalRoutePrefix { get; init; }
@@ -542,7 +587,7 @@ internal static class RouteConventions
         {
             var actionVerb = GetActionVerb(input.MessageTypeName);
             route = GenerateRoute(input.MessageTypeName, groupRoutePrefix, groupName,
-                input.RouteParamNames, httpMethod, actionVerb, input.HandlerClassName);
+                input.RouteParams, httpMethod, actionVerb, input.HandlerClassName);
         }
 
         // ── Full display route ─────────────────────────────────────

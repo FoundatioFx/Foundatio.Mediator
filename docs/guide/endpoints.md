@@ -195,11 +195,12 @@ public class TodoHandler
 
 **Constructor overloads:**
 
-The attribute supports three constructor forms for convenience:
+The attribute supports four constructor forms for convenience:
 
 ```csharp
 [HandlerEndpoint]                                     // Fully convention-based
 [HandlerEndpoint("/{productId}")]                     // Lock the route only
+[HandlerEndpoint(HandlerMethod.Get)]                  // Lock the HTTP method only
 [HandlerEndpoint(HandlerMethod.Get, "/{productId}")]  // Lock both the HTTP method and route
 ```
 
@@ -539,7 +540,7 @@ Endpoint: GET /api/products/{productId}
 
 Click the lightbulb (or `Ctrl+.`) to see:
 
-- **Make endpoint explicit** — adds `[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]` to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
+- **Make endpoint explicit** — adds `[HandlerEndpoint(HandlerMethod.Get, "{productId}")]` (or just `[HandlerEndpoint(HandlerMethod.Get)]` when there's no route segment) to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
 - **Make all endpoints in class explicit** — applies the same to every handler method in the class
 - **Fix All** → Document / Project / Solution — converts endpoints across a wider scope
 
@@ -560,9 +561,10 @@ Clicking "Make endpoint explicit" adds the attribute, which simultaneously opts 
 You can also add the attributes manually using any of the constructor forms:
 
 ```csharp
-[HandlerEndpoint(HandlerMethod.Get, "/{productId}")]   // Explicit verb and route
-[HandlerEndpoint("/{productId}")]                       // Explicit route only (verb still inferred)
-[HandlerEndpoint(Method = HandlerMethod.Get)]           // Explicit verb only (route still inferred)
+[HandlerEndpoint(HandlerMethod.Get, "{productId}")]    // Explicit verb and route
+[HandlerEndpoint("{productId}")]                        // Explicit route only (verb still inferred)
+[HandlerEndpoint(HandlerMethod.Get)]                    // Explicit verb only (route still inferred)
+[HandlerEndpoint(Method = HandlerMethod.Get)]           // Same, using named argument
 ```
 
 ## Parameter Binding

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Foundatio.Mediator;
 
 /// <summary>
@@ -27,9 +29,25 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// public Result&lt;Product&gt; Handle(GetProduct query) { ... }
     /// </code>
     /// </example>
-    public HandlerEndpointAttribute(string route)
+    public HandlerEndpointAttribute([StringSyntax("Route")] string route)
     {
         Route = route;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="HandlerEndpointAttribute"/> class with an HTTP method.
+    /// The route is still inferred from conventions.
+    /// </summary>
+    /// <param name="method">The HTTP method for this endpoint.</param>
+    /// <example>
+    /// <code>
+    /// [HandlerEndpoint(HandlerMethod.Get)]
+    /// public Result&lt;List&lt;Product&gt;&gt; Handle(GetProducts query) { ... }
+    /// </code>
+    /// </example>
+    public HandlerEndpointAttribute(HandlerMethod method)
+    {
+        Method = method;
     }
 
     /// <summary>
@@ -46,7 +64,7 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// public Result&lt;Product&gt; Handle(GetProduct query) { ... }
     /// </code>
     /// </example>
-    public HandlerEndpointAttribute(HandlerMethod method, string route)
+    public HandlerEndpointAttribute(HandlerMethod method, [StringSyntax("Route")] string route)
     {
         Method = method;
         Route = route;
@@ -66,6 +84,7 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// Use a leading <c>/</c> to create an absolute route that bypasses both the global and group prefixes (e.g., <c>"/status"</c> routes to <c>/status</c>).
     /// When null, the route is generated from the group's RoutePrefix and message properties.
     /// </summary>
+    [StringSyntax("Route")]
     public string? Route { get; set; }
 
     /// <summary>

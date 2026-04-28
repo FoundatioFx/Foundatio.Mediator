@@ -48,7 +48,7 @@ public static class RetryMiddleware
 
             // 1. Named policy — look it up from the provider
             if (!string.IsNullOrEmpty(attr?.PolicyName))
-                return policyProvider.GetPolicy(attr.PolicyName);
+                return policyProvider.GetPolicy(attr.PolicyName) ?? DefaultPolicy;
 
             // 2. No attribute at all — use built-in defaults
             if (attr == null)

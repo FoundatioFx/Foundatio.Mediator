@@ -231,7 +231,8 @@ internal readonly record struct TypeSymbolInfo
         // For special types and primitives, use the metadata name
         if (typeSymbol.SpecialType != SpecialType.None)
         {
-            return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).TrimStart("global::".ToCharArray());
+            var display = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return display.StartsWith("global::") ? display.Substring("global::".Length) : display;
         }
 
         // Build the fully qualified name by walking up the containing namespace chain

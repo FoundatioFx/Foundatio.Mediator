@@ -44,6 +44,17 @@ public record GetProducts() : IQuery<Result<List<Product>>>;
 public record GetProductCatalog() : IQuery<Result<ProductCatalogSummary>>;
 
 /// <summary>
+/// Gets a specific product review by its unique identifier.
+/// Demonstrates typed route constraints — <c>Guid ReviewId</c> generates <c>{reviewId:guid}</c> in the route.
+/// </summary>
+public record GetProductReview(string ProductId, Guid ReviewId) : IQuery<Result<ProductReview>>;
+
+/// <summary>
+/// A product review with a <see cref="Guid"/> identifier, demonstrating typed route parameter constraints.
+/// </summary>
+public record ProductReview(Guid ReviewId, string ProductId, string Author, string Content, int Rating, DateTime CreatedAt);
+
+/// <summary>
 /// Aggregated catalog statistics returned by <see cref="GetProductCatalog"/>.
 /// </summary>
 public record ProductCatalogSummary(

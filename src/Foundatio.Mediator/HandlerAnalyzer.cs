@@ -650,7 +650,7 @@ internal static class HandlerAnalyzer
             HandlerClassName = classSymbol.Name,
             MessageTypeName = messageType.Name,
             HandlerMethodCount = handlerMethodCount,
-            RouteParamNames = routeParams.Select(p => p.Name).ToArray(),
+            RouteParams = routeParams.Select(p => new RouteParam(p.Name, p.Type.QualifiedName)).ToArray(),
             GlobalRoutePrefix = "",
             HasGroupAttribute = groupAttr != null,
             GroupName = groupName,
@@ -1089,7 +1089,7 @@ internal static class HandlerAnalyzer
 
     /// <summary>
     /// Generates a route template from message name and parameters.
-    /// Thin wrapper that maps EndpointParameterInfo[] to string[] for the shared RouteConventions.
+    /// Thin wrapper that maps EndpointParameterInfo[] to RouteParam[] for the shared RouteConventions.
     /// </summary>
     private static string GenerateRoute(
         string messageTypeName,
@@ -1100,8 +1100,8 @@ internal static class HandlerAnalyzer
         string? actionVerb = null,
         string? handlerClassName = null)
     {
-        var paramNames = routeParams.Select(p => p.Name).ToArray();
-        return RouteConventions.GenerateRoute(messageTypeName, groupRoutePrefix, groupName, paramNames, httpMethod, actionVerb, handlerClassName);
+        var routeParamInfos = routeParams.Select(p => new RouteParam(p.Name, p.Type.QualifiedName)).ToArray();
+        return RouteConventions.GenerateRoute(messageTypeName, groupRoutePrefix, groupName, routeParamInfos, httpMethod, actionVerb, handlerClassName);
     }
 
     private static string? GetActionVerb(string messageTypeName) => RouteConventions.GetActionVerb(messageTypeName);

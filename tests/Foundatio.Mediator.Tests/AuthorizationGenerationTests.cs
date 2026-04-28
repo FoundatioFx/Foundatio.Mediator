@@ -485,7 +485,7 @@ public class AuthorizationGenerationTests(ITestOutputHelper output) : GeneratorT
             """;
 
         var (_, _, trees) = RunGenerator(source, [Gen]);
-        var moduleSource = trees.FirstOrDefault(t => t.HintName == "_FoundatioModule.cs").Source;
+        var moduleSource = trees.FirstOrDefault(t => t.HintName == "_FoundatioModule.g.cs").Source;
 
         Assert.NotNull(moduleSource);
 

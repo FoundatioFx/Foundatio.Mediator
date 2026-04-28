@@ -241,7 +241,7 @@ public class RelativeOrderingTests(ITestOutputHelper output) : GeneratorTestBase
 
         var (_, _, trees) = RunGenerator(src, [Gen]);
 
-        var module = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var module = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         // The generated module should contain orderBefore parameter for H1
         Assert.Contains("orderBefore:", module.Source);
         Assert.Contains("H2Handler", module.Source);
@@ -265,7 +265,7 @@ public class RelativeOrderingTests(ITestOutputHelper output) : GeneratorTestBase
 
         var (_, _, trees) = RunGenerator(src, [Gen]);
 
-        var module = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var module = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         // The generated module should contain orderAfter parameter for H2
         Assert.Contains("orderAfter:", module.Source);
         Assert.Contains("H1Handler", module.Source);

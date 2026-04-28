@@ -16,7 +16,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             """;
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         Assert.Contains("MessageTypeKey.Get(typeof(A))", di.Source);
         Assert.Contains("MessageTypeKey.Get(typeof(B))", di.Source);
         Assert.Contains("UntypedHandleAsync", di.Source);
@@ -49,7 +49,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             """;
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         Assert.DoesNotContain("AddScoped<AHandler>()", di.Source);
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
     }
@@ -71,7 +71,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             """;
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         Assert.Contains("MessageTypeKey.Get(typeof(A))", di.Source);
         Assert.Contains("MessageTypeKey.Get(typeof(B))", di.Source);
         Assert.Contains("MultiHandler_A_Handler", di.Source);
@@ -96,7 +96,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             """;
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         Assert.Contains(expected, di.Source);
     }
 
@@ -115,7 +115,7 @@ public class DIRegistrationTests(ITestOutputHelper output) : GeneratorTestBase(o
             """;
 
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         Assert.DoesNotContain("AddTransient<AHandler>()", di.Source);
     }
 

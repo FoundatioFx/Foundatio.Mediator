@@ -17,7 +17,7 @@ internal static class FoundatioModuleGenerator
         if (string.IsNullOrEmpty(safeAssemblyName))
             safeAssemblyName = Guid.NewGuid().ToString("N").Substring(0, 10);
         var className = $"{safeAssemblyName}_MediatorHandlers";
-        const string hintName = "_FoundatioModule.cs";
+        const string hintName = "_FoundatioModule.g.cs";
 
         var source = new IndentedStringBuilder();
 
@@ -37,7 +37,8 @@ internal static class FoundatioModuleGenerator
             source.AppendLine("using System.Diagnostics.CodeAnalysis;");
             source.AppendLine("using System.Threading;");
             source.AppendLine("using System.Threading.Tasks;");
-            source.AppendLine("using Foundatio.Mediator.Generated;");
+            if (hasHandlers)
+                source.AppendLine("using Foundatio.Mediator.Generated;");
         }
 
         source.AppendLine();

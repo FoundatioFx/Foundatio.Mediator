@@ -152,9 +152,11 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
 
         // Should generate assembly attribute even when there are no handlers
-        var assemblyAttr = trees.Where(t => t.HintName == "_FoundatioModule.cs").ToList();
+        var assemblyAttr = trees.Where(t => t.HintName == "_FoundatioModule.g.cs").ToList();
         Assert.Single(assemblyAttr);
         Assert.Contains("[assembly: Foundatio.Mediator.FoundatioModule]", assemblyAttr[0].Source);
+        // Should NOT reference the Generated namespace when there are no handlers
+        Assert.DoesNotContain("Foundatio.Mediator.Generated", assemblyAttr[0].Source);
     }
 
     [Fact]
@@ -171,7 +173,7 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
 
         // Should generate assembly attribute when there are handlers
-        var assemblyAttr = trees.Where(t => t.HintName == "_FoundatioModule.cs").ToList();
+        var assemblyAttr = trees.Where(t => t.HintName == "_FoundatioModule.g.cs").ToList();
         Assert.Single(assemblyAttr);
         Assert.Contains("[assembly: Foundatio.Mediator.FoundatioModule]", assemblyAttr[0].Source);
     }

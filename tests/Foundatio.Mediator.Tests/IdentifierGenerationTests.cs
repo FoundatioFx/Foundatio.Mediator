@@ -37,7 +37,7 @@ public class IdentifierGenerationTests(ITestOutputHelper output) : GeneratorTest
             .ToList();
 
         // Find the FoundatioModule file which should have the prefixed assembly name in the class
-        var foundatioModuleFile = generatedSources.FirstOrDefault(s => s.HintName == "_FoundatioModule.cs");
+        var foundatioModuleFile = generatedSources.FirstOrDefault(s => s.HintName == "_FoundatioModule.g.cs");
         Assert.NotNull(foundatioModuleFile.HintName);
 
         var sourceText = foundatioModuleFile.SourceText.ToString();

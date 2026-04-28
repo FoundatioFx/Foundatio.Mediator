@@ -55,7 +55,7 @@ public class BigHandler<T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11>
         var (_, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
         Assert.Empty(diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
 
-        var module = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var module = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
 
         // Arity 11 = 10 commas inside angle brackets: <,,,,,,,,,,>
         string expected = "<,,,,,,,,,,>";

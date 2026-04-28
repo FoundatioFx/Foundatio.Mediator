@@ -79,7 +79,7 @@ public class GenericMessageTests(ITestOutputHelper output) : GeneratorTestBase(o
         var (compilation, diagnostics, trees) = RunGenerator(source, [new MediatorGenerator()]);
         Assert.Empty(diagnostics);
 
-        var di = trees.First(t => t.HintName == "_FoundatioModule.cs");
+        var di = trees.First(t => t.HintName == "_FoundatioModule.g.cs");
         // Should use helper call and not raw backtick notation
         Assert.Contains("MessageTypeKey.Get(typeof(EntityAction<Order>))", di.Source);
         Assert.DoesNotContain("EntityAction`1[[", di.Source);

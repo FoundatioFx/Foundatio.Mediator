@@ -207,6 +207,7 @@ internal static class CrossAssemblyHandlerScanner
             return new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
+                Namespace = classSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, _compilation),
@@ -243,9 +244,6 @@ internal static class CrossAssemblyHandlerScanner
                 return false;
 
             if (method.HasIgnoreAttribute(_compilation))
-                return false;
-
-            if (method.IsMassTransitConsumeMethod())
                 return false;
 
             return true;

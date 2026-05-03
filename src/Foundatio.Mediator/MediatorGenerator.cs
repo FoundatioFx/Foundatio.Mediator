@@ -106,6 +106,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         bool conventionalDiscoveryDisabled = false;
         bool generationCounterEnabled = false;
         string notificationPublishStrategy = "ForeachAwait";
+        var handlerExcludeNamespacePatterns = Array.Empty<string>();
 
         // Endpoint defaults
         string discovery = "All";
@@ -150,6 +151,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "EnableGenerationCounter" when arg.Value.Value is bool b:
                         generationCounterEnabled = b;
                         break;
+                    case "HandlerExcludeNamespacePatterns" when !arg.Value.IsNull && arg.Value.Kind == TypedConstantKind.Array:
+                        handlerExcludeNamespacePatterns = arg.Value.Values
+                            .Where(v => v.Value is string)
+                            .Select(v => (string)v.Value!)
+                            .ToArray();
+                        break;
 
                     // Endpoint defaults
                     case "EndpointDiscovery" when arg.Value.Value is int v:
@@ -191,7 +198,8 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var authorizationEnabled = !disableAuthorization;
 
         var configuration = new GeneratorConfiguration(interceptorsEnabled, handlerLifetime, middlewareLifetime,
-            openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy);
+            openTelemetryEnabled, authorizationEnabled, conventionalDiscoveryDisabled, generationCounterEnabled, notificationPublishStrategy,
+            new(handlerExcludeNamespacePatterns));
 
         // Scan assembly-level attributes for IEndpointConvention<T> implementations
         var assemblyConventions = Array.Empty<EndpointConventionInfo>();
@@ -265,6 +273,13 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                 ? handlers.Where(h => h.IsExplicitlyDeclared).ToImmutableArray()
                 : handlers;
 
+            if (configuration.HandlerExcludeNamespacePatterns.Length > 0)
+            {
+                filteredHandlers = filteredHandlers
+                    .Where(h => !NamespacePatternMatcher.IsExcluded(h.Namespace, configuration.HandlerExcludeNamespacePatterns))
+                    .ToImmutableArray();
+            }
+
             // Filter out conventionally-discovered middleware when conventional discovery is disabled
             var filteredMiddleware = configuration.ConventionalDiscoveryDisabled
                 ? middleware.Where(m => m.IsExplicitlyDeclared).ToImmutableArray()
@@ -274,7 +289,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             var allMiddleware = filteredMiddleware.ToList();
             allMiddleware.AddRange(crossAssemblyMiddleware);
 
-            var crossAssemblyHandlerList = crossAssemblyHandlers.ToList();
+            var crossAssemblyHandlerList = crossAssemblyHandlers
+                .Where(h => !NamespacePatternMatcher.IsExcluded(h.Namespace, configuration.HandlerExcludeNamespacePatterns))
+                .ToList();
 
             var callSitesByMessage = callSites.ToList()
                 .Where(cs => !cs.IsPublish)

@@ -140,23 +140,6 @@ internal static class TypeExtensions
         return SymbolEqualityComparer.Default.Equals(typeSymbol, ctSymbol);
     }
 
-    internal static bool IsMassTransitConsumeMethod(this IMethodSymbol method)
-    {
-        if (method.Name != "Consume" || method.Parameters.Length == 0)
-            return false;
-
-        var firstParameter = method.Parameters[0];
-        var parameterType = firstParameter.Type;
-
-        if (parameterType is INamedTypeSymbol namedType)
-        {
-            return namedType.Name == "ConsumeContext" &&
-                   namedType.ContainingNamespace?.ToDisplayString() == "MassTransit";
-        }
-
-        return false;
-    }
-
     internal static bool HasIgnoreAttribute(this ISymbol symbol, Compilation compilation)
     {
         var ignoreSymbol = compilation.GetTypeByMetadataName(WellKnownTypes.IgnoreAttribute);

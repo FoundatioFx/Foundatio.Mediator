@@ -592,6 +592,40 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
         Assert.DoesNotContain("ExplicitExecuteMiddleware.ExecuteAsync", wrapper2.Source);
     }
 
+    [Fact]
+    public void ExecuteMiddleware_WithNonResultReturnType_GeneratesValidCode()
+    {
+        // Regression test: Execute middleware wraps pipeline in a delegate returning object?.
+        // The generated code must cast object? back to the handler's return type without CS0266.
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using System.Collections.Generic;
+			using Foundatio.Mediator;
+
+			public record GetItems(string Category);
+
+			public class GetItemsHandler
+			{
+				public List<string> Handle(GetItems query) => new List<string> { "a", "b" };
+			}
+
+			public static class GlobalExecuteMiddleware
+			{
+				public static async ValueTask<object?> ExecuteAsync(object message, HandlerExecutionDelegate next)
+				{
+					return await next();
+				}
+			}
+			""";
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+        Assert.Contains("GlobalExecuteMiddleware.ExecuteAsync", wrapper.Source);
+        // The cast from object? to List<string> must compile
+    }
+
     #endregion
 
     #region Void Handler with ShortCircuit Middleware Tests

@@ -300,4 +300,84 @@ public class ConventionalDiscoveryToggleTests(ITestOutputHelper output) : Genera
         var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
         Assert.DoesNotContain(trees, t => t.HintName.Contains("Msg_Handler.g.cs"));
     }
+
+    [Fact]
+    public void HandlerExcludeNamespacePatterns_ExcludesMatchingNamespace()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(HandlerExcludeNamespacePatterns = ["Ignored.Namespace.*"])]
+
+            namespace Ignored.Namespace;
+
+            public record IgnoredMessage;
+
+            public class IgnoredMessageHandler
+            {
+                public void Handle(IgnoredMessage message) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("IgnoredMessage_Handler.g.cs"));
+    }
+
+    [Fact]
+    public void HandlerExcludeNamespacePatterns_ExcludesExplicitHandlersToo()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(HandlerExcludeNamespacePatterns = ["Ignored.Namespace"])]
+
+            namespace Ignored.Namespace;
+
+            public record ExplicitMessage;
+
+            [Handler]
+            public class ExplicitProcessor
+            {
+                public void Process(ExplicitMessage message) { }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("ExplicitMessage_Handler.g.cs"));
+    }
+
+    [Fact]
+    public void HandlerExcludeNamespacePatterns_DoesNotExcludeOtherNamespaces()
+    {
+        var src = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(HandlerExcludeNamespacePatterns = ["Ignored.Namespace.*"])]
+
+            namespace Ignored.Namespace
+            {
+                public record IgnoredMessage;
+
+                public class IgnoredMessageHandler
+                {
+                    public void Handle(IgnoredMessage message) { }
+                }
+            }
+
+            namespace Allowed.Namespace
+            {
+                public record AllowedMessage;
+
+                public class AllowedMessageHandler
+                {
+                    public void Handle(AllowedMessage message) { }
+                }
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(src, [new MediatorGenerator()]);
+
+        Assert.DoesNotContain(trees, t => t.HintName.Contains("IgnoredMessage_Handler.g.cs"));
+        Assert.Contains(trees, t => t.HintName.Contains("AllowedMessage_Handler.g.cs"));
+    }
 }

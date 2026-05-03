@@ -62,6 +62,14 @@ public sealed class MediatorConfigurationAttribute : Attribute
     public HandlerDiscovery HandlerDiscovery { get; set; }
 
     /// <summary>
+    /// Excludes handlers in matching namespaces from source generation and discovery.
+    /// Patterns support exact namespace matches (e.g., <c>"MyCompany.Messaging"</c>) and
+    /// namespace prefix matches with a trailing wildcard (e.g., <c>"MyCompany.Messaging.*"</c>).
+    /// Default: <c>null</c> (no namespace exclusions).
+    /// </summary>
+    public string[]? HandlerExcludeNamespacePatterns { get; set; }
+
+    /// <summary>
     /// Strategy for publishing notifications to multiple handlers.
     /// <see cref="NotificationPublishStrategy.ForeachAwait"/> awaits each handler sequentially,
     /// <see cref="NotificationPublishStrategy.TaskWhenAll"/> runs them concurrently,

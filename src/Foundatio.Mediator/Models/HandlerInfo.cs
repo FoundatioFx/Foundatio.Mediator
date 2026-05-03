@@ -5,6 +5,7 @@ namespace Foundatio.Mediator.Models;
 internal readonly record struct HandlerInfo
 {
     public string Identifier { get; init; }
+    public string Namespace { get; init; }
     public string FullName { get; init; }
     public string MethodName { get; init; }
     public TypeSymbolInfo MessageType { get; init; }

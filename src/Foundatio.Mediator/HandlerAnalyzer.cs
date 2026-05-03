@@ -245,6 +245,7 @@ internal static class HandlerAnalyzer
             handlers.Add(new HandlerInfo
             {
                 Identifier = classSymbol.Name.ToIdentifier(),
+                Namespace = classSymbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
                 FullName = classSymbol.ToDisplayString(),
                 MethodName = handlerMethod.Name,
                 MessageType = TypeSymbolInfo.From(messageType, context.SemanticModel.Compilation),
@@ -442,9 +443,6 @@ internal static class HandlerAnalyzer
             return false;
 
         if (method.HasIgnoreAttribute(compilation))
-            return false;
-
-        if (method.IsMassTransitConsumeMethod())
             return false;
 
         return true;

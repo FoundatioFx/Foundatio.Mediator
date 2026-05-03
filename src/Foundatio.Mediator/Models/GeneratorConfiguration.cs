@@ -1,3 +1,5 @@
+using Foundatio.Mediator.Utility;
+
 namespace Foundatio.Mediator.Models;
 
 internal record GeneratorConfiguration(
@@ -8,4 +10,5 @@ internal record GeneratorConfiguration(
     bool AuthorizationEnabled,
     bool ConventionalDiscoveryDisabled,
     bool GenerationCounterEnabled,
-    string NotificationPublishStrategy);
+    string NotificationPublishStrategy,
+    EquatableArray<string> HandlerExcludeNamespacePatterns);

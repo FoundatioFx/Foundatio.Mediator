@@ -145,6 +145,25 @@ public class FirstTransientMiddleware
   - `Explicit`: Only handlers that implement `IHandler` interface or have the `[Handler]` attribute will be discovered
 - **Use Case:** Explicit control over which classes are treated as handlers, avoiding accidental handler discovery
 
+**`HandlerExcludeNamespacePatterns`** (`string[]`)
+
+- **Default:** None
+- **Effect:** Excludes handlers in matching namespaces from discovery and code generation
+- **Pattern syntax:**
+  - Exact match: `"MyCompany.Messaging"`
+  - Prefix match: `"MyCompany.Messaging.*"` (matches the namespace and all children)
+- **Scope:** Applies to both convention-discovered and explicitly declared handlers
+- **Use Case:** Exclude transport-specific or integration namespaces (for example, external bus consumers) while keeping normal handler discovery enabled
+
+```csharp
+[assembly: MediatorConfiguration(
+    HandlerExcludeNamespacePatterns = [
+        "MyCompany.Messaging.*",
+        "ThirdParty.Integration"
+    ]
+)]
+```
+
 **`NotificationPublishStrategy`** (`NotificationPublishStrategy` enum)
 
 - **Values:** `ForeachAwait`, `TaskWhenAll`, `FireAndForget`
@@ -218,6 +237,7 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(
     HandlerLifetime = MediatorLifetime.Scoped,
     MiddlewareLifetime = MediatorLifetime.Scoped,
+    HandlerExcludeNamespacePatterns = ["MyCompany.Messaging.*"],
     EndpointDiscovery = EndpointDiscovery.All,
     EndpointRoutePrefix = "api"
 )]

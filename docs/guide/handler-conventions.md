@@ -110,6 +110,21 @@ public class OrderProcessor { }
 Unlike some libraries that distinguish between "handlers" and "consumers," Foundatio Mediator treats both identically. The `Consumer` suffix exists purely to ease migration from other mediator libraries. For new projects, use `Handler` consistently for commands, queries, and events alike.
 :::
 
+### Excluding Namespaces From Discovery
+
+If your project includes classes that match handler naming conventions but should never be treated as Foundatio handlers, exclude their namespaces with `HandlerExcludeNamespacePatterns` in `[assembly: MediatorConfiguration(...)]`.
+
+```csharp
+[assembly: MediatorConfiguration(
+    HandlerExcludeNamespacePatterns = ["MyCompany.Messaging.*"]
+)]
+```
+
+Pattern behavior:
+
+- Exact namespace: `"MyCompany.Messaging"`
+- Namespace and children: `"MyCompany.Messaging.*"`
+
 ## Method Naming Conventions
 
 Handler methods must use one of these names:

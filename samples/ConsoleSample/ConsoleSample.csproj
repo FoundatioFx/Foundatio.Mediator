@@ -28,7 +28,7 @@
     <ProjectReference Include="..\..\src\Foundatio.Mediator.CodeFixes\Foundatio.Mediator.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <PackageReference Include="Foundatio" Version="13.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
-    <PackageReference Include="MiniValidation" Version="0.9.2" />
+    <PackageReference Include="MiniValidation" Version="0.10.0" />
   </ItemGroup>
 
 </Project>

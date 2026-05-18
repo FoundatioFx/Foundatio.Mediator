@@ -859,6 +859,39 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void ResultMapperOptions_ResolvedByGeneratedDefaultMapper()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record CreateProduct(string Name);
+
+            public class ProductHandler
+            {
+                public Result<string> Handle(CreateProduct command)
+                    => Result.Created(command.Name, "/products/1");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("GetService<Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>>()", endpointSource);
+        Assert.Contains("_options?.TryMap(result, out var mappedResult) == true", endpointSource);
+        Assert.Contains("return mappedResult;", endpointSource);
+        Assert.Contains("return resultMapper.MapResult(result);", endpointSource);
+    }
+
+    [Fact]
     public void TupleWithNonResult_UsesInvokeAsyncAndResultsOk()
     {
         var source = """

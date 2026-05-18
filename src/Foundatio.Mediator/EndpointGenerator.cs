@@ -272,7 +272,7 @@ internal static class EndpointGenerator
         source.IncrementIndent();
 
         // Resolve the result mapper once at startup (captured in closure for zero per-request overhead)
-        source.AppendLine($"var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_{assemblySuffix}();");
+        source.AppendLine($"var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_{assemblySuffix}(endpoints.ServiceProvider.GetService<Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>>());");
         source.AppendLine();
 
         // Determine the parent variable name for endpoint groups
@@ -1077,12 +1077,28 @@ internal static class EndpointGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
+        source.AppendLine("private readonly Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>? _options;");
+        source.AppendLine();
+        source.AppendLine($"public DefaultMediatorResultMapper_{assemblySuffix}(Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>? options = null)");
+        source.AppendLine("{");
+        source.IncrementIndent();
+        source.AppendLine("_options = options;");
+        source.DecrementIndent();
+        source.AppendLine("}");
+        source.AppendLine();
+
         source.AppendLine("/// <summary>");
         source.AppendLine("/// Converts a Foundatio.Mediator.IResult to an HTTP result.");
         source.AppendLine("/// </summary>");
         source.AppendLine("public Microsoft.AspNetCore.Http.IResult MapResult(Foundatio.Mediator.IResult result)");
         source.AppendLine("{");
         source.IncrementIndent();
+
+        source.AppendLine("if (_options?.TryMap(result, out var mappedResult) == true)");
+        source.IncrementIndent();
+        source.AppendLine("return mappedResult;");
+        source.DecrementIndent();
+        source.AppendLine();
 
         source.AppendLine("""
             return result.Status switch

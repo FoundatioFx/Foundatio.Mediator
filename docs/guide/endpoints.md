@@ -745,7 +745,25 @@ Reserve HTTP type parameters for edge cases where you genuinely need low-level H
 
 ### Custom Result Mapping
 
-To customize how `Result` statuses are converted to HTTP responses, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`:
+To customize only specific `Result` statuses while keeping the generated default mappings for everything else, configure `MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>`:
+
+```csharp
+using Foundatio.Mediator;
+using Microsoft.AspNetCore.Http;
+
+services.ConfigureMediatorResultMapping<Microsoft.AspNetCore.Http.IResult>(options =>
+{
+    options.MapStatus(ResultStatus.Invalid, result => Results.ValidationProblem(
+        result.ValidationErrors
+            .GroupBy(e => e.Identifier ?? "")
+            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()),
+        statusCode: 422));
+});
+
+services.AddMediator();
+```
+
+For complete control over every status, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`:
 
 ```csharp
 using Foundatio.Mediator;
@@ -775,7 +793,7 @@ services.AddMediator();
 ```
 
 When no custom mapper is registered, the generated default handles all `ResultStatus` values with sensible HTTP status codes.
-For example, `Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` status code; register a custom mapper if your API convention maps validation failures to a different status such as 422.
+For example, `Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` status code; configure a status-specific mapping if your API convention maps validation failures to a different status such as 422.
 
 ### File Downloads
 

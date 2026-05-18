@@ -97,6 +97,51 @@ public static class MediatorExtensions
     }
 
     /// <summary>
+    /// Configures status-specific result mappings used by the generated default mediator result mapper.
+    /// </summary>
+    /// <typeparam name="TResult">The transport-specific result type.</typeparam>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="configure">The result mapping configuration callback.</param>
+    /// <returns>The service collection.</returns>
+    public static IServiceCollection ConfigureMediatorResultMapping<TResult>(this IServiceCollection services, Action<MediatorResultMapperOptions<TResult>> configure)
+    {
+        if (services is null)
+            throw new ArgumentNullException(nameof(services));
+
+        if (configure is null)
+            throw new ArgumentNullException(nameof(configure));
+
+        var options = services
+            .FirstOrDefault(d => d.ServiceType == typeof(MediatorResultMapperOptions<TResult>))
+            ?.ImplementationInstance as MediatorResultMapperOptions<TResult>;
+
+        if (options is null)
+        {
+            options = new MediatorResultMapperOptions<TResult>();
+            services.AddSingleton(options);
+        }
+
+        configure(options);
+        return services;
+    }
+
+    /// <summary>
+    /// Configures status-specific result mappings used by the generated default mediator result mapper.
+    /// </summary>
+    /// <typeparam name="TResult">The transport-specific result type.</typeparam>
+    /// <param name="builder">The mediator builder to configure.</param>
+    /// <param name="configure">The result mapping configuration callback.</param>
+    /// <returns>The mediator builder.</returns>
+    public static IMediatorBuilder ConfigureResultMapping<TResult>(this IMediatorBuilder builder, Action<MediatorResultMapperOptions<TResult>> configure)
+    {
+        if (builder is null)
+            throw new ArgumentNullException(nameof(builder));
+
+        builder.Services.ConfigureMediatorResultMapping(configure);
+        return builder;
+    }
+
+    /// <summary>
     /// Gets the <see cref="HandlerRegistry"/> from the service collection at registration time.
     /// This is available after <see cref="AddMediator(IServiceCollection, MediatorOptions?)"/> has been called.
     /// </summary>

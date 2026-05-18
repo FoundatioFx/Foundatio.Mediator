@@ -451,7 +451,7 @@ Foundatio.Mediator automatically maps `Result<T>` statuses to HTTP responses:
 | `Unauthorized` | 401 Unauthorized |
 | `Forbidden` | 403 Forbidden |
 | `NotFound` | 404 Not Found |
-| `Invalid` | 422 Unprocessable Entity |
+| `Invalid` | 400 Bad Request |
 | `Error` | 500 Internal Server Error |
 
 See [Result Types](./result-types) for details on the `Result<T>` pattern.

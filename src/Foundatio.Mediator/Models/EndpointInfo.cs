@@ -182,16 +182,10 @@ internal readonly record struct EndpointInfo
     public string? SseEventType { get; init; }
 
     /// <summary>
-    /// Whether the handler body contains a <c>Result.Created()</c> call.
-    /// Used to determine the success status code: 201 when true, 200 otherwise.
+    /// Success HTTP status codes used to generate response metadata.
+    /// Explicit <c>[HandlerEndpoint(SuccessStatusCodes = ...)]</c> values take precedence over auto-detected values.
     /// </summary>
-    public bool UsesResultCreated { get; init; }
-
-    /// <summary>
-    /// Explicit success status code from <c>[HandlerEndpoint(SuccessStatusCode = ...)]</c>.
-    /// When 0, the status code is auto-detected from handler body analysis.
-    /// </summary>
-    public int ExplicitSuccessStatusCode { get; init; }
+    public EquatableArray<int> SuccessStatusCodes { get; init; }
 
     /// <summary>
     /// Endpoint convention attributes that implement <c>IEndpointConvention&lt;TBuilder&gt;</c>.

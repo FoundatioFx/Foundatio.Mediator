@@ -49,8 +49,10 @@ Result types include several built-in status types:
 ```csharp
 public enum ResultStatus
 {
-    Success,
+    Ok,
+    Success = Ok,
     Created,
+    Accepted,
     NoContent,
     BadRequest,
     Error,
@@ -75,6 +77,9 @@ return Result<User>.Success(user);
 
 // Created with location
 return Result<Order>.Created(order, $"/orders/{order.Id}");
+
+// Accepted for deferred processing
+return Result.Accepted("Order queued", $"/orders/{order.Id}/status");
 
 // No content (for deletions)
 return Result.NoContent();
@@ -202,7 +207,7 @@ public Result<User> Handle(CreateUser command)
 
 When using [endpoint generation](/guide/endpoints), `Result<T>` and `Result` are automatically converted to the correct HTTP status codes — no manual mapping needed. See [Result to HTTP Status Mapping](/guide/endpoints#result-to-http-status-mapping) for the default mapping table.
 
-To customize the mapping, implement `IMediatorResultMapper<IResult>` and register it before `AddMediator()`. See [Custom Result Mapping](/guide/endpoints#custom-result-mapping) for details.
+To customize the mapping, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`. See [Custom Result Mapping](/guide/endpoints#custom-result-mapping) for details.
 
 ### Manual Mapping (Controllers)
 
@@ -225,9 +230,9 @@ public class OrdersController : ControllerBase
         return result.Status switch
         {
             ResultStatus.Ok => Ok(result.Value),
-            ResultStatus.NotFound => NotFound(result.ErrorMessage),
+            ResultStatus.NotFound => NotFound(result.Message),
             ResultStatus.Forbidden => Forbid(),
-            _ => BadRequest(result.ErrorMessage)
+            _ => BadRequest(result.Message)
         };
     }
 
@@ -241,8 +246,8 @@ public class OrdersController : ControllerBase
             ResultStatus.Created => CreatedAtAction(nameof(GetOrder),
                 new { id = result.Value.Id }, result.Value),
             ResultStatus.Invalid => BadRequest(result.ValidationErrors),
-            ResultStatus.Conflict => Conflict(result.ErrorMessage),
-            _ => BadRequest(result.ErrorMessage)
+            ResultStatus.Conflict => Conflict(result.Message),
+            _ => BadRequest(result.Message)
         };
     }
 }
@@ -262,11 +267,11 @@ public static class ResultExtensions
             ResultStatus.Ok => new OkObjectResult(result.Value),
             ResultStatus.Created => new CreatedResult("", result.Value),
             ResultStatus.NoContent => new NoContentResult(),
-            ResultStatus.NotFound => new NotFoundObjectResult(result.ErrorMessage),
+            ResultStatus.NotFound => new NotFoundObjectResult(result.Message),
             ResultStatus.Invalid => new BadRequestObjectResult(result.ValidationErrors),
             ResultStatus.Forbidden => new ForbidResult(),
-            ResultStatus.Conflict => new ConflictObjectResult(result.ErrorMessage),
-            _ => new BadRequestObjectResult(result.ErrorMessage)
+            ResultStatus.Conflict => new ConflictObjectResult(result.Message),
+            _ => new BadRequestObjectResult(result.Message)
         };
     }
 }

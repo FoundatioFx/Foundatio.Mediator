@@ -717,13 +717,19 @@ internal static class EndpointGenerator
             // handles the content type header at runtime, but we add metadata for OpenAPI.
             source.AppendLine(".Produces(200, contentType: \"text/event-stream\")");
         }
-        else if (!string.IsNullOrEmpty(endpoint.ProducesType))
+        else
         {
-            // Use explicit SuccessStatusCode if set, otherwise 201 when Result.Created() detected, else 200
-            var statusCode = endpoint.ExplicitSuccessStatusCode > 0
-                ? endpoint.ExplicitSuccessStatusCode.ToString()
-                : endpoint.UsesResultCreated ? "201" : "200";
-            source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
+            var successStatusCodes = endpoint.SuccessStatusCodes.Any()
+                ? endpoint.SuccessStatusCodes.ToArray()
+                : !string.IsNullOrEmpty(endpoint.ProducesType) ? [200] : [];
+
+            foreach (var statusCode in successStatusCodes)
+            {
+                if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
+                    source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
+                else
+                    source.AppendLine($".Produces({statusCode})");
+            }
         }
 
         // Add additional ProducesProblem metadata from [HandlerEndpoint(ProducesStatusCodes = [...])]

@@ -232,7 +232,7 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `Tags` | Override the group tags |
 | `Exclude` | `true` to skip endpoint generation entirely |
 | `EndpointFilters` | `IEndpointFilter` types for this endpoint |
-| `SuccessStatusCode` | Override auto-detected success status code (200, 201, etc.) |
+| `SuccessStatusCodes` | Override auto-detected success status codes (200, 201, 202, 204, etc.) |
 | `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
 | `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
 | `SseEventType` | SSE `event:` field name for `addEventListener` |
@@ -731,6 +731,7 @@ Reserve HTTP type parameters for edge cases where you genuinely need low-level H
 | ------------ | ----------- |
 | `Ok` | 200 OK |
 | `Created` | 201 Created |
+| `Accepted` | 202 Accepted |
 | `NoContent` | 204 No Content |
 | `BadRequest` | 400 Bad Request |
 | `Invalid` | 400 Bad Request (ValidationProblem) |
@@ -744,14 +745,15 @@ Reserve HTTP type parameters for edge cases where you genuinely need low-level H
 
 ### Custom Result Mapping
 
-To customize how `Result` statuses are converted to HTTP responses, implement `IMediatorResultMapper<IResult>` and register it before `AddMediator()`:
+To customize how `Result` statuses are converted to HTTP responses, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`:
 
 ```csharp
+using Foundatio.Mediator;
 using Microsoft.AspNetCore.Http;
 
-public class CustomResultMapper : IMediatorResultMapper<IResult>
+public class CustomResultMapper : IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>
 {
-    public IResult MapResult(Foundatio.Mediator.IResult result) => result.Status switch
+    public Microsoft.AspNetCore.Http.IResult MapResult(Foundatio.Mediator.IResult result) => result.Status switch
     {
         // Use ProblemDetails for NotFound instead of the default anonymous object
         ResultStatus.NotFound => Results.Problem(
@@ -768,11 +770,12 @@ public class CustomResultMapper : IMediatorResultMapper<IResult>
 
 ```csharp
 // Register before AddMediator — your implementation takes priority
-services.AddSingleton<IMediatorResultMapper<IResult>, CustomResultMapper>();
+services.AddSingleton<IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>, CustomResultMapper>();
 services.AddMediator();
 ```
 
 When no custom mapper is registered, the generated default handles all `ResultStatus` values with sensible HTTP status codes.
+For example, `Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` status code; register a custom mapper if your API convention maps validation failures to a different status such as 422.
 
 ### File Downloads
 
@@ -814,7 +817,7 @@ public class OrderHandler
 
 ### Success Status Codes
 
-If a handler body contains `Result.Created()`, the endpoint is generated with **201 Created**; otherwise it defaults to **200 OK**. Override with `[HandlerEndpoint(SuccessStatusCode = 201)]`.
+The generator emits success response metadata from explicit `[HandlerEndpoint(SuccessStatusCodes = [...])]` values, or from detected `Result` factory calls such as `Result.Created()`, `Result.Accepted()`, and `Result.NoContent()`. When no success status is configured or detected, endpoints with a response body default to **200 OK**.
 
 ## Authentication & Authorization
 

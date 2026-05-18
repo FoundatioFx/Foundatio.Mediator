@@ -202,7 +202,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
-    public void ResultOfT_ExplicitSuccessStatusCode_OverridesAutoDetection()
+    public void ResultOfT_PostWithAccepted_Produces202()
     {
         var source = """
             using Foundatio.Mediator;
@@ -214,7 +214,138 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public class OrderHandler
             {
-                [HandlerEndpoint(SuccessStatusCode = 201)]
+                public Result<OrderView> Handle(CreateOrder command) => Result<OrderView>.Accepted("Queued");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces(202)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(200)", endpointSource);
+    }
+
+    [Fact]
+    public void ResultOfT_PostWithNoContent_Produces204()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                public Result<OrderView> Handle(CreateOrder command) => Result<OrderView>.NoContent();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces(204)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(200)", endpointSource);
+    }
+
+    [Fact]
+    public void ResultOfT_WithMultipleSuccessStatuses_EmitsAllDetectedStatuses()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                public Result<OrderView> Handle(CreateOrder command)
+                {
+                    if (command.Name == "queued")
+                        return Result<OrderView>.Accepted("Queued");
+
+                    if (command.Name == "empty")
+                        return Result<OrderView>.NoContent();
+
+                    return Result<OrderView>.Created(new OrderView("1", command.Name));
+                }
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces<global::OrderView>(201)", endpointSource);
+        Assert.Contains(".Produces(202)", endpointSource);
+        Assert.Contains(".Produces(204)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(200)", endpointSource);
+    }
+
+    [Fact]
+    public void ResultOfT_WithUnrelatedFactoryMethodName_DoesNotDetectSuccessStatus()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                public Result<OrderView> Handle(CreateOrder command)
+                {
+                    if (Created())
+                        return new OrderView("1", command.Name);
+
+                    return new OrderView("2", command.Name);
+                }
+
+                private bool Created() => true;
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces<global::OrderView>(200)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(201)", endpointSource);
+    }
+
+    [Fact]
+    public void ResultOfT_ExplicitSuccessStatusCodes_OverridesAutoDetection()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                [HandlerEndpoint(SuccessStatusCodes = [201])]
                 public Result<OrderView> Handle(CreateOrder command) => new OrderView("1", command.Name);
             }
             """;
@@ -226,8 +357,39 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);
-        // Explicit SuccessStatusCode = 201 should override auto-detection (which would give 200)
+        // Explicit SuccessStatusCodes = [201] should override auto-detection (which would give 200)
         Assert.Contains(".Produces<global::OrderView>(201)", endpointSource);
+    }
+
+    [Fact]
+    public void ResultOfT_ExplicitMultipleSuccessStatusCodes_EmitsAllConfiguredStatuses()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                [HandlerEndpoint(SuccessStatusCodes = [201, 202, 204])]
+                public Result<OrderView> Handle(CreateOrder command) => new OrderView("1", command.Name);
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces<global::OrderView>(201)", endpointSource);
+        Assert.Contains(".Produces(202)", endpointSource);
+        Assert.Contains(".Produces(204)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(200)", endpointSource);
     }
 
     [Fact]
@@ -733,6 +895,39 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void ResultMapperOptions_ResolvedByGeneratedDefaultMapper()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record CreateProduct(string Name);
+
+            public class ProductHandler
+            {
+                public Result<string> Handle(CreateProduct command)
+                    => Result.Created(command.Name, "/products/1");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("GetService<Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>>()", endpointSource);
+        Assert.Contains("_options?.TryMap(result, out var mappedResult) == true", endpointSource);
+        Assert.Contains("return mappedResult;", endpointSource);
+        Assert.Contains("return resultMapper.MapResult(result);", endpointSource);
+    }
+
+    [Fact]
     public void TupleWithNonResult_UsesInvokeAsyncAndResultsOk()
     {
         var source = """
@@ -1172,6 +1367,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Auto-detected from method body
         Assert.Contains(".ProducesProblem(404)", endpointSource); // NotFound
         Assert.Contains(".ProducesProblem(400)", endpointSource); // Invalid
+        Assert.DoesNotContain(".ProducesProblem(422)", endpointSource);
         // Should NOT contain codes not used in the method
         Assert.DoesNotContain(".ProducesProblem(500)", endpointSource);
         Assert.DoesNotContain(".ProducesProblem(409)", endpointSource);

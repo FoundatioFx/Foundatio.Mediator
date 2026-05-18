@@ -706,16 +706,17 @@ internal static class HandlerAnalyzer
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
                                   GetIntArrayProperty(classEndpointAttr, "ProducesStatusCodes");
 
-        // Auto-detect Result factory method calls in the handler body (Created, NotFound, Invalid, etc.)
-        var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var usesResultCreated);
+        // Auto-detect Result factory method calls in the handler body (Created, Accepted, NotFound, Invalid, etc.)
+        var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var successStatusCodes);
 
         // If no explicit status codes, use auto-detected ones
         var producesStatusCodes = explicitStatusCodes ?? detectedStatusCodes;
 
-        // Read explicit success status code (method -> class, 0 means auto-detect)
-        var explicitSuccessStatusCode = GetIntProperty(methodEndpointAttr, "SuccessStatusCode")
-                                     ?? GetIntProperty(classEndpointAttr, "SuccessStatusCode")
-                                     ?? 0;
+        // Read explicit success status codes (method -> class). When absent, use auto-detected values.
+        var explicitSuccessStatusCodes = GetIntArrayProperty(methodEndpointAttr, "SuccessStatusCodes") ??
+                                         GetIntArrayProperty(classEndpointAttr, "SuccessStatusCodes");
+
+        var effectiveSuccessStatusCodes = explicitSuccessStatusCodes ?? successStatusCodes;
 
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
@@ -802,8 +803,7 @@ internal static class HandlerAnalyzer
             GroupFilters = new(groupFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
-            UsesResultCreated = usesResultCreated,
-            ExplicitSuccessStatusCode = explicitSuccessStatusCode,
+            SuccessStatusCodes = new(effectiveSuccessStatusCodes),
             IsStreaming = isStreaming,
             StreamingFormat = streamingFormat,
             StreamingItemType = streamingItemType,
@@ -1359,14 +1359,26 @@ internal static class HandlerAnalyzer
     };
 
     /// <summary>
-    /// Scans the handler method body for <c>Result.NotFound()</c>, <c>Result.Invalid()</c>, etc.
-    /// factory method calls and returns the corresponding HTTP status codes.
-    /// Also detects whether <c>Result.Created()</c> is used (returned via out parameter).
+    /// Maps successful Result factory method names to HTTP status codes.
+    /// </summary>
+    private static readonly Dictionary<string, int> ResultMethodToSuccessHttpStatus = new(StringComparer.Ordinal)
+    {
+        ["Ok"] = 200,
+        ["Success"] = 200,
+        ["Created"] = 201,
+        ["Accepted"] = 202,
+        ["NoContent"] = 204,
+    };
+
+    /// <summary>
+    /// Scans the handler method body for <c>Result.Created()</c>, <c>Result.NotFound()</c>, <c>Result.Invalid()</c>, etc.
+    /// factory method calls and returns the corresponding error HTTP status codes.
+    /// Success HTTP status codes are returned via <paramref name="successStatusCodes"/>.
     /// Only runs when the return type involves <c>Result</c> or <c>Result&lt;T&gt;</c>.
     /// </summary>
-    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation, out bool usesResultCreated)
+    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation, out int[] successStatusCodes)
     {
-        usesResultCreated = false;
+        successStatusCodes = [];
 
         // Only scan if the return type involves Result/Result<T>
         var unwrapped = returnType.UnwrapTask(compilation).UnwrapNullable(compilation);
@@ -1384,32 +1396,34 @@ internal static class HandlerAnalyzer
             return [];
 
         var syntaxNode = syntaxRef.GetSyntax();
+        var semanticModel = compilation.GetSemanticModel(syntaxNode.SyntaxTree);
 
         var detectedCodes = new HashSet<int>();
+        var detectedSuccessCodes = new HashSet<int>();
 
         // Walk all descendant nodes looking for invocations of Result factory methods
         foreach (var invocation in syntaxNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
-            string? methodName = null;
+            var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol
+                ?? semanticModel.GetSymbolInfo(invocation).CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
-            // Match: Result.NotFound(...), Result<T>.NotFound(...), or ResultStatus.NotFound style
-            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-            {
-                methodName = memberAccess.Name.Identifier.ValueText;
-            }
+            if (methodSymbol?.ContainingType?.IsResult(compilation) != true)
+                continue;
 
-            if (methodName != null && ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
+            var methodName = methodSymbol.Name;
+
+            if (ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
             {
                 detectedCodes.Add(statusCode);
             }
 
-            // Detect Result.Created() calls separately (not an error status code)
-            if (methodName == "Created")
+            if (ResultMethodToSuccessHttpStatus.TryGetValue(methodName, out var successHttpStatus))
             {
-                usesResultCreated = true;
+                detectedSuccessCodes.Add(successHttpStatus);
             }
         }
 
+        successStatusCodes = detectedSuccessCodes.OrderBy(c => c).ToArray();
         return detectedCodes.OrderBy(c => c).ToArray();
     }
 

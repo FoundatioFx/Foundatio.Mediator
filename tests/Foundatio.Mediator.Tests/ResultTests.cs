@@ -1,7 +1,72 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Foundatio.Mediator.Tests;
 
 public class ResultTests
 {
+    [Fact]
+    public void MediatorResultMapperOptions_MapStatus_MapsConfiguredStatus()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapStatus(ResultStatus.Invalid, result => $"invalid:{result.ValidationErrors.Count()}");
+
+        var mapped = options.TryMap(Result.Invalid(ValidationError.Create("Name", "Required")), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("invalid:1", mappedResult);
+    }
+
+    [Fact]
+    public void ConfigureMediatorResultMapping_CombinesConfiguredStatuses()
+    {
+        var services = new ServiceCollection();
+
+        services.ConfigureMediatorResultMapping<string>(options =>
+            options.MapStatus(ResultStatus.Invalid, _ => "invalid"));
+        services.ConfigureMediatorResultMapping<string>(options =>
+            options.MapStatus(ResultStatus.NotFound, _ => "missing"));
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<MediatorResultMapperOptions<string>>();
+
+        Assert.True(options.TryMap(Result.Invalid(ValidationError.Create("Name", "Required")), out var invalidResult));
+        Assert.Equal("invalid", invalidResult);
+        Assert.True(options.TryMap(Result.NotFound(), out var notFoundResult));
+        Assert.Equal("missing", notFoundResult);
+        Assert.False(options.TryMap(Result.Success(), out _));
+    }
+
+    [Fact]
+    public void ConfigureMediatorResultMapping_UsesExistingInstanceRegistration()
+    {
+        var services = new ServiceCollection();
+        var registeredOptions = new MediatorResultMapperOptions<string>();
+        services.AddSingleton(registeredOptions);
+
+        services.ConfigureMediatorResultMapping<string>(options =>
+            options.MapStatus(ResultStatus.Invalid, _ => "invalid"));
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<MediatorResultMapperOptions<string>>();
+
+        Assert.Same(registeredOptions, options);
+        Assert.True(options.TryMap(Result.Invalid(ValidationError.Create("Name", "Required")), out var mappedResult));
+        Assert.Equal("invalid", mappedResult);
+    }
+
+    [Fact]
+    public void ConfigureMediatorResultMapping_WithNonInstanceRegistration_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<MediatorResultMapperOptions<string>>();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            services.ConfigureMediatorResultMapping<string>(options =>
+                options.MapStatus(ResultStatus.Invalid, _ => "invalid")));
+
+        Assert.Contains("registered as an instance", exception.Message);
+    }
+
     [Fact]
     public void Result_DefaultConstructor_CreatesSuccessfulResult()
     {

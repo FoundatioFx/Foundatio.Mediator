@@ -21,6 +21,10 @@ namespace Foundatio.Mediator;
 /// services.AddSingleton&lt;IMediatorResultMapper&lt;IResult&gt;, MyResultMapper&gt;();
 /// services.AddMediator();
 /// </code>
+/// <para>
+/// To customize only specific statuses while keeping the generated defaults, configure
+/// <see cref="MediatorResultMapperOptions{TResult}"/> instead.
+/// </para>
 /// </remarks>
 public interface IMediatorResultMapper<out TResult>
 {

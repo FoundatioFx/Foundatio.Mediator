@@ -63,44 +63,30 @@ The mediator pattern is the perfect complement to Clean Architecture because it 
 
 ### Automatic Endpoint Generation
 
-With Foundatio Mediator's source generator, you can **eliminate the presentation layer boilerplate entirely**. HTTP endpoints are automatically generated from your handlers:
+With Foundatio Mediator's source generator, you can **eliminate the presentation layer boilerplate entirely**. Your codebase stays completely message-oriented: handlers continue to receive messages and return results, while the generated endpoints remove the glue code between those handlers and the HTTP API.
+
+HTTP endpoints are automatically generated from your handlers:
 
 ```csharp
-[HandlerEndpointGroup("Orders", RoutePrefix = "/api/orders")]
-public class OrderHandler
-{
-    /// <summary>
-    /// Creates a new order.
-    /// </summary>
-    public async Task<Result<Order>> HandleAsync(
-        CreateOrder command,
-        IOrderRepository repository,
-        CancellationToken ct)
-    {
-        // Business logic here
-    }
-
-    /// <summary>
-    /// Gets an order by ID.
-    /// </summary>
-    public async Task<Result<Order>> HandleAsync(
-        GetOrder query,
-        IOrderRepository repository,
-        CancellationToken ct)
-    {
-        return await repository.GetByIdAsync(query.OrderId, ct);
-    }
-}
-
-// Messages define the contract
 public record CreateOrder(string CustomerId, decimal Amount);
 public record GetOrder(string OrderId);
+
+public class OrderHandler
+{
+    public Task<Result<Order>> HandleAsync(CreateOrder command, IOrderRepository orders, CancellationToken ct)
+        => orders.CreateAsync(command, ct);
+
+    public Task<Result<Order>> HandleAsync(GetOrder query, IOrderRepository orders, CancellationToken ct)
+        => orders.GetByIdAsync(query.OrderId, ct);
+}
 ```
 
 The source generator automatically creates:
 
 - `POST /api/orders` → calls `CreateOrder` handler
 - `GET /api/orders/{orderId}` → calls `GetOrder` handler
+
+No endpoint attributes are required for this example. The generator discovers `OrderHandler` by convention, derives the `orders` endpoint group from the class name, and uses the message names and properties to infer routes. Add `[HandlerEndpointGroup]` only when you want to override the group name or route prefix, attach group-level filters, or opt into endpoint generation when discovery is set to explicit.
 
 **No controller classes. No endpoint registrations. No boilerplate.** Just map them in your startup:
 
@@ -115,21 +101,13 @@ The generator infers HTTP methods from message names (`Create*` → POST, `Get*`
 If you prefer explicit control or need custom endpoint behavior, you can still write manual endpoints:
 
 ```csharp
-// MVC Controller
-[HttpPost]
-public async Task<IActionResult> CreateOrder(CreateOrderRequest request)
+app.MapPost("/orders", async (CreateOrder command, IMediator mediator) =>
 {
-    var result = await _mediator.InvokeAsync<Result<Order>>(
-        new CreateOrder(request.CustomerId, request.Amount));
-    return result.ToActionResult();
-}
+    var result = await mediator.InvokeAsync<Result<Order>>(command);
 
-// Minimal API
-app.MapPost("/orders", async (CreateOrderRequest request, IMediator mediator) =>
-{
-    var result = await mediator.InvokeAsync<Result<Order>>(
-        new CreateOrder(request.CustomerId, request.Amount));
-    return result.ToActionResult();
+    return result.IsSuccess
+        ? Results.Ok(result.Value)
+        : Results.BadRequest(result.Message);
 });
 ```
 
@@ -145,29 +123,15 @@ Unlike traditional mediator implementations that require interface inheritance a
 // Traditional mediator libraries - lots of ceremony
 public class CreateOrderHandler : IRequestHandler<CreateOrder, Result<Order>>
 {
-    private readonly IOrderRepository _repository;
-
-    public CreateOrderHandler(IOrderRepository repository)
-    {
-        _repository = repository;
-    }
-
-    public async Task<Result<Order>> Handle(CreateOrder request, CancellationToken ct)
-    {
-        // Business logic
-    }
+    public Task<Result<Order>> Handle(CreateOrder request, CancellationToken ct)
+        => CreateOrder(request, ct);
 }
 
 // Foundatio Mediator - just follow naming conventions
 public class OrderHandler
 {
-    public async Task<Result<Order>> HandleAsync(
-        CreateOrder command,
-        IOrderRepository repository,  // Method injection - no constructor needed
-        CancellationToken ct)
-    {
-        // Business logic
-    }
+    public Task<Result<Order>> HandleAsync(CreateOrder command, IOrderRepository orders, CancellationToken ct)
+        => orders.CreateAsync(command, ct);
 }
 ```
 
@@ -183,32 +147,16 @@ public class OrderHandler
 Clean Architecture naturally leads to CQRS because queries and commands have different characteristics. Foundatio Mediator makes this separation effortless:
 
 ```csharp
-// Commands - change state, return results
 public record CreateOrder(string CustomerId, decimal Amount);
-public record UpdateOrderStatus(string OrderId, OrderStatus Status);
-public record CancelOrder(string OrderId, string Reason);
-
-// Queries - read state, never modify
 public record GetOrder(string OrderId);
-public record GetOrdersByCustomer(string CustomerId, DateTime? Since = null);
-public record GetDashboardReport();
 
-// Handler can group related operations naturally
 public class OrderHandler
 {
-    // Commands
-    public async Task<Result<Order>> HandleAsync(CreateOrder cmd, IOrderRepository repo, CancellationToken ct)
-        => await repo.CreateAsync(cmd, ct);
+    public Task<Result<Order>> HandleAsync(CreateOrder command, IOrderRepository orders, CancellationToken ct)
+        => orders.CreateAsync(command, ct);
 
-    public async Task<Result<Order>> HandleAsync(UpdateOrderStatus cmd, IOrderRepository repo, CancellationToken ct)
-        => await repo.UpdateStatusAsync(cmd.OrderId, cmd.Status, ct);
-
-    // Queries
-    public async Task<Result<Order>> HandleAsync(GetOrder query, IOrderRepository repo, CancellationToken ct)
-        => await repo.GetByIdAsync(query.OrderId, ct);
-
-    public async Task<Result<IReadOnlyList<Order>>> HandleAsync(GetOrdersByCustomer query, IOrderRepository repo, CancellationToken ct)
-        => await repo.GetByCustomerAsync(query.CustomerId, query.Since, ct);
+    public Task<Result<Order>> HandleAsync(GetOrder query, IOrderRepository orders, CancellationToken ct)
+        => orders.GetByIdAsync(query.OrderId, ct);
 }
 ```
 
@@ -218,13 +166,12 @@ When a business operation completes, other parts of the system often need to rea
 
 ```csharp
 // Tight coupling - handler knows about all side effects
-public async Task<Order> HandleAsync(CreateOrder cmd)
+public async Task<Order> HandleAsync(CreateOrder command)
 {
-    var order = await _repository.CreateAsync(cmd);
+    var order = await _repository.CreateAsync(command);
 
-    await _emailService.SendOrderConfirmationAsync(order);  // Coupling
-    await _analyticsService.TrackOrderAsync(order);         // Coupling
-    await _auditService.LogOrderCreatedAsync(order);        // Coupling
+    await _emailService.SendOrderConfirmationAsync(order);
+    await _auditService.LogOrderCreatedAsync(order);
 
     return order;
 }
@@ -234,34 +181,17 @@ With Foundatio Mediator's cascading messages, handlers publish events and don't 
 
 ```csharp
 // Loose coupling - handler just publishes an event
-public async Task<(Result<Order>, OrderCreated)> HandleAsync(
-    CreateOrder cmd,
-    IOrderRepository repository,
-    CancellationToken ct)
+public async Task<(Result<Order>, OrderCreated)> HandleAsync(CreateOrder command, IOrderRepository orders, CancellationToken ct)
 {
-    var order = await repository.CreateAsync(cmd, ct);
+    var order = await orders.CreateAsync(command, ct);
 
-    // Return the result AND an event - mediator publishes it automatically
     return (order, new OrderCreated(order.Id, order.CustomerId, DateTime.UtcNow));
-}
-
-// Event handlers are completely decoupled - add/remove without touching OrderHandler
-public class EmailHandler
-{
-    public async Task HandleAsync(OrderCreated evt, IEmailService email, CancellationToken ct)
-        => await email.SendOrderConfirmationAsync(evt.OrderId, ct);
-}
-
-public class AnalyticsHandler
-{
-    public async Task HandleAsync(OrderCreated evt, IAnalyticsService analytics, CancellationToken ct)
-        => await analytics.TrackOrderAsync(evt.OrderId, evt.CustomerId, ct);
 }
 
 public class AuditHandler
 {
-    public async Task HandleAsync(OrderCreated evt, IAuditService audit, CancellationToken ct)
-        => await audit.LogAsync("OrderCreated", evt.OrderId, ct);
+    public Task HandleAsync(OrderCreated evt, IAuditService audit, CancellationToken ct)
+        => audit.LogAsync("OrderCreated", evt.OrderId, ct);
 }
 ```
 
@@ -274,7 +204,7 @@ public class AuditHandler
 
 ### 4. Modular Monolith Support
 
-Clean Architecture shines in modular monoliths where bounded contexts are separated into modules. Foundatio Mediator enables cross-module communication without creating dependencies:
+Clean Architecture shines in modular monoliths where bounded contexts are separated into modules. Foundatio Mediator enables cross-module communication without coupling modules to each other's repositories or persistence details:
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
@@ -291,26 +221,20 @@ Clean Architecture shines in modular monoliths where bounded contexts are separa
 ```
 
 ```csharp
-// Reports.Module doesn't reference Orders or Products directly
-// It queries through the mediator
+// Reports.Module depends on message contracts, not repositories or persistence.
+// It queries other modules through the mediator.
 public class ReportHandler
 {
-    public async Task<DashboardReport> HandleAsync(
-        GetDashboardReport query,
+    public async Task<Result<DashboardReport>> HandleAsync(
+        GetDashboardReport report,
         IMediator mediator,
         CancellationToken ct)
     {
-        // Fetch from other modules via mediator - no direct dependencies
-        var ordersTask = mediator.InvokeAsync<IReadOnlyList<Order>>(new GetOrders(), ct);
-        var productsTask = mediator.InvokeAsync<IReadOnlyList<Product>>(new GetProducts(), ct);
+        var orders = await mediator.InvokeAsync<Result<List<Order>>>(new GetOrders(), ct);
+        var products = await mediator.InvokeAsync<Result<List<Product>>>(new GetProducts(), ct);
 
-        await Task.WhenAll(ordersTask.AsTask(), productsTask.AsTask());
-
-        return new DashboardReport(
-            TotalOrders: ordersTask.Result.Count,
-            TotalProducts: productsTask.Result.Count,
-            Revenue: ordersTask.Result.Sum(o => o.Amount)
-        );
+        // Build the report without depending on either module's data layer.
+        return BuildDashboard(orders.Value, products.Value);
     }
 }
 ```
@@ -325,8 +249,8 @@ public class ValidationMiddleware
 {
     public HandlerResult Before(object message)
     {
-        if (!MiniValidator.TryValidate(message, out var errors))
-            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+        if (!IsValid(message, out var validationErrors))
+            return HandlerResult.ShortCircuit(Result.Invalid(validationErrors));
 
         return HandlerResult.Continue();
     }
@@ -336,22 +260,10 @@ public class ValidationMiddleware
 public class ObservabilityMiddleware
 {
     public Stopwatch Before(object message, HandlerExecutionInfo info, ILogger logger)
-    {
-        logger.LogInformation("Handling {Handler}", info.HandlerType.Name);
-        return Stopwatch.StartNew();
-    }
-
-    public void After(object message, Stopwatch sw, HandlerExecutionInfo info, ILogger logger)
-    {
-        logger.LogInformation("Completed {Handler} in {Ms}ms",
-            info.HandlerType.Name, sw.ElapsedMilliseconds);
-    }
+        => Stopwatch.StartNew();
 
     public void Finally(object message, Stopwatch sw, Exception? ex, ILogger logger)
-    {
-        if (ex != null)
-            logger.LogError(ex, "Handler failed after {Ms}ms", sw.ElapsedMilliseconds);
-    }
+        => logger.LogInformation("Handled {Message} in {Ms}ms", message.GetType().Name, sw.ElapsedMilliseconds);
 }
 ```
 
@@ -362,40 +274,22 @@ Middleware is automatically applied to all handlers—no manual registration or 
 Traditional Clean Architecture implementations still require significant presentation layer code—controllers, endpoint registrations, parameter binding, and response mapping. Foundatio Mediator's source generator eliminates this entirely:
 
 ```csharp
-// Traditional approach - lots of presentation layer code
+// Traditional approach - every operation needs HTTP glue code
 public class OrdersController : ControllerBase
 {
-    private readonly IMediator _mediator;
-
-    public OrdersController(IMediator mediator) => _mediator = mediator;
-
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateOrderRequest request)
     {
-        var result = await _mediator.InvokeAsync<Result<Order>>(
-            new CreateOrder(request.CustomerId, request.Amount));
-        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Errors);
+        var result = await _mediator.InvokeAsync<Result<Order>>(MapToCommand(request));
+        return MapToHttp(result);
     }
-
-    [HttpGet("{id}")]
-    public async Task<IActionResult> Get(string id)
-    {
-        var result = await _mediator.InvokeAsync<Result<Order>>(new GetOrder(id));
-        return result.IsSuccess ? Ok(result.Value) : NotFound();
-    }
-
-    // ... repeat for every operation
 }
 
-// Foundatio Mediator - handlers ARE the API
-[HandlerEndpointGroup("Orders", RoutePrefix = "/api/orders")]
+// Foundatio Mediator - the handler is enough
 public class OrderHandler
 {
-    public async Task<Result<Order>> HandleAsync(CreateOrder cmd, IOrderRepository repo, CancellationToken ct)
-        => await repo.CreateAsync(cmd, ct);
-
-    public async Task<Result<Order>> HandleAsync(GetOrder query, IOrderRepository repo, CancellationToken ct)
-        => await repo.GetByIdAsync(query.OrderId, ct);
+    public Task<Result<Order>> HandleAsync(CreateOrder command, IOrderRepository orders, CancellationToken ct)
+        => orders.CreateAsync(command, ct);
 }
 ```
 
@@ -468,7 +362,7 @@ See the [CleanArchitectureSample](https://github.com/FoundatioFx/Foundatio.Media
 ## Key Benefits Summary
 
 | Traditional Approach | With Foundatio Mediator |
-|---------------------|------------------------|
+| -------------------- | ----------------------- |
 | Endpoints know about services, repositories, business logic | Endpoints only know about messages and mediator |
 | Tight coupling between modules | Loose coupling via messages and events |
 | Interface boilerplate for every handler | Convention-based discovery, zero interfaces |

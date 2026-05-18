@@ -125,7 +125,7 @@ public static class Tests_MediatorEndpoints
     /// <param name="logEndpoints">When true, logs all mapped endpoints at startup.</param>
     public static void MapEndpoints(IEndpointRouteBuilder endpoints, bool logEndpoints = false)
     {
-        var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_Tests();
+        var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_Tests(endpoints.ServiceProvider.GetService<Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>>());
 
 
         // Global route prefix
@@ -166,11 +166,21 @@ public static class Tests_MediatorEndpoints
 [ExcludeFromCodeCoverage]
 internal sealed class DefaultMediatorResultMapper_Tests : Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>
 {
+    private readonly Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>? _options;
+
+    public DefaultMediatorResultMapper_Tests(Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>? options = null)
+    {
+        _options = options;
+    }
+
     /// <summary>
     /// Converts a Foundatio.Mediator.IResult to an HTTP result.
     /// </summary>
     public Microsoft.AspNetCore.Http.IResult MapResult(Foundatio.Mediator.IResult result)
     {
+        if (_options?.TryMap(result, out var mappedResult) == true)
+            return mappedResult;
+
         return result.Status switch
         {
             Foundatio.Mediator.ResultStatus.Ok => result.GetValue() switch

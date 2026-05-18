@@ -297,6 +297,42 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void ResultOfT_WithUnrelatedFactoryMethodName_DoesNotDetectSuccessStatus()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                public Result<OrderView> Handle(CreateOrder command)
+                {
+                    if (Created())
+                        return new OrderView("1", command.Name);
+
+                    return new OrderView("2", command.Name);
+                }
+
+                private bool Created() => true;
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces<global::OrderView>(200)", endpointSource);
+        Assert.DoesNotContain(".Produces<global::OrderView>(201)", endpointSource);
+    }
+
+    [Fact]
     public void ResultOfT_ExplicitSuccessStatusCodes_OverridesAutoDetection()
     {
         var source = """

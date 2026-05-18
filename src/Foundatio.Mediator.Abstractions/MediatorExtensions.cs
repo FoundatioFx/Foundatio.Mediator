@@ -111,9 +111,11 @@ public static class MediatorExtensions
         if (configure is null)
             throw new ArgumentNullException(nameof(configure));
 
-        var options = services
-            .FirstOrDefault(d => d.ServiceType == typeof(MediatorResultMapperOptions<TResult>))
-            ?.ImplementationInstance as MediatorResultMapperOptions<TResult>;
+        var descriptor = services.LastOrDefault(d => d.ServiceType == typeof(MediatorResultMapperOptions<TResult>));
+        var options = descriptor?.ImplementationInstance as MediatorResultMapperOptions<TResult>;
+
+        if (descriptor != null && options is null)
+            throw new InvalidOperationException($"{nameof(ConfigureMediatorResultMapping)} requires {nameof(MediatorResultMapperOptions<TResult>)} to be registered as an instance. Remove the existing registration or configure result mappings before registering a custom options service.");
 
         if (options is null)
         {

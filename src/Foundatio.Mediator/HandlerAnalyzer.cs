@@ -1396,6 +1396,7 @@ internal static class HandlerAnalyzer
             return [];
 
         var syntaxNode = syntaxRef.GetSyntax();
+        var semanticModel = compilation.GetSemanticModel(syntaxNode.SyntaxTree);
 
         var detectedCodes = new HashSet<int>();
         var detectedSuccessCodes = new HashSet<int>();
@@ -1403,20 +1404,20 @@ internal static class HandlerAnalyzer
         // Walk all descendant nodes looking for invocations of Result factory methods
         foreach (var invocation in syntaxNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
-            string? methodName = null;
+            var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol
+                ?? semanticModel.GetSymbolInfo(invocation).CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
-            // Match: Result.NotFound(...), Result<T>.NotFound(...), or ResultStatus.NotFound style
-            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-            {
-                methodName = memberAccess.Name.Identifier.ValueText;
-            }
+            if (methodSymbol?.ContainingType?.IsResult(compilation) != true)
+                continue;
 
-            if (methodName != null && ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
+            var methodName = methodSymbol.Name;
+
+            if (ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
             {
                 detectedCodes.Add(statusCode);
             }
 
-            if (methodName != null && ResultMethodToSuccessHttpStatus.TryGetValue(methodName, out var successHttpStatus))
+            if (ResultMethodToSuccessHttpStatus.TryGetValue(methodName, out var successHttpStatus))
             {
                 detectedSuccessCodes.Add(successHttpStatus);
             }

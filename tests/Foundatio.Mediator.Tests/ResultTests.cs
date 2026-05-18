@@ -37,6 +37,37 @@ public class ResultTests
     }
 
     [Fact]
+    public void ConfigureMediatorResultMapping_UsesExistingInstanceRegistration()
+    {
+        var services = new ServiceCollection();
+        var registeredOptions = new MediatorResultMapperOptions<string>();
+        services.AddSingleton(registeredOptions);
+
+        services.ConfigureMediatorResultMapping<string>(options =>
+            options.MapStatus(ResultStatus.Invalid, _ => "invalid"));
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<MediatorResultMapperOptions<string>>();
+
+        Assert.Same(registeredOptions, options);
+        Assert.True(options.TryMap(Result.Invalid(ValidationError.Create("Name", "Required")), out var mappedResult));
+        Assert.Equal("invalid", mappedResult);
+    }
+
+    [Fact]
+    public void ConfigureMediatorResultMapping_WithNonInstanceRegistration_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<MediatorResultMapperOptions<string>>();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            services.ConfigureMediatorResultMapping<string>(options =>
+                options.MapStatus(ResultStatus.Invalid, _ => "invalid")));
+
+        Assert.Contains("registered as an instance", exception.Message);
+    }
+
+    [Fact]
     public void Result_DefaultConstructor_CreatesSuccessfulResult()
     {
         var result = Result.Success();

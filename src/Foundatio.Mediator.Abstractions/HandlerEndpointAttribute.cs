@@ -152,7 +152,8 @@ public sealed class HandlerEndpointAttribute : Attribute
 
     /// <summary>
     /// Gets or sets the response content types produced by generated success response metadata.
-    /// Used to add content type metadata to generated <c>.Produces&lt;T&gt;(...)</c> calls.
+    /// Used to add content type metadata to generated <c>.Produces&lt;T&gt;(...)</c> calls, or
+    /// <c>.Produces(...)</c> calls for file download endpoints.
     /// </summary>
     public string[]? ProducesContentTypes { get; set; }
 

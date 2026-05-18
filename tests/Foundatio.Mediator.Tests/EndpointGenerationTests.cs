@@ -806,6 +806,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
             public class ReportHandler
             {
+                [HandlerEndpoint(ProducesContentTypes = ["text/csv"])]
                 public Result<FileResult> Handle(ExportReport query)
                     => Result.File(new MemoryStream(), "text/csv", "report.csv");
             }
@@ -820,6 +821,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // File results go through the result mapper which handles FileResult
         Assert.Contains("resultMapper.MapResult(result)", endpointSource);
+        Assert.Contains(".Produces(200, contentType: \"text/csv\")", endpointSource);
+        Assert.DoesNotContain(".Produces<global::Foundatio.Mediator.FileResult>", endpointSource);
     }
 
     [Fact]

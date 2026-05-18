@@ -715,7 +715,7 @@ internal static class EndpointGenerator
             source.AppendLine($".Accepts<{handler.MessageType.QualifiedName}>({FormatStringArguments(endpoint.AcceptsContentTypes)})");
         }
 
-        // Add Produces<T> metadata from return type
+        // Add response metadata from return type
         if (endpoint.IsStreaming && endpoint.StreamingFormat == "ServerSentEvents")
         {
             // SSE endpoints produce text/event-stream; TypedResults.ServerSentEvents()
@@ -730,7 +730,9 @@ internal static class EndpointGenerator
 
             foreach (var statusCode in successStatusCodes)
             {
-                if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
+                if (handler.ReturnType.IsFileResult && statusCode is not 202 and not 204)
+                    source.AppendLine($".Produces({statusCode}{FormatContentTypeArguments(endpoint.ProducesContentTypes)})");
+                else if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
                     source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode}{FormatContentTypeArguments(endpoint.ProducesContentTypes)})");
                 else
                     source.AppendLine($".Produces({statusCode})");

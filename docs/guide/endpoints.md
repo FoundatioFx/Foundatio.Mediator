@@ -234,6 +234,8 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `EndpointFilters` | `IEndpointFilter` types for this endpoint |
 | `SuccessStatusCodes` | Override auto-detected success status codes (200, 201, 202, 204, etc.) |
 | `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
+| `AcceptsContentTypes` | Request body content types for generated `.Accepts<T>()` metadata |
+| `ProducesContentTypes` | Success response content types for generated `.Produces<T>()` metadata |
 | `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
 | `SseEventType` | SSE `event:` field name for `addEventListener` |
 

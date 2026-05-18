@@ -1303,6 +1303,81 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void ContentTypes_EmitsAcceptsAndProducesMetadata()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateOrder(string Name);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                [HandlerEndpoint(
+                    AcceptsContentTypes = ["application/json", "application/vnd.order+json"],
+                    ProducesContentTypes = ["application/json", "application/vnd.order+json"])]
+                public Result<OrderView> Handle(CreateOrder command) => new OrderView("1", command.Name);
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Accepts<", endpointSource);
+        Assert.Contains("(\"application/json\", \"application/vnd.order+json\")", endpointSource);
+        Assert.Contains(".Produces<", endpointSource);
+        Assert.Contains("(200, contentType: \"application/json\", additionalContentTypes: new[] { \"application/vnd.order+json\" })", endpointSource);
+    }
+
+    [Fact]
+    public void ContentTypes_MethodOverridesClassLevelDefaults()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record CreateItem(string Name);
+            public record GetItem(string Id);
+            public record ItemView(string Id, string Name);
+
+            [HandlerEndpoint(
+                AcceptsContentTypes = ["application/json"],
+                ProducesContentTypes = ["application/json"])]
+            public class ItemHandler
+            {
+                [HandlerEndpoint(
+                    AcceptsContentTypes = ["application/vnd.item+json"],
+                    ProducesContentTypes = ["application/vnd.item+json"])]
+                public Result<ItemView> Handle(CreateItem command) => new ItemView("1", command.Name);
+
+                public Result<ItemView> Handle(GetItem query) => new ItemView(query.Id, "test");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        var acceptsCount = endpointSource!.Split(".Accepts<").Length - 1;
+        Assert.Equal(1, acceptsCount);
+        Assert.Contains(".Accepts<", endpointSource);
+        Assert.Contains("(\"application/vnd.item+json\")", endpointSource);
+        Assert.Contains(".Produces<", endpointSource);
+        Assert.Contains("(200, contentType: \"application/vnd.item+json\")", endpointSource);
+        Assert.Contains("(200, contentType: \"application/json\")", endpointSource);
+    }
+
+    [Fact]
     public void NoProducesStatusCodes_NoProducesProblemEmitted()
     {
         var source = """

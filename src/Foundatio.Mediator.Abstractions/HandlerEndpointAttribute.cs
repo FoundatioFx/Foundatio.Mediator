@@ -145,6 +145,18 @@ public sealed class HandlerEndpointAttribute : Attribute
     public int[]? ProducesStatusCodes { get; set; }
 
     /// <summary>
+    /// Gets or sets the request content types accepted by the generated endpoint.
+    /// Used to generate <c>.Accepts&lt;T&gt;(...)</c> metadata when the message is bound from the request body.
+    /// </summary>
+    public string[]? AcceptsContentTypes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the response content types produced by generated success response metadata.
+    /// Used to add content type metadata to generated <c>.Produces&lt;T&gt;(...)</c> calls.
+    /// </summary>
+    public string[]? ProducesContentTypes { get; set; }
+
+    /// <summary>
     /// Gets or sets the streaming format for handlers that return <c>IAsyncEnumerable&lt;T&gt;</c>.
     /// When set to <see cref="EndpointStreaming.ServerSentEvents"/>, the generated endpoint wraps
     /// the result with <c>TypedResults.ServerSentEvents()</c> for real-time server-to-client push.

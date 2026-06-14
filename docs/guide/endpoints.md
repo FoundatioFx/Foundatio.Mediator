@@ -817,7 +817,7 @@ public class ReportHandler
 }
 ```
 
-For file endpoints, `ProducesContentTypes` documents the file media types in OpenAPI. The runtime response content type still comes from the `Result.File(...)` value returned by the handler.
+For file endpoints, `ProducesContentTypes` documents the file media types in OpenAPI. When omitted, the generated metadata defaults to `application/octet-stream`. Either way, the runtime response content type still comes from the `Result.File(...)` value returned by the handler.
 
 ### OpenAPI Error Responses
 

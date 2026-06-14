@@ -826,6 +826,38 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void FileResultHandler_WithoutContentTypes_DefaultsToOctetStream()
+    {
+        var source = """
+            using System.IO;
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(
+                EndpointRoutePrefix = "api",
+                EndpointDiscovery = EndpointDiscovery.All
+            )]
+
+            public record ExportReport(int Id);
+
+            public class ReportHandler
+            {
+                public Result<FileResult> Handle(ExportReport query)
+                    => Result.File(new MemoryStream(), "application/pdf", "report.pdf");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".Produces(200, contentType: \"application/octet-stream\")", endpointSource);
+        Assert.DoesNotContain(".Produces<global::Foundatio.Mediator.FileResult>", endpointSource);
+    }
+
+    [Fact]
     public void TupleWithResultT_UsesInvokeAsyncAndToHttpResult()
     {
         var source = """

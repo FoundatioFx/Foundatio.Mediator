@@ -731,7 +731,12 @@ internal static class EndpointGenerator
             foreach (var statusCode in successStatusCodes)
             {
                 if (handler.ReturnType.IsFileResult && statusCode is not 202 and not 204)
-                    source.AppendLine($".Produces({statusCode}{FormatContentTypeArguments(endpoint.ProducesContentTypes)})");
+                {
+                    var fileContentTypes = endpoint.ProducesContentTypes.Any()
+                        ? endpoint.ProducesContentTypes
+                        : new EquatableArray<string>(["application/octet-stream"]);
+                    source.AppendLine($".Produces({statusCode}{FormatContentTypeArguments(fileContentTypes)})");
+                }
                 else if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
                     source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode}{FormatContentTypeArguments(endpoint.ProducesContentTypes)})");
                 else

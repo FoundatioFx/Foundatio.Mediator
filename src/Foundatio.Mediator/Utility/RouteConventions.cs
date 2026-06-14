@@ -365,6 +365,52 @@ internal static class RouteConventions
     }
 
     /// <summary>
+    /// Extracts the parameter names from the <c>{placeholder}</c> segments of a route template.
+    /// Strips inline route constraints (<c>{id:int}</c> → <c>id</c>), default values
+    /// (<c>{page=1}</c> → <c>page</c>), catch-all markers (<c>{*rest}</c> / <c>{**rest}</c> → <c>rest</c>),
+    /// and optional markers (<c>{name?}</c> → <c>name</c>). Escaped braces (<c>{{</c>, <c>}}</c>) are ignored.
+    /// </summary>
+    public static IEnumerable<string> ExtractRoutePlaceholderNames(string? routeTemplate)
+    {
+        if (string.IsNullOrEmpty(routeTemplate))
+            yield break;
+
+        int i = 0;
+        while (i < routeTemplate!.Length)
+        {
+            int open = routeTemplate.IndexOf('{', i);
+            if (open < 0)
+                yield break;
+
+            // Escaped "{{" is a literal brace, not a placeholder.
+            if (open + 1 < routeTemplate.Length && routeTemplate[open + 1] == '{')
+            {
+                i = open + 2;
+                continue;
+            }
+
+            int close = routeTemplate.IndexOf('}', open + 1);
+            if (close < 0)
+                yield break;
+
+            var token = routeTemplate.Substring(open + 1, close - open - 1);
+
+            // The name ends at the first ':' (constraint) or '=' (default value).
+            int nameEnd = token.IndexOfAny([':', '=']);
+            if (nameEnd >= 0)
+                token = token.Substring(0, nameEnd);
+
+            // Strip catch-all (*, **) and optional (?) markers.
+            token = token.TrimStart('*').TrimEnd('?').Trim();
+
+            if (token.Length > 0)
+                yield return token;
+
+            i = close + 1;
+        }
+    }
+
+    /// <summary>
     /// Formats a route parameter as <c>{name}</c> or <c>{name:constraint}</c> when the CLR type
     /// maps to a known ASP.NET Core route constraint.
     /// </summary>

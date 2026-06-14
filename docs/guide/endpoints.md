@@ -234,6 +234,8 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `EndpointFilters` | `IEndpointFilter` types for this endpoint |
 | `SuccessStatusCodes` | Override auto-detected success status codes (200, 201, 202, 204, etc.) |
 | `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
+| `AcceptsContentTypes` | Request body content types for generated `.Accepts<T>()` metadata |
+| `ProducesContentTypes` | Success response content types for generated `.Produces<T>()` metadata, or `.Produces()` metadata for file downloads |
 | `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
 | `SseEventType` | SSE `event:` field name for `addEventListener` |
 
@@ -802,7 +804,10 @@ For example, `Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` 
 ```csharp
 public class ReportHandler
 {
-    [HandlerEndpoint(HandlerMethod.Get, "/reports/{id}")]
+    [HandlerEndpoint(
+        HandlerMethod.Get,
+        "/reports/{id}",
+        ProducesContentTypes = ["application/pdf"])]
     public async Task<Result<FileResult>> HandleAsync(
         GetReport query, IReportService reports, CancellationToken ct)
     {
@@ -811,6 +816,8 @@ public class ReportHandler
     }
 }
 ```
+
+For file endpoints, `ProducesContentTypes` documents the file media types in OpenAPI. When omitted, the generated metadata defaults to `application/octet-stream`. Either way, the runtime response content type still comes from the `Result.File(...)` value returned by the handler.
 
 ### OpenAPI Error Responses
 

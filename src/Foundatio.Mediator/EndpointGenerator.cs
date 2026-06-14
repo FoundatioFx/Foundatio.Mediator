@@ -710,7 +710,12 @@ internal static class EndpointGenerator
             source.AppendLine(".WithOpenApi()");
         }
 
-        // Add Produces<T> metadata from return type
+        if (endpoint.BindFromBody && endpoint.AcceptsContentTypes.Any())
+        {
+            source.AppendLine($".Accepts<{handler.MessageType.QualifiedName}>({FormatStringArguments(endpoint.AcceptsContentTypes)})");
+        }
+
+        // Add response metadata from return type
         if (endpoint.IsStreaming && endpoint.StreamingFormat == "ServerSentEvents")
         {
             // SSE endpoints produce text/event-stream; TypedResults.ServerSentEvents()
@@ -725,8 +730,15 @@ internal static class EndpointGenerator
 
             foreach (var statusCode in successStatusCodes)
             {
-                if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
-                    source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode})");
+                if (handler.ReturnType.IsFileResult && statusCode is not 202 and not 204)
+                {
+                    var fileContentTypes = endpoint.ProducesContentTypes.Any()
+                        ? endpoint.ProducesContentTypes
+                        : new EquatableArray<string>(["application/octet-stream"]);
+                    source.AppendLine($".Produces({statusCode}{FormatContentTypeArguments(fileContentTypes)})");
+                }
+                else if (!string.IsNullOrEmpty(endpoint.ProducesType) && statusCode is not 202 and not 204)
+                    source.AppendLine($".Produces<{endpoint.ProducesType}>({statusCode}{FormatContentTypeArguments(endpoint.ProducesContentTypes)})");
                 else
                     source.AppendLine($".Produces({statusCode})");
             }
@@ -1297,6 +1309,25 @@ internal static class EndpointGenerator
             .Replace("\"", "\\\"")
             .Replace("\r", "\\r")
             .Replace("\n", "\\n");
+    }
+
+    private static string FormatStringArguments(EquatableArray<string> values)
+    {
+        return string.Join(", ", values.Select(value => $"\"{EscapeString(value)}\""));
+    }
+
+    private static string FormatContentTypeArguments(EquatableArray<string> contentTypes)
+    {
+        var values = contentTypes.ToArray();
+        if (values.Length == 0)
+            return string.Empty;
+
+        var first = EscapeString(values[0]);
+        if (values.Length == 1)
+            return $", contentType: \"{first}\"";
+
+        var additional = string.Join(", ", values.Skip(1).Select(value => $"\"{EscapeString(value)}\""));
+        return $", contentType: \"{first}\", additionalContentTypes: new[] {{ {additional} }}";
     }
 
     /// <summary>

@@ -149,6 +149,16 @@ internal readonly record struct EndpointInfo
     public EquatableArray<int> ProducesStatusCodes { get; init; }
 
     /// <summary>
+    /// Request content types accepted by this endpoint when a request body is bound.
+    /// </summary>
+    public EquatableArray<string> AcceptsContentTypes { get; init; }
+
+    /// <summary>
+    /// Response content types used for generated success response metadata.
+    /// </summary>
+    public EquatableArray<string> ProducesContentTypes { get; init; }
+
+    /// <summary>
     /// When true, the group route prefix bypasses the global <c>EndpointRoutePrefix</c>.
     /// Set when the group <c>RoutePrefix</c> starts with <c>/</c> (e.g., <c>"/health"</c>).
     /// </summary>

@@ -706,6 +706,12 @@ internal static class HandlerAnalyzer
         var explicitStatusCodes = GetIntArrayProperty(methodEndpointAttr, "ProducesStatusCodes") ??
                                   GetIntArrayProperty(classEndpointAttr, "ProducesStatusCodes");
 
+        var acceptsContentTypes = GetStringArrayProperty(methodEndpointAttr, "AcceptsContentTypes") ??
+                      GetStringArrayProperty(classEndpointAttr, "AcceptsContentTypes");
+
+        var producesContentTypes = GetStringArrayProperty(methodEndpointAttr, "ProducesContentTypes") ??
+                       GetStringArrayProperty(classEndpointAttr, "ProducesContentTypes");
+
         // Auto-detect Result factory method calls in the handler body (Created, Accepted, NotFound, Invalid, etc.)
         var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var successStatusCodes);
 
@@ -803,6 +809,8 @@ internal static class HandlerAnalyzer
             GroupFilters = new(groupFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
+            AcceptsContentTypes = new(acceptsContentTypes ?? []),
+            ProducesContentTypes = new(producesContentTypes ?? []),
             SuccessStatusCodes = new(effectiveSuccessStatusCodes),
             IsStreaming = isStreaming,
             StreamingFormat = streamingFormat,

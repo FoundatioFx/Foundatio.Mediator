@@ -158,6 +158,22 @@ public sealed class HandlerEndpointAttribute : Attribute
     public string[]? ProducesContentTypes { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to disable antiforgery (CSRF) token validation for a form-bound endpoint.
+    /// Has no effect on endpoints that don't bind from <c>multipart/form-data</c>.
+    /// <para>
+    /// ASP.NET Core requires antiforgery validation for form endpoints by default. The generator
+    /// preserves that secure default and only emits <c>.DisableAntiforgery()</c> when this is set
+    /// to <c>true</c> (or the assembly-level <c>EndpointDisableAntiforgery</c> default is enabled).
+    /// </para>
+    /// <para>
+    /// Only disable for endpoints that aren't vulnerable to CSRF — e.g. not callable from a browser,
+    /// or secured with non-cookie authentication (bearer tokens, API keys). Do <b>not</b> disable for
+    /// browser-reachable, cookie-authenticated endpoints.
+    /// </para>
+    /// </summary>
+    public bool DisableAntiforgery { get; set; }
+
+    /// <summary>
     /// Gets or sets the streaming format for handlers that return <c>IAsyncEnumerable&lt;T&gt;</c>.
     /// When set to <see cref="EndpointStreaming.ServerSentEvents"/>, the generated endpoint wraps
     /// the result with <c>TypedResults.ServerSentEvents()</c> for real-time server-to-client push.

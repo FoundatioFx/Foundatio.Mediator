@@ -143,4 +143,16 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// Default: <see cref="EndpointSummaryStyle.Exact"/>.
     /// </summary>
     public EndpointSummaryStyle EndpointSummaryStyle { get; set; }
+
+    /// <summary>
+    /// The default for disabling antiforgery (CSRF) token validation on form-bound endpoints.
+    /// When <c>true</c>, generated <c>multipart/form-data</c> endpoints emit <c>.DisableAntiforgery()</c>
+    /// unless a handler opts back in via <c>[HandlerEndpoint(DisableAntiforgery = false)]</c>.
+    /// Default: <c>false</c> — ASP.NET Core's secure default (antiforgery required) is preserved.
+    /// <para>
+    /// Enable only for assemblies whose form endpoints aren't vulnerable to CSRF — e.g. APIs that
+    /// aren't browser-reachable or use non-cookie authentication (bearer tokens, API keys).
+    /// </para>
+    /// </summary>
+    public bool EndpointDisableAntiforgery { get; set; }
 }

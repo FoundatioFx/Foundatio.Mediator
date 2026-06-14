@@ -74,6 +74,26 @@ internal readonly record struct EndpointInfo
     public bool BindFromBody { get; init; }
 
     /// <summary>
+    /// Whether the message should be bound from a multipart/form-data request.
+    /// Set when a POST/PUT/PATCH message exposes an <c>IFormFile</c>/<c>IFormFileCollection</c>/<c>IFormCollection</c>
+    /// property. Mutually exclusive with <see cref="BindFromBody"/>; the endpoint also emits <c>.DisableAntiforgery()</c>.
+    /// </summary>
+    public bool BindFromForm { get; init; }
+
+    /// <summary>
+    /// Form parameters (files bound by name with no attribute; other fields with <c>[FromForm]</c>)
+    /// merged into the message when <see cref="BindFromForm"/> is true.
+    /// </summary>
+    public EquatableArray<EndpointParameterInfo> FormParameters { get; init; }
+
+    /// <summary>
+    /// Handler-level override (method then class) for disabling antiforgery validation on a form endpoint.
+    /// <c>null</c> when unset — the generator then falls back to the assembly-level default. Only meaningful
+    /// when <see cref="BindFromForm"/> is true.
+    /// </summary>
+    public bool? DisableAntiforgery { get; init; }
+
+    /// <summary>
     /// Whether the message type supports [AsParameters] binding.
     /// True when message has a parameterless constructor with settable properties.
     /// </summary>
@@ -233,6 +253,13 @@ internal readonly record struct EndpointParameterInfo
     /// Whether this is a route parameter (vs query parameter).
     /// </summary>
     public bool IsRouteParameter { get; init; }
+
+    /// <summary>
+    /// Whether this parameter is bound from a multipart/form-data request.
+    /// File parameters (<c>IFormFile</c>/<c>IFormFileCollection</c>/<c>IFormCollection</c>) bind by name
+    /// with no attribute; other form fields carry a <c>[FromForm]</c> <see cref="BindingAttributeSyntax"/>.
+    /// </summary>
+    public bool IsFormParameter { get; init; }
 
     /// <summary>
     /// The full attribute syntax to emit on the endpoint lambda parameter

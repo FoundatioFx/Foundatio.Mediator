@@ -437,7 +437,7 @@ internal static class EndpointGenerator
                     ? "endpoints"
                     : groupVarName;
 
-                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults.Conventions, routeOverride);
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults.Conventions, endpointDefaults.DisableAntiforgery, routeOverride);
 
                 // Collect endpoint info for logging
                 var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;
@@ -610,6 +610,7 @@ internal static class EndpointGenerator
         string assemblySuffix,
         string summaryStyle,
         EquatableArray<EndpointConventionInfo> assemblyConventions,
+        bool defaultDisableAntiforgery,
         string? routeOverride = null)
     {
         var endpoint = handler.Endpoint!.Value;
@@ -664,6 +665,14 @@ internal static class EndpointGenerator
         {
             var escapedDescription = EscapeString(descriptionText!);
             source.AppendLine($".WithDescription(\"{escapedDescription}\")");
+        }
+
+        // Form endpoints keep ASP.NET Core's secure default (antiforgery required). Emit
+        // .DisableAntiforgery() only when the handler opts out, or the assembly default does.
+        // Disabling drops CSRF protection, so it is never the implicit choice.
+        if (endpoint.BindFromForm && (endpoint.DisableAntiforgery ?? defaultDisableAntiforgery))
+        {
+            source.AppendLine(".DisableAntiforgery()");
         }
 
         // Add AllowAnonymous if handler opts out of group-level auth
@@ -849,7 +858,52 @@ internal static class EndpointGenerator
         var isAsync = handler.IsAsync;
         var asyncKeyword = isAsync ? "async " : "";
 
-        if (endpoint.BindFromBody)
+        if (endpoint.BindFromForm)
+        {
+            // multipart/form-data: route params bind by name, file params (IFormFile/...) bind by name
+            // with no attribute, other fields carry [FromForm]. Everything merges into the message.
+            var routeParams = endpoint.RouteParameters;
+            var formParams = endpoint.FormParameters;
+            var allParams = routeParams.Concat(formParams).ToList();
+
+            source.Append($"{asyncKeyword}(");
+
+            foreach (var param in routeParams)
+                source.Append($"{param.Type.FullName} {param.Name}, ");
+
+            foreach (var param in formParams)
+            {
+                if (param.BindingAttributeSyntax != null)
+                    source.Append($"{param.BindingAttributeSyntax} ");
+                source.Append($"{param.Type.FullName} {param.Name}, ");
+            }
+
+            source.Append("Microsoft.AspNetCore.Http.HttpContext httpContext, Foundatio.Mediator.IMediator mediator, System.Threading.CancellationToken cancellationToken) =>");
+            source.AppendLine();
+            source.AppendLine("{");
+            source.IncrementIndent();
+
+            source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
+
+            if (handler.MessageType.IsRecord)
+            {
+                source.Append($"var message = new {messageType}(");
+                source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName}: {p.Name}")));
+                source.AppendLine(");");
+            }
+            else
+            {
+                source.Append($"var message = new {messageType} {{ ");
+                source.Append(string.Join(", ", allParams.Select(p => $"{p.PropertyName} = {p.Name}")));
+                source.AppendLine(" };");
+            }
+
+            GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
+
+            source.DecrementIndent();
+            source.Append("}");
+        }
+        else if (endpoint.BindFromBody)
         {
             var routeParams = endpoint.RouteParameters;
             var bindingParams = endpoint.BindingParameters;

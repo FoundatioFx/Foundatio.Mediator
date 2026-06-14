@@ -3038,5 +3038,200 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery]", endpointSource);
         Assert.Contains("Number: number", endpointSource);
     }
+
+    [Fact]
+    public void FormUpload_WithRouteParam_BindsFileFromFormAndIdFromRoute()
+    {
+        // Repro for https://github.com/FoundatioFx/Foundatio.Mediator/issues/205 (POST + IFormFile):
+        // a message exposing IFormFile must bind from multipart/form-data, not [FromBody], and the
+        // {contractNumber} route segment must still bind from the route. (GenerateEndpointSource also
+        // asserts the generated code compiles against the ASP.NET Core references.)
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record UploadFile(string ContractNumber, IFormFile File);
+
+            [HandlerEndpointGroup(Name = "Hobex", RoutePrefix = "Hobex")]
+            public class HobexHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "Upload/{contractNumber}")]
+                public string Handle(UploadFile cmd) => cmd.ContractNumber;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapPost(\"Upload/{contractNumber}\"", endpointSource);
+        // No JSON body binding; the file binds from the form and the id from the route.
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromBody]", endpointSource);
+        Assert.Contains("IFormFile file", endpointSource);
+        Assert.Contains("ContractNumber: contractNumber", endpointSource);
+        Assert.Contains("File: file", endpointSource);
+        // Antiforgery stays required by default (ASP.NET Core's secure default is preserved).
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void FormUpload_WithScalarMetadata_UsesFromFormForNonFileFields()
+    {
+        // A non-file field alongside the upload binds via [FromForm]; the file itself takes no attribute.
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record UploadDoc(IFormFile File, string Description);
+
+            public class UploadHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "docs")]
+                public string Handle(UploadDoc cmd) => cmd.Description;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapPost(\"docs\"", endpointSource);
+        Assert.Contains("IFormFile file", endpointSource);
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromForm] string description", endpointSource);
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromBody]", endpointSource);
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void FormUpload_FileCollection_BindsFromForm()
+    {
+        // IFormFileCollection is also recognized as a form-bound parameter.
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record UploadMany(IFormFileCollection Files);
+
+            public class BatchHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "batch")]
+                public string Handle(UploadMany cmd) => cmd.Files.Count.ToString();
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("IFormFileCollection files", endpointSource);
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromBody]", endpointSource);
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void FormUpload_DisableAntiforgeryAttribute_EmitsDisableAntiforgery()
+    {
+        // Opt-in per handler: [HandlerEndpoint(DisableAntiforgery = true)] emits .DisableAntiforgery().
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record UploadFile(string ContractNumber, IFormFile File);
+
+            [HandlerEndpointGroup(Name = "Hobex", RoutePrefix = "Hobex")]
+            public class HobexHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "Upload/{contractNumber}", DisableAntiforgery = true)]
+                public string Handle(UploadFile cmd) => cmd.ContractNumber;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("IFormFile file", endpointSource);
+        Assert.Contains(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void FormUpload_AssemblyDisableAntiforgeryDefault_EmitsDisableAntiforgery()
+    {
+        // Opt-in for the whole assembly via MediatorConfiguration(EndpointDisableAntiforgery = true).
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointDisableAntiforgery = true)]
+
+            public sealed record UploadMany(IFormFileCollection Files);
+
+            public class BatchHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "batch")]
+                public string Handle(UploadMany cmd) => cmd.Files.Count.ToString();
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void FormUpload_HandlerOptOutOverridesAssemblyDefault()
+    {
+        // Handler-level DisableAntiforgery = false wins over an assembly default of true.
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointDisableAntiforgery = true)]
+
+            public sealed record UploadMany(IFormFileCollection Files);
+
+            public class BatchHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "batch", DisableAntiforgery = false)]
+                public string Handle(UploadMany cmd) => cmd.Files.Count.ToString();
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void NonFormPost_StillBindsFromBody()
+    {
+        // Regression guard: a POST without any form-file property keeps JSON body binding.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record CreateWidget(string Name, int Quantity);
+
+            public class WidgetHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "widgets")]
+                public string Handle(CreateWidget cmd) => cmd.Name;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapPost(\"widgets\"", endpointSource);
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromForm]", endpointSource);
+    }
 }
 

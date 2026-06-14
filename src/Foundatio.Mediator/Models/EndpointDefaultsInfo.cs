@@ -47,6 +47,13 @@ internal readonly record struct EndpointDefaultsInfo
     public string SummaryStyle { get; init; }
 
     /// <summary>
+    /// The assembly-level default for disabling antiforgery validation on form-bound endpoints.
+    /// Populated from <c>EndpointDisableAntiforgery</c> on <c>[assembly: MediatorConfiguration]</c>.
+    /// A handler-level <c>[HandlerEndpoint(DisableAntiforgery = ...)]</c> overrides this.
+    /// </summary>
+    public bool DisableAntiforgery { get; init; }
+
+    /// <summary>
     /// Assembly-level endpoint conventions (global defaults).
     /// These apply to all endpoints unless overridden by class or method level conventions.
     /// </summary>
@@ -66,6 +73,7 @@ internal readonly record struct EndpointDefaultsInfo
         Policies = EquatableArray<string>.Empty,
         Roles = EquatableArray<string>.Empty,
         SummaryStyle = "Exact",
+        DisableAntiforgery = false,
         Conventions = EquatableArray<EndpointConventionInfo>.Empty,
         IsConfigured = false
     };

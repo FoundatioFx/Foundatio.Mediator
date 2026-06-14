@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Foundatio" Version="13.0.1" />
+    <PackageReference Include="Foundatio" Version="13.0.2-preview.0.4" />
     <PackageReference Include="MiniValidation" Version="0.10.0" />
   </ItemGroup>
 

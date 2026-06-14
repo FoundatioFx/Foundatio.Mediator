@@ -639,7 +639,7 @@ internal static class HandlerAnalyzer
         };
 
         // Analyze message type for parameters (before route computation, since route params go into the shared input)
-        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null);
+        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null, explicitRoute: explicitRoute);
 
         // ── Shared route computation ───────────────────────────────
         // Uses the same code path as MediatorInfoAnalyzer (FMED017 diagnostic).
@@ -962,11 +962,16 @@ internal static class HandlerAnalyzer
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
     private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, bool supportsAsParameters, bool hasParameterlessConstructor)
-        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false)
+        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false, string? explicitRoute = null)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
         var bindingParams = new List<EndpointParameterInfo>();
+
+        // Placeholder names declared in an explicit [HandlerEndpoint] route template (case-insensitive).
+        var routePlaceholders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var placeholder in RouteConventions.ExtractRoutePlaceholderNames(explicitRoute))
+            routePlaceholders.Add(placeholder);
 
         // Check if message supports [AsParameters] binding
         // It needs a parameterless constructor or a record with optional parameters
@@ -1007,6 +1012,16 @@ internal static class HandlerAnalyzer
                     routeParams.Add(paramInfo with { IsRouteParameter = true, BindingAttributeSyntax = bindingAttrSyntax });
                 else
                     bindingParams.Add(paramInfo with { BindingAttributeSyntax = bindingAttrSyntax });
+                continue;
+            }
+
+            // A property whose name matches a {placeholder} in an explicit route template binds from
+            // the route, regardless of naming convention or HTTP method. Without this, a handler with
+            // an explicit "Path/{param}" template falls through to [FromQuery]/[FromBody] and the path
+            // value is never bound (GET → 400, POST → value silently lost).
+            if (routePlaceholders.Contains(prop.Name))
+            {
+                routeParams.Add(paramInfo with { IsRouteParameter = true });
                 continue;
             }
 

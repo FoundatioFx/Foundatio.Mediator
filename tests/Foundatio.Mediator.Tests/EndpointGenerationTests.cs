@@ -2844,5 +2844,89 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         // Assembly-level "global" should NOT appear since both endpoints have more specific overrides
         Assert.DoesNotContain("PolicyName = \"global\"", endpointSource);
     }
+
+    [Fact]
+    public void ExplicitRouteTemplate_GetWithNonIdRouteParam_BindsFromRouteNotQuery()
+    {
+        // Repro for https://github.com/FoundatioFx/Foundatio.Mediator/issues/205:
+        // a {param} in an explicit GET route template must bind from the route, even when the
+        // matching ctor parameter is not an "Id"-named property (previously emitted [FromQuery] → 400).
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetContractDetail(string ContractNumber);
+
+            [HandlerEndpointGroup(Name = "Hobex", RoutePrefix = "Hobex")]
+            public class HobexHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "GetContractDetail/{contractNumber}")]
+                public string Handle(GetContractDetail query) => query.ContractNumber;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapGet(\"GetContractDetail/{contractNumber}\"", endpointSource);
+        // The route value must bind positionally (no [FromQuery]); the message is constructed from it.
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery]", endpointSource);
+        Assert.Contains("ContractNumber: contractNumber", endpointSource);
+    }
+
+    [Fact]
+    public void ExplicitRouteTemplate_GetWithMixedParams_RouteFromTemplateRestFromQuery()
+    {
+        // Only the property named in the {placeholder} binds from the route; the rest stay [FromQuery].
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetContractLines(string ContractNumber, int Page);
+
+            [HandlerEndpointGroup(Name = "Hobex", RoutePrefix = "Hobex")]
+            public class ContractHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "GetContractLines/{contractNumber}")]
+                public string Handle(GetContractLines query) => query.ContractNumber;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapGet(\"GetContractLines/{contractNumber}\"", endpointSource);
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery] string contractNumber", endpointSource);
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromQuery] int page", endpointSource);
+    }
+
+    [Fact]
+    public void ExplicitRouteTemplate_ConstrainedRouteParam_BindsFromRoute()
+    {
+        // Inline route constraints ({number:int}) must still be recognized as route placeholders.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetInvoice(int Number);
+
+            [HandlerEndpointGroup(Name = "Billing", RoutePrefix = "billing")]
+            public class BillingHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "invoices/{number:int}")]
+                public string Handle(GetInvoice query) => query.Number.ToString();
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapGet(\"invoices/{number:int}\"", endpointSource);
+        Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromQuery]", endpointSource);
+        Assert.Contains("Number: number", endpointSource);
+    }
 }
 

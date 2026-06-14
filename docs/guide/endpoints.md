@@ -236,6 +236,7 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
 | `AcceptsContentTypes` | Request body content types for generated `.Accepts<T>()` metadata |
 | `ProducesContentTypes` | Success response content types for generated `.Produces<T>()` metadata, or `.Produces()` metadata for file downloads |
+| `DisableAntiforgery` | `true` to skip antiforgery (CSRF) validation on a form (`multipart/form-data`) endpoint. Default: required. Only for non-browser / non-cookie-auth endpoints — see [File Uploads](#file-uploads) |
 | `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
 | `SseEventType` | SSE `event:` field name for `addEventListener` |
 
@@ -517,6 +518,14 @@ public record GetProduct(string ProductId);
 // → GET /api/products/{productId}
 ```
 
+With an **explicit route template**, any property whose name matches a `{placeholder}` segment binds from the route — even when it isn't named `Id`, and for any HTTP method. Inline constraints (`{number:int}`) are matched too:
+
+```csharp
+[HandlerEndpoint(HandlerMethod.Get, "contracts/{contractNumber}")]
+public Result<Contract> Handle(GetContract query);   // record GetContract(string ContractNumber)
+// → contractNumber binds from the path, not the query string
+```
+
 ### Query Parameters
 
 For GET/DELETE requests, non-ID properties become query parameters:
@@ -601,6 +610,37 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 // → MapPut("/{productId}", async (string productId, [FromBody] UpdateProduct message, ...) =>
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
+
+### File Uploads
+
+When a POST/PUT/PATCH message exposes an `IFormFile`, `IFormFileCollection`, or `IFormCollection` property, the whole message binds from `multipart/form-data` instead of the JSON body. File properties bind by name (no attribute — how Minimal APIs bind `IFormFile`), any other fields bind with `[FromForm]`, and route placeholders still bind from the route:
+
+```csharp
+public sealed record UploadFile(string ContractNumber, IFormFile File);
+
+[HandlerEndpoint(HandlerMethod.Post, "upload/{contractNumber}")]
+public Task<Result<string>> HandleAsync(UploadFile cmd) { ... }
+// → MapPost("upload/{contractNumber}", (string contractNumber, IFormFile file, ...) =>
+//   { var message = new UploadFile(ContractNumber: contractNumber, File: file); ... })
+```
+
+The form-field name matches the parameter name (`File` → `file`). `[FromBody]` and form binding are mutually exclusive — a message with a file property is never bound from a JSON body.
+
+::: warning Antiforgery
+ASP.NET Core requires [antiforgery (CSRF) validation](https://learn.microsoft.com/aspnet/core/security/anti-request-forgery#antiforgery-with-minimal-apis) on form endpoints by default, and the generator **preserves that default** — it does not call `.DisableAntiforgery()` on its own. If your app runs the antiforgery middleware, a form POST without a valid token is rejected before the handler runs.
+
+Disable it **only** for endpoints that aren't vulnerable to CSRF — not callable from a browser, or secured with non-cookie auth (bearer tokens, API keys). Disabling is explicit, resolved method → class → assembly:
+
+```csharp
+// Per endpoint or handler class:
+[HandlerEndpoint(HandlerMethod.Post, "upload", DisableAntiforgery = true)]
+
+// Assembly-wide default (e.g. an API that's entirely token/API-key authenticated):
+[assembly: MediatorConfiguration(EndpointDisableAntiforgery = true)]
+```
+
+A handler-level `DisableAntiforgery = false` overrides an assembly default of `true`, so you can opt out globally and still re-protect a specific browser-facing endpoint.
+:::
 
 ### Binding Attributes on Message Properties
 
@@ -944,13 +984,14 @@ app.MapMediatorEndpoints(c =>
 ```csharp
 [assembly: MediatorConfiguration(
     EndpointDiscovery = EndpointDiscovery.All,
-    EndpointRoutePrefix = "api",          // Global route prefix (default: "api")
-    AuthorizationRequired = false,         // Require auth for all endpoints
-    EndpointFilters = [typeof(MyFilter)]  // Global endpoint filters
+    EndpointRoutePrefix = "api",            // Global route prefix (default: "api")
+    AuthorizationRequired = false,          // Require auth for all endpoints
+    EndpointFilters = [typeof(MyFilter)],   // Global endpoint filters
+    EndpointDisableAntiforgery = false      // Default for form endpoints (default: false — antiforgery required)
 )]
 ```
 
-Set `EndpointRoutePrefix = ""` to disable the global prefix entirely.
+Set `EndpointRoutePrefix = ""` to disable the global prefix entirely. See [File Uploads](#file-uploads) for `EndpointDisableAntiforgery`.
 
 ## Endpoint Conventions
 

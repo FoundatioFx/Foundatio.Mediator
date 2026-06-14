@@ -227,6 +227,13 @@ The following properties on `MediatorConfigurationAttribute` control endpoint ge
   - `Exact`: Uses the message type name as-is (e.g., `"GetProduct"`)
   - `Spaced`: Splits PascalCase into space-separated words (e.g., `"Get Product"`)
 
+**`EndpointDisableAntiforgery`** (`bool`)
+
+- **Default:** `false` — ASP.NET Core's secure default (antiforgery required on form endpoints) is preserved
+- **Effect:** The assembly-wide default for disabling antiforgery (CSRF) validation on `multipart/form-data` (`IFormFile`) endpoints
+- **Use Case:** APIs whose form endpoints aren't browser-reachable or use non-cookie auth (bearer tokens, API keys)
+- **Override:** `[HandlerEndpoint(DisableAntiforgery = ...)]` on a handler method or class. Do **not** disable for browser-reachable, cookie-authenticated endpoints — see [File Uploads](./endpoints.md#file-uploads)
+
 ### Example Configuration
 
 All configuration is done via the assembly attribute in any `.cs` file in your project:

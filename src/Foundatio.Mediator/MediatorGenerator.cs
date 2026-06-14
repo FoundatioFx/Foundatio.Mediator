@@ -116,6 +116,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
         var policies = Array.Empty<string>();
         var roles = Array.Empty<string>();
         string summaryStyle = "Exact";
+        bool disableAntiforgery = false;
         bool endpointConfigured = false;
 
         if (configAttr != null)
@@ -189,6 +190,9 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                     case "EndpointSummaryStyle" when arg.Value.Value is int v:
                         summaryStyle = v switch { 1 => "Spaced", _ => "Exact" };
                         break;
+                    case "EndpointDisableAntiforgery" when arg.Value.Value is bool b:
+                        disableAntiforgery = b;
+                        break;
                 }
             }
         }
@@ -229,6 +233,7 @@ public sealed class MediatorGenerator : IIncrementalGenerator
             Policies = new(policies),
             Roles = new(roles),
             SummaryStyle = summaryStyle,
+            DisableAntiforgery = disableAntiforgery,
             Conventions = new(assemblyConventions),
             IsConfigured = endpointConfigured
         };

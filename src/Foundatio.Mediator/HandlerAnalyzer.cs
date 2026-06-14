@@ -639,7 +639,7 @@ internal static class HandlerAnalyzer
         };
 
         // Analyze message type for parameters (before route computation, since route params go into the shared input)
-        var (routeParams, queryParams, bindingParams, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null, explicitRoute: explicitRoute);
+        var (routeParams, queryParams, bindingParams, formParams, bindFromForm, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null, explicitRoute: explicitRoute);
 
         // ── Shared route computation ───────────────────────────────
         // Uses the same code path as MediatorInfoAnalyzer (FMED017 diagnostic).
@@ -712,6 +712,11 @@ internal static class HandlerAnalyzer
         var producesContentTypes = GetStringArrayProperty(methodEndpointAttr, "ProducesContentTypes") ??
                        GetStringArrayProperty(classEndpointAttr, "ProducesContentTypes");
 
+        // Handler-level antiforgery override (method -> class). Null when unset; the generator then
+        // falls back to the assembly-level EndpointDisableAntiforgery default.
+        var disableAntiforgery = GetBoolProperty(methodEndpointAttr, "DisableAntiforgery") ??
+                                 GetBoolProperty(classEndpointAttr, "DisableAntiforgery");
+
         // Auto-detect Result factory method calls in the handler body (Created, Accepted, NotFound, Invalid, etc.)
         var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var successStatusCodes);
 
@@ -727,8 +732,9 @@ internal static class HandlerAnalyzer
         // Extract ProducesType from return type for auto Produces<T>() generation
         string? producesType = ExtractProducesType(returnType, compilation);
 
-        // Determine binding strategy
-        bool bindFromBody = httpMethod is "POST" or "PUT" or "PATCH";
+        // Determine binding strategy. Form-bound messages (multipart upload) bind from the form,
+        // not from a JSON body, so the two are mutually exclusive.
+        bool bindFromBody = (httpMethod is "POST" or "PUT" or "PATCH") && !bindFromForm;
 
         // For auto-generated action verb routes, check if all properties are already
         // covered by route params (IDs). If so, skip body binding.
@@ -796,7 +802,10 @@ internal static class HandlerAnalyzer
             RouteParameters = new(routeParams),
             QueryParameters = new(queryParams),
             BindingParameters = new(bindingParams),
+            FormParameters = new(formParams),
             BindFromBody = bindFromBody,
+            BindFromForm = bindFromForm,
+            DisableAntiforgery = disableAntiforgery,
             SupportsAsParameters = supportsAsParameters,
             HasParameterlessConstructor = hasParameterlessConstructor,
             GenerateEndpoint = true,
@@ -969,12 +978,13 @@ internal static class HandlerAnalyzer
     /// <summary>
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
-    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, bool supportsAsParameters, bool hasParameterlessConstructor)
+    private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, EndpointParameterInfo[] formParams, bool bindFromForm, bool supportsAsParameters, bool hasParameterlessConstructor)
         AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false, string? explicitRoute = null)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
         var bindingParams = new List<EndpointParameterInfo>();
+        var formParams = new List<EndpointParameterInfo>();
 
         // Placeholder names declared in an explicit [HandlerEndpoint] route template (case-insensitive).
         var routePlaceholders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -998,6 +1008,13 @@ internal static class HandlerAnalyzer
             .OfType<IPropertySymbol>()
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null)
             .ToList();
+
+        // A body-bound (POST/PUT/PATCH) message that exposes an IFormFile/IFormFileCollection/IFormCollection
+        // property binds from multipart/form-data rather than from a JSON body: files bind by name and other
+        // fields use [FromForm]. Without this the whole message gets [FromBody] and multipart requests fail
+        // (415, and IFormFile cannot be deserialized from JSON anyway).
+        bool bindFromForm = httpMethod is "POST" or "PUT" or "PATCH"
+            && properties.Any(p => IsFormParameterType(p.Type));
 
         foreach (var prop in properties)
         {
@@ -1033,6 +1050,15 @@ internal static class HandlerAnalyzer
                 continue;
             }
 
+            // In form mode every remaining property is bound from the form: file types by name (no
+            // attribute) and other fields via [FromForm].
+            if (bindFromForm)
+            {
+                var formAttr = IsFormParameterType(prop.Type) ? null : "[Microsoft.AspNetCore.Mvc.FromForm]";
+                formParams.Add(paramInfo with { IsFormParameter = true, BindingAttributeSyntax = formAttr });
+                continue;
+            }
+
             // Determine if this should be a route parameter
             bool isIdProperty = prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
                                 prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase);
@@ -1051,7 +1077,19 @@ internal static class HandlerAnalyzer
             }
         }
 
-        return (routeParams.ToArray(), queryParams.ToArray(), bindingParams.ToArray(), supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+        return (routeParams.ToArray(), queryParams.ToArray(), bindingParams.ToArray(), formParams.ToArray(), bindFromForm, supportsAsParameters, hasParameterlessConstructor || isRecordWithDefaults);
+    }
+
+    /// <summary>
+    /// Whether the type is an ASP.NET Core form file type bound directly from multipart/form-data:
+    /// <c>IFormFile</c>, <c>IFormFileCollection</c>, or <c>IFormCollection</c>.
+    /// </summary>
+    private static bool IsFormParameterType(ITypeSymbol type)
+    {
+        return type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) is
+            "global::Microsoft.AspNetCore.Http.IFormFile" or
+            "global::Microsoft.AspNetCore.Http.IFormFileCollection" or
+            "global::Microsoft.AspNetCore.Http.IFormCollection";
     }
 
     /// <summary>

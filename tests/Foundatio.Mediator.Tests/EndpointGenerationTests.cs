@@ -3233,5 +3233,59 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
         Assert.DoesNotContain("[Microsoft.AspNetCore.Mvc.FromForm]", endpointSource);
     }
+
+    [Fact]
+    public void DisableAntiforgeryAttribute_OnNonFormEndpoint_IsHonored()
+    {
+        // An explicit [HandlerEndpoint(DisableAntiforgery = true)] is honored even on a JSON endpoint
+        // (a harmless no-op), rather than being silently dropped.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public sealed record CreateWidget(string Name, int Quantity);
+
+            public class WidgetHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "widgets", DisableAntiforgery = true)]
+                public string Handle(CreateWidget cmd) => cmd.Name;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.Contains("MapPost(\"widgets\"", endpointSource);
+        Assert.Contains(".DisableAntiforgery()", endpointSource);
+    }
+
+    [Fact]
+    public void AssemblyDisableAntiforgeryDefault_DoesNotApplyToNonFormEndpoints()
+    {
+        // The assembly-wide default only targets form endpoints — it must not splatter
+        // .DisableAntiforgery() across ordinary GET/JSON endpoints.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All, EndpointDisableAntiforgery = true)]
+
+            public sealed record CreateWidget(string Name, int Quantity);
+            public record GetWidget(string Id);
+
+            public class WidgetHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "widgets")]
+                public string Handle(CreateWidget cmd) => cmd.Name;
+
+                public string Handle(GetWidget query) => query.Id;
+            }
+            """;
+
+        var endpointSource = GenerateEndpointSource(source);
+        if (endpointSource is null) return;
+
+        Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
+    }
 }
 

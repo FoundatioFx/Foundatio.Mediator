@@ -667,10 +667,12 @@ internal static class EndpointGenerator
             source.AppendLine($".WithDescription(\"{escapedDescription}\")");
         }
 
-        // Form endpoints keep ASP.NET Core's secure default (antiforgery required). Emit
-        // .DisableAntiforgery() only when the handler opts out, or the assembly default does.
-        // Disabling drops CSRF protection, so it is never the implicit choice.
-        if (endpoint.BindFromForm && (endpoint.DisableAntiforgery ?? defaultDisableAntiforgery))
+        // An explicit [HandlerEndpoint(DisableAntiforgery = ...)] is always honored — it's a harmless
+        // no-op on non-form endpoints, and honoring it avoids a silently-ignored setting. The
+        // assembly-wide default only applies to form endpoints (where antiforgery is meaningful), so
+        // it never splatters .DisableAntiforgery() across every GET/JSON endpoint. Form endpoints
+        // otherwise keep ASP.NET Core's secure default (antiforgery required).
+        if (endpoint.DisableAntiforgery ?? (endpoint.BindFromForm && defaultDisableAntiforgery))
         {
             source.AppendLine(".DisableAntiforgery()");
         }

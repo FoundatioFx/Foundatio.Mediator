@@ -267,6 +267,7 @@ internal static class WellKnownTypes
     public const string CallContext = "Foundatio.Mediator.CallContext";
     public const string HandlerEndpointAttribute = "Foundatio.Mediator.HandlerEndpointAttribute";
     public const string HandlerEndpointGroupAttribute = "Foundatio.Mediator.HandlerEndpointGroupAttribute";
+    public const string MediatorEndpointGroupAttribute = "Foundatio.Mediator.MediatorEndpointGroupAttribute";
     public const string UseMiddlewareAttribute = "Foundatio.Mediator.UseMiddlewareAttribute";
     public const string MediatorConfigurationAttribute = "Foundatio.Mediator.MediatorConfigurationAttribute";
     public const string AllowAnonymousAttribute = "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute";

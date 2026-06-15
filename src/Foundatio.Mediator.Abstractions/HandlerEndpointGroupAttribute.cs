@@ -52,4 +52,16 @@ public sealed class HandlerEndpointGroupAttribute : Attribute
     /// These filters are additive to any global-level filters and run before endpoint-level filters.
     /// </summary>
     public Type[]? EndpointFilters { get; set; }
+
+    /// <summary>
+    /// Gets or sets the authorization policy names required by every endpoint in this group.
+    /// Emitted as <c>.RequireAuthorization("policy")</c> on the group.
+    /// </summary>
+    public string[]? Policies { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether endpoints in this group are hidden from the OpenAPI description
+    /// (via <c>.ExcludeFromDescription()</c> on the group) while remaining routable.
+    /// </summary>
+    public bool ExcludeFromDescription { get; set; }
 }

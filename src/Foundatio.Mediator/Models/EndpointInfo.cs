@@ -65,6 +65,18 @@ internal readonly record struct EndpointInfo
     public string? GroupRoutePrefix { get; init; }
 
     /// <summary>
+    /// Authorization policy names required by the group (emitted as <c>.RequireAuthorization("policy")</c>
+    /// on the group). From <c>[HandlerEndpointGroup]</c> or a referenced <c>[MediatorEndpointGroup]</c>.
+    /// </summary>
+    public EquatableArray<string> GroupPolicies { get; init; }
+
+    /// <summary>
+    /// When true, the group is hidden from the OpenAPI description via <c>.ExcludeFromDescription()</c>
+    /// on the group builder while remaining routable.
+    /// </summary>
+    public bool GroupExcludeFromDescription { get; init; }
+
+    /// <summary>
     /// Route parameters extracted from the message type properties.
     /// </summary>
     public EquatableArray<EndpointParameterInfo> RouteParameters { get; init; }
@@ -84,6 +96,14 @@ internal readonly record struct EndpointInfo
     /// Whether the message should be bound from body (POST/PUT/PATCH).
     /// </summary>
     public bool BindFromBody { get; init; }
+
+    /// <summary>
+    /// Whether the body-bound message type defines its own minimal-API custom binding
+    /// (implements <c>IBindableFromHttpContext&lt;TSelf&gt;</c> or declares a public static
+    /// <c>BindAsync</c> method). When true, the generated endpoint omits <c>[FromBody]</c> so
+    /// ASP.NET Core uses the type's custom binding instead of JSON body binding.
+    /// </summary>
+    public bool MessageHasCustomBinding { get; init; }
 
     /// <summary>
     /// Whether the message should be bound from a multipart/form-data request.

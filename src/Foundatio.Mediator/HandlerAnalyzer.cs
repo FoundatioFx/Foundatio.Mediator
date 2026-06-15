@@ -576,20 +576,33 @@ internal static class HandlerAnalyzer
             }
         }
 
-        // Extract group info from [HandlerEndpointGroup]
-        string? groupName = null;
-        string? groupRoutePrefix = null;
-        string[]? groupTags = null;
+        // Resolve the endpoint group. A handler joins a group via a class-level [HandlerEndpointGroup]
+        // and/or by referencing an assembly-level [MediatorEndpointGroup] by name through
+        // [HandlerEndpoint(Group = "...")]. Class-level settings take precedence per-property; the
+        // referenced named group fills the gaps.
+        var groupRef = GetStringProperty(methodEndpointAttr, "Group") ??
+                       GetStringProperty(classEndpointAttr, "Group");
 
-        if (groupAttr != null)
+        AttributeData? namedGroupAttr = null;
+        if (!string.IsNullOrEmpty(groupRef))
         {
-            // Group name from constructor argument or named property
-            if (groupAttr.ConstructorArguments.Length > 0)
-                groupName = groupAttr.ConstructorArguments[0].Value as string;
-            groupName ??= GetStringProperty(groupAttr, "Name");
-            groupRoutePrefix = GetStringProperty(groupAttr, "RoutePrefix");
-            groupTags = GetStringArrayProperty(groupAttr, "Tags");
+            namedGroupAttr = compilation.Assembly.GetAttributes().FirstOrDefault(a =>
+                a.AttributeClass?.ToDisplayString() == WellKnownTypes.MediatorEndpointGroupAttribute &&
+                string.Equals(GetGroupAttributeName(a), groupRef, StringComparison.Ordinal));
         }
+
+        var classGroup = ReadGroupSettings(groupAttr);
+        var namedGroup = ReadGroupSettings(namedGroupAttr);
+
+        // A handler is "in a group" when it has a class group attribute, resolves a named group, or
+        // references a group by name (an unresolved reference behaves like an inline named group).
+        bool hasGroup = groupAttr != null || namedGroupAttr != null || !string.IsNullOrEmpty(groupRef);
+
+        string? groupName = classGroup.Name ?? namedGroup.Name ?? groupRef;
+        string? groupRoutePrefix = classGroup.RoutePrefix ?? namedGroup.RoutePrefix;
+        string[]? groupTags = classGroup.Tags ?? namedGroup.Tags;
+        var groupPolicies = classGroup.Policies ?? namedGroup.Policies ?? [];
+        var groupExcludeFromDescription = classGroup.ExcludeFromDescription ?? namedGroup.ExcludeFromDescription ?? false;
 
         // Extract endpoint info (method takes precedence over class)
         // Extract streaming configuration
@@ -659,7 +672,7 @@ internal static class HandlerAnalyzer
             HandlerMethodCount = handlerMethodCount,
             RouteParams = routeParams.Select(p => new RouteParam(p.Name, p.Type.QualifiedName)).ToArray(),
             GlobalRoutePrefix = "",
-            HasGroupAttribute = groupAttr != null,
+            HasGroupAttribute = hasGroup,
             GroupName = groupName,
             GroupRoutePrefix = groupRoutePrefix,
             HttpMethodEnum = httpMethodEnum,
@@ -712,7 +725,7 @@ internal static class HandlerAnalyzer
         var methodFilters = GetTypeArrayProperty(methodEndpointAttr, "EndpointFilters");
         var classFilters = GetTypeArrayProperty(classEndpointAttr, "EndpointFilters");
         var endpointFilters = (methodFilters ?? []).Concat(classFilters ?? []).Distinct().ToArray();
-        var groupFilters = GetTypeArrayProperty(groupAttr, "EndpointFilters") ?? [];
+        var groupFilters = classGroup.Filters ?? namedGroup.Filters ?? [];
 
         // Extract endpoint convention attributes (IEndpointConvention<TBuilder>)
         var conventions = ExtractEndpointConventions(classSymbol, handlerMethod, compilation);
@@ -814,6 +827,10 @@ internal static class HandlerAnalyzer
             }
         }
 
+        // When the body-bound message type defines its own minimal-API binding, the generator must
+        // omit [FromBody] (which would otherwise preempt it by binding precedence).
+        bool messageHasCustomBinding = bindFromBody && MessageDefinesCustomBinding(messageType, compilation);
+
         return new EndpointInfo
         {
             HttpMethod = httpMethod,
@@ -827,6 +844,8 @@ internal static class HandlerAnalyzer
             Group = groupName ?? tags?.FirstOrDefault(),
             GroupTags = new(groupTags ?? []),
             GroupRoutePrefix = groupRoutePrefix,
+            GroupPolicies = new(groupPolicies),
+            GroupExcludeFromDescription = groupExcludeFromDescription,
             GroupBypassGlobalPrefix = groupBypassGlobalPrefix,
             RouteBypassPrefixes = routeBypassPrefixes,
             RouteParameters = new(routeParams),
@@ -834,6 +853,7 @@ internal static class HandlerAnalyzer
             BindingParameters = new(bindingParams),
             FormParameters = new(formParams),
             BindFromBody = bindFromBody,
+            MessageHasCustomBinding = messageHasCustomBinding,
             BindFromForm = bindFromForm,
             DisableAntiforgery = disableAntiforgery,
             SupportsAsParameters = supportsAsParameters,
@@ -1448,6 +1468,67 @@ internal static class HandlerAnalyzer
 
         // Direct return type (not Result, not void)
         return unwrapped.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    }
+
+    /// <summary>
+    /// Group settings read from a <c>[HandlerEndpointGroup]</c> (class) or <c>[MediatorEndpointGroup]</c>
+    /// (assembly) attribute. Both expose the same property names, so the same reader handles both.
+    /// </summary>
+    private readonly record struct GroupSettings(
+        string? Name,
+        string? RoutePrefix,
+        string[]? Tags,
+        string[]? Filters,
+        string[]? Policies,
+        bool? ExcludeFromDescription);
+
+    /// <summary>
+    /// Determines whether a message type defines its own minimal-API custom binding: it implements
+    /// <c>Microsoft.AspNetCore.Http.IBindableFromHttpContext&lt;TSelf&gt;</c> or declares a public
+    /// static <c>BindAsync</c> method. ASP.NET Core checks these (binding-precedence rule 3) only when
+    /// the parameter is not already pinned by an explicit <c>[FromBody]</c>.
+    /// </summary>
+    private static bool MessageDefinesCustomBinding(INamedTypeSymbol messageType, Compilation compilation)
+    {
+        var bindableInterface = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IBindableFromHttpContext`1");
+        if (bindableInterface != null &&
+            messageType.AllInterfaces.Any(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, bindableInterface)))
+        {
+            return true;
+        }
+
+        // Non-interface form: a valid public static BindAsync method on the type.
+        return messageType.GetMembers("BindAsync")
+            .OfType<IMethodSymbol>()
+            .Any(m => m.IsStatic && m.DeclaredAccessibility == Accessibility.Public);
+    }
+
+    /// <summary>
+    /// Gets the group name from an attribute's constructor argument or its <c>Name</c> property.
+    /// </summary>
+    private static string? GetGroupAttributeName(AttributeData attr)
+    {
+        if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string ctorName)
+            return ctorName;
+        return GetStringProperty(attr, "Name");
+    }
+
+    /// <summary>
+    /// Reads group settings from a class-level or assembly-level group attribute. Returns an empty
+    /// <see cref="GroupSettings"/> (all nulls) when <paramref name="attr"/> is null.
+    /// </summary>
+    private static GroupSettings ReadGroupSettings(AttributeData? attr)
+    {
+        if (attr == null)
+            return default;
+
+        return new GroupSettings(
+            GetGroupAttributeName(attr),
+            GetStringProperty(attr, "RoutePrefix"),
+            GetStringArrayProperty(attr, "Tags"),
+            GetTypeArrayProperty(attr, "EndpointFilters"),
+            GetStringArrayProperty(attr, "Policies"),
+            GetBoolProperty(attr, "ExcludeFromDescription"));
     }
 
     /// <summary>

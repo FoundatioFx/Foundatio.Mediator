@@ -38,6 +38,18 @@ internal readonly record struct EndpointInfo
     public string? Description { get; init; }
 
     /// <summary>
+    /// The ASP.NET Core endpoint display name (emitted via <c>.WithDisplayName(...)</c>).
+    /// Null when unset; ASP.NET Core then derives a display name from the route pattern.
+    /// </summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// When true, the generated endpoint is hidden from the OpenAPI description via
+    /// <c>.ExcludeFromDescription()</c> while remaining routable.
+    /// </summary>
+    public bool ExcludeFromDescription { get; init; }
+
+    /// <summary>
     /// The group name for API grouping (from HandlerEndpointGroupAttribute).
     /// </summary>
     public string? Group { get; init; }
@@ -167,6 +179,15 @@ internal readonly record struct EndpointInfo
     /// Used to emit <c>.ProducesProblem(statusCode)</c> for OpenAPI documentation.
     /// </summary>
     public EquatableArray<int> ProducesStatusCodes { get; init; }
+
+    /// <summary>
+    /// Subset of <see cref="ProducesStatusCodes"/> that represent validation problems
+    /// (auto-detected from <c>Result.Invalid()</c> factory calls). These are emitted as
+    /// <c>.ProducesValidationProblem(statusCode)</c> instead of <c>.ProducesProblem(statusCode)</c>
+    /// so the generated metadata matches the <c>HttpValidationProblemDetails</c> body the mapper
+    /// actually returns for <see cref="ResultStatus.Invalid"/>.
+    /// </summary>
+    public EquatableArray<int> ValidationProblemStatusCodes { get; init; }
 
     /// <summary>
     /// Request content types accepted by this endpoint when a request body is bound.

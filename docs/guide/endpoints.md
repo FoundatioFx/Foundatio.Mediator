@@ -511,19 +511,46 @@ For internal APIs or rapid prototyping, convention-based routes are ideal.
 
 ### Route Parameters
 
-Properties named `Id` or ending with `Id` automatically become route parameters:
+Properties named `Id` or ending with `Id` automatically become route parameters **when the route is generated** (no explicit template):
 
 ```csharp
 public record GetProduct(string ProductId);
 // → GET /api/products/{productId}
 ```
 
-With an **explicit route template**, any property whose name matches a `{placeholder}` segment binds from the route — even when it isn't named `Id`, and for any HTTP method. Inline constraints (`{number:int}`) are matched too:
+With an **explicit route template**, a property binds from the route only when its name matches a `{placeholder}` segment (or it carries `[FromRoute]`) — even when it isn't named `Id`, and for any HTTP method. Inline constraints (`{number:int}`) are matched too:
 
 ```csharp
 [HandlerEndpoint(HandlerMethod.Get, "contracts/{contractNumber}")]
 public Result<Contract> Handle(GetContract query);   // record GetContract(string ContractNumber)
 // → contractNumber binds from the path, not the query string
+```
+
+The `Id`-suffix convention does **not** apply to an explicit template that lacks the matching placeholder. An `*Id` property with no `{placeholder}` stays where it belongs — in the request body for POST/PUT/PATCH, or a query parameter for GET/DELETE — instead of being lifted into a phantom parameter the client never supplies:
+
+```csharp
+public record ExternalLogin(string ExternalId, string Provider);
+
+[HandlerEndpoint(HandlerMethod.Post, "external-login")]   // no {externalId} segment
+public Result Handle(ExternalLogin command);
+// → the whole ExternalLogin (including ExternalId) binds from the JSON body
+```
+
+### Binding the Whole Message From the Body
+
+For a body command (POST/PUT/PATCH), apply `[FromBody]` to the handler's **message parameter** to bind the entire message from the request body and opt out of the `Id`-suffix route/query conventions — even when the route is generated. Explicit `{placeholder}` segments and `[FromRoute]`/`[FromQuery]`/`[FromHeader]` property attributes are still honored.
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+
+public record ApproveOrder(string OrderId, string? Comment);
+
+public class OrderHandler
+{
+    // Without [FromBody]: POST /api/orders/{orderId}/approve, OrderId lifted into the route.
+    // With    [FromBody]: OrderId (and everything else) binds from the body.
+    public Result Handle([FromBody] ApproveOrder command) => Result.Success();
+}
 ```
 
 ### Query Parameters

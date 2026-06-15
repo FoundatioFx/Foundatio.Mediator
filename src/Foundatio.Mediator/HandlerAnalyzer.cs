@@ -638,8 +638,17 @@ internal static class HandlerAnalyzer
             _ => isStreaming ? "GET" : InferHttpMethod(messageType.Name)
         };
 
+        // Honor an explicit [FromBody] on the handler's message parameter as an opt-out from the
+        // route/query binding conventions: the whole message binds from the request body and no
+        // properties are lifted into route/query parameters. Explicit {placeholder} segments and
+        // [FromRoute]/[FromQuery]/[FromHeader] property attributes are still honored, since those
+        // express deliberate intent to bind a value from somewhere other than the body.
+        bool explicitFromBody = handlerMethod.Parameters.Length > 0 &&
+            handlerMethod.Parameters[0].GetAttributes().Any(a =>
+                a.AttributeClass?.ToDisplayString() == "Microsoft.AspNetCore.Mvc.FromBodyAttribute");
+
         // Analyze message type for parameters (before route computation, since route params go into the shared input)
-        var (routeParams, queryParams, bindingParams, formParams, bindFromForm, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null, explicitRoute: explicitRoute);
+        var (routeParams, queryParams, bindingParams, formParams, bindFromForm, supportsAsParameters, hasParameterlessConstructor) = AnalyzeMessageParameters(messageType, httpMethod, compilation, isActionVerb: actionVerb != null, explicitRoute: explicitRoute, bindWholeMessageFromBody: explicitFromBody);
 
         // ── Shared route computation ───────────────────────────────
         // Uses the same code path as MediatorInfoAnalyzer (FMED017 diagnostic).
@@ -736,9 +745,16 @@ internal static class HandlerAnalyzer
         // not from a JSON body, so the two are mutually exclusive.
         bool bindFromBody = (httpMethod is "POST" or "PUT" or "PATCH") && !bindFromForm;
 
+        // An explicit [FromBody] on the message parameter forces whole-message body binding
+        // regardless of HTTP method, and below it suppresses the "all properties covered by the
+        // route → skip body" shortcuts. It never overrides form binding (IFormFile messages
+        // cannot be deserialized from a JSON body).
+        if (explicitFromBody && !bindFromForm)
+            bindFromBody = true;
+
         // For auto-generated action verb routes, check if all properties are already
         // covered by route params (IDs). If so, skip body binding.
-        if (bindFromBody && actionVerb != null && !hasExplicitRoute)
+        if (bindFromBody && !explicitFromBody && actionVerb != null && !hasExplicitRoute)
         {
             var allProperties = messageType.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -753,8 +769,10 @@ internal static class HandlerAnalyzer
         }
 
         // If we have an explicit route with placeholders that cover all message properties,
-        // skip body binding — all data comes from the route (e.g., POST /{todoId}/complete)
-        if (bindFromBody && hasExplicitRoute && !string.IsNullOrEmpty(route))
+        // skip body binding — all data comes from the route (e.g., POST /{todoId}/complete).
+        // An explicit [FromBody] opts out of this: the message binds from the body even when the
+        // route could cover every property.
+        if (bindFromBody && !explicitFromBody && hasExplicitRoute && !string.IsNullOrEmpty(route))
         {
             var allProperties = messageType.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -979,7 +997,7 @@ internal static class HandlerAnalyzer
     /// Analyzes message type properties to determine route and query parameters.
     /// </summary>
     private static (EndpointParameterInfo[] routeParams, EndpointParameterInfo[] queryParams, EndpointParameterInfo[] bindingParams, EndpointParameterInfo[] formParams, bool bindFromForm, bool supportsAsParameters, bool hasParameterlessConstructor)
-        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false, string? explicitRoute = null)
+        AnalyzeMessageParameters(INamedTypeSymbol messageType, string httpMethod, Compilation compilation, bool isActionVerb = false, string? explicitRoute = null, bool bindWholeMessageFromBody = false)
     {
         var routeParams = new List<EndpointParameterInfo>();
         var queryParams = new List<EndpointParameterInfo>();
@@ -990,6 +1008,12 @@ internal static class HandlerAnalyzer
         var routePlaceholders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var placeholder in RouteConventions.ExtractRoutePlaceholderNames(explicitRoute))
             routePlaceholders.Add(placeholder);
+
+        // True when the handler supplied a literal route template. The *Id → route-parameter
+        // convention below only weaves a {placeholder} into a *generated* route; with an explicit
+        // template the route string is taken verbatim, so the convention must not run (matches
+        // RouteConventions.ComputeEndpointRouteInfo's HasExplicitRoute definition).
+        bool hasExplicitRoute = !string.IsNullOrEmpty(explicitRoute);
 
         // Check if message supports [AsParameters] binding
         // It needs a parameterless constructor or a record with optional parameters
@@ -1065,12 +1089,22 @@ internal static class HandlerAnalyzer
 
             // For GET/DELETE/PUT/PATCH, ID properties become route parameters.
             // For action verbs (POST), IDs are also promoted to route params
-            // (e.g., CompleteTodo(string TodoId) → POST /todos/{todoId}/complete)
-            if (isIdProperty && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
+            // (e.g., CompleteTodo(string TodoId) → POST /todos/{todoId}/complete).
+            //
+            // This convention only applies when the route is generated. With an explicit route
+            // template, an *Id property is bound from the route only when it appears as a
+            // {placeholder} (handled above) or carries [FromRoute]. Promoting it here would emit a
+            // phantom route/query parameter the body client never supplies — a required-query 400
+            // for non-nullable types, or a silent null overwrite of the body value for nullable
+            // ones — so the property must instead fall through to query (GET/DELETE) or body binding.
+            //
+            // An explicit [FromBody] on the message (bindWholeMessageFromBody) opts out of both
+            // conventions entirely: every remaining property stays in the body.
+            if (isIdProperty && !hasExplicitRoute && !bindWholeMessageFromBody && (httpMethod is "GET" or "DELETE" or "PUT" or "PATCH" || isActionVerb))
             {
                 routeParams.Add(paramInfo with { IsRouteParameter = true });
             }
-            else if (httpMethod is "GET" or "DELETE")
+            else if (!bindWholeMessageFromBody && httpMethod is "GET" or "DELETE")
             {
                 // Non-ID properties become query parameters for GET/DELETE
                 queryParams.Add(paramInfo with { IsRouteParameter = false });

@@ -394,9 +394,22 @@ internal static class EndpointGenerator
 
             // Add Group-level auth if the group requires auth (and global doesn't already)
             var groupRequireAuth = firstEndpoint.RequireAuth && !endpointDefaults.RequireAuth;
-            if (groupRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any())
+            var groupPolicies = firstEndpoint.GroupPolicies;
+            if (groupRequireAuth && !firstEndpoint.Policies.Any() && !firstEndpoint.Roles.Any() && !groupPolicies.Any())
             {
                 source.Append(".RequireAuthorization()");
+            }
+
+            // Add group-level authorization policies from [HandlerEndpointGroup]/[MediatorEndpointGroup]
+            foreach (var policy in groupPolicies)
+            {
+                source.Append($".RequireAuthorization(\"{policy}\")");
+            }
+
+            // Hide the whole group from OpenAPI when requested
+            if (firstEndpoint.GroupExcludeFromDescription)
+            {
+                source.Append(".ExcludeFromDescription()");
             }
 
             source.AppendLine(";");
@@ -437,7 +450,7 @@ internal static class EndpointGenerator
                     ? "endpoints"
                     : groupVarName;
 
-                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth, assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults.Conventions, endpointDefaults.DisableAntiforgery, routeOverride);
+                GenerateEndpoint(source, handler, targetGroup, hasAsParametersAttribute, hasFromBodyAttribute, hasWithOpenApi, groupRequireAuth || endpointDefaults.RequireAuth || groupPolicies.Any(), assemblySuffix, endpointDefaults.SummaryStyle, endpointDefaults.Conventions, endpointDefaults.DisableAntiforgery, routeOverride);
 
                 // Collect endpoint info for logging
                 var endpointRoute = routeOverride ?? handler.Endpoint!.Value.Route;

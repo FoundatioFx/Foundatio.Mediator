@@ -1712,6 +1712,142 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void NamedGroup_ReferencedByHandlerEndpoint_AppliesGroupSettings()
+    {
+        var source = """
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: MediatorEndpointGroup(
+                Name = "Admin",
+                RoutePrefix = "/api/v2/admin",
+                Policies = ["GlobalAdmin"],
+                EndpointFilters = new[] { typeof(MyAdminFilter) },
+                ExcludeFromDescription = true)]
+
+            public class MyAdminFilter : IEndpointFilter
+            {
+                public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next) => next(context);
+            }
+
+            public record GetSettings();
+
+            public class SettingsHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "settings", Group = "Admin")]
+                public string Handle(GetSettings query) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // The group MapGroup uses the named-group prefix and tag
+        Assert.Contains("MapGroup(\"/api/v2/admin\")", endpointSource);
+        Assert.Contains(".WithTags(\"Admin\")", endpointSource);
+        // Group policy, hidden-from-description, and filter all come from the named group
+        Assert.Contains(".RequireAuthorization(\"GlobalAdmin\")", endpointSource);
+        Assert.Contains(".ExcludeFromDescription()", endpointSource);
+        Assert.Contains("AddEndpointFilter<global::MyAdminFilter>()", endpointSource);
+    }
+
+    [Fact]
+    public void ClassGroup_PoliciesAndExcludeFromDescription_EmittedOnGroup()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetWidget(string Id);
+
+            [HandlerEndpointGroup("Widgets", Policies = ["WidgetReader"], ExcludeFromDescription = true)]
+            public class WidgetHandler
+            {
+                public string Handle(GetWidget query) => "widget";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("MapGroup(\"widgets\")", endpointSource);
+        Assert.Contains(".RequireAuthorization(\"WidgetReader\")", endpointSource);
+        Assert.Contains(".ExcludeFromDescription()", endpointSource);
+    }
+
+    [Fact]
+    public void GroupReference_WithoutDefinition_BehavesAsInlineGroup()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetThing();
+
+            public class ThingHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "list", Group = "Reports")]
+                public string Handle(GetThing query) => "thing";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // No assembly definition, but Group = "Reports" still names + tags the group (kebab prefix).
+        Assert.Contains("MapGroup(\"reports\")", endpointSource);
+        Assert.Contains(".WithTags(\"Reports\")", endpointSource);
+    }
+
+    [Fact]
+    public void ClassGroup_OverridesNamedGroup_PerProperty()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+            [assembly: MediatorEndpointGroup(Name = "Admin", RoutePrefix = "/api/admin", Policies = ["NamedPolicy"])]
+
+            public record GetX();
+
+            [HandlerEndpointGroup("Admin", RoutePrefix = "custom-admin")]
+            public class XHandler
+            {
+                [HandlerEndpoint(Group = "Admin")]
+                public string Handle(GetX query) => "x";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Class-level RoutePrefix wins over the named group's prefix.
+        Assert.Contains("MapGroup(\"custom-admin\")", endpointSource);
+        Assert.DoesNotContain("MapGroup(\"/api/admin\")", endpointSource);
+        // Policy is inherited from the named group (class group didn't set one).
+        Assert.Contains(".RequireAuthorization(\"NamedPolicy\")", endpointSource);
+    }
+
+    [Fact]
     public void AutoDetect_NonGenericResult_EmitsProducesProblem()
     {
         var source = """

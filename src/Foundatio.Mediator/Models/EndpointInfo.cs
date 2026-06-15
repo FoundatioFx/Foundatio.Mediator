@@ -65,6 +65,18 @@ internal readonly record struct EndpointInfo
     public string? GroupRoutePrefix { get; init; }
 
     /// <summary>
+    /// Authorization policy names required by the group (emitted as <c>.RequireAuthorization("policy")</c>
+    /// on the group). From <c>[HandlerEndpointGroup]</c> or a referenced <c>[MediatorEndpointGroup]</c>.
+    /// </summary>
+    public EquatableArray<string> GroupPolicies { get; init; }
+
+    /// <summary>
+    /// When true, the group is hidden from the OpenAPI description via <c>.ExcludeFromDescription()</c>
+    /// on the group builder while remaining routable.
+    /// </summary>
+    public bool GroupExcludeFromDescription { get; init; }
+
+    /// <summary>
     /// Route parameters extracted from the message type properties.
     /// </summary>
     public EquatableArray<EndpointParameterInfo> RouteParameters { get; init; }

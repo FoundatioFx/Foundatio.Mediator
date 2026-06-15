@@ -657,6 +657,25 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
 
+#### Custom body binding (non-JSON bodies)
+
+For non-standard request bodies — JSON Patch, legacy partial JSON, XML — implement ASP.NET Core's [`IBindableFromHttpContext<TSelf>`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.ibindablefromhttpcontext-1) (or a public static `BindAsync(HttpContext, ParameterInfo)`) on the message type. The generator detects this and **omits `[FromBody]`**, so ASP.NET Core uses your custom binding instead of the default JSON binder (an explicit `[FromBody]` would otherwise take precedence and bypass it):
+
+```csharp
+public record UpdateProjectPatch(...) : IBindableFromHttpContext<UpdateProjectPatch>
+{
+    public static async ValueTask<UpdateProjectPatch?> BindAsync(HttpContext ctx, ParameterInfo p)
+    {
+        // e.g. read a JsonElement / JsonPatchDocument from ctx.Request and build the message
+    }
+}
+// → MapPatch("/{id}", async (string id, UpdateProjectPatch message, ...) => ...)  // no [FromBody]
+```
+
+To document a non-default request schema/content type in OpenAPI, implement [`IEndpointParameterMetadataProvider.PopulateMetadata`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.metadata.iendpointparametermetadataprovider) on that same type so the bound type stays the single source of truth for both binding and documentation. Listing multiple [`AcceptsContentTypes`](#handlerendpoint-customize-individual-endpoints) makes the runtime content-type matcher accept all of them. Route parameters still merge into the custom-bound message as usual.
+
+> Custom binding applies to body-bound `POST`/`PUT`/`PATCH` endpoints. For `GET`/`DELETE`, properties bind from route/query via `[AsParameters]` — write a hand-mapped minimal API for the rare custom-binding case there.
+
 ### File Uploads
 
 When a POST/PUT/PATCH message exposes an `IFormFile`, `IFormFileCollection`, or `IFormCollection` property, the whole message binds from `multipart/form-data` instead of the JSON body. File properties bind by name (no attribute — how Minimal APIs bind `IFormFile`), any other fields bind with `[FromForm]`, and route placeholders still bind from the route:

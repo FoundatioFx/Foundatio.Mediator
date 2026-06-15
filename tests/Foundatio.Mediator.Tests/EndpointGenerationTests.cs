@@ -1196,6 +1196,114 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void CustomBindingMessage_IBindableFromHttpContext_OmitsFromBody()
+    {
+        var source = """
+            using System.Reflection;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public class CreateThing : IBindableFromHttpContext<CreateThing>
+            {
+                public string Name { get; set; } = "";
+                public static ValueTask<CreateThing?> BindAsync(HttpContext context, ParameterInfo parameter)
+                    => ValueTask.FromResult<CreateThing?>(new CreateThing());
+            }
+
+            public class ThingHandler
+            {
+                public string Handle(CreateThing command) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // The message binds via its own BindAsync, so [FromBody] must NOT preempt it.
+        Assert.DoesNotContain("FromBody", endpointSource);
+        // The message is still bound as a lambda parameter.
+        Assert.Contains("CreateThing message", endpointSource);
+    }
+
+    [Fact]
+    public void CustomBindingMessage_StaticBindAsyncWithoutInterface_OmitsFromBody()
+    {
+        var source = """
+            using System.Reflection;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public class CreateGadget
+            {
+                public string Name { get; set; } = "";
+                public static ValueTask<CreateGadget?> BindAsync(HttpContext context, ParameterInfo parameter)
+                    => ValueTask.FromResult<CreateGadget?>(new CreateGadget());
+            }
+
+            public class GadgetHandler
+            {
+                public string Handle(CreateGadget command) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.DoesNotContain("FromBody", endpointSource);
+        Assert.Contains("CreateGadget message", endpointSource);
+    }
+
+    [Fact]
+    public void CustomBindingMessage_WithRouteParam_OmitsFromBodyAndMergesRoute()
+    {
+        var source = """
+            using System.Reflection;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+            using Microsoft.AspNetCore.Http;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record UpdateThing(string Id, string Name) : IBindableFromHttpContext<UpdateThing>
+            {
+                public static ValueTask<UpdateThing?> BindAsync(HttpContext context, ParameterInfo parameter)
+                    => ValueTask.FromResult<UpdateThing?>(new UpdateThing("", ""));
+            }
+
+            public class ThingHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Put, "things/{id}")]
+                public string Handle(UpdateThing command) => "ok";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.DoesNotContain("FromBody", endpointSource);
+        // Route param still merged into the custom-bound message.
+        Assert.Contains("message with { Id = id }", endpointSource);
+    }
+
+    [Fact]
     public void ActionVerbMismatchedEntity_PreservesEntityInRoute()
     {
         var source = """

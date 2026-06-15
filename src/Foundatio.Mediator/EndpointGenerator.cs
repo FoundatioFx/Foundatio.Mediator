@@ -667,6 +667,18 @@ internal static class EndpointGenerator
             source.AppendLine($".WithDescription(\"{escapedDescription}\")");
         }
 
+        // Pin the ASP.NET Core endpoint display name (logs/diagnostics) when explicitly set.
+        if (!string.IsNullOrEmpty(endpoint.DisplayName))
+        {
+            source.AppendLine($".WithDisplayName(\"{EscapeString(endpoint.DisplayName!)}\")");
+        }
+
+        // Hide the endpoint from API explorers / OpenAPI while keeping it routable.
+        if (endpoint.ExcludeFromDescription)
+        {
+            source.AppendLine(".ExcludeFromDescription()");
+        }
+
         // An explicit [HandlerEndpoint(DisableAntiforgery = ...)] is always honored — it's a harmless
         // no-op on non-form endpoints, and honoring it avoids a silently-ignored setting. The
         // assembly-wide default only applies to form endpoints (where antiforgery is meaningful), so
@@ -755,10 +767,15 @@ internal static class EndpointGenerator
             }
         }
 
-        // Add additional ProducesProblem metadata from [HandlerEndpoint(ProducesStatusCodes = [...])]
+        // Add additional ProducesProblem metadata from [HandlerEndpoint(ProducesStatusCodes = [...])].
+        // Codes detected from Result.Invalid() are emitted as .ProducesValidationProblem() so the
+        // documented schema (HttpValidationProblemDetails) matches what the default mapper returns.
         foreach (var statusCode in endpoint.ProducesStatusCodes)
         {
-            source.AppendLine($".ProducesProblem({statusCode})");
+            if (endpoint.ValidationProblemStatusCodes.Contains(statusCode))
+                source.AppendLine($".ProducesValidationProblem({statusCode})");
+            else
+                source.AppendLine($".ProducesProblem({statusCode})");
         }
 
         // Add endpoint-level filters

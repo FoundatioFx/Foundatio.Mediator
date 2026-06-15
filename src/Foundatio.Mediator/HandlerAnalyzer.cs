@@ -684,6 +684,12 @@ internal static class HandlerAnalyzer
         var description = GetStringProperty(methodEndpointAttr, "Description") ??
                           GetStringProperty(classEndpointAttr, "Description");
 
+        var displayName = GetStringProperty(methodEndpointAttr, "DisplayName") ??
+                          GetStringProperty(classEndpointAttr, "DisplayName");
+
+        var excludeFromDescription = GetBoolProperty(methodEndpointAttr, "ExcludeFromDescription") ??
+                                     GetBoolProperty(classEndpointAttr, "ExcludeFromDescription") ?? false;
+
         var tags = GetStringArrayProperty(methodEndpointAttr, "Tags") ??
                    GetStringArrayProperty(classEndpointAttr, "Tags");
 
@@ -718,10 +724,14 @@ internal static class HandlerAnalyzer
                                  GetBoolProperty(classEndpointAttr, "DisableAntiforgery");
 
         // Auto-detect Result factory method calls in the handler body (Created, Accepted, NotFound, Invalid, etc.)
-        var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var successStatusCodes);
+        var detectedStatusCodes = DetectResultStatusCodes(handlerMethod, returnType, compilation, out var successStatusCodes, out var detectedValidationStatusCodes);
 
         // If no explicit status codes, use auto-detected ones
         var producesStatusCodes = explicitStatusCodes ?? detectedStatusCodes;
+
+        // Validation provenance is only known for auto-detected codes (from Result.Invalid()).
+        // Explicit ProducesStatusCodes are documented as plain problems since their semantics are unknown.
+        int[] validationProblemStatusCodes = explicitStatusCodes != null ? [] : detectedValidationStatusCodes;
 
         // Read explicit success status codes (method -> class). When absent, use auto-detected values.
         var explicitSuccessStatusCodes = GetIntArrayProperty(methodEndpointAttr, "SuccessStatusCodes") ??
@@ -794,6 +804,8 @@ internal static class HandlerAnalyzer
             Name = name,
             Summary = summary,
             Description = description,
+            DisplayName = displayName,
+            ExcludeFromDescription = excludeFromDescription,
             Group = groupName ?? tags?.FirstOrDefault(),
             GroupTags = new(groupTags ?? []),
             GroupRoutePrefix = groupRoutePrefix,
@@ -818,6 +830,7 @@ internal static class HandlerAnalyzer
             GroupFilters = new(groupFilters),
             ProducesType = producesType,
             ProducesStatusCodes = new(producesStatusCodes),
+            ValidationProblemStatusCodes = new(validationProblemStatusCodes),
             AcceptsContentTypes = new(acceptsContentTypes ?? []),
             ProducesContentTypes = new(producesContentTypes ?? []),
             SuccessStatusCodes = new(effectiveSuccessStatusCodes),
@@ -1437,9 +1450,10 @@ internal static class HandlerAnalyzer
     /// Success HTTP status codes are returned via <paramref name="successStatusCodes"/>.
     /// Only runs when the return type involves <c>Result</c> or <c>Result&lt;T&gt;</c>.
     /// </summary>
-    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation, out int[] successStatusCodes)
+    private static int[] DetectResultStatusCodes(IMethodSymbol handlerMethod, ITypeSymbol returnType, Compilation compilation, out int[] successStatusCodes, out int[] validationStatusCodes)
     {
         successStatusCodes = [];
+        validationStatusCodes = [];
 
         // Only scan if the return type involves Result/Result<T>
         var unwrapped = returnType.UnwrapTask(compilation).UnwrapNullable(compilation);
@@ -1461,6 +1475,7 @@ internal static class HandlerAnalyzer
 
         var detectedCodes = new HashSet<int>();
         var detectedSuccessCodes = new HashSet<int>();
+        var detectedValidationCodes = new HashSet<int>();
 
         // Walk all descendant nodes looking for invocations of Result factory methods
         foreach (var invocation in syntaxNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
@@ -1476,6 +1491,11 @@ internal static class HandlerAnalyzer
             if (ResultMethodToStatusCode.TryGetValue(methodName, out var statusCode))
             {
                 detectedCodes.Add(statusCode);
+
+                // Result.Invalid() is rendered as Results.ValidationProblem (HttpValidationProblemDetails)
+                // by the default mapper, so its status code is documented as a validation problem.
+                if (methodName == "Invalid")
+                    detectedValidationCodes.Add(statusCode);
             }
 
             if (ResultMethodToSuccessHttpStatus.TryGetValue(methodName, out var successHttpStatus))
@@ -1485,6 +1505,7 @@ internal static class HandlerAnalyzer
         }
 
         successStatusCodes = detectedSuccessCodes.OrderBy(c => c).ToArray();
+        validationStatusCodes = detectedValidationCodes.OrderBy(c => c).ToArray();
         return detectedCodes.OrderBy(c => c).ToArray();
     }
 

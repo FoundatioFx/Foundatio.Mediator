@@ -68,6 +68,99 @@ public class ResultTests
     }
 
     [Fact]
+    public void MediatorResultMapperOptions_MapValue_MapsByValueType()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapValue<Paged>(paged => $"paged:{paged.Count}");
+
+        var mapped = options.TryMap(Result<Paged>.Success(new Paged(7)), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("paged:7", mappedResult);
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_MatchesAssignableInterface()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapValue<IPaged>(paged => $"i:{paged.Count}");
+
+        var mapped = options.TryMap(Result<Paged>.Success(new Paged(3)), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("i:3", mappedResult);
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_TakesPrecedenceOverStatusMapper()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapStatus(ResultStatus.Ok, _ => "status")
+            .MapValue<Paged>(paged => $"paged:{paged.Count}");
+
+        var mapped = options.TryMap(Result<Paged>.Success(new Paged(1)), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("paged:1", mappedResult);
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_FirstRegisteredMatchWins()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapValue<IPaged>(_ => "first")
+            .MapValue<Paged>(_ => "second");
+
+        var mapped = options.TryMap(Result<Paged>.Success(new Paged(1)), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("first", mappedResult);
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_Conditional_OnlyMapsWhenPredicateMatches()
+    {
+        var options = new MediatorResultMapperOptions<int>()
+            .MapValue<Paged>(when: paged => paged.Count > 0, map: paged => paged.Count);
+
+        Assert.True(options.TryMap(Result<Paged>.Success(new Paged(5)), out var matched));
+        Assert.Equal(5, matched);
+
+        // Predicate fails and no status mapper is configured for Ok, so nothing maps.
+        Assert.False(options.TryMap(Result<Paged>.Success(new Paged(0)), out _));
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_FallsBackToStatusMapperWhenNoValueMatch()
+    {
+        var options = new MediatorResultMapperOptions<string>()
+            .MapValue<Paged>(_ => "paged")
+            .MapStatus(ResultStatus.NotFound, _ => "notfound");
+
+        var mapped = options.TryMap(Result.NotFound(), out var mappedResult);
+
+        Assert.True(mapped);
+        Assert.Equal("notfound", mappedResult);
+    }
+
+    [Fact]
+    public void MediatorResultMapperOptions_MapValue_NullArguments_Throw()
+    {
+        var options = new MediatorResultMapperOptions<string>();
+
+        Assert.Throws<ArgumentNullException>(() => options.MapValue<Paged>(null!));
+        Assert.Throws<ArgumentNullException>(() => options.MapValue<Paged>(when: null!, map: _ => "x"));
+        Assert.Throws<ArgumentNullException>(() => options.MapValue<Paged>(when: _ => true, map: null!));
+    }
+
+    private interface IPaged
+    {
+        int Count { get; }
+    }
+
+    private sealed record Paged(int Count) : IPaged;
+
+    [Fact]
     public void Result_DefaultConstructor_CreatesSuccessfulResult()
     {
         var result = Result.Success();

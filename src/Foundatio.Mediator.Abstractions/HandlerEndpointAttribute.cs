@@ -105,6 +105,18 @@ public sealed class HandlerEndpointAttribute : Attribute
     public string? Description { get; set; }
 
     /// <summary>
+    /// Gets or sets the ASP.NET Core endpoint display name (used in logs, diagnostics, and routing
+    /// debug output via <c>.WithDisplayName(...)</c>). This is distinct from <see cref="Name"/> (the
+    /// OpenAPI operationId) and <see cref="Summary"/>.
+    /// <para>
+    /// When null, ASP.NET Core derives the display name from the route pattern (e.g.
+    /// <c>"HTTP: GET /api/v2/admin/settings"</c>). Set this to pin a specific display name — useful
+    /// when migrating from hand-written minimal APIs whose display names are asserted in snapshots.
+    /// </para>
+    /// </summary>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
     /// Gets or sets the tags for grouping endpoints in OpenAPI.
     /// When null, uses the HandlerEndpointGroup attribute's Name property.
     /// </summary>
@@ -115,6 +127,17 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// When true, no endpoint will be generated for this handler.
     /// </summary>
     public bool Exclude { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the generated endpoint is hidden from the OpenAPI description (and other
+    /// API explorers) via <c>.ExcludeFromDescription()</c>, while still being routable and callable.
+    /// <para>
+    /// This differs from <see cref="Exclude"/>, which prevents the endpoint from being generated at
+    /// all. Use <see cref="ExcludeFromDescription"/> for endpoints that must exist at runtime but
+    /// should not appear in generated API documentation (e.g. internal or legacy routes).
+    /// </para>
+    /// </summary>
+    public bool ExcludeFromDescription { get; set; }
 
     /// <summary>
     /// Gets or sets the endpoint filter types for this endpoint.

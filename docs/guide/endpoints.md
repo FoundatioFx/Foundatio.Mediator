@@ -229,8 +229,10 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `Name` | OpenAPI operation ID |
 | `Summary` | Override XML doc summary for OpenAPI |
 | `Description` | OpenAPI description |
+| `DisplayName` | Pin the ASP.NET Core endpoint display name (logs/diagnostics) via `.WithDisplayName(...)`. Distinct from `Name` (the operationId) |
 | `Tags` | Override the group tags |
 | `Exclude` | `true` to skip endpoint generation entirely |
+| `ExcludeFromDescription` | `true` to hide the endpoint from OpenAPI/API explorers via `.ExcludeFromDescription()` while keeping it routable |
 | `EndpointFilters` | `IEndpointFilter` types for this endpoint |
 | `SuccessStatusCodes` | Override auto-detected success status codes (200, 201, 202, 204, etc.) |
 | `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
@@ -685,6 +687,18 @@ public record SearchProducts
 // ASP.NET binds Category from query string, TenantId from header
 ```
 
+**Query parameter aliases:**
+
+Use `[FromQuery(Name = "...")]` to bind a clean message property from a legacy or snake_case query parameter — no need to read from `HttpContext` manually:
+
+```csharp
+public record GetEventById(
+    string Id,
+    [property: FromQuery(Name = "expected_stack_id")] string? ExpectedStackId
+);
+// → the endpoint binds ?expected_stack_id=... into the ExpectedStackId property
+```
+
 ::: tip Record syntax
 C# records use positional parameters that default to **constructor** attribute targets. To place an attribute on the generated **property**, use the `property:` target prefix:
 
@@ -805,6 +819,25 @@ services.ConfigureMediatorResultMapping<Microsoft.AspNetCore.Http.IResult>(optio
 services.AddMediator();
 ```
 
+#### Mapping by value shape
+
+`MapStatus` keys off the `Result` status. When the HTTP response depends on the **value type** instead — e.g. a paged result that needs pagination headers, or a custom envelope that maps to a specific status code — use `MapValue<TValue>`. Value mappers are evaluated in registration order and take precedence over status mappers, matching whenever `result.GetValue()` is assignable to `TValue`:
+
+```csharp
+services.ConfigureMediatorResultMapping<Microsoft.AspNetCore.Http.IResult>(options => options
+    // Match by interface or base type
+    .MapValue<IPagedResult>(paged => new PagedHttpResult(paged))
+    .MapValue<WorkInProgressResult>(wip => Results.Json(wip, statusCode: 202))
+    // Conditional mapping — only applies when the predicate matches
+    .MapValue<ModelActionResults>(
+        when: r => r.Failures.Count > 0,
+        map: r => Results.Json(r, statusCode: 400)));
+
+services.AddMediator();
+```
+
+A result falls through to the status mappers (and then the generated defaults) when no value mapper matches — including when a conditional mapper's predicate returns `false`.
+
 For complete control over every status, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`:
 
 ```csharp
@@ -861,7 +894,7 @@ For file endpoints, `ProducesContentTypes` documents the file media types in Ope
 
 ### OpenAPI Error Responses
 
-The generator scans your handler body for `Result` factory calls and emits matching `.ProducesProblem()` metadata automatically:
+The generator scans your handler body for `Result` factory calls and emits matching `.ProducesProblem()` metadata automatically. `Result.Invalid()` maps to `ValidationProblem` at runtime, so its status code is emitted as `.ProducesValidationProblem()` (documenting an `HttpValidationProblemDetails` body) rather than a plain `.ProducesProblem()`:
 
 ```csharp
 public class OrderHandler
@@ -872,13 +905,17 @@ public class OrderHandler
             return Result<OrderView>.NotFound("Order not found");  // → .ProducesProblem(404)
 
         if (!IsValid(query))
-            return Result<OrderView>.Invalid("Bad request");       // → .ProducesProblem(400)
+            return Result<OrderView>.Invalid("Bad request");       // → .ProducesValidationProblem(400)
 
         return new OrderView(query.Id, "Test");
     }
-    // Auto-generates: .Produces<OrderView>(200), .ProducesProblem(404), .ProducesProblem(400)
+    // Auto-generates: .Produces<OrderView>(200), .ProducesProblem(404), .ProducesValidationProblem(400)
 }
 ```
+
+::: info Explicit codes
+Status codes you list explicitly via `[HandlerEndpoint(ProducesStatusCodes = [...])]` are always emitted as plain `.ProducesProblem(code)` — the generator only uses `.ProducesValidationProblem()` for codes it auto-detects from a `Result.Invalid()` call, where the validation-problem body is known.
+:::
 
 ### Success Status Codes
 

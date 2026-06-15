@@ -1476,11 +1476,129 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.NotNull(endpointSource);
         // Auto-detected from method body
         Assert.Contains(".ProducesProblem(404)", endpointSource); // NotFound
-        Assert.Contains(".ProducesProblem(400)", endpointSource); // Invalid
+        // Result.Invalid() maps to Results.ValidationProblem at runtime, so its 400 is documented
+        // as a validation problem (HttpValidationProblemDetails), not a plain problem.
+        Assert.Contains(".ProducesValidationProblem(400)", endpointSource); // Invalid
+        Assert.DoesNotContain(".ProducesProblem(400)", endpointSource);
         Assert.DoesNotContain(".ProducesProblem(422)", endpointSource);
         // Should NOT contain codes not used in the method
         Assert.DoesNotContain(".ProducesProblem(500)", endpointSource);
         Assert.DoesNotContain(".ProducesProblem(409)", endpointSource);
+    }
+
+    [Fact]
+    public void ExplicitProducesStatusCodes_DoNotBecomeValidationProblem()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetOrder(string Id);
+            public record OrderView(string Id, string Name);
+
+            public class OrderHandler
+            {
+                [HandlerEndpoint(ProducesStatusCodes = [400, 422])]
+                public Result<OrderView> Handle(GetOrder query) => new OrderView("1", "test");
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        // Explicit codes have no validation provenance, so even 400/422 stay plain problems.
+        Assert.Contains(".ProducesProblem(400)", endpointSource);
+        Assert.Contains(".ProducesProblem(422)", endpointSource);
+        Assert.DoesNotContain(".ProducesValidationProblem(", endpointSource);
+    }
+
+    [Fact]
+    public void ExcludeFromDescription_EmitsExcludeFromDescriptionCall()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetSecret(string Id);
+
+            public class SecretHandler
+            {
+                [HandlerEndpoint(ExcludeFromDescription = true)]
+                public string Handle(GetSecret query) => "secret";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".ExcludeFromDescription()", endpointSource);
+    }
+
+    [Fact]
+    public void ExcludeFromDescription_ClassLevel_AppliesToAllMethods()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetA(string Id);
+            public record GetB(string Id);
+
+            [HandlerEndpoint(ExcludeFromDescription = true)]
+            public class HiddenHandler
+            {
+                public string Handle(GetA query) => "a";
+                public string Handle(GetB query) => "b";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        var count = endpointSource!.Split(".ExcludeFromDescription()").Length - 1;
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public void DisplayName_EmitsWithDisplayNameCall()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetSettings();
+
+            public class SettingsHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "/api/v2/admin/settings", DisplayName = "HTTP: GET api/v2/admin/settings")]
+                public string Handle(GetSettings query) => "settings";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains(".WithDisplayName(\"HTTP: GET api/v2/admin/settings\")", endpointSource);
     }
 
     [Fact]

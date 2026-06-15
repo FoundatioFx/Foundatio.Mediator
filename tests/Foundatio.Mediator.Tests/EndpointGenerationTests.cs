@@ -1068,6 +1068,116 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     }
 
     [Fact]
+    public void PostWithExplicitRoute_IdPropertyNotInTemplate_BindsWholeMessageFromBody()
+    {
+        // Regression: an *Id property on a body command must NOT be lifted into a route/query
+        // parameter when the explicit route template has no matching {placeholder}. Doing so
+        // emitted a phantom query param (required → 400 for non-nullable, silent null overwrite
+        // for nullable) instead of binding the value from the JSON body.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record ExternalLogin(string ExternalId, string Provider);
+
+            public class AuthHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Post, "external-login")]
+                public Result Handle(ExternalLogin command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("MapPost", endpointSource);
+        Assert.Contains("external-login", endpointSource);
+        // ExternalId is not a {placeholder} → it must stay in the body, not become a lifted param.
+        Assert.DoesNotContain("externalId", endpointSource);
+        // No "message with { ExternalId = externalId }" merge that would overwrite the body value.
+        Assert.DoesNotContain("message with", endpointSource);
+        // It must not be promoted to a query parameter either.
+        Assert.DoesNotContain("FromQuery", endpointSource);
+    }
+
+    [Fact]
+    public void GetWithExplicitRoute_IdPropertyNotInTemplate_BindsFromQuery()
+    {
+        // With an explicit route lacking the matching {placeholder}, an *Id property on a GET
+        // falls through to a proper [FromQuery] parameter rather than an attribute-less route
+        // parameter — so it is documented and bound correctly.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record GetExternalUser(string ExternalId);
+
+            public class AuthHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Get, "external-user")]
+                public string Handle(GetExternalUser query) => "user";
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("MapGet", endpointSource);
+        Assert.Contains("external-user", endpointSource);
+        // The route stays literal — no synthesized {externalId} placeholder.
+        Assert.DoesNotContain("{externalId}", endpointSource);
+        // ExternalId binds from the query string, not the (placeholder-less) route.
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromQuery]", endpointSource);
+        Assert.Contains("externalId", endpointSource);
+    }
+
+    [Fact]
+    public void FromBodyOnMessageParameter_SuppressesIdPromotion_BindsWholeMessageFromBody()
+    {
+        // Opt-out: [FromBody] on the handler's message parameter forces whole-message body
+        // binding even in convention mode. Without it, ApproveOrder(OrderId) would generate
+        // POST /orders/{orderId}/approve and lift OrderId out of the body; with it, OrderId
+        // stays in the body and no route/query placeholder is synthesized.
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record ApproveOrder(string OrderId);
+
+            public class OrderHandler
+            {
+                public Result Handle([Microsoft.AspNetCore.Mvc.FromBody] ApproveOrder command) => Result.Success();
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.NotNull(endpointSource);
+        Assert.Contains("MapPost", endpointSource);
+        // OrderId must NOT be promoted into the route or merged out of the body.
+        Assert.DoesNotContain("{orderId}", endpointSource);
+        Assert.DoesNotContain("message with", endpointSource);
+        Assert.DoesNotContain("FromQuery", endpointSource);
+        // The whole message binds from the request body.
+        Assert.Contains("[Microsoft.AspNetCore.Mvc.FromBody]", endpointSource);
+    }
+
+    [Fact]
     public void ActionVerbPrefix_GeneratesActionRouteWithId()
     {
         var source = """

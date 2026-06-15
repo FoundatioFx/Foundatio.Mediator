@@ -939,7 +939,10 @@ internal static class EndpointGenerator
         {
             var routeParams = endpoint.RouteParameters;
             var bindingParams = endpoint.BindingParameters;
-            var fromBodyAttr = hasFromBodyAttribute ? "[Microsoft.AspNetCore.Mvc.FromBody] " : "";
+            // Omit [FromBody] when the message type defines its own minimal-API binding
+            // (IBindableFromHttpContext / static BindAsync). Explicit [FromBody] has higher binding
+            // precedence than BindAsync, so emitting it would silently bypass the custom binding.
+            var fromBodyAttr = (hasFromBodyAttribute && !endpoint.MessageHasCustomBinding) ? "[Microsoft.AspNetCore.Mvc.FromBody] " : "";
             var allMergeParams = routeParams.Concat(bindingParams).ToList();
 
             if (allMergeParams.Count > 0)

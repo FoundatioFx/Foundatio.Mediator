@@ -98,6 +98,14 @@ internal readonly record struct EndpointInfo
     public bool BindFromBody { get; init; }
 
     /// <summary>
+    /// Whether the body-bound message type defines its own minimal-API custom binding
+    /// (implements <c>IBindableFromHttpContext&lt;TSelf&gt;</c> or declares a public static
+    /// <c>BindAsync</c> method). When true, the generated endpoint omits <c>[FromBody]</c> so
+    /// ASP.NET Core uses the type's custom binding instead of JSON body binding.
+    /// </summary>
+    public bool MessageHasCustomBinding { get; init; }
+
+    /// <summary>
     /// Whether the message should be bound from a multipart/form-data request.
     /// Set when a POST/PUT/PATCH message exposes an <c>IFormFile</c>/<c>IFormFileCollection</c>/<c>IFormCollection</c>
     /// property. Mutually exclusive with <see cref="BindFromBody"/>; the endpoint also emits <c>.DisableAntiforgery()</c>.

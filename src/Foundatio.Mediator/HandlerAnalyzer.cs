@@ -827,6 +827,10 @@ internal static class HandlerAnalyzer
             }
         }
 
+        // When the body-bound message type defines its own minimal-API binding, the generator must
+        // omit [FromBody] (which would otherwise preempt it by binding precedence).
+        bool messageHasCustomBinding = bindFromBody && MessageDefinesCustomBinding(messageType, compilation);
+
         return new EndpointInfo
         {
             HttpMethod = httpMethod,
@@ -849,6 +853,7 @@ internal static class HandlerAnalyzer
             BindingParameters = new(bindingParams),
             FormParameters = new(formParams),
             BindFromBody = bindFromBody,
+            MessageHasCustomBinding = messageHasCustomBinding,
             BindFromForm = bindFromForm,
             DisableAntiforgery = disableAntiforgery,
             SupportsAsParameters = supportsAsParameters,
@@ -1476,6 +1481,27 @@ internal static class HandlerAnalyzer
         string[]? Filters,
         string[]? Policies,
         bool? ExcludeFromDescription);
+
+    /// <summary>
+    /// Determines whether a message type defines its own minimal-API custom binding: it implements
+    /// <c>Microsoft.AspNetCore.Http.IBindableFromHttpContext&lt;TSelf&gt;</c> or declares a public
+    /// static <c>BindAsync</c> method. ASP.NET Core checks these (binding-precedence rule 3) only when
+    /// the parameter is not already pinned by an explicit <c>[FromBody]</c>.
+    /// </summary>
+    private static bool MessageDefinesCustomBinding(INamedTypeSymbol messageType, Compilation compilation)
+    {
+        var bindableInterface = compilation.GetTypeByMetadataName("Microsoft.AspNetCore.Http.IBindableFromHttpContext`1");
+        if (bindableInterface != null &&
+            messageType.AllInterfaces.Any(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, bindableInterface)))
+        {
+            return true;
+        }
+
+        // Non-interface form: a valid public static BindAsync method on the type.
+        return messageType.GetMembers("BindAsync")
+            .OfType<IMethodSymbol>()
+            .Any(m => m.IsStatic && m.DeclaredAccessibility == Accessibility.Public);
+    }
 
     /// <summary>
     /// Gets the group name from an attribute's constructor argument or its <c>Name</c> property.

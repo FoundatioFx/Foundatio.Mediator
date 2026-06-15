@@ -171,6 +171,49 @@ GET   /api/v2/products/{productId}  → GetProduct
 | `RoutePrefix` | Override the route prefix (relative to global prefix; use leading `/` for absolute) |
 | `Tags` | Override the OpenAPI tags (defaults to `Name` as a single tag) |
 | `EndpointFilters` | `IEndpointFilter` types applied to all endpoints in this group |
+| `Policies` | Authorization policy names required by all endpoints (emitted as `.RequireAuthorization("policy")` on the group) |
+| `ExcludeFromDescription` | `true` to hide all endpoints in the group from OpenAPI while keeping them routable |
+
+### `[MediatorEndpointGroup]` — Reusable Named Groups
+
+`[HandlerEndpointGroup]` configures one class. When you want the **same** prefix, tags, filters, policies, and visibility shared across handlers in **different** classes — e.g. an "Admin" area — define the group once at the **assembly** level and reference it by name from any handler:
+
+```csharp
+[assembly: MediatorEndpointGroup(
+    Name = "Admin",
+    RoutePrefix = "/api/v2/admin",
+    Policies = [AuthorizationRoles.GlobalAdminPolicy],
+    EndpointFilters = [typeof(AutoValidationEndpointFilter)],
+    ExcludeFromDescription = true)]
+```
+
+Handlers join the group via `[HandlerEndpoint(Group = "...")]` — no per-class `[HandlerEndpointGroup]` needed:
+
+```csharp
+public class SettingsHandler
+{
+    [HandlerEndpoint(HandlerMethod.Get, "settings", Group = "Admin")]
+    public Result<Settings> Handle(GetSettings query) => ...;   // → GET /api/v2/admin/settings
+}
+```
+
+All endpoints that reference the same group name are mapped under one shared `MapGroup`, inheriting its prefix, tags, filters, and policies.
+
+**Notes:**
+
+- Apply one `[MediatorEndpointGroup]` per named group; multiple are allowed. Definitions are read from the assembly being compiled.
+- Use a **relative** endpoint route (e.g. `"settings"`, not `"/settings"`) so it nests under the group prefix — a leading `/` makes the route absolute and bypasses the prefix.
+- A class-level `[HandlerEndpointGroup]` on the same handler **overrides** the referenced group per-property (most-specific wins); the named group fills any gaps.
+- Referencing a `Group` with no matching `[MediatorEndpointGroup]` definition is not an error — the name is still used as the group name and OpenAPI tag (behaving like an inline group).
+
+| Property | Purpose |
+| --- | --- |
+| `Name` | Group name referenced by `[HandlerEndpoint(Group = "...")]`; also the default OpenAPI tag |
+| `RoutePrefix` | Shared route prefix (relative to global prefix; leading `/` for absolute). Defaults to `Name` kebab-cased |
+| `Tags` | OpenAPI tags (defaults to `Name`) |
+| `EndpointFilters` | `IEndpointFilter` types applied to every endpoint in the group |
+| `Policies` | Authorization policy names required by every endpoint in the group |
+| `ExcludeFromDescription` | `true` to hide the group's endpoints from OpenAPI |
 
 ### `[HandlerEndpoint]` — Customize Individual Endpoints
 
@@ -230,6 +273,7 @@ All properties (including `Method` and `Route`) are also settable as named argum
 | `Summary` | Override XML doc summary for OpenAPI |
 | `Description` | OpenAPI description |
 | `DisplayName` | Pin the ASP.NET Core endpoint display name (logs/diagnostics) via `.WithDisplayName(...)`. Distinct from `Name` (the operationId) |
+| `Group` | Join an assembly-level `[MediatorEndpointGroup(Name = "...")]` by name, inheriting its prefix/tags/filters/policies. See [`[MediatorEndpointGroup]`](#mediatorendpointgroup-reusable-named-groups) |
 | `Tags` | Override the group tags |
 | `Exclude` | `true` to skip endpoint generation entirely |
 | `ExcludeFromDescription` | `true` to hide the endpoint from OpenAPI/API explorers via `.ExcludeFromDescription()` while keeping it routable |

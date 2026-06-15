@@ -117,6 +117,19 @@ public sealed class HandlerEndpointAttribute : Attribute
     public string? DisplayName { get; set; }
 
     /// <summary>
+    /// Gets or sets the name of the endpoint group this handler joins. Resolves against an
+    /// assembly-level <c>[MediatorEndpointGroup(Name = "...")]</c> definition, inheriting that
+    /// group's route prefix, tags, filters, policies, and description visibility.
+    /// <para>
+    /// When no matching group definition exists, the value is still used as the group name and
+    /// OpenAPI tag (behaving like an inline group). A class-level
+    /// <see cref="HandlerEndpointGroupAttribute"/> takes precedence over the referenced group for
+    /// any property it sets.
+    /// </para>
+    /// </summary>
+    public string? Group { get; set; }
+
+    /// <summary>
     /// Gets or sets the tags for grouping endpoints in OpenAPI.
     /// When null, uses the HandlerEndpointGroup attribute's Name property.
     /// </summary>

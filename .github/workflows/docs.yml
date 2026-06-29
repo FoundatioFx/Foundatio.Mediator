@@ -28,26 +28,14 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v6
+    - name: Setup Deno
+      uses: denoland/setup-deno@v2
       with:
-        node-version: 24
-
-    - name: Clean npm cache and dependencies
-      run: |
-        rm -rf node_modules package-lock.json
-        npm cache clean --force
-      working-directory: docs
-
-    - name: Install dependencies
-      run: npm install --force
-      working-directory: docs
+        deno-version: v2.x
 
     - name: Build documentation
-      run: npm run build
+      run: deno task build
       working-directory: docs
-      env:
-        NODE_ENV: production
 
     - name: Setup Pages
       uses: actions/configure-pages@v5
@@ -55,7 +43,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v4
       with:
-        path: docs/.vitepress/dist
+        path: docs/_site
 
     - name: Deploy to GitHub Pages
       id: deployment

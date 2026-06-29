@@ -1,32 +1,52 @@
+---
+title: "Why Choose Foundatio Mediator?"
+nav:
+    section: "Introduction"
+    sectionOrder: 10
+    order: 30
+---
+
 # Why Choose Foundatio Mediator?
 
 ## The Problem: Complexity That Creeps In
 
-Every .NET application starts clean. But as features accumulate, services start calling other services, dependencies multiply, and before long you have a tightly-coupled codebase that’s hard to test, hard to change, and hard for new team members to navigate. This is the **big ball of mud**, and it’s the default outcome when there’s nothing enforcing boundaries between components.
+Every .NET application starts clean. But as features accumulate, services start
+calling other services, dependencies multiply, and before long you have a
+tightly-coupled codebase that’s hard to test, hard to change, and hard for new
+team members to navigate. This is the **big ball of mud**, and it’s the default
+outcome when there’s nothing enforcing boundaries between components.
 
-The mediator pattern solves this: route all interactions through messages instead of direct calls, and your components stay decoupled by design. Need something to happen when an order is created? Publish an `OrderCreated` event — email, audit, and inventory handlers each react independently, without knowing about each other. Adding new behavior means adding a handler, not modifying existing code.
+The mediator pattern solves this: route all interactions through messages
+instead of direct calls, and your components stay decoupled by design. Need
+something to happen when an order is created? Publish an `OrderCreated` event —
+email, audit, and inventory handlers each react independently, without knowing
+about each other. Adding new behavior means adding a handler, not modifying
+existing code.
 
-But traditional mediator libraries make you pay for this architecture with boilerplate interfaces, runtime reflection overhead, and framework lock-in.
+But traditional mediator libraries make you pay for this architecture with
+boilerplate interfaces, runtime reflection overhead, and framework lock-in.
 
 **Foundatio Mediator gives you the architecture benefits without the costs.**
 
 ## What You Actually Get
 
-| Benefit | How |
-| ------- | --- |
-| **Loose coupling without ceremony** | No interfaces, no base classes — just naming conventions. Components communicate through messages, never directly. |
-| **Compose logic through events** | Publish an event and any number of handlers react independently. Add new behavior without touching existing code — the ultimate open/closed principle. |
-| **Testability by default** | Handlers are plain classes. Unit test them like any other object — no mediator mocking, no DI container setup. |
-| **Maintainability at scale** | Clear command/query/event boundaries prevent your codebase from growing into an unmaintainable mess. Every feature follows the same pattern. |
-| **No performance penalty** | Source generators and C# interceptors compile mediator calls into near-direct method calls. The pattern pays for itself. |
-| **No boilerplate tax** | The source generator handles all DI registration, dispatch wiring, and endpoint generation. You write business logic, nothing else. |
-| **Faster onboarding** | New developers learn the conventions once and can navigate the entire codebase. Message in, handler processes, result out. |
+| Benefit                             | How                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Loose coupling without ceremony** | No interfaces, no base classes — just naming conventions. Components communicate through messages, never directly.                                     |
+| **Compose logic through events**    | Publish an event and any number of handlers react independently. Add new behavior without touching existing code — the ultimate open/closed principle. |
+| **Testability by default**          | Handlers are plain classes. Unit test them like any other object — no mediator mocking, no DI container setup.                                         |
+| **Maintainability at scale**        | Clear command/query/event boundaries prevent your codebase from growing into an unmaintainable mess. Every feature follows the same pattern.           |
+| **No performance penalty**          | Source generators and C# interceptors compile mediator calls into near-direct method calls. The pattern pays for itself.                               |
+| **No boilerplate tax**              | The source generator handles all DI registration, dispatch wiring, and endpoint generation. You write business logic, nothing else.                    |
+| **Faster onboarding**               | New developers learn the conventions once and can navigate the entire codebase. Message in, handler processes, result out.                             |
 
 ## Performance That Matters
 
 ### Near-Direct Call Performance
 
-Unlike other mediator libraries that rely on runtime reflection or complex dispatch mechanisms, Foundatio Mediator uses **C# interceptors** to transform your mediator calls into essentially direct method calls:
+Unlike other mediator libraries that rely on runtime reflection or complex
+dispatch mechanisms, Foundatio Mediator uses **C# interceptors** to transform
+your mediator calls into essentially direct method calls:
 
 ```csharp
 // You write this:
@@ -43,7 +63,8 @@ This results in:
 - **No reflection overhead** at runtime
 - **Full compiler optimizations** including inlining
 
-For detailed benchmark comparisons, see the [Performance](./performance.md) page which is kept up-to-date with the latest results.
+For detailed benchmark comparisons, see the [Performance](./performance.md) page
+which is kept up-to-date with the latest results.
 
 ## Developer Experience
 
@@ -67,28 +88,36 @@ public class UserHandler : IRequestHandler<GetUser, User>
 
 ### But Isn't Convention-Based Discovery "Too Magic"?
 
-Some developers prefer explicit interfaces because they feel conventions are "too magical." Let's address this concern directly.
+Some developers prefer explicit interfaces because they feel conventions are
+"too magical." Let's address this concern directly.
 
-**All abstractions are "magic."** Consider what you already accept without question:
+**All abstractions are "magic."** Consider what you already accept without
+question:
 
-- **ASP.NET Controllers** - Classes ending in `Controller` are automatically discovered and routed
-- **Entity Framework** - Properties named `Id` become primary keys; navigation properties create relationships
-- **xUnit/NUnit** - Methods with `[Fact]` or `[Test]` attributes are discovered and executed
-- **Dependency Injection** - Constructor parameters are magically resolved from a container
-- **C# Records** - `record Person(string Name)` generates equality, `ToString()`, and deconstruction
+- **ASP.NET Controllers** - Classes ending in `Controller` are automatically
+  discovered and routed
+- **Entity Framework** - Properties named `Id` become primary keys; navigation
+  properties create relationships
+- **xUnit/NUnit** - Methods with `[Fact]` or `[Test]` attributes are discovered
+  and executed
+- **Dependency Injection** - Constructor parameters are magically resolved from
+  a container
+- **C# Records** - `record Person(string Name)` generates equality,
+  `ToString()`, and deconstruction
 
-The difference between "magic" and "convention" is simply **familiarity**. Once you learn a convention, it becomes invisible—you stop thinking about it.
+The difference between "magic" and "convention" is simply **familiarity**. Once
+you learn a convention, it becomes invisible—you stop thinking about it.
 
 **Why conventions are actually _better_ for mediator patterns:**
 
-| Traditional Interfaces | Convention-Based |
-| ---------------------- | ---------------- |
-| Forces `IRequestHandler<TRequest, TResponse>` inheritance | Plain classes with any name ending in `Handler` |
-| One handler method per class (or awkward multiple interface inheritance) | Multiple handler methods per class, naturally grouped |
-| Fixed method signature: `Handle(TRequest, CancellationToken)` | Flexible signatures: sync/async, any parameters via DI |
-| Must return `Task<TResponse>` even for sync operations | Return `void`, `T`, `Task`, `Task<T>`, `ValueTask`, `ValueTask<T>`, `Result<T>`, tuples |
-| Handler classes must be registered in DI | Auto-discovered at compile time |
-| Runtime dispatch via reflection | Compile-time interceptors for near-direct call performance |
+| Traditional Interfaces                                                   | Convention-Based                                                                        |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Forces `IRequestHandler<TRequest, TResponse>` inheritance                | Plain classes with any name ending in `Handler`                                         |
+| One handler method per class (or awkward multiple interface inheritance) | Multiple handler methods per class, naturally grouped                                   |
+| Fixed method signature: `Handle(TRequest, CancellationToken)`            | Flexible signatures: sync/async, any parameters via DI                                  |
+| Must return `Task<TResponse>` even for sync operations                   | Return `void`, `T`, `Task`, `Task<T>`, `ValueTask`, `ValueTask<T>`, `Result<T>`, tuples |
+| Handler classes must be registered in DI                                 | Auto-discovered at compile time                                                         |
+| Runtime dispatch via reflection                                          | Compile-time interceptors for near-direct call performance                              |
 
 **With conventions, you get unprecedented flexibility:**
 
@@ -223,7 +252,8 @@ public record OrderCreated(string OrderId, string CustomerId, DateTime CreatedAt
 
 ### Automatic Event Publishing
 
-Tuple returns enable automatic event cascading which keeps your handlers simple and easy to test:
+Tuple returns enable automatic event cascading which keeps your handlers simple
+and easy to test:
 
 ```csharp
 public async Task<(Order order, OrderCreated evt)> HandleAsync(CreateOrder cmd)
@@ -307,11 +337,14 @@ Compare this to complex reflection-based call stacks in other libraries.
 
 ### ✅ Ideal For
 
-- **Any app that needs to stay maintainable** as it grows — the mediator pattern prevents the big ball of mud
+- **Any app that needs to stay maintainable** as it grows — the mediator pattern
+  prevents the big ball of mud
 - **Clean architecture** implementations with CQRS patterns
 - **Event-driven systems** with publish/subscribe needs
-- **Teams that value consistency** — conventions mean everyone follows the same patterns
-- **High-performance applications** where other mediator libraries add unacceptable overhead
+- **Teams that value consistency** — conventions mean everyone follows the same
+  patterns
+- **High-performance applications** where other mediator libraries add
+  unacceptable overhead
 - **Projects wanting excellent testing experience** without framework coupling
 
 ### ⚠️ Consider Alternatives When
@@ -320,7 +353,10 @@ Compare this to complex reflection-based call stacks in other libraries.
 - **Simple CRUD applications** without complex business logic
 - **Existing MediatR codebases** where migration cost isn't justified
 
-> **Note:** If your team prefers explicit interfaces over conventions, Foundatio Mediator supports that too! Use `IHandler` or `[Handler]` attributes and optionally disable conventional discovery entirely. See [Explicit Handler Declaration](./handler-conventions#explicit-handler-declaration).
+> **Note:** If your team prefers explicit interfaces over conventions, Foundatio
+> Mediator supports that too! Use `IHandler` or `[Handler]` attributes and
+> optionally disable conventional discovery entirely. See
+> [Explicit Handler Declaration](./handler-conventions#explicit-handler-declaration).
 
 ## Migration from Other Libraries
 
@@ -354,6 +390,9 @@ public class UserHandler
 Ready to experience the benefits of Foundatio Mediator?
 
 1. [Installation & Setup](./getting-started) - Get running in minutes
-2. [Simple Examples](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples) - See the patterns in action
+2. [Simple Examples](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples) -
+   See the patterns in action
 
-The combination of loose coupling, testability, maintainability, and exceptional performance — without the usual boilerplate tax — makes Foundatio Mediator an excellent choice for modern .NET applications.
+The combination of loose coupling, testability, maintainability, and exceptional
+performance — without the usual boilerplate tax — makes Foundatio Mediator an
+excellent choice for modern .NET applications.

@@ -1,0 +1,15 @@
+{
+    "lock": true,
+    "nodeModulesDir": "none",
+    "imports": {
+        "lume/": "https://deno.land/x/lume@v3.2.5/",
+        "shiki": "npm:shiki@3.22.0"
+    },
+    "tasks": {
+        "build": "deno run --allow-read=.. --allow-write=. --allow-env --allow-run=git --allow-net=deno.land,jsr.io,cdn.jsdelivr.net,registry.npmjs.org,npmjs.org lume/cli.ts",
+        "check": "deno check _config.ts",
+        "dev": "deno run --allow-read=.. --allow-write=. --allow-env --allow-run=git --allow-net=deno.land,jsr.io,cdn.jsdelivr.net,registry.npmjs.org,npmjs.org,0.0.0.0:5173,127.0.0.1:5173,localhost:5173 lume/cli.ts --serve --port 5173",
+        "fmt": "deno fmt _config.ts _theme deno.json pages",
+        "serve": "deno task dev"
+    }
+}

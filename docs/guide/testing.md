@@ -1,18 +1,34 @@
+---
+title: "Testing"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 90
+---
+
 # Testing
 
-Because handlers are plain classes with no base types or framework dependencies, testing Foundatio.Mediator applications is straightforward at every level — from isolated unit tests to full HTTP integration tests against generated endpoints.
+Because handlers are plain classes with no base types or framework dependencies,
+testing Foundatio Mediator applications is straightforward at every level — from
+isolated unit tests to full HTTP integration tests against generated endpoints.
 
 This guide covers three testing tiers:
 
-1. **Unit testing handlers directly** — call handler methods without the mediator
-2. **Integration testing with the mediator** — exercise the full pipeline including DI and middleware
-3. **Integration testing generated endpoints** — test auto-generated minimal API endpoints over HTTP
+1. **Unit testing handlers directly** — call handler methods without the
+   mediator
+2. **Integration testing with the mediator** — exercise the full pipeline
+   including DI and middleware
+3. **Integration testing generated endpoints** — test auto-generated minimal API
+   endpoints over HTTP
 
-All examples use [xUnit](https://xunit.net/) and follow standard .NET testing conventions.
+All examples use [xUnit](https://xunit.net/) and follow standard .NET testing
+conventions.
 
 ## Unit Testing Handlers Directly
 
-Handlers are plain classes. You can instantiate them with `new`, call their handle methods directly, and assert the return value — no mediator, no DI container, no framework mocking required.
+Handlers are plain classes. You can instantiate them with `new`, call their
+handle methods directly, and assert the return value — no mediator, no DI
+container, no framework mocking required.
 
 ### Simple Handler
 
@@ -43,7 +59,8 @@ public void Handle_ReturnsGreeting()
 
 ### Handler with Dependencies
 
-When a handler accepts dependencies via constructor injection, pass stubs or mocks directly:
+When a handler accepts dependencies via constructor injection, pass stubs or
+mocks directly:
 
 ```csharp
 public record GetOrder(string OrderId);
@@ -89,10 +106,11 @@ public async Task HandleAsync_WhenOrderMissing_ReturnsNotFound()
 ```
 
 ::: tip DI Method Parameters
-Handler methods can also accept additional parameters resolved from DI (like `ILogger<T>`). In unit tests, pass them directly as method arguments:
+Handler methods can also accept additional
+parameters resolved from DI (like `ILogger<T>`). In unit tests, pass them
+directly as method arguments:
 
 ```csharp
-
 public class OrderHandler
 {
     public async Task<Result<Order>> HandleAsync(
@@ -117,7 +135,8 @@ var result = await handler.HandleAsync(
 
 ### Testing Cascading Events
 
-Handlers that return tuples produce cascading messages. In a unit test, you can assert the returned tuple directly without the mediator publishing anything:
+Handlers that return tuples produce cascading messages. In a unit test, you can
+assert the returned tuple directly without the mediator publishing anything:
 
 ```csharp
 [Fact]
@@ -139,7 +158,9 @@ public async Task HandleAsync_CreateOrder_ReturnsOrderAndEvent()
 
 ## Integration Testing with the Mediator
 
-Integration tests exercise the full pipeline: handler discovery, DI resolution, middleware execution, and dispatch. This verifies that everything wires up correctly.
+Integration tests exercise the full pipeline: handler discovery, DI resolution,
+middleware execution, and dispatch. This verifies that everything wires up
+correctly.
 
 ### Basic Setup
 
@@ -161,7 +182,9 @@ public async Task InvokeAsync_ReturnsExpected()
 }
 ```
 
-`AddAssembly<T>()` registers all handlers discovered in the assembly containing `T`. For projects using the default `AddMediator()` call, all referenced assemblies with `[assembly: FoundatioModule]` are auto-discovered.
+`AddAssembly<T>()` registers all handlers discovered in the assembly containing
+`T`. For projects using the default `AddMediator()` call, all referenced
+assemblies with `[assembly: FoundatioModule]` are auto-discovered.
 
 ### Testing Events with Multiple Handlers
 
@@ -203,7 +226,8 @@ public async Task PublishAsync_InvokesAllHandlers()
 
 ### Testing with Middleware
 
-Middleware participates automatically when registered. To test that middleware runs, register it alongside the handler:
+Middleware participates automatically when registered. To test that middleware
+runs, register it alongside the handler:
 
 ```csharp
 [Middleware(Order = 0)]
@@ -258,7 +282,8 @@ public async Task InvokeAsync_WhenNotFound_ReturnsNotFoundResult()
 ```
 
 ::: tip Scoped Services
-If your handlers depend on scoped services, create a scope before resolving the mediator:
+If your handlers depend on scoped services, create a
+scope before resolving the mediator:
 
 ```csharp
 using var provider = services.BuildServiceProvider();
@@ -270,7 +295,8 @@ var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
 ### Verifying Unhandled Messages
 
-The mediator throws `InvalidOperationException` when no handler is registered for a message:
+The mediator throws `InvalidOperationException` when no handler is registered
+for a message:
 
 ```csharp
 [Fact]
@@ -289,9 +315,12 @@ public async Task InvokeAsync_WithNoHandler_Throws()
 
 ## Integration Testing Generated Endpoints
 
-When handlers are decorated with endpoint attributes (or discovered automatically), Foundatio.Mediator generates minimal API endpoints. You can test these over HTTP using ASP.NET Core's `WebApplicationFactory`.
+When handlers are decorated with endpoint attributes (or discovered
+automatically), Foundatio Mediator generates minimal API endpoints. You can test
+these over HTTP using ASP.NET Core's `WebApplicationFactory`.
 
-See [Endpoints](./endpoints) for full details on how routes, HTTP methods, and status codes are generated.
+See [Endpoints](./endpoints) for full details on how routes, HTTP methods, and
+status codes are generated.
 
 ### Project Setup
 
@@ -304,7 +333,8 @@ Add the test infrastructure packages to your test project:
 </ItemGroup>
 ```
 
-Ensure your API project exposes its entry point for testing. If using top-level statements, add to your API project:
+Ensure your API project exposes its entry point for testing. If using top-level
+statements, add to your API project:
 
 ```csharp
 // At the bottom of Program.cs (or in a partial class)
@@ -440,19 +470,20 @@ public class AuthOrderEndpointTests
 ```
 
 ::: tip Result-to-HTTP Status Mapping
-Foundatio.Mediator automatically maps `Result<T>` statuses to HTTP responses:
+Foundatio Mediator automatically maps
+`Result<T>` statuses to HTTP responses:
 
-| Result Status | HTTP Status |
-| --- | --- |
-| `Success` | 200 OK |
-| `Created` | 201 Created |
-| `NoContent` | 204 No Content |
-| `BadRequest` | 400 Bad Request |
-| `Unauthorized` | 401 Unauthorized |
-| `Forbidden` | 403 Forbidden |
-| `NotFound` | 404 Not Found |
-| `Invalid` | 400 Bad Request |
-| `Error` | 500 Internal Server Error |
+| Result Status  | HTTP Status               |
+| -------------- | ------------------------- |
+| `Success`      | 200 OK                    |
+| `Created`      | 201 Created               |
+| `NoContent`    | 204 No Content            |
+| `BadRequest`   | 400 Bad Request           |
+| `Unauthorized` | 401 Unauthorized          |
+| `Forbidden`    | 403 Forbidden             |
+| `NotFound`     | 404 Not Found             |
+| `Invalid`      | 400 Bad Request           |
+| `Error`        | 500 Internal Server Error |
 
 See [Result Types](./result-types) for details on the `Result<T>` pattern.
 :::
@@ -469,14 +500,19 @@ var client = factory.WithWebApplicationBuilder(builder =>
 }).CreateClient();
 ```
 
-This lets you control handler behavior without changing any handler code — the same DI injection that powers production code makes test doubles drop in seamlessly.
+This lets you control handler behavior without changing any handler code — the
+same DI injection that powers production code makes test doubles drop in
+seamlessly.
 
 ## Summary
 
-| Testing Tier | What It Tests | Setup Complexity | Speed |
-| --- | --- | --- | --- |
-| **Unit tests** | Handler logic in isolation | None — `new` up the handler | Fastest |
-| **Mediator integration** | DI wiring, middleware, dispatch | `ServiceCollection` + `AddMediator()` | Fast |
-| **Endpoint integration** | HTTP routing, serialization, auth | `WebApplicationFactory` | Moderate |
+| Testing Tier             | What It Tests                     | Setup Complexity                      | Speed    |
+| ------------------------ | --------------------------------- | ------------------------------------- | -------- |
+| **Unit tests**           | Handler logic in isolation        | None — `new` up the handler           | Fastest  |
+| **Mediator integration** | DI wiring, middleware, dispatch   | `ServiceCollection` + `AddMediator()` | Fast     |
+| **Endpoint integration** | HTTP routing, serialization, auth | `WebApplicationFactory`               | Moderate |
 
-Start with unit tests for business logic, add mediator integration tests for pipeline behavior, and use endpoint tests to verify routing and HTTP semantics. Because handlers are plain classes throughout, each tier builds naturally on the previous one.
+Start with unit tests for business logic, add mediator integration tests for
+pipeline behavior, and use endpoint tests to verify routing and HTTP semantics.
+Because handlers are plain classes throughout, each tier builds naturally on the
+previous one.

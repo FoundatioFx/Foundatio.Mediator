@@ -14,6 +14,8 @@ npm-debug.log
 yarn-error.log
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+docs/_site/
+docs/.build/
 
 # Benchmark Results
 BenchmarkDotNet.Artifacts/
@@ -58,3 +60,4 @@ Generated/
 nul
 
 "samples/CleanArchitectureSample/src/Web/obj//Debug/
+

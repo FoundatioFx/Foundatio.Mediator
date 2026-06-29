@@ -1,6 +1,17 @@
+---
+title: "Middleware"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 50
+---
+
 # Middleware
 
-Middleware in Foundatio Mediator provides a powerful pipeline for implementing cross-cutting concerns like validation, logging, authorization, and error handling. Middleware can run before, after, and finally around handler execution.
+Middleware in Foundatio Mediator provides a powerful pipeline for implementing
+cross-cutting concerns like validation, logging, authorization, and error
+handling. Middleware can run before, after, and finally around handler
+execution.
 
 ## Basic Middleware
 
@@ -38,30 +49,34 @@ Middleware classes must end with `Middleware`
 
 Valid middleware method names:
 
-- `Before` / `BeforeAsync` - Runs before the handler; can short-circuit execution
+- `Before` / `BeforeAsync` - Runs before the handler; can short-circuit
+  execution
 - `After` / `AfterAsync` - Runs after successful handler completion
-- `Finally` / `FinallyAsync` - Always runs, even if handler fails; receives exception
+- `Finally` / `FinallyAsync` - Always runs, even if handler fails; receives
+  exception
 - `ExecuteAsync` - Wraps the entire pipeline (for retry, circuit breaker, etc.)
 
 ### Method Parameters
 
-- **First parameter**: The message (can be `object`, interface, or concrete type)
+- **First parameter**: The message (can be `object`, interface, or concrete
+  type)
 - **Remaining parameters**: Injected via DI or from built-in context (see below)
 
 ### Built-in Parameter Types
 
-The following parameter types are automatically available in middleware methods without DI registration:
+The following parameter types are automatically available in middleware methods
+without DI registration:
 
-| Parameter Type | Availability | Description |
-|----------------|--------------|-------------|
-| `CancellationToken` | Before, After, Finally, Execute | The cancellation token passed to the handler |
-| `IServiceProvider` | Before, After, Finally, Execute | The service provider for the current scope |
-| `Activity?` | Before, After, Finally, Execute | The OpenTelemetry activity (when OpenTelemetry is enabled) |
-| `Exception?` | **After, Finally only** | The exception if the handler failed (always `null` in Before) |
-| `HandlerExecutionInfo` | Before, After, Finally, Execute | Metadata about the executing handler (handler type and method) |
-| `HandlerExecutionDelegate` | **ExecuteAsync only** | Delegate to invoke the wrapped pipeline |
-| Handler return type | **After, Finally only** | The result returned by the handler (e.g., `Result<T>`, custom types) |
-| Before method return type | **After, Finally only** | Values returned from the `Before` method |
+| Parameter Type             | Availability                    | Description                                                          |
+| -------------------------- | ------------------------------- | -------------------------------------------------------------------- |
+| `CancellationToken`        | Before, After, Finally, Execute | The cancellation token passed to the handler                         |
+| `IServiceProvider`         | Before, After, Finally, Execute | The service provider for the current scope                           |
+| `Activity?`                | Before, After, Finally, Execute | The OpenTelemetry activity (when OpenTelemetry is enabled)           |
+| `Exception?`               | **After, Finally only**         | The exception if the handler failed (always `null` in Before)        |
+| `HandlerExecutionInfo`     | Before, After, Finally, Execute | Metadata about the executing handler (handler type and method)       |
+| `HandlerExecutionDelegate` | **ExecuteAsync only**           | Delegate to invoke the wrapped pipeline                              |
+| Handler return type        | **After, Finally only**         | The result returned by the handler (e.g., `Result<T>`, custom types) |
+| Before method return type  | **After, Finally only**         | Values returned from the `Before` method                             |
 
 **Example with built-in parameters:**
 
@@ -89,20 +104,31 @@ public class TracingMiddleware
 }
 ```
 
-> **Note:** The `Exception?` parameter is only available in `After` and `Finally` methods since exceptions can only occur during or after handler execution.
+> **Note:** The `Exception?` parameter is only available in `After` and
+> `Finally` methods since exceptions can only occur during or after handler
+> execution.
 
-> **Note:** If a middleware's `Before` method is skipped due to short-circuiting by an earlier middleware, that middleware's `Finally` method will not be called. Only middleware whose `Before` has executed will have `Finally` invoked.
+> **Note:** If a middleware's `Before` method is skipped due to short-circuiting
+> by an earlier middleware, that middleware's `Finally` method will not be
+> called. Only middleware whose `Before` has executed will have `Finally`
+> invoked.
 
 ## Lifecycle Methods
 
 ### Before
 
-Runs before the handler. Can return values that are passed to `After` and `Finally`:
+Runs before the handler. Can return values that are passed to `After` and
+`Finally`:
 
 ::: warning One Method Per Hook
-Each middleware class may define only **one** `Before` (or `BeforeAsync`) method — the same applies to `After`, `Finally`, and `ExecuteAsync`. Defining multiple overloads of the same hook (e.g., `Before(CreateOrder cmd)` and `Before(UpdateOrder cmd)`) will produce diagnostic error **FMED001** and the middleware will not compile.
+Each middleware class may define only **one**
+`Before` (or `BeforeAsync`) method — the same applies to `After`, `Finally`, and
+`ExecuteAsync`. Defining multiple overloads of the same hook (e.g.,
+`Before(CreateOrder cmd)` and `Before(UpdateOrder cmd)`) will produce diagnostic
+error **FMED001** and the middleware will not compile.
 
-To handle multiple message types in a single middleware class, accept `object` and use pattern matching:
+To handle multiple message types in a single middleware class, accept `object`
+and use pattern matching:
 
 ```csharp
 public class ValidationMiddleware
@@ -122,7 +148,8 @@ public class ValidationMiddleware
 }
 ```
 
-Alternatively, create separate middleware classes when each message type needs different state (return types from `Before` that flow to `After`/`Finally`).
+Alternatively, create separate middleware classes when each message type needs
+different state (return types from `Before` that flow to `After`/`Finally`).
 :::
 
 ```csharp
@@ -157,7 +184,8 @@ public class AuditMiddleware
 
 ### Finally
 
-Always runs, regardless of success or failure. Receives exception if handler failed:
+Always runs, regardless of success or failure. Receives exception if handler
+failed:
 
 ```csharp
 public class ErrorHandlingMiddleware
@@ -174,7 +202,9 @@ public class ErrorHandlingMiddleware
 
 ## Execute Middleware
 
-The `ExecuteAsync` method wraps the **entire middleware pipeline** (Before → Handler → After → Finally). This is useful for cross-cutting concerns that need to wrap the full execution, such as:
+The `ExecuteAsync` method wraps the **entire middleware pipeline** (Before →
+Handler → After → Finally). This is useful for cross-cutting concerns that need
+to wrap the full execution, such as:
 
 - **Retry logic** - Re-execute the entire pipeline on transient failures
 - **Circuit breakers** - Fail fast when downstream systems are unavailable
@@ -186,7 +216,8 @@ The `ExecuteAsync` method wraps the **entire middleware pipeline** (Before → H
 Execute[1]( Execute[2]( Before[1] → Before[2] → Handler → After[2] → After[1] → Finally[2] → Finally[1] ) )
 ```
 
-On each retry, the entire inner pipeline re-executes - all Before middlewares run again, the handler runs again, and all After/Finally middlewares run again.
+On each retry, the entire inner pipeline re-executes - all Before middlewares
+run again, the handler runs again, and all After/Finally middlewares run again.
 
 ### Execute Method Signature
 
@@ -200,11 +231,16 @@ public async ValueTask<object?> ExecuteAsync(
 
 ### Retry Middleware Example
 
-Here's a complete retry middleware using [Foundatio Resilience](https://github.com/FoundatioFx/Foundatio). This example demonstrates:
+Here's a complete retry middleware using
+[Foundatio Resilience](https://github.com/FoundatioFx/Foundatio). This example
+demonstrates:
 
-- **Custom `[Retry]` attribute** with `[UseMiddleware]` applied to trigger the middleware
-- **`ExplicitOnly = true`** so the middleware only applies when the attribute is used
-- **`HandlerExecutionInfo`** to access handler metadata and discover attribute settings
+- **Custom `[Retry]` attribute** with `[UseMiddleware]` applied to trigger the
+  middleware
+- **`ExplicitOnly = true`** so the middleware only applies when the attribute is
+  used
+- **`HandlerExecutionInfo`** to access handler metadata and discover attribute
+  settings
 
 ```csharp
 /// <summary>
@@ -273,7 +309,8 @@ public static class RetryMiddleware
 }
 ```
 
-Apply to handlers - the `[Retry]` attribute both **triggers** the middleware AND **configures** it:
+Apply to handlers - the `[Retry]` attribute both **triggers** the middleware AND
+**configures** it:
 
 ```csharp
 public class OrderHandler
@@ -295,18 +332,28 @@ public class OrderHandler
 
 ### Key Points
 
-- Execute middleware **only supports async** (`ExecuteAsync`) - no sync `Execute` method
-- The `next` delegate returns `object?` - cast as needed for strongly-typed results
+- Execute middleware **only supports async** (`ExecuteAsync`) - no sync
+  `Execute` method
+- The `next` delegate returns `object?` - cast as needed for strongly-typed
+  results
 - Use low `Order` values (e.g., 0, 1) to wrap as outermost middleware
 - Execute middleware can access DI parameters like other middleware methods
 - Use `HandlerExecutionInfo` to access handler type and method for reflection
 - Cache policies per handler to avoid rebuilding on each invocation
 
-> **Complete Example**: See the [Clean Architecture Sample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/RetryMiddleware.cs), [RetryAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/RetryAttribute.cs), and [PaymentHandler](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Orders.Module/Handlers/PaymentHandler.cs) (which randomly throws transient errors to demonstrate retry behavior).
+> **Complete Example**: See the
+> [Clean Architecture Sample RetryMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/RetryMiddleware.cs),
+> [RetryAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/RetryAttribute.cs),
+> and
+> [PaymentHandler](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Orders.Module/Handlers/PaymentHandler.cs)
+> (which randomly throws transient errors to demonstrate retry behavior).
 
 ### Caching Middleware
 
-The same `[UseMiddleware]` + `ExplicitOnly` pattern works for caching. A `[Cached]` attribute triggers a `CachingMiddleware` that memoizes handler results keyed by message value (C# records have value equality, so identical queries are automatic cache hits).
+The same `[UseMiddleware]` + `ExplicitOnly` pattern works for caching. A
+`[Cached]` attribute triggers a `CachingMiddleware` that memoizes handler
+results keyed by message value (C# records have value equality, so identical
+queries are automatic cache hits).
 
 ```csharp
 [Cached(DurationSeconds = 60)]
@@ -317,11 +364,17 @@ public async Task<Result<ProductCatalogSummary>> HandleAsync(GetProductCatalog q
 }
 ```
 
-> **Complete Example**: See the [CachingMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/CachingMiddleware.cs), [CachedAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/CachedAttribute.cs), and [ProductHandler](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Products.Module/Handlers/ProductHandler.cs) in the Clean Architecture Sample.
+> **Complete Example**: See the
+> [CachingMiddleware](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/CachingMiddleware.cs),
+> [CachedAttribute](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Middleware/CachedAttribute.cs),
+> and
+> [ProductHandler](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Products.Module/Handlers/ProductHandler.cs)
+> in the Clean Architecture Sample.
 
 ## Short-Circuiting with HandlerResult
 
-Middleware can short-circuit handler execution by returning a `HandlerResult` from the `Before` method:
+Middleware can short-circuit handler execution by returning a `HandlerResult`
+from the `Before` method:
 
 ### Real-World Validation Example
 
@@ -367,7 +420,8 @@ public class AuthorizationMiddleware
 
 ## State Passing Between Lifecycle Methods
 
-Values returned from `Before` are automatically injected into `After` and `Finally` by type:
+Values returned from `Before` are automatically injected into `After` and
+`Finally` by type:
 
 ```csharp
 public class TransactionMiddleware
@@ -441,11 +495,13 @@ public class LoggingMiddleware
 
 - `ExecuteAsync`: Lower order values wrap outermost (run first/last)
 - `Before`: Lower order values run first
-- `After`/`Finally`: Higher order values run first (reverse order for proper nesting)
+- `After`/`Finally`: Higher order values run first (reverse order for proper
+  nesting)
 
 ### Relative Ordering
 
-Instead of managing numeric order values, you can express ordering relationships between middleware using `OrderBefore` and `OrderAfter`:
+Instead of managing numeric order values, you can express ordering relationships
+between middleware using `OrderBefore` and `OrderAfter`:
 
 ```csharp
 // "I must run before LoggingMiddleware"
@@ -475,7 +531,8 @@ public class LoggingMiddleware
 }
 ```
 
-The resulting execution order for `Before` is: **AuthMiddleware → LoggingMiddleware → AuditMiddleware**
+The resulting execution order for `Before` is: **AuthMiddleware →
+LoggingMiddleware → AuditMiddleware**
 
 You can specify multiple types in a single declaration:
 
@@ -490,14 +547,22 @@ public class SecurityMiddleware
 
 **How relative ordering works:**
 
-- `OrderBefore = [typeof(X)]` means "I run before X" — adds an edge from this middleware to X
-- `OrderAfter = [typeof(X)]` means "I run after X" — adds an edge from X to this middleware
-- When no relative constraints exist between two middleware, numeric `Order` is used as a tiebreaker
-- Middleware with no constraints and no explicit `Order` uses `int.MaxValue` (runs last)
-- Unknown types in `OrderBefore`/`OrderAfter` are silently ignored (they may not apply to the current handler)
+- `OrderBefore = [typeof(X)]` means "I run before X" — adds an edge from this
+  middleware to X
+- `OrderAfter = [typeof(X)]` means "I run after X" — adds an edge from X to this
+  middleware
+- When no relative constraints exist between two middleware, numeric `Order` is
+  used as a tiebreaker
+- Middleware with no constraints and no explicit `Order` uses `int.MaxValue`
+  (runs last)
+- Unknown types in `OrderBefore`/`OrderAfter` are silently ignored (they may not
+  apply to the current handler)
 
 ::: warning Circular Dependencies
-If middleware form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED012` is emitted and the cycle participants fall back to numeric `Order` sorting.
+If middleware form a circular dependency
+(e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning
+`FMED012` is emitted and the cycle participants fall back to numeric `Order`
+sorting.
 :::
 
 ## Message-Specific Middleware
@@ -529,7 +594,8 @@ public class OrderCreationMiddleware
 
 ## Handler-Specific Middleware
 
-Use the `[UseMiddleware]` attribute to apply middleware to specific handlers rather than globally by message type.
+Use the `[UseMiddleware]` attribute to apply middleware to specific handlers
+rather than globally by message type.
 
 ### Basic Usage
 
@@ -544,7 +610,8 @@ public class OrderHandler
 
 ### Custom Middleware Attributes
 
-Create reusable attributes by applying `[UseMiddleware]` to your attribute class:
+Create reusable attributes by applying `[UseMiddleware]` to your attribute
+class:
 
 ```csharp
 [UseMiddleware(typeof(RetryMiddleware))]
@@ -577,7 +644,9 @@ public class OrderHandler
 
 ### ExplicitOnly Middleware
 
-Mark middleware with `ExplicitOnly = true` to prevent automatic global application. The middleware will only run when explicitly referenced via `[UseMiddleware]` or a custom attribute:
+Mark middleware with `ExplicitOnly = true` to prevent automatic global
+application. The middleware will only run when explicitly referenced via
+`[UseMiddleware]` or a custom attribute:
 
 ```csharp
 // This middleware only runs when a handler uses [Retry] or [UseMiddleware(typeof(RetryMiddleware))]
@@ -591,7 +660,8 @@ public class RetryMiddleware
 }
 ```
 
-Without `ExplicitOnly = true`, middleware that takes `object` as the message type would run for ALL handlers.
+Without `ExplicitOnly = true`, middleware that takes `object` as the message
+type would run for ALL handlers.
 
 ### Method vs Class Level
 
@@ -661,12 +731,12 @@ public class AsyncMiddleware
 
 ### Lifetime Behavior
 
-| Lifetime | Behavior |
-|----------|----------|
-| **Scoped** | Resolved from DI on every invocation |
-| **Transient** | Resolved from DI on every invocation |
-| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
-| **None/Default** (no constructor deps) | Created once with `new()` and cached |
+| Lifetime                                 | Behavior                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| **Scoped**                               | Resolved from DI on every invocation                             |
+| **Transient**                            | Resolved from DI on every invocation                             |
+| **Singleton**                            | Resolved from DI on every invocation (DI handles caching)        |
+| **None/Default** (no constructor deps)   | Created once with `new()` and cached                             |
 | **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
 
 ### Controlling Lifetime with [Middleware] Attribute
@@ -699,19 +769,22 @@ Set a default lifetime for all middleware:
 
 ## Middleware Discovery
 
-Middleware is automatically discovered by the Foundatio.Mediator source generator. To share middleware across projects:
+Middleware is automatically discovered by the Foundatio Mediator source
+generator. To share middleware across projects:
 
 1. **Create a middleware project** with Foundatio.Mediator package referenced
 2. **Reference that project** from your handler projects
 3. **Ensure the handler project** also references Foundatio.Mediator
 
-The source generator will discover middleware in referenced assemblies that have the Foundatio.Mediator source generator.
+The source generator will discover middleware in referenced assemblies that have
+the Foundatio Mediator source generator.
 
 ### Discovery Rules
 
 Middleware classes are found using:
 
-1. **Naming Convention**: Classes ending with `Middleware` (e.g., `LoggingMiddleware`, `ValidationMiddleware`)
+1. **Naming Convention**: Classes ending with `Middleware` (e.g.,
+   `LoggingMiddleware`, `ValidationMiddleware`)
 2. **Attribute**: Classes marked with `[Middleware]` attribute
 
 ### Example: Cross-Assembly Middleware
@@ -758,9 +831,14 @@ public class LoggingMiddleware
 }
 ```
 
-The middleware will automatically be applied to all handlers in `Orders.Handlers` project.
+The middleware will automatically be applied to all handlers in
+`Orders.Handlers` project.
 
-> **💡 Complete Example**: See the [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) for a working demonstration of cross-assembly middleware in a multi-module application with shared middleware in `Common.Module` being used by `Products.Module` and `Orders.Module`.
+> **💡 Complete Example**: See the
+> [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample)
+> for a working demonstration of cross-assembly middleware in a multi-module
+> application with shared middleware in `Common.Module` being used by
+> `Products.Module` and `Orders.Module`.
 
 ### Setting Middleware Order
 
@@ -777,7 +855,8 @@ public class PerformanceMiddleware { }
 **Execution flow:**
 
 - `Before`: Lower order values run first
-- `After`/`Finally`: Higher order values run first (reverse order for proper nesting)
+- `After`/`Finally`: Higher order values run first (reverse order for proper
+  nesting)
 
 ## Ignoring Middleware
 
@@ -855,5 +934,6 @@ public void Before(object message) { }
 
 ## Next Steps
 
-- [Modular Monolith Sample](../../samples/CleanArchitectureSample/) - Complete working example of cross-assembly middleware
+- [Modular Monolith Sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) -
+  Complete working example of cross-assembly middleware
 - [Handler Conventions](./handler-conventions) - Learn handler discovery rules

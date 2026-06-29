@@ -1,10 +1,21 @@
+---
+title: "Handler Conventions"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 10
+---
+
 # Handler Conventions
 
-Foundatio Mediator uses simple naming conventions to automatically discover handlers at compile time. This eliminates the need for interfaces, base classes, or manual registration while providing excellent compile-time validation.
+Foundatio Mediator uses simple naming conventions to automatically discover
+handlers at compile time. This eliminates the need for interfaces, base classes,
+or manual registration while providing excellent compile-time validation.
 
 ## Why Conventions?
 
-Some developers initially feel that convention-based discovery is "too magical." But consider: **all abstractions are magic until you learn them.**
+Some developers initially feel that convention-based discovery is "too magical."
+But consider: **all abstractions are magic until you learn them.**
 
 - ASP.NET discovers `*Controller` classes automatically
 - Entity Framework treats `Id` properties as primary keys
@@ -13,24 +24,29 @@ Some developers initially feel that convention-based discovery is "too magical."
 
 The real question isn't "is it magic?" but **"does the magic help or hurt?"**
 
-Convention-based handlers provide tangible benefits over traditional interface-based approaches:
+Convention-based handlers provide tangible benefits over traditional
+interface-based approaches:
 
-| Benefit | Convention-Based | Interface-Based |
-| ------- | ---------------- | --------------- |
-| **Multiple handlers per class** | ✅ Natural grouping | ❌ One interface per handler |
-| **Flexible method signatures** | ✅ Any params via DI | ❌ Fixed `Handle(TRequest, CancellationToken)` |
-| **Sync or async** | ✅ Return `void`, `T`, `Task<T>`, etc. | ❌ Must return `Task<T>` |
-| **Static handlers** | ✅ Zero allocation | ❌ Always instance-based |
-| **Cascading messages** | ✅ Tuple returns auto-publish | ❌ Manual `IPublisher` injection |
-| **Boilerplate** | ✅ Just a class + methods | ❌ Interface inheritance per handler |
+| Benefit                         | Convention-Based                       | Interface-Based                                |
+| ------------------------------- | -------------------------------------- | ---------------------------------------------- |
+| **Multiple handlers per class** | ✅ Natural grouping                    | ❌ One interface per handler                   |
+| **Flexible method signatures**  | ✅ Any params via DI                   | ❌ Fixed `Handle(TRequest, CancellationToken)` |
+| **Sync or async**               | ✅ Return `void`, `T`, `Task<T>`, etc. | ❌ Must return `Task<T>`                       |
+| **Static handlers**             | ✅ Zero allocation                     | ❌ Always instance-based                       |
+| **Cascading messages**          | ✅ Tuple returns auto-publish          | ❌ Manual `IPublisher` injection               |
+| **Boilerplate**                 | ✅ Just a class + methods              | ❌ Interface inheritance per handler           |
 
-**Prefer explicit declaration?** Use `IHandler` or `[Handler]` attributes. See [Explicit Handler Declaration](#explicit-handler-declaration).
+**Prefer explicit declaration?** Use `IHandler` or `[Handler]` attributes. See
+[Explicit Handler Declaration](#explicit-handler-declaration).
 
-Alternatively, you can mark handlers explicitly using the `IHandler` marker interface or the `[Handler]` attribute. See [Explicit Handler Declaration](#explicit-handler-declaration) for details.
+Alternatively, you can mark handlers explicitly using the `IHandler` marker
+interface or the `[Handler]` attribute. See
+[Explicit Handler Declaration](#explicit-handler-declaration) for details.
 
 ## Message Type Interfaces
 
-Foundatio Mediator provides optional marker interfaces for messages. These enable type inference at call sites:
+Foundatio Mediator provides optional marker interfaces for messages. These
+enable type inference at call sites:
 
 ### IRequest&lt;TResponse&gt;
 
@@ -75,13 +91,19 @@ public record LogEvent(string Message) : INotification;      // Multiple handler
 ```
 
 ::: tip When to Use These Interfaces
-These interfaces are **optional**. Use them when you want:
+These interfaces are **optional**. Use them
+when you want:
+
 - Type inference at call sites (no need to specify `<TResponse>`)
 - Self-documenting message intent (command vs query vs notification)
-- Message classification — e.g., a handler can accept `INotification` to handle all notification types
+- Message classification — e.g., a handler can accept `INotification` to handle
+  all notification types
 - Compatibility with MediatR-style patterns
 
-Plain messages (like `public record Ping(string Text);`) work fine without any interface. In particular, `INotification` is not required for events to work with `PublishAsync` or cascading messages — it serves as a classification/self-documentation tool.
+Plain messages (like `public record Ping(string Text);`) work fine without any
+interface. In particular, `INotification` is not required for events to work
+with `PublishAsync` or cascading messages — it serves as a
+classification/self-documentation tool.
 :::
 
 ## Class Naming Conventions
@@ -89,7 +111,8 @@ Plain messages (like `public record Ping(string Text);`) work fine without any i
 Handler classes must end with one of these suffixes:
 
 - **`Handler`** — the preferred convention for all handler classes
-- `Consumer` — supported for convenience when migrating from other libraries (e.g., MassTransit), but `Handler` is recommended for new code
+- `Consumer` — supported for convenience when migrating from other libraries
+  (e.g., MassTransit), but `Handler` is recommended for new code
 
 ```csharp
 // ✅ Recommended
@@ -107,12 +130,18 @@ public class OrderProcessor { }
 ```
 
 ::: tip Use Handler for Everything
-Unlike some libraries that distinguish between "handlers" and "consumers," Foundatio Mediator treats both identically. The `Consumer` suffix exists purely to ease migration from other mediator libraries. For new projects, use `Handler` consistently for commands, queries, and events alike.
+Unlike some libraries that distinguish
+between "handlers" and "consumers," Foundatio Mediator treats both identically.
+The `Consumer` suffix exists purely to ease migration from other mediator
+libraries. For new projects, use `Handler` consistently for commands, queries,
+and events alike.
 :::
 
 ### Excluding Namespaces From Discovery
 
-If your project includes classes that match handler naming conventions but should never be treated as Foundatio handlers, exclude their namespaces with `HandlerExcludeNamespacePatterns` in `[assembly: MediatorConfiguration(...)]`.
+If your project includes classes that match handler naming conventions but
+should never be treated as Foundatio handlers, exclude their namespaces with
+`HandlerExcludeNamespacePatterns` in `[assembly: MediatorConfiguration(...)]`.
 
 ```csharp
 [assembly: MediatorConfiguration(
@@ -248,7 +277,8 @@ public static class CalculationHandler
 
 **Benefits:**
 
-- No DI registration required (but can be registered when it is desired to control handler class lifetime)
+- No DI registration required (but can be registered when it is desired to
+  control handler class lifetime)
 - Zero allocation for handler instance
 - Clear that no state is maintained
 
@@ -277,11 +307,14 @@ public class UserHandler
 }
 ```
 
-**Note:** Handlers are internally cached by default (not registered with DI). Constructor dependencies are resolved once and shared across all invocations.
+**Note:** Handlers are internally cached by default (not registered with DI).
+Constructor dependencies are resolved once and shared across all invocations.
 
 ### Open Generic Handlers
 
-Handlers can be declared as open generic classes and will be automatically closed for the concrete message type at runtime. This lets you build reusable handler logic that applies to many message types.
+Handlers can be declared as open generic classes and will be automatically
+closed for the concrete message type at runtime. This lets you build reusable
+handler logic that applies to many message types.
 
 ```csharp
 // Generic command definitions
@@ -314,16 +347,24 @@ await mediator.InvokeAsync(new UpdateRelation<User, Role>(user, role));
 
 Guidelines:
 
-- The handler class, not the method, must be generic (generic handler methods are not currently supported).
-- The message type must use the handler's generic parameters (e.g., `UpdateEntity<T>` in `EntityHandler<T>`).
-- Open generic handlers participate in normal invocation rules: exactly one match required for `Invoke / InvokeAsync`; multiple open generics for the same message generic definition will cause an error when invoking (publish supports multiple).
+- The handler class, not the method, must be generic (generic handler methods
+  are not currently supported).
+- The message type must use the handler's generic parameters (e.g.,
+  `UpdateEntity<T>` in `EntityHandler<T>`).
+- Open generic handlers participate in normal invocation rules: exactly one
+  match required for `Invoke / InvokeAsync`; multiple open generics for the same
+  message generic definition will cause an error when invoking (publish supports
+  multiple).
 
 Performance Notes:
 
-- First invocation of a new closed generic combination incurs a small reflection cost; subsequent calls are cached.
-- Static middleware resolution still applies and middleware can itself be generic.
+- First invocation of a new closed generic combination incurs a small reflection
+  cost; subsequent calls are cached.
+- Static middleware resolution still applies and middleware can itself be
+  generic.
 
-If you need a custom behavior per entity type later, you can still add a concrete handler; the more specific (closed) handler will coexist.
+If you need a custom behavior per entity type later, you can still add a
+concrete handler; the more specific (closed) handler will coexist.
 
 ## Multiple Handlers in One Class
 
@@ -405,7 +446,8 @@ public class UserProcessor : IHandler
 }
 ```
 
-Handler classes and methods can be marked with the `[Handler]` attribute for manual discovery:
+Handler classes and methods can be marked with the `[Handler]` attribute for
+manual discovery:
 
 ```csharp
 public class UserProcessor
@@ -597,17 +639,22 @@ public class NotificationService
 
 ### Disabling Conventional Discovery
 
-If you prefer explicit handler declaration over naming conventions, you can disable conventional discovery entirely:
+If you prefer explicit handler declaration over naming conventions, you can
+disable conventional discovery entirely:
 
 ```csharp
 [assembly: MediatorConfiguration(HandlerDiscovery = HandlerDiscovery.Explicit)]
 ```
 
-When set to `Explicit`, only handlers that implement `IHandler` or have the `[Handler]` attribute are discovered. Classes with names ending in `Handler` or `Consumer` will not be automatically discovered.
+When set to `Explicit`, only handlers that implement `IHandler` or have the
+`[Handler]` attribute are discovered. Classes with names ending in `Handler` or
+`Consumer` will not be automatically discovered.
 
 ## Handler Execution Order
 
-When using `PublishAsync` to broadcast messages to multiple handlers, you can control the execution order using the `Order` property on the `[Handler]` attribute:
+When using `PublishAsync` to broadcast messages to multiple handlers, you can
+control the execution order using the `Order` property on the `[Handler]`
+attribute:
 
 ```csharp
 // Handlers execute in order: 1, 2, 3, then handlers without explicit order (default)
@@ -651,16 +698,20 @@ public class DefaultOrderHandler
 
 ### Order Property Details
 
-- **Lower values execute first** - A handler with `Order = 1` executes before `Order = 10`
-- **Default order is `int.MaxValue`** - Handlers without explicit order execute last
-- **Only affects `PublishAsync`** - `InvokeAsync` always invokes exactly one handler
+- **Lower values execute first** - A handler with `Order = 1` executes before
+  `Order = 10`
+- **Default order is `int.MaxValue`** - Handlers without explicit order execute
+  last
+- **Only affects `PublishAsync`** - `InvokeAsync` always invokes exactly one
+  handler
 - **Two syntax options:**
   - Constructor argument: `[Handler(5)]`
   - Named property: `[Handler(Order = 5)]`
 
 ### Relative Ordering
 
-Instead of managing numeric order values, you can express ordering relationships between handlers using `OrderBefore` and `OrderAfter`:
+Instead of managing numeric order values, you can express ordering relationships
+between handlers using `OrderBefore` and `OrderAfter`:
 
 ```csharp
 public record OrderCreated(string OrderId);
@@ -701,11 +752,14 @@ public class AuditHandler
 
 - `OrderBefore = [typeof(X)]` means "I run before X"
 - `OrderAfter = [typeof(X)]` means "I run after X"
-- When no relative constraints exist between two handlers, numeric `Order` is used as a tiebreaker
+- When no relative constraints exist between two handlers, numeric `Order` is
+  used as a tiebreaker
 - Unknown types in `OrderBefore`/`OrderAfter` are silently ignored
 
 ::: warning Circular Dependencies
-If handlers form a circular dependency (e.g., A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED012` is emitted and the cycle participants fall back to numeric `Order` sorting.
+If handlers form a circular dependency (e.g.,
+A says OrderBefore B, and B says OrderBefore A), a compiler warning `FMED012` is
+emitted and the cycle participants fall back to numeric `Order` sorting.
 :::
 
 ### Use Cases

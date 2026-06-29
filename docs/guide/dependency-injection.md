@@ -1,6 +1,16 @@
+---
+title: "Dependency Injection"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 30
+---
+
 # Dependency Injection
 
-Foundatio Mediator seamlessly integrates with Microsoft.Extensions.DependencyInjection to provide powerful dependency injection capabilities for both handlers and middleware.
+Foundatio Mediator seamlessly integrates with
+Microsoft.Extensions.DependencyInjection to provide powerful dependency
+injection capabilities for both handlers and middleware.
 
 ## Registration
 
@@ -21,10 +31,13 @@ var app = builder.Build();
 
 The mediator lifetime is **auto-detected** by default:
 
-- **ASP.NET Core apps** → registered as **Scoped** (one instance per HTTP request)
+- **ASP.NET Core apps** → registered as **Scoped** (one instance per HTTP
+  request)
 - **Console / worker apps** → registered as **Singleton**
 
-This means `services.AddMediator()` does the right thing automatically — scoped services like `DbContext` are resolved from the correct per-request scope in web apps without any extra configuration.
+This means `services.AddMediator()` does the right thing automatically — scoped
+services like `DbContext` are resolved from the correct per-request scope in web
+apps without any extra configuration.
 
 ### Overriding the Default
 
@@ -40,43 +53,47 @@ services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 
 ### When to Override
 
-| Scenario | Override needed? |
-| -------- | --------------------- |
-| ASP.NET Core with `DbContext` or scoped services | No (auto-detected as Scoped) |
-| Console app with only singletons | No (auto-detected as Singleton) |
-| Worker service with scoped services | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
-| Console app that needs Scoped | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
+| Scenario                                         | Override needed?                                            |
+| ------------------------------------------------ | ----------------------------------------------------------- |
+| ASP.NET Core with `DbContext` or scoped services | No (auto-detected as Scoped)                                |
+| Console app with only singletons                 | No (auto-detected as Singleton)                             |
+| Worker service with scoped services              | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
+| Console app that needs Scoped                    | **Yes** — use `SetMediatorLifetime(ServiceLifetime.Scoped)` |
 
 ## Middleware Lifetime
 
 Middleware lifetime follows the same rules as handler lifetime:
 
-| Lifetime | Behavior |
-|----------|----------|
-| **Scoped** | Resolved from DI on every invocation |
-| **Transient** | Resolved from DI on every invocation |
-| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
-| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
+| Lifetime                                 | Behavior                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| **Scoped**                               | Resolved from DI on every invocation                             |
+| **Transient**                            | Resolved from DI on every invocation                             |
+| **Singleton**                            | Resolved from DI on every invocation (DI handles caching)        |
+| **None/Default** (no constructor deps)   | Created once with `new()` and cached in static field             |
 | **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
 
 ## Handler Lifetime Management
 
 ### Lifetime Behavior Summary
 
-| Lifetime | Behavior |
-|----------|----------|
-| **Scoped** | Resolved from DI on every invocation |
-| **Transient** | Resolved from DI on every invocation |
-| **Singleton** | Resolved from DI on every invocation (DI handles caching) |
-| **None/Default** (no constructor deps) | Created once with `new()` and cached in static field |
+| Lifetime                                 | Behavior                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| **Scoped**                               | Resolved from DI on every invocation                             |
+| **Transient**                            | Resolved from DI on every invocation                             |
+| **Singleton**                            | Resolved from DI on every invocation (DI handles caching)        |
+| **None/Default** (no constructor deps)   | Created once with `new()` and cached in static field             |
 | **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
 
 ### Important: Default Behavior When Lifetime Not Specified
 
-If you don't explicitly set a lifetime (via `[Handler(Lifetime = ...)]` or `HandlerLifetime` in `[assembly: MediatorConfiguration]`), the handler instance will be cached:
+If you don't explicitly set a lifetime (via `[Handler(Lifetime = ...)]` or
+`HandlerLifetime` in `[assembly: MediatorConfiguration]`), the handler instance
+will be cached:
 
 - **No constructor parameters**: Instantiated with `new()` and cached forever
-- **With constructor parameters**: Created via `ActivatorUtilities.CreateInstance` and cached - constructor dependencies are resolved once and reused
+- **With constructor parameters**: Created via
+  `ActivatorUtilities.CreateInstance` and cached - constructor dependencies are
+  resolved once and reused
 
 ```csharp
 // WARNING: This handler is cached - dependencies resolved once!
@@ -99,7 +116,8 @@ public class OrderHandler
 
 ### Explicit Lifetime Always Uses DI
 
-When you explicitly set a lifetime (`Scoped`, `Transient`, or `Singleton`), the handler is **always resolved from the DI container**:
+When you explicitly set a lifetime (`Scoped`, `Transient`, or `Singleton`), the
+handler is **always resolved from the DI container**:
 
 ```csharp
 // Singleton - resolved from DI, DI handles the singleton caching
@@ -111,7 +129,8 @@ public class CacheHandler { }
 public class OrderHandler { }
 ```
 
-This ensures proper test isolation - each test with its own DI container gets its own handler instances.
+This ensures proper test isolation - each test with its own DI container gets
+its own handler instances.
 
 ### Controlling Lifetime
 
@@ -124,11 +143,14 @@ There are two ways to control handler lifetime:
 public class OrderHandler { /* ... */ }
 ```
 
-**2. Using the `HandlerLifetime` property on `MediatorConfiguration`** (see below)
+**2. Using the `HandlerLifetime` property on `MediatorConfiguration`** (see
+below)
 
 ### Automatic Handler Registration with Assembly Attribute
 
-You can automatically register all handlers in your project with a specific lifetime using the `HandlerLifetime` property on `[assembly: MediatorConfiguration]`:
+You can automatically register all handlers in your project with a specific
+lifetime using the `HandlerLifetime` property on
+`[assembly: MediatorConfiguration]`:
 
 ```csharp
 using Foundatio.Mediator;
@@ -158,7 +180,8 @@ using Foundatio.Mediator;
 [assembly: MediatorConfiguration(HandlerLifetime = MediatorLifetime.Scoped)]
 ```
 
-With this configuration, all your handlers will be automatically registered as scoped services:
+With this configuration, all your handlers will be automatically registered as
+scoped services:
 
 ```csharp
 // No manual registration needed - this handler is automatically scoped
@@ -184,7 +207,8 @@ builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 
 ### Per-Handler Lifetime Override
 
-Individual handlers can override the project-level default lifetime using the `[Handler]` attribute:
+Individual handlers can override the project-level default lifetime using the
+`[Handler]` attribute:
 
 ```csharp
 // Uses project-level HandlerLifetime from [assembly: MediatorConfiguration]
@@ -225,14 +249,17 @@ public class ScopedHandler
 ```
 
 **Available `MediatorLifetime` values:**
-- `MediatorLifetime.Default` - Use project-level `HandlerLifetime` from `[assembly: MediatorConfiguration]`
+
+- `MediatorLifetime.Default` - Use project-level `HandlerLifetime` from
+  `[assembly: MediatorConfiguration]`
 - `MediatorLifetime.Transient` - New instance per request
 - `MediatorLifetime.Scoped` - Same instance within a scope
 - `MediatorLifetime.Singleton` - Single instance for application lifetime
 
 ## Constructor Injection (Use with Caution)
 
-**⚠️ Note:** Constructor injection without DI registration leads to a cached singleton-like instance.
+**⚠️ Note:** Constructor injection without DI registration leads to a cached
+singleton-like instance.
 
 ```csharp
 // PROBLEMATIC: Singleton handler with scoped dependency
@@ -279,7 +306,8 @@ public class OrderHandler
 
 ## Method Parameter Injection (Recommended)
 
-**✅ Recommended:** Use method parameter injection to avoid singleton lifetime issues:
+**✅ Recommended:** Use method parameter injection to avoid singleton lifetime
+issues:
 
 ```csharp
 public class OrderHandler
@@ -303,9 +331,11 @@ public class OrderHandler
 ### Benefits of Method Parameter Injection
 
 1. **No lifetime conflicts** - Dependencies resolved per invocation
-2. **Automatic cancellation support** - `CancellationToken` provided automatically
+2. **Automatic cancellation support** - `CancellationToken` provided
+   automatically
 3. **Cleaner testing** - Easy to mock individual method calls
-4. **Better performance** - Handler can be singleton, dependencies fresh when needed
+4. **Better performance** - Handler can be singleton, dependencies fresh when
+   needed
 
 ### Common Injectable Services
 
@@ -314,7 +344,9 @@ These services are commonly injected into handler methods:
 - `ILogger<T>` - For logging
 - `CancellationToken` - For cancellation support
 - `IServiceProvider` - For service location
-- `HttpContext`, `HttpRequest`, `HttpResponse` - Automatically available when called from a [generated endpoint](./endpoints#accessing-http-types-in-handlers)
+- `HttpContext`, `HttpRequest`, `HttpResponse` - Automatically available when
+  called from a
+  [generated endpoint](./endpoints#accessing-http-types-in-handlers)
 - Repository interfaces
 - Business service interfaces
 - Configuration objects
@@ -363,7 +395,8 @@ public class ValidationMiddleware { /* ... */ }
 
 ### Project-Level Default with Assembly Attribute
 
-Set a default lifetime for all middleware using `MiddlewareLifetime` in `[assembly: MediatorConfiguration]`:
+Set a default lifetime for all middleware using `MiddlewareLifetime` in
+`[assembly: MediatorConfiguration]`:
 
 ```csharp
 [assembly: MediatorConfiguration(MiddlewareLifetime = MediatorLifetime.Scoped)]
@@ -371,7 +404,8 @@ Set a default lifetime for all middleware using `MiddlewareLifetime` in `[assemb
 
 ## Service Location Pattern
 
-While constructor injection is preferred, you can access the service provider directly:
+While constructor injection is preferred, you can access the service provider
+directly:
 
 ```csharp
 public class OrderHandler
@@ -489,4 +523,6 @@ builder.Services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped))
 var app = builder.Build();
 ```
 
-This setup ensures that all your handlers have access to the same scoped services as your controllers, maintaining consistency across your application's request pipeline.
+This setup ensures that all your handlers have access to the same scoped
+services as your controllers, maintaining consistency across your application's
+request pipeline.

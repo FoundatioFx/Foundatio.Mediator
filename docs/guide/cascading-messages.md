@@ -1,14 +1,28 @@
+---
+title: "Cascading Messages"
+nav:
+    section: "Advanced Topics"
+    sectionOrder: 30
+    order: 10
+---
+
 # Cascading Messages
 
-Cascading messages is a powerful feature in Foundatio Mediator that allows handlers to automatically publish additional messages when they complete. This enables clean event-driven architectures and decoupled business logic.
+Cascading messages is a powerful feature in Foundatio Mediator that allows
+handlers to automatically publish additional messages when they complete. This
+enables clean event-driven architectures and decoupled business logic.
 
 ## How Cascading Works
 
-When a handler returns a tuple, the mediator performs type matching to determine which value to return to the caller and which values to publish as cascading messages:
+When a handler returns a tuple, the mediator performs type matching to determine
+which value to return to the caller and which values to publish as cascading
+messages:
 
-1. **Type Matching**: The mediator finds the tuple element that matches the requested return type from `Invoke<T>`
+1. **Type Matching**: The mediator finds the tuple element that matches the
+   requested return type from `Invoke<T>`
 2. **Return to Caller**: That matched element is returned to the caller
-3. **Cascading Publishing**: All remaining non-null tuple elements are automatically published as messages
+3. **Cascading Publishing**: All remaining non-null tuple elements are
+   automatically published as messages
 
 ```csharp
 public class OrderHandler
@@ -95,9 +109,10 @@ public static (Order, OrderCreated, CustomerUpdated, InventoryReserved) Handle(C
 
 ### Conditional Event Publishing
 
-Use nullable tuple items to conditionally publish cascaded events. Any `null` cascade item is skipped:
+Use nullable tuple items to conditionally publish cascaded events. Any `null`
+cascade item is skipped:
 
-```csharp
+````csharp
 public static (Result<Order>, OrderCreated?, CustomerWelcomeEmail?) Handle(CreateOrderCommand command)
 {
     var order = new Order { Email = command.Email };
@@ -121,7 +136,7 @@ public static (Result<Order>, OrderCreated?) Handle(CreateOrderCommand command)
     var order = new Order { Email = command.Email };
     return (order, new OrderCreated(order.Id, order.Email)); // Event published
 }
-```
+````
 
 ## Real-World Example
 
@@ -388,7 +403,9 @@ public record OrderEvent(Order Order, Customer Customer, Product Product, /* ...
 
 ### 2. Use Nullable Types for Conditional Events
 
-Always declare cascade event types as **nullable** (`?`) in tuple return signatures. This lets you return `null` on error or conditional paths without resorting to `null!`:
+Always declare cascade event types as **nullable** (`?`) in tuple return
+signatures. This lets you return `null` on error or conditional paths without
+resorting to `null!`:
 
 ```csharp
 // ✅ Recommended: nullable event types — clean on both success and error paths
@@ -411,10 +428,12 @@ public (Result<Order>, OrderCreated) Handle(CreateOrder command)
 ```
 
 ::: tip
-The mediator automatically skips publishing any `null` cascade item, so nullable types have zero runtime cost — they only improve the developer experience on error paths.
+The mediator automatically skips publishing any `null` cascade item, so
+nullable types have zero runtime cost — they only improve the developer
+experience on error paths.
 :::
-```
 
+````
 ### 3. Limit Cascade Depth
 
 ```csharp
@@ -423,7 +442,7 @@ The mediator automatically skips publishing any `null` cascade item, so nullable
 
 // Prefer: Flat event structures
 // A -> [B, C, D]  // Better
-```
+````
 
 ### 4. Handle Failures Gracefully
 
@@ -507,10 +526,14 @@ public class InventoryHandler  // Ends with 'Handler'
 ### Handler Discovery Scope
 
 ::: warning Important
-Event handlers are only discovered in the **current project** and **directly referenced projects**. This is by design for performance - the source generator generates optimized dispatch code at compile time.
+Event handlers are only discovered in the **current
+project** and **directly referenced projects**. This is by design for
+performance - the source generator generates optimized dispatch code at compile
+time.
 :::
 
-If your event handlers aren't being called, check the project reference direction:
+If your event handlers aren't being called, check the project reference
+direction:
 
 ```
 Common.Module (handlers here ARE called when Orders publishes)
@@ -520,13 +543,19 @@ Orders.Module (publishes events)
 Api (handlers here are NOT called - wrong direction)
 ```
 
-**Solution:** Place shared event handlers (like audit logging, notifications) in a common module that is referenced by all modules that publish events.
+**Solution:** Place shared event handlers (like audit logging, notifications) in
+a common module that is referenced by all modules that publish events.
 
-See the [Troubleshooting Guide](./troubleshooting.md#event-handlers-not-being-called) for more details.
+See the
+[Troubleshooting Guide](./troubleshooting.md#event-handlers-not-being-called)
+for more details.
 
 ## Dynamic Subscriptions as an Alternative
 
-Cascading messages are handled by **static handlers** discovered at compile time. If you need to consume events **dynamically at runtime** — for example, streaming events to connected browser clients via SSE — use `SubscribeAsync` instead:
+Cascading messages are handled by **static handlers** discovered at compile
+time. If you need to consume events **dynamically at runtime** — for example,
+streaming events to connected browser clients via SSE — use `SubscribeAsync`
+instead:
 
 ```csharp
 await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToken))
@@ -535,6 +564,11 @@ await foreach (var evt in mediator.SubscribeAsync<OrderCreated>(cancellationToke
 }
 ```
 
-Each subscriber gets its own buffered channel and can filter by concrete type or interface. See [Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync) for the full API.
+Each subscriber gets its own buffered channel and can filter by concrete type or
+interface. See
+[Dynamic Subscriptions](./streaming-handlers#dynamic-subscriptions-with-subscribeasync)
+for the full API.
 
-Cascading messages enable powerful event-driven architectures while maintaining clean, focused handler code. Use them to decouple business logic and create reactive systems that respond to domain events naturally.
+Cascading messages enable powerful event-driven architectures while maintaining
+clean, focused handler code. Use them to decouple business logic and create
+reactive systems that respond to domain events naturally.

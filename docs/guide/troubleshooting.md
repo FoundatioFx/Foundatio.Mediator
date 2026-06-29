@@ -1,23 +1,41 @@
+---
+title: "Troubleshooting"
+nav:
+    section: "Advanced Topics"
+    sectionOrder: 30
+    order: 50
+---
+
 # Troubleshooting
 
-This guide covers common issues and debugging techniques when working with Foundatio Mediator.
+This guide covers common issues and debugging techniques when working with
+Foundatio Mediator.
 
 ## IntelliSense Shows Errors Before First Build
 
-Since Foundatio Mediator relies on source generators, extension methods like `Map{X}Endpoints()`, handler registration helpers, and interceptor attributes don't exist until the generator runs during a build. This means:
+Since Foundatio Mediator relies on source generators, extension methods like
+`Map{X}Endpoints()`, handler registration helpers, and interceptor attributes
+don't exist until the generator runs during a build. This means:
 
 - **Red squiggles** will appear on calls to generated methods before you build.
-- **IntelliSense / autocomplete** won't suggest generated methods until after the first build.
+- **IntelliSense / autocomplete** won't suggest generated methods until after
+  the first build.
 
-**Solution:** Run `dotnet build` (or build from your IDE) once after adding the package or changing configuration. The generated code will be picked up automatically. Subsequent edits trigger incremental generation so the squiggles will resolve on their own.
+**Solution:** Run `dotnet build` (or build from your IDE) once after adding the
+package or changing configuration. The generated code will be picked up
+automatically. Subsequent edits trigger incremental generation so the squiggles
+will resolve on their own.
 
 ::: tip
-If IntelliSense still shows errors after building, restart the IDE language server. In VS Code: `Ctrl+Shift+P` → "Restart Language Server". In Visual Studio: close and reopen the solution.
+If IntelliSense still shows errors after building, restart the IDE
+language server. In VS Code: `Ctrl+Shift+P` → "Restart Language Server". In
+Visual Studio: close and reopen the solution.
 :::
 
 ## Viewing Generated Source Code
 
-Since Foundatio Mediator uses source generators, it can be helpful to see the actual code being generated. This is useful for:
+Since Foundatio Mediator uses source generators, it can be helpful to see the
+actual code being generated. This is useful for:
 
 - Understanding how handlers are dispatched
 - Debugging unexpected behavior
@@ -43,7 +61,8 @@ Add the following to your `.csproj` file to emit generated files to disk:
 </ItemGroup>
 ```
 
-After building your project, you'll find the generated files in the `Generated` folder:
+After building your project, you'll find the generated files in the `Generated`
+folder:
 
 ```
 Generated/
@@ -57,16 +76,17 @@ Generated/
 
 ### Understanding Generated Files
 
-| File Pattern | Description |
-|-------------|-------------|
-| `*_Handler.g.cs` | Handler wrapper with strongly-typed dispatch and middleware pipeline |
-| `*_MediatorHandlers.g.cs` | DI registration code for all handlers |
-| `InterceptsLocationAttribute.g.cs` | Interceptor attribute for compile-time call redirection |
-| `*_FoundatioModuleAttribute.g.cs` | Module marker for cross-assembly handler discovery |
+| File Pattern                       | Description                                                          |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `*_Handler.g.cs`                   | Handler wrapper with strongly-typed dispatch and middleware pipeline |
+| `*_MediatorHandlers.g.cs`          | DI registration code for all handlers                                |
+| `InterceptsLocationAttribute.g.cs` | Interceptor attribute for compile-time call redirection              |
+| `*_FoundatioModuleAttribute.g.cs`  | Module marker for cross-assembly handler discovery                   |
 
 ### Viewing All Registered Handlers
 
-The quickest way to see every discovered handler at startup is to enable `LogHandlers`:
+The quickest way to see every discovered handler at startup is to enable
+`LogHandlers`:
 
 ```csharp
 // Option 1: via MediatorOptions
@@ -87,7 +107,8 @@ Foundatio.Mediator registered 5 handler(s):
   UserCreated    → EventHandler.Handle
 ```
 
-You can also call `ShowRegisteredHandlers()` manually after building the service provider, optionally passing an `ILogger`:
+You can also call `ShowRegisteredHandlers()` manually after building the service
+provider, optionally passing an `ILogger`:
 
 ```csharp
 var registry = serviceProvider.GetRequiredService<HandlerRegistry>();
@@ -95,7 +116,8 @@ registry.ShowRegisteredHandlers(logger);  // uses ILogger
 registry.ShowRegisteredHandlers();        // falls back to Console.WriteLine
 ```
 
-Each `HandlerRegistration` also exposes diagnostic metadata for programmatic inspection:
+Each `HandlerRegistration` also exposes diagnostic metadata for programmatic
+inspection:
 
 ```csharp
 foreach (var reg in registry.Registrations)
@@ -105,17 +127,23 @@ foreach (var reg in registry.Registrations)
 ```
 
 **If a handler is missing from this list:**
+
 - Verify the class name ends with `Handler` or `Consumer`
-- Check that the method name is `Handle`, `HandleAsync`, `Consume`, or `ConsumeAsync`
+- Check that the method name is `Handle`, `HandleAsync`, `Consume`, or
+  `ConsumeAsync`
 - Ensure the handler isn't marked with `[FoundatioIgnore]`
-- Handlers nested in generic classes are not supported (e.g., `OuterClass<T>.MyHandler`)
+- Handlers nested in generic classes are not supported (e.g.,
+  `OuterClass<T>.MyHandler`)
 - Verify `AddHandlers()` was called during DI configuration
 
-For deeper inspection, you can also [view the generated source files](#enabling-generated-file-output) to see the actual registration code in `*_MediatorHandlers.g.cs`.
+For deeper inspection, you can also
+[view the generated source files](#enabling-generated-file-output) to see the
+actual registration code in `*_MediatorHandlers.g.cs`.
 
 ### Viewing the Middleware Pipeline
 
-Enable `LogMiddleware` to dump the middleware pipeline in execution order at startup:
+Enable `LogMiddleware` to dump the middleware pipeline in execution order at
+startup:
 
 ```csharp
 // Option 1: via MediatorOptions
@@ -140,10 +168,15 @@ Foundatio.Mediator middleware pipeline (3):
 Each line shows:
 
 - **Name** — the middleware class name
-- **Hooks** — which hooks the middleware implements (`Before`, `After`, `Finally`, `Execute`)
-- **Order** — numeric execution order (lower runs first in `Before`, reverse in `After`/`Finally`)
-- **Scope** — if the middleware targets a specific message type (e.g., `<AuditableCommand>`), it's shown; global middleware (`object`) is omitted for clarity
-- **Flags** — `static` if the middleware uses static methods, `explicit-only` if it requires `[UseMiddleware]`
+- **Hooks** — which hooks the middleware implements (`Before`, `After`,
+  `Finally`, `Execute`)
+- **Order** — numeric execution order (lower runs first in `Before`, reverse in
+  `After`/`Finally`)
+- **Scope** — if the middleware targets a specific message type (e.g.,
+  `<AuditableCommand>`), it's shown; global middleware (`object`) is omitted for
+  clarity
+- **Flags** — `static` if the middleware uses static methods, `explicit-only` if
+  it requires `[UseMiddleware]`
 
 You can also call `ShowRegisteredMiddleware()` manually:
 
@@ -187,16 +220,24 @@ internal static class OrderHandler_CreateOrder_Handler
 
 ### Event Handlers Not Being Called
 
-**Symptom:** Event handlers (notification handlers) are not being invoked when events are published.
+**Symptom:** Event handlers (notification handlers) are not being invoked when
+events are published.
 
-**Cause:** Handler discovery is scoped to the current project and its referenced assemblies. This is by design for performance - the source generator only generates dispatch code for handlers it can see at compile time.
+**Cause:** Handler discovery is scoped to the current project and its referenced
+assemblies. This is by design for performance - the source generator only
+generates dispatch code for handlers it can see at compile time.
 
 **Key Points:**
-- Handlers are only discovered in the **current project** and **directly referenced projects**
-- If Project A publishes an event, only handlers in Project A or projects that A references will be called
-- Handlers in projects that reference Project A (downstream) will NOT be discovered
+
+- Handlers are only discovered in the **current project** and **directly
+  referenced projects**
+- If Project A publishes an event, only handlers in Project A or projects that A
+  references will be called
+- Handlers in projects that reference Project A (downstream) will NOT be
+  discovered
 
 **Example:**
+
 ```
 Common.Module (defines events + cross-cutting handlers)
     ↑
@@ -206,13 +247,20 @@ Api (references Orders)
 ```
 
 In this structure:
-- When `Orders.Module` publishes `OrderCreated`, handlers in `Common.Module` ARE called (referenced)
-- Handlers defined in `Api` are NOT called (Api references Orders, not the other way around)
+
+- When `Orders.Module` publishes `OrderCreated`, handlers in `Common.Module` ARE
+  called (referenced)
+- Handlers defined in `Api` are NOT called (Api references Orders, not the other
+  way around)
 
 **Solutions:**
-1. **Move shared event handlers to a common/lower-level module** that all publishing modules reference
-2. **Define events in the common module** so all handlers can subscribe to the same event type
-3. Use `AddAssembly<T>()` in your mediator configuration to register handlers from specific assemblies at runtime
+
+1. **Move shared event handlers to a common/lower-level module** that all
+   publishing modules reference
+2. **Define events in the common module** so all handlers can subscribe to the
+   same event type
+3. Use `AddAssembly<T>()` in your mediator configuration to register handlers
+   from specific assemblies at runtime
 
 ```csharp
 // In Program.cs, register assemblies containing handlers
@@ -223,24 +271,30 @@ builder.Services.AddMediator(c =>
 });
 ```
 
-**Why this design?**
-The source generator analyzes handlers at compile time to generate optimized, direct dispatch code. This eliminates runtime reflection and provides maximum performance. The trade-off is that handler discovery follows project reference boundaries.
+**Why this design?** The source generator analyzes handlers at compile time to
+generate optimized, direct dispatch code. This eliminates runtime reflection and
+provides maximum performance. The trade-off is that handler discovery follows
+project reference boundaries.
 
 ### Handler Not Found
 
 **Symptom:** `InvalidOperationException: No handler found for message type X`
 
 **Causes:**
-1. Handler class doesn't follow naming conventions (must end in `Handler` or `Consumer`)
-2. Handler method doesn't follow naming conventions (`Handle`, `HandleAsync`, `Consume`, `ConsumeAsync`)
+
+1. Handler class doesn't follow naming conventions (must end in `Handler` or
+   `Consumer`)
+2. Handler method doesn't follow naming conventions (`Handle`, `HandleAsync`,
+   `Consume`, `ConsumeAsync`)
 3. Handler is in a different assembly and not registered
 4. Missing call to `AddHandlers()` in DI configuration
 5. Handler is nested inside a generic class (not supported)
 
-**Debugging:**
-Use the [`HandlerRegistry`](#viewing-all-registered-handlers) to see which handlers are currently registered at runtime.
+**Debugging:** Use the [`HandlerRegistry`](#viewing-all-registered-handlers) to
+see which handlers are currently registered at runtime.
 
 **Solutions:**
+
 ```csharp
 // Ensure handlers are registered
 services.AddMediator();
@@ -256,11 +310,17 @@ public class MyCustomProcessor
 
 ### Scoped Services Returning Same Instance
 
-**Symptom:** Scoped services (like `DbContext`) return the same instance across different HTTP requests or DI scopes, causing stale data, disposed context errors, or cross-request data leakage.
+**Symptom:** Scoped services (like `DbContext`) return the same instance across
+different HTTP requests or DI scopes, causing stale data, disposed context
+errors, or cross-request data leakage.
 
-**Cause:** The mediator is registered as Singleton and captures the root `IServiceProvider` at construction. All service resolution uses this root provider, making scoped services behave like singletons.
+**Cause:** The mediator is registered as Singleton and captures the root
+`IServiceProvider` at construction. All service resolution uses this root
+provider, making scoped services behave like singletons.
 
-> **Note:** This should not happen with the default configuration, because ASP.NET Core apps auto-detect as Scoped. This issue only occurs if you explicitly forced `ServiceLifetime.Singleton`.
+> **Note:** This should not happen with the default configuration, because
+> ASP.NET Core apps auto-detect as Scoped. This issue only occurs if you
+> explicitly forced `ServiceLifetime.Singleton`.
 
 **Solution:** Remove the explicit Singleton override, or switch to Scoped:
 
@@ -272,23 +332,29 @@ services.AddMediator();
 services.AddMediator(b => b.SetMediatorLifetime(ServiceLifetime.Scoped));
 ```
 
-This ensures each DI scope gets its own mediator that resolves services from the correct scope.
+This ensures each DI scope gets its own mediator that resolves services from the
+correct scope.
 
-**See also:** [Mediator Lifetime and Scoped Services](./dependency-injection.md#mediator-lifetime-and-scoped-services)
+**See also:**
+[Mediator Lifetime and Scoped Services](./dependency-injection.md#mediator-lifetime-and-scoped-services)
 
 ### Multiple Handlers Found
 
-**Symptom:** `InvalidOperationException: Multiple handlers found for message type X`
+**Symptom:**
+`InvalidOperationException: Multiple handlers found for message type X`
 
-**Cause:** More than one handler exists for the same message type when using `Invoke`/`InvokeAsync`.
+**Cause:** More than one handler exists for the same message type when using
+`Invoke`/`InvokeAsync`.
 
-**Solution:** Use `PublishAsync` for messages that should be handled by multiple handlers, or remove duplicate handlers.
+**Solution:** Use `PublishAsync` for messages that should be handled by multiple
+handlers, or remove duplicate handlers.
 
 ### Sync Handler with Async Call Site
 
 **Symptom:** Compilation works but you want to understand the async wrapping.
 
-When you call `InvokeAsync` on a synchronous handler, the generated code wraps the result:
+When you call `InvokeAsync` on a synchronous handler, the generated code wraps
+the result:
 
 ```csharp
 // Your sync handler
@@ -306,9 +372,12 @@ public static ValueTask<string> InterceptInvokeAsync(...)
 
 **Symptom:** Compilation error `FMED010`
 
-**Cause:** Handlers that return tuples (for cascading messages) cannot use synchronous `Invoke` because cascading messages must be published asynchronously.
+**Cause:** Handlers that return tuples (for cascading messages) cannot use
+synchronous `Invoke` because cascading messages must be published
+asynchronously.
 
 **Solution:** Use `InvokeAsync` instead:
+
 ```csharp
 // Error: Can't use sync Invoke with tuple return
 var order = mediator.Invoke<Order>(new CreateOrder(...));
@@ -322,11 +391,14 @@ var order = await mediator.InvokeAsync<Order>(new CreateOrder(...));
 **Symptom:** Calls go through DI lookup instead of direct dispatch.
 
 **Causes:**
-1. Interceptors disabled via `DisableInterceptors = true` in `[assembly: MediatorConfiguration]`
+
+1. Interceptors disabled via `DisableInterceptors = true` in
+   `[assembly: MediatorConfiguration]`
 2. Cross-assembly calls (interceptors only work within the same assembly)
 3. C# language version below 11
 
 **Solutions:**
+
 ```csharp
 // Ensure interceptors are enabled (default)
 [assembly: MediatorConfiguration(DisableInterceptors = false)]
@@ -341,14 +413,17 @@ var order = await mediator.InvokeAsync<Order>(new CreateOrder(...));
 
 ### Middleware Not Executing
 
-**Symptom:** Middleware `Before`/`After`/`Finally`/`ExecuteAsync` methods not being called.
+**Symptom:** Middleware `Before`/`After`/`Finally`/`ExecuteAsync` methods not
+being called.
 
 **Causes:**
+
 1. Middleware class doesn't end in `Middleware`
 2. Middleware is in a different assembly than handlers
 3. Method signatures don't match expected patterns
 
 **Solution:** Ensure middleware follows conventions:
+
 ```csharp
 // Class must end in "Middleware"
 public class LoggingMiddleware
@@ -362,24 +437,27 @@ public class LoggingMiddleware
 
 ## Diagnostic Codes
 
-| Code | Severity | Description |
-|------|----------|-------------|
-| `FMED008` | Error | Synchronous invoke on asynchronous handler |
-| `FMED009` | Error | Synchronous invoke on handler with async middleware |
-| `FMED010` | Error | Synchronous invoke on handler with tuple return |
-| `FMED011` | Error | Multiple Execute methods in a middleware class. Only one Execute/ExecuteAsync method is allowed per middleware class. |
-| `FMED012` | Warning | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`. |
-| `FMED014` | Warning | GET/DELETE endpoint message type has no parameterless constructor and no route/query parameters. |
-| `FMED015` | Warning | `HandlerEndpointGroup` `RoutePrefix` starts with the global `EndpointRoutePrefix`, producing a doubled path (e.g. `/api/api/...`). |
-| `FMED017` | Info | Shows the computed endpoint route on a handler method (e.g. `Endpoint: GET /api/products/{productId}`). Provides a "Make endpoint explicit" code fix to freeze the route into an explicit attribute. |
-| `FMED018` | Info | Shows the handler location on a message type declaration (e.g. `Handled by: ProductHandler`). |
+| Code      | Severity | Description                                                                                                                                                                                          |
+| --------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FMED008` | Error    | Synchronous invoke on asynchronous handler                                                                                                                                                           |
+| `FMED009` | Error    | Synchronous invoke on handler with async middleware                                                                                                                                                  |
+| `FMED010` | Error    | Synchronous invoke on handler with tuple return                                                                                                                                                      |
+| `FMED011` | Error    | Multiple Execute methods in a middleware class. Only one Execute/ExecuteAsync method is allowed per middleware class.                                                                                |
+| `FMED012` | Warning  | Circular ordering dependency detected between middleware or handlers using `OrderBefore`/`OrderAfter`. Falls back to numeric `Order`.                                                                |
+| `FMED014` | Warning  | GET/DELETE endpoint message type has no parameterless constructor and no route/query parameters.                                                                                                     |
+| `FMED015` | Warning  | `HandlerEndpointGroup` `RoutePrefix` starts with the global `EndpointRoutePrefix`, producing a doubled path (e.g. `/api/api/...`).                                                                   |
+| `FMED017` | Info     | Shows the computed endpoint route on a handler method (e.g. `Endpoint: GET /api/products/{productId}`). Provides a "Make endpoint explicit" code fix to freeze the route into an explicit attribute. |
+| `FMED018` | Info     | Shows the handler location on a message type declaration (e.g. `Handled by: ProductHandler`).                                                                                                        |
 
 ## Getting Help
 
 If you encounter issues not covered here:
 
-1. Check the [generated source code](#viewing-generated-source-code) to understand what's happening
-2. Review the [GitHub repository](https://github.com/FoundatioFx/Foundatio.Mediator) for existing issues
+1. Check the [generated source code](#viewing-generated-source-code) to
+   understand what's happening
+2. Review the
+   [GitHub repository](https://github.com/FoundatioFx/Foundatio.Mediator) for
+   existing issues
 3. Open a new issue with:
    - Your handler and message code
    - The generated wrapper code (from `Generated` folder)

@@ -1,12 +1,30 @@
+---
+title: "Endpoints"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 70
+---
+
 # Endpoint Generation
 
 ::: tip Optional Feature
-Endpoint generation is entirely **opt-in**. Foundatio Mediator works perfectly as a pure in-process mediator without any HTTP layer. If you don't call `.MapMediatorEndpoints()`, no endpoints are generated and no ASP.NET Core dependencies are required. Use this feature only when you want to expose your handlers as a REST API.
+Endpoint generation is entirely **opt-in**. Foundatio
+Mediator works perfectly as a pure in-process mediator without any HTTP layer.
+If you don't call `.MapMediatorEndpoints()`, no endpoints are generated and no
+ASP.NET Core dependencies are required. Use this feature only when you want to
+expose your handlers as a REST API.
 :::
 
-Foundatio Mediator automatically generates ASP.NET Core Minimal API endpoints from your handlers. Write your handlers as plain message-in/result-out methods, call `.MapMediatorEndpoints()`, and you have a fully functional API — with smart route conventions, HTTP method inference, and OpenAPI metadata — all without writing a single controller or endpoint definition.
+Foundatio Mediator automatically generates ASP.NET Core Minimal API endpoints
+from your handlers. Write your handlers as plain message-in/result-out methods,
+call `.MapMediatorEndpoints()`, and you have a fully functional API — with smart
+route conventions, HTTP method inference, and OpenAPI metadata — all without
+writing a single controller or endpoint definition.
 
-Because your handler logic is completely decoupled from HTTP, it's trivially testable: just call the handler directly and assert the result. The endpoint layer is a thin, generated projection that you never maintain by hand.
+Because your handler logic is completely decoupled from HTTP, it's trivially
+testable: just call the handler directly and assert the result. The endpoint
+layer is a thin, generated projection that you never maintain by hand.
 
 ## Quick Start
 
@@ -44,25 +62,41 @@ PUT    /api/products/{productId}  → UpdateProduct
 DELETE /api/products/{productId}  → DeleteProduct
 ```
 
-No attributes required. The source generator infers everything from your message names and properties:
+No attributes required. The source generator infers everything from your message
+names and properties:
 
-- **HTTP method** — from the message name prefix (`Get*` → GET, `Create*` → POST, `Update*` → PUT, `Delete*` → DELETE, etc.)
-- **Route** — from the message name (minus the verb prefix), **auto-pluralized** to follow REST conventions, with message properties (names ending in `Id` become route parameters)
-- **Parameter binding** — ID properties go in the route, other properties become query parameters (GET/DELETE) or body (POST/PUT/PATCH)
-- **OpenAPI metadata** — operation names, status codes, and even error responses are auto-detected from your `Result` factory calls. XML `<summary>` comments on handler methods automatically become the OpenAPI summary for each endpoint.
-- **Result mapping** — `Result<T>` return values are automatically converted to the correct HTTP status codes
+- **HTTP method** — from the message name prefix (`Get*` → GET, `Create*` →
+  POST, `Update*` → PUT, `Delete*` → DELETE, etc.)
+- **Route** — from the message name (minus the verb prefix), **auto-pluralized**
+  to follow REST conventions, with message properties (names ending in `Id`
+  become route parameters)
+- **Parameter binding** — ID properties go in the route, other properties become
+  query parameters (GET/DELETE) or body (POST/PUT/PATCH)
+- **OpenAPI metadata** — operation names, status codes, and even error responses
+  are auto-detected from your `Result` factory calls. XML `<summary>` comments
+  on handler methods automatically become the OpenAPI summary for each endpoint.
+- **Result mapping** — `Result<T>` return values are automatically converted to
+  the correct HTTP status codes
 
 ### Why This Matters
 
-This architecture gives you a **loosely coupled, message-oriented application** with close to zero boilerplate. Your handlers don't know they're behind HTTP — they receive a message and return a result. This means:
+This architecture gives you a **loosely coupled, message-oriented application**
+with close to zero boilerplate. Your handlers don't know they're behind HTTP —
+they receive a message and return a result. This means:
 
-- **Testing is trivial** — handlers are plain methods with no framework code, so you can call them directly in a unit test. No mediator, no `HttpClient`, no test server, no request serialization.
-- **Transport-agnostic** — the same handler works through HTTP endpoints, direct mediator calls, background jobs, or SignalR — the handler doesn't care.
-- **Always in sync** — endpoints are generated from your handler code, so your API can never drift from your business logic.
+- **Testing is trivial** — handlers are plain methods with no framework code, so
+  you can call them directly in a unit test. No mediator, no `HttpClient`, no
+  test server, no request serialization.
+- **Transport-agnostic** — the same handler works through HTTP endpoints, direct
+  mediator calls, background jobs, or SignalR — the handler doesn't care.
+- **Always in sync** — endpoints are generated from your handler code, so your
+  API can never drift from your business logic.
 
 ## Streaming Endpoints & Server-Sent Events
 
-Handlers that return `IAsyncEnumerable<T>` automatically become streaming HTTP endpoints. Combined with `SubscribeAsync`, you can push real-time domain events to the browser in just a few lines:
+Handlers that return `IAsyncEnumerable<T>` automatically become streaming HTTP
+endpoints. Combined with `SubscribeAsync`, you can push real-time domain events
+to the browser in just a few lines:
 
 ```csharp
 public record GetEventStream;
@@ -84,21 +118,25 @@ public class EventStreamHandler(IMediator mediator)
 }
 ```
 
-That generates `GET /api/events` as an SSE endpoint. Any browser client can subscribe:
+That generates `GET /api/events` as an SSE endpoint. Any browser client can
+subscribe:
 
 ```javascript
-const source = new EventSource('/api/events');
+const source = new EventSource("/api/events");
 source.onmessage = (e) => {
     const event = JSON.parse(e.data);
     console.log(event.eventType, event.data);
 };
 ```
 
-Whenever any handler publishes a notification, every connected SSE client receives it instantly. Zero polling, zero WebSocket infrastructure.
+Whenever any handler publishes a notification, every connected SSE client
+receives it instantly. Zero polling, zero WebSocket infrastructure.
 
 ### JSON Array Streaming
 
-Without the SSE attribute, streaming handlers return a JSON array streamed incrementally — useful for large datasets that you don't want to buffer in memory:
+Without the SSE attribute, streaming handlers return a JSON array streamed
+incrementally — useful for large datasets that you don't want to buffer in
+memory:
 
 ```csharp
 public class SalesHandler
@@ -116,29 +154,37 @@ public class SalesHandler
 }
 ```
 
-This generates a `GET /api/sales` endpoint that streams results as they're produced — ASP.NET Core sends each item to the client without waiting for the full result set.
+This generates a `GET /api/sales` endpoint that streams results as they're
+produced — ASP.NET Core sends each item to the client without waiting for the
+full result set.
 
-| `Streaming` Value | Behavior |
-| --- | --- |
-| `EndpointStreaming.Default` | JSON array streaming (default for `IAsyncEnumerable<T>` handlers) |
-| `EndpointStreaming.ServerSentEvents` | SSE via `TypedResults.ServerSentEvents()` (.NET 10+) |
+| `Streaming` Value                    | Behavior                                                          |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `EndpointStreaming.Default`          | JSON array streaming (default for `IAsyncEnumerable<T>` handlers) |
+| `EndpointStreaming.ServerSentEvents` | SSE via `TypedResults.ServerSentEvents()` (.NET 10+)              |
 
-| `SseEventType` | Behavior |
-| --- | --- |
+| `SseEventType`   | Behavior                                                |
+| ---------------- | ------------------------------------------------------- |
 | `null` (default) | Browser `EventSource` fires the default `message` event |
-| `"event"` | Clients listen with `addEventListener('event', ...)` |
+| `"event"`        | Clients listen with `addEventListener('event', ...)`    |
 
 ::: tip
-For `SubscribeAsync`, dynamic subscriptions, and SSE details, see [Streaming Handlers](./streaming-handlers.md).
+For `SubscribeAsync`, dynamic subscriptions, and SSE details, see
+[Streaming Handlers](./streaming-handlers.md).
 :::
 
 ## Customization Attributes
 
-Everything works out of the box with smart defaults. Attributes are only needed when you want to change a default behavior — group endpoints with a shared route prefix, override a route, change an HTTP method, or exclude a handler from generation.
+Everything works out of the box with smart defaults. Attributes are only needed
+when you want to change a default behavior — group endpoints with a shared route
+prefix, override a route, change an HTTP method, or exclude a handler from
+generation.
 
 ### `[HandlerEndpointGroup]` — Group Endpoints
 
-`[HandlerEndpointGroup]` is applied to a handler **class** and controls all endpoints in that class as a group. Use it to set a shared route prefix, OpenAPI tag, or endpoint filters for every handler method on the class.
+`[HandlerEndpointGroup]` is applied to a handler **class** and controls all
+endpoints in that class as a group. Use it to set a shared route prefix, OpenAPI
+tag, or endpoint filters for every handler method on the class.
 
 ```csharp
 [HandlerEndpointGroup(RoutePrefix = "v2/products")]
@@ -149,7 +195,8 @@ public class ProductHandler
 }
 ```
 
-This overrides the default route prefix (which would be `products` from the class name) with a versioned path:
+This overrides the default route prefix (which would be `products` from the
+class name) with a versioned path:
 
 ```text
 POST  /api/v2/products              → CreateProduct
@@ -158,25 +205,32 @@ GET   /api/v2/products/{productId}  → GetProduct
 
 **When do you need `[HandlerEndpointGroup]`?**
 
-- To set a **custom route prefix** different from the class name: `[HandlerEndpointGroup(RoutePrefix = "v2/products")]`
-- To set a **custom OpenAPI tag** different from the class name: `[HandlerEndpointGroup(Name = "Inventory")]`
-- To apply **endpoint filters** to all endpoints in the class: `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(AuditFilter)])]`
-- To share auth, filter, or routing configuration across all handler methods in one place
+- To set a **custom route prefix** different from the class name:
+  `[HandlerEndpointGroup(RoutePrefix = "v2/products")]`
+- To set a **custom OpenAPI tag** different from the class name:
+  `[HandlerEndpointGroup(Name = "Inventory")]`
+- To apply **endpoint filters** to all endpoints in the class:
+  `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(AuditFilter)])]`
+- To share auth, filter, or routing configuration across all handler methods in
+  one place
 
 **Properties:**
 
-| Property | Purpose |
-| --- | --- |
-| `Name` | Group name used as the OpenAPI tag and default route prefix (kebab-cased). When omitted, auto-derived from the class name (e.g., `OrderHandler` → `"Orders"`) |
-| `RoutePrefix` | Override the route prefix (relative to global prefix; use leading `/` for absolute) |
-| `Tags` | Override the OpenAPI tags (defaults to `Name` as a single tag) |
-| `EndpointFilters` | `IEndpointFilter` types applied to all endpoints in this group |
-| `Policies` | Authorization policy names required by all endpoints (emitted as `.RequireAuthorization("policy")` on the group) |
-| `ExcludeFromDescription` | `true` to hide all endpoints in the group from OpenAPI while keeping them routable |
+| Property                 | Purpose                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Name`                   | Group name used as the OpenAPI tag and default route prefix (kebab-cased). When omitted, auto-derived from the class name (e.g., `OrderHandler` → `"Orders"`) |
+| `RoutePrefix`            | Override the route prefix (relative to global prefix; use leading `/` for absolute)                                                                           |
+| `Tags`                   | Override the OpenAPI tags (defaults to `Name` as a single tag)                                                                                                |
+| `EndpointFilters`        | `IEndpointFilter` types applied to all endpoints in this group                                                                                                |
+| `Policies`               | Authorization policy names required by all endpoints (emitted as `.RequireAuthorization("policy")` on the group)                                              |
+| `ExcludeFromDescription` | `true` to hide all endpoints in the group from OpenAPI while keeping them routable                                                                            |
 
 ### `[MediatorEndpointGroup]` — Reusable Named Groups
 
-`[HandlerEndpointGroup]` configures one class. When you want the **same** prefix, tags, filters, policies, and visibility shared across handlers in **different** classes — e.g. an "Admin" area — define the group once at the **assembly** level and reference it by name from any handler:
+`[HandlerEndpointGroup]` configures one class. When you want the **same**
+prefix, tags, filters, policies, and visibility shared across handlers in
+**different** classes — e.g. an "Admin" area — define the group once at the
+**assembly** level and reference it by name from any handler:
 
 ```csharp
 [assembly: MediatorEndpointGroup(
@@ -187,7 +241,8 @@ GET   /api/v2/products/{productId}  → GetProduct
     ExcludeFromDescription = true)]
 ```
 
-Handlers join the group via `[HandlerEndpoint(Group = "...")]` — no per-class `[HandlerEndpointGroup]` needed:
+Handlers join the group via `[HandlerEndpoint(Group = "...")]` — no per-class
+`[HandlerEndpointGroup]` needed:
 
 ```csharp
 public class SettingsHandler
@@ -197,27 +252,37 @@ public class SettingsHandler
 }
 ```
 
-All endpoints that reference the same group name are mapped under one shared `MapGroup`, inheriting its prefix, tags, filters, and policies.
+All endpoints that reference the same group name are mapped under one shared
+`MapGroup`, inheriting its prefix, tags, filters, and policies.
 
 **Notes:**
 
-- Apply one `[MediatorEndpointGroup]` per named group; multiple are allowed. Definitions are read from the assembly being compiled.
-- Use a **relative** endpoint route (e.g. `"settings"`, not `"/settings"`) so it nests under the group prefix — a leading `/` makes the route absolute and bypasses the prefix.
-- A class-level `[HandlerEndpointGroup]` on the same handler **overrides** the referenced group per-property (most-specific wins); the named group fills any gaps.
-- Referencing a `Group` with no matching `[MediatorEndpointGroup]` definition is not an error — the name is still used as the group name and OpenAPI tag (behaving like an inline group).
+- Apply one `[MediatorEndpointGroup]` per named group; multiple are allowed.
+  Definitions are read from the assembly being compiled.
+- Use a **relative** endpoint route (e.g. `"settings"`, not `"/settings"`) so it
+  nests under the group prefix — a leading `/` makes the route absolute and
+  bypasses the prefix.
+- A class-level `[HandlerEndpointGroup]` on the same handler **overrides** the
+  referenced group per-property (most-specific wins); the named group fills any
+  gaps.
+- Referencing a `Group` with no matching `[MediatorEndpointGroup]` definition is
+  not an error — the name is still used as the group name and OpenAPI tag
+  (behaving like an inline group).
 
-| Property | Purpose |
-| --- | --- |
-| `Name` | Group name referenced by `[HandlerEndpoint(Group = "...")]`; also the default OpenAPI tag |
-| `RoutePrefix` | Shared route prefix (relative to global prefix; leading `/` for absolute). Defaults to `Name` kebab-cased |
-| `Tags` | OpenAPI tags (defaults to `Name`) |
-| `EndpointFilters` | `IEndpointFilter` types applied to every endpoint in the group |
-| `Policies` | Authorization policy names required by every endpoint in the group |
-| `ExcludeFromDescription` | `true` to hide the group's endpoints from OpenAPI |
+| Property                 | Purpose                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `Name`                   | Group name referenced by `[HandlerEndpoint(Group = "...")]`; also the default OpenAPI tag                 |
+| `RoutePrefix`            | Shared route prefix (relative to global prefix; leading `/` for absolute). Defaults to `Name` kebab-cased |
+| `Tags`                   | OpenAPI tags (defaults to `Name`)                                                                         |
+| `EndpointFilters`        | `IEndpointFilter` types applied to every endpoint in the group                                            |
+| `Policies`               | Authorization policy names required by every endpoint in the group                                        |
+| `ExcludeFromDescription` | `true` to hide the group's endpoints from OpenAPI                                                         |
 
 ### `[HandlerEndpoint]` — Customize Individual Endpoints
 
-`[HandlerEndpoint]` is applied to a handler **method** (or class to set defaults for all methods) and controls a single endpoint. Use it to override the route, HTTP method, OpenAPI metadata, or exclude a handler from endpoint generation.
+`[HandlerEndpoint]` is applied to a handler **method** (or class to set defaults
+for all methods) and controls a single endpoint. Use it to override the route,
+HTTP method, OpenAPI metadata, or exclude a handler from endpoint generation.
 
 ```csharp
 public class TodoHandler
@@ -247,7 +312,8 @@ The attribute supports four constructor forms for convenience:
 [HandlerEndpoint(HandlerMethod.Get, "/{productId}")]  // Lock both the HTTP method and route
 ```
 
-All properties (including `Method` and `Route`) are also settable as named arguments for maximum flexibility:
+All properties (including `Method` and `Route`) are also settable as named
+arguments for maximum flexibility:
 
 ```csharp
 [HandlerEndpoint(Method = HandlerMethod.Post, Route = "{todoId}/complete")]
@@ -256,7 +322,8 @@ All properties (including `Method` and `Route`) are also settable as named argum
 **When do you need `[HandlerEndpoint]`?**
 
 - To set a **custom route** different from what's auto-generated
-- To override the **HTTP method** when conventions don't match (e.g., an action verb that should be POST)
+- To override the **HTTP method** when conventions don't match (e.g., an action
+  verb that should be POST)
 - To add **OpenAPI metadata** (summary, description, operation ID, tags)
 - To **exclude** a handler from endpoint generation
 - To set a specific **success status code** or explicit **error status codes**
@@ -265,28 +332,29 @@ All properties (including `Method` and `Route`) are also settable as named argum
 
 **Properties:**
 
-| Property | Purpose |
-| --- | --- |
-| `Method` | Override inferred HTTP method (`HandlerMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`) |
-| `Route` | Custom route template (relative to group prefix; leading `/` for absolute) |
-| `Name` | OpenAPI operation ID |
-| `Summary` | Override XML doc summary for OpenAPI |
-| `Description` | OpenAPI description |
-| `DisplayName` | Pin the ASP.NET Core endpoint display name (logs/diagnostics) via `.WithDisplayName(...)`. Distinct from `Name` (the operationId) |
-| `Group` | Join an assembly-level `[MediatorEndpointGroup(Name = "...")]` by name, inheriting its prefix/tags/filters/policies. See [`[MediatorEndpointGroup]`](#mediatorendpointgroup-reusable-named-groups) |
-| `Tags` | Override the group tags |
-| `Exclude` | `true` to skip endpoint generation entirely |
-| `ExcludeFromDescription` | `true` to hide the endpoint from OpenAPI/API explorers via `.ExcludeFromDescription()` while keeping it routable |
-| `EndpointFilters` | `IEndpointFilter` types for this endpoint |
-| `SuccessStatusCodes` | Override auto-detected success status codes (200, 201, 202, 204, etc.) |
-| `ProducesStatusCodes` | Explicit error status codes for OpenAPI (e.g., `[404, 400]`) |
-| `AcceptsContentTypes` | Request body content types for generated `.Accepts<T>()` metadata |
-| `ProducesContentTypes` | Success response content types for generated `.Produces<T>()` metadata, or `.Produces()` metadata for file downloads |
-| `DisableAntiforgery` | `true` to skip antiforgery (CSRF) validation on a form (`multipart/form-data`) endpoint. Default: required. Only for non-browser / non-cookie-auth endpoints — see [File Uploads](#file-uploads) |
-| `Streaming` | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array |
-| `SseEventType` | SSE `event:` field name for `addEventListener` |
+| Property                 | Purpose                                                                                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Method`                 | Override inferred HTTP method (`HandlerMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`)                                                                                                          |
+| `Route`                  | Custom route template (relative to group prefix; leading `/` for absolute)                                                                                                                         |
+| `Name`                   | OpenAPI operation ID                                                                                                                                                                               |
+| `Summary`                | Override XML doc summary for OpenAPI                                                                                                                                                               |
+| `Description`            | OpenAPI description                                                                                                                                                                                |
+| `DisplayName`            | Pin the ASP.NET Core endpoint display name (logs/diagnostics) via `.WithDisplayName(...)`. Distinct from `Name` (the operationId)                                                                  |
+| `Group`                  | Join an assembly-level `[MediatorEndpointGroup(Name = "...")]` by name, inheriting its prefix/tags/filters/policies. See [`[MediatorEndpointGroup]`](#mediatorendpointgroup-reusable-named-groups) |
+| `Tags`                   | Override the group tags                                                                                                                                                                            |
+| `Exclude`                | `true` to skip endpoint generation entirely                                                                                                                                                        |
+| `ExcludeFromDescription` | `true` to hide the endpoint from OpenAPI/API explorers via `.ExcludeFromDescription()` while keeping it routable                                                                                   |
+| `EndpointFilters`        | `IEndpointFilter` types for this endpoint                                                                                                                                                          |
+| `SuccessStatusCodes`     | Override auto-detected success status codes (200, 201, 202, 204, etc.)                                                                                                                             |
+| `ProducesStatusCodes`    | Explicit error status codes for OpenAPI (e.g., `[404, 400]`)                                                                                                                                       |
+| `AcceptsContentTypes`    | Request body content types for generated `.Accepts<T>()` metadata                                                                                                                                  |
+| `ProducesContentTypes`   | Success response content types for generated `.Produces<T>()` metadata, or `.Produces()` metadata for file downloads                                                                               |
+| `DisableAntiforgery`     | `true` to skip antiforgery (CSRF) validation on a form (`multipart/form-data`) endpoint. Default: required. Only for non-browser / non-cookie-auth endpoints — see [File Uploads](#file-uploads)   |
+| `Streaming`              | `EndpointStreaming.ServerSentEvents` for SSE; `Default` for JSON array                                                                                                                             |
+| `SseEventType`           | SSE `event:` field name for `addEventListener`                                                                                                                                                     |
 
-**Class-level defaults:** When applied to a class, settings apply to all methods unless a method-level attribute overrides them:
+**Class-level defaults:** When applied to a class, settings apply to all methods
+unless a method-level attribute overrides them:
 
 ```csharp
 [HandlerEndpoint(ProducesStatusCodes = [400, 500])]
@@ -303,18 +371,22 @@ public class ProductHandler
 
 ## How Routes Are Generated
 
-The generator builds every endpoint route through a simple four-step algorithm. Understanding these steps lets you predict exactly what route any message name will produce — and tells you when to reach for an explicit attribute instead.
+The generator builds every endpoint route through a simple four-step algorithm.
+Understanding these steps lets you predict exactly what route any message name
+will produce — and tells you when to reach for an explicit attribute instead.
 
 ### Step 1: Determine the Mode
 
 Every handler class operates in one of two modes, chosen automatically:
 
-| Mode | When it activates | Where the entity comes from |
-| --- | --- | --- |
-| **Single-message** | Class has exactly **1** handler method **and** the class name matches the message name | The message name |
-| **Group** | Class has **2+** methods, **or** the class name doesn't match the message | The handler class name |
+| Mode               | When it activates                                                                      | Where the entity comes from |
+| ------------------ | -------------------------------------------------------------------------------------- | --------------------------- |
+| **Single-message** | Class has exactly **1** handler method **and** the class name matches the message name | The message name            |
+| **Group**          | Class has **2+** methods, **or** the class name doesn't match the message              | The handler class name      |
 
-"Class name matches the message name" means the class name minus the `Handler`/`Consumer` suffix equals the message type name. For example, `GetOrderHandler` matches `GetOrder`, but `OrderHandler` does not.
+"Class name matches the message name" means the class name minus the
+`Handler`/`Consumer` suffix equals the message type name. For example,
+`GetOrderHandler` matches `GetOrder`, but `OrderHandler` does not.
 
 ```csharp
 // Single-message mode: "GetOrder" == "GetOrder" + Handler
@@ -332,50 +404,63 @@ public class OrderHandler
 }
 ```
 
-**Why two modes?** Single-message mode keeps things minimal — one handler, one route, no endpoint group or OpenAPI tag. Group mode creates an endpoint group from the class name so all methods in the class share a common route prefix and OpenAPI tag.
+**Why two modes?** Single-message mode keeps things minimal — one handler, one
+route, no endpoint group or OpenAPI tag. Group mode creates an endpoint group
+from the class name so all methods in the class share a common route prefix and
+OpenAPI tag.
 
 ### Step 2: Determine the Entity
 
-The **entity** is the REST resource your handler operates on. It determines the base path of the route.
+The **entity** is the REST resource your handler operates on. It determines the
+base path of the route.
 
 **In group mode**, the entity comes from the handler class name:
 
-| Handler Class | Entity | Route Prefix |
-| --- | --- | --- |
-| `OrderHandler` | Order | `/orders` |
+| Handler Class         | Entity       | Route Prefix      |
+| --------------------- | ------------ | ----------------- |
+| `OrderHandler`        | Order        | `/orders`         |
 | `ShoppingCartHandler` | ShoppingCart | `/shopping-carts` |
-| `TodoHandler` | Todo | `/todos` |
+| `TodoHandler`         | Todo         | `/todos`          |
 
-The class name is stripped of its `Handler`/`Consumer` suffix, pluralized, and kebab-cased. This becomes the group route prefix — every method in the class inherits it.
+The class name is stripped of its `Handler`/`Consumer` suffix, pluralized, and
+kebab-cased. This becomes the group route prefix — every method in the class
+inherits it.
 
-**In single-message mode**, there's no group prefix. The entity is extracted from the message name (after stripping the verb — see step 3) and becomes the route directly:
+**In single-message mode**, there's no group prefix. The entity is extracted
+from the message name (after stripping the verb — see step 3) and becomes the
+route directly:
 
-| Message | Verb | Entity | Route |
-| --- | --- | --- | --- |
-| `GetOrder` | Get | Order | `GET /api/orders/{orderId}` |
-| `CreateTodo` | Create | Todo | `POST /api/todos` |
-| `CompleteTodo` | Complete | Todo | `POST /api/todos/{todoId}/complete` |
+| Message        | Verb     | Entity | Route                               |
+| -------------- | -------- | ------ | ----------------------------------- |
+| `GetOrder`     | Get      | Order  | `GET /api/orders/{orderId}`         |
+| `CreateTodo`   | Create   | Todo   | `POST /api/todos`                   |
+| `CompleteTodo` | Complete | Todo   | `POST /api/todos/{todoId}/complete` |
 
 ### Step 3: Infer the HTTP Method
 
-The first word of the message name (split at the PascalCase boundary) determines the HTTP method:
+The first word of the message name (split at the PascalCase boundary) determines
+the HTTP method:
 
-| Prefix | HTTP Method |
-| --- | --- |
-| `Get`, `Find`, `Search`, `List`, `Query` | **GET** |
-| `Create`, `Add`, `New` | **POST** |
-| `Update`, `Edit`, `Modify`, `Change`, `Set` | **PUT** |
-| `Delete`, `Remove` | **DELETE** |
-| `Patch` | **PATCH** |
-| _Anything else_ | **POST** |
+| Prefix                                      | HTTP Method |
+| ------------------------------------------- | ----------- |
+| `Get`, `Find`, `Search`, `List`, `Query`    | **GET**     |
+| `Create`, `Add`, `New`                      | **POST**    |
+| `Update`, `Edit`, `Modify`, `Change`, `Set` | **PUT**     |
+| `Delete`, `Remove`                          | **DELETE**  |
+| `Patch`                                     | **PATCH**   |
+| _Anything else_                             | **POST**    |
 
-These CRUD prefixes are the only special-cased verbs. Everything else — `Complete`, `Approve`, `Cancel`, `Export`, `Finalize`, `Validate`, literally _any_ verb — defaults to POST and becomes a route action suffix (see step 4).
+These CRUD prefixes are the only special-cased verbs. Everything else —
+`Complete`, `Approve`, `Cancel`, `Export`, `Finalize`, `Validate`, literally
+_any_ verb — defaults to POST and becomes a route action suffix (see step 4).
 
 ### Step 4: Build the Route
 
-With the mode, entity, and HTTP method determined, the generator strips the entity from the message name. Whatever's left becomes the route.
+With the mode, entity, and HTTP method determined, the generator strips the
+entity from the message name. Whatever's left becomes the route.
 
-**CRUD verbs** are stripped cleanly — they map to HTTP methods and don't produce a route suffix:
+**CRUD verbs** are stripped cleanly — they map to HTTP methods and don't produce
+a route suffix:
 
 ```text
 GetOrder     → strip "Get"      → entity "Order"   → GET /orders/{orderId}
@@ -383,7 +468,8 @@ CreateOrder  → strip "Create"   → entity "Order"   → POST /orders
 DeleteOrder  → strip "Delete"   → entity "Order"   → DELETE /orders/{orderId}
 ```
 
-**Action verbs** — anything that's not a CRUD prefix — are split at the first PascalCase word boundary. The first word is the action, the rest is the entity:
+**Action verbs** — anything that's not a CRUD prefix — are split at the first
+PascalCase word boundary. The first word is the action, the rest is the entity:
 
 ```text
 CompleteTodo  → "Complete" + "Todo"  → POST /todos/{todoId}/complete
@@ -392,9 +478,13 @@ ExportOrders  → "Export"   + "Orders"→ POST /orders/export
 FinalizeOrder → "Finalize" + "Order" → POST /orders/{orderId}/finalize
 ```
 
-The action verb is kebab-cased and appended as a route suffix. No hardcoded list of action verbs is needed — the generator figures it out by splitting PascalCase.
+The action verb is kebab-cased and appended as a route suffix. No hardcoded list
+of action verbs is needed — the generator figures it out by splitting
+PascalCase.
 
-**Single-word messages** (no PascalCase boundary, like `Login`, `Logout`, `Ping`) are treated as bare actions. In group mode, they become a route segment under the group prefix:
+**Single-word messages** (no PascalCase boundary, like `Login`, `Logout`,
+`Ping`) are treated as bare actions. In group mode, they become a route segment
+under the group prefix:
 
 ```csharp
 public class AuthHandler
@@ -421,15 +511,15 @@ public class OrderHandler
 }
 ```
 
-| Message | Step 1: Mode | Step 2: Entity | Step 3: HTTP | Step 4: Route |
-| --- | --- | --- | --- | --- |
-| `GetOrder` | Group (multi-method) | "Order" from class | `Get` → GET | Strip `Get`+`Order` → nothing left → `GET /api/orders/{orderId}` |
-| `GetOrders` | Group | "Order" from class | `Get` → GET | Strip `Get`+`Orders` → nothing left → `GET /api/orders` |
-| `CreateOrder` | Group | "Order" from class | `Create` → POST | Strip `Create`+`Order` → nothing left → `POST /api/orders` |
-| `UpdateOrder` | Group | "Order" from class | `Update` → PUT | Strip `Update`+`Order` → nothing left → `PUT /api/orders/{orderId}` |
-| `DeleteOrder` | Group | "Order" from class | `Delete` → DELETE | Strip `Delete`+`Order` → nothing left → `DELETE /api/orders/{orderId}` |
-| `CompleteOrder` | Group | "Order" from class | `Complete` → POST | Strip `Order` → "Complete" left → `POST /api/orders/{orderId}/complete` |
-| `ExportOrders` | Group | "Order" from class | `Export` → POST | Strip `Orders` → "Export" left → `POST /api/orders/export` |
+| Message         | Step 1: Mode         | Step 2: Entity     | Step 3: HTTP      | Step 4: Route                                                           |
+| --------------- | -------------------- | ------------------ | ----------------- | ----------------------------------------------------------------------- |
+| `GetOrder`      | Group (multi-method) | "Order" from class | `Get` → GET       | Strip `Get`+`Order` → nothing left → `GET /api/orders/{orderId}`        |
+| `GetOrders`     | Group                | "Order" from class | `Get` → GET       | Strip `Get`+`Orders` → nothing left → `GET /api/orders`                 |
+| `CreateOrder`   | Group                | "Order" from class | `Create` → POST   | Strip `Create`+`Order` → nothing left → `POST /api/orders`              |
+| `UpdateOrder`   | Group                | "Order" from class | `Update` → PUT    | Strip `Update`+`Order` → nothing left → `PUT /api/orders/{orderId}`     |
+| `DeleteOrder`   | Group                | "Order" from class | `Delete` → DELETE | Strip `Delete`+`Order` → nothing left → `DELETE /api/orders/{orderId}`  |
+| `CompleteOrder` | Group                | "Order" from class | `Complete` → POST | Strip `Order` → "Complete" left → `POST /api/orders/{orderId}/complete` |
+| `ExportOrders`  | Group                | "Order" from class | `Export` → POST   | Strip `Orders` → "Export" left → `POST /api/orders/export`              |
 
 And the same entity split across separate single-message handlers:
 
@@ -439,23 +529,24 @@ public class CreateOrderHandler { public Result<Order> Handle(CreateOrder c) { .
 public class CompleteOrderHandler { public Result Handle(CompleteOrder c) { ... } }
 ```
 
-| Message | Step 1: Mode | Route |
-| --- | --- | --- |
-| `GetOrder` | Single (class matches) | `GET /api/orders/{orderId}` |
-| `CreateOrder` | Single (class matches) | `POST /api/orders` |
+| Message         | Step 1: Mode           | Route                                 |
+| --------------- | ---------------------- | ------------------------------------- |
+| `GetOrder`      | Single (class matches) | `GET /api/orders/{orderId}`           |
+| `CreateOrder`   | Single (class matches) | `POST /api/orders`                    |
 | `CompleteOrder` | Single (class matches) | `POST /api/orders/{orderId}/complete` |
 
-Both approaches produce identical routes — organize your handlers however you prefer.
+Both approaches produce identical routes — organize your handlers however you
+prefer.
 
 ### Route Structure
 
 The final route is built by joining up to three levels:
 
-| Level | Source | Default |
-| --- | --- | --- |
-| 1. Global prefix | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]` | `"api"` |
-| 2. Group prefix | `[HandlerEndpointGroup("Name")]` or auto-derived from handler class | Pluralized entity, kebab-cased |
-| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated | Route params + action suffix |
+| Level             | Source                                                              | Default                        |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------ |
+| 1. Global prefix  | `[assembly: MediatorConfiguration(EndpointRoutePrefix = "...")]`    | `"api"`                        |
+| 2. Group prefix   | `[HandlerEndpointGroup("Name")]` or auto-derived from handler class | Pluralized entity, kebab-cased |
+| 3. Endpoint route | `[HandlerEndpoint(Route = "...")]` or auto-generated                | Route params + action suffix   |
 
 ```text
 /api/orders/{orderId}/complete
@@ -467,41 +558,49 @@ The final route is built by joining up to three levels:
 ```
 
 ::: tip
-Routes are automatically **pluralized**: `TodoHandler` → `/todos`, `CategoryHandler` → `/categories`, `PersonHandler` → `/people`. Irregular nouns are handled automatically.
+Routes are automatically **pluralized**: `TodoHandler` → `/todos`,
+`CategoryHandler` → `/categories`, `PersonHandler` → `/people`. Irregular nouns
+are handled automatically.
 
-**Uncountable nouns** are not pluralized: `Health`, `Status`, `Data`, `Auth`, `Config`, `Settings`, `Media`, `Cache`, `Analytics`, etc.
+**Uncountable nouns** are not pluralized: `Health`, `Status`, `Data`, `Auth`,
+`Config`, `Settings`, `Media`, `Cache`, `Analytics`, etc.
 :::
 
 ### Entity Name Normalization
 
-The generator strips common CQRS qualifiers from message names before deriving routes. This keeps routes clean regardless of your naming style:
+The generator strips common CQRS qualifiers from message names before deriving
+routes. This keeps routes clean regardless of your naming style:
 
-| Pattern | Example | What's stripped | Route |
-| ------- | ------- | --------------- | ----- |
-| `All` prefix | `GetAllTodos` | `All` | `GET /api/todos` |
-| `ById` suffix | `GetTodoById` | `ById` | `GET /api/todos/{id}` |
-| `Details` / `Detail` | `GetOrderDetails` | `Details` | `GET /api/orders/{id}` |
-| `Summary` | `GetOrderSummary` | `Summary` | `GET /api/orders/{id}` |
-| `Paged` / `Paginated` | `GetProductsPaged` | `Paged` | `GET /api/products` |
-| `List` / `Stream` | `GetTodoList` | `List` | `GET /api/todos` |
-| `With<Feature>` | `GetTodosWithPagination` | `WithPagination` | `GET /api/todos` |
+| Pattern               | Example                  | What's stripped  | Route                  |
+| --------------------- | ------------------------ | ---------------- | ---------------------- |
+| `All` prefix          | `GetAllTodos`            | `All`            | `GET /api/todos`       |
+| `ById` suffix         | `GetTodoById`            | `ById`           | `GET /api/todos/{id}`  |
+| `Details` / `Detail`  | `GetOrderDetails`        | `Details`        | `GET /api/orders/{id}` |
+| `Summary`             | `GetOrderSummary`        | `Summary`        | `GET /api/orders/{id}` |
+| `Paged` / `Paginated` | `GetProductsPaged`       | `Paged`          | `GET /api/products`    |
+| `List` / `Stream`     | `GetTodoList`            | `List`           | `GET /api/todos`       |
+| `With<Feature>`       | `GetTodosWithPagination` | `WithPagination` | `GET /api/todos`       |
 
 Some patterns produce **route segments** instead of being stripped:
 
-| Pattern | Example | Route |
-| ------- | ------- | ----- |
-| `Count` suffix | `GetOrderCount` | `GET /api/orders/count` |
-| `By<Property>` | `GetOrderByEmail` | `GET /api/orders/by-email` |
-| `For<Entity>` | `GetOrdersForCustomer` | `GET /api/orders/for-customer/{customerId}` |
+| Pattern        | Example                     | Route                                             |
+| -------------- | --------------------------- | ------------------------------------------------- |
+| `Count` suffix | `GetOrderCount`             | `GET /api/orders/count`                           |
+| `By<Property>` | `GetOrderByEmail`           | `GET /api/orders/by-email`                        |
+| `For<Entity>`  | `GetOrdersForCustomer`      | `GET /api/orders/for-customer/{customerId}`       |
 | `From<Entity>` | `GetShipmentsFromWarehouse` | `GET /api/shipments/from-warehouse/{warehouseId}` |
 
 ::: tip
-`By<Property>`, `For<Entity>`, and `From<Entity>` produce route segments under the entity, keeping all routes grouped. For example, `GetTodoByName(string Name)` generates `GET /api/todos/by-name?name=...` — no conflict with the list route `GET /api/todos`.
+`By<Property>`, `For<Entity>`, and `From<Entity>` produce route segments
+under the entity, keeping all routes grouped. For example,
+`GetTodoByName(string Name)` generates `GET /api/todos/by-name?name=...` — no
+conflict with the list route `GET /api/todos`.
 :::
 
 ### Sub-Entity Routes
 
-When a message entity doesn't match the handler's group entity, it appears as a sub-route:
+When a message entity doesn't match the handler's group entity, it appears as a
+sub-route:
 
 ```csharp
 public class TodoHandler
@@ -512,11 +611,14 @@ public class TodoHandler
 }
 ```
 
-`TodoItems` starts with the group entity `Todo`, so it's recognized as a sub-entity — only the `Items` part becomes a route segment. `CurrentUser` doesn't match the group entity at all, so it appears as a singular sub-resource.
+`TodoItems` starts with the group entity `Todo`, so it's recognized as a
+sub-entity — only the `Items` part becomes a route segment. `CurrentUser`
+doesn't match the group entity at all, so it appears as a singular sub-resource.
 
 ### Absolute Routes
 
-A leading `/` on any level makes it **absolute** — it discards everything above it:
+A leading `/` on any level makes it **absolute** — it discards everything above
+it:
 
 ```csharp
 // Leading / on group prefix → bypasses global "api" prefix
@@ -530,15 +632,19 @@ public Result<string> Handle(GetStatus query) { ... }
 // → GET /status  (not /api/products/status)
 ```
 
-| Group `RoutePrefix` | Endpoint `Route` | Result (global = `"api"`) |
-| --- | --- | --- |
-| `"products"` (relative) | `"{productId}"` (relative) | `/api/products/{productId}` |
-| `"/health"` (absolute) | `""` (relative) | `/health` |
-| `"products"` (relative) | `"/status"` (absolute) | `/status` |
-| `"/v2/products"` (absolute) | `"{productId}"` (relative) | `/v2/products/{productId}` |
+| Group `RoutePrefix`         | Endpoint `Route`           | Result (global = `"api"`)   |
+| --------------------------- | -------------------------- | --------------------------- |
+| `"products"` (relative)     | `"{productId}"` (relative) | `/api/products/{productId}` |
+| `"/health"` (absolute)      | `""` (relative)            | `/health`                   |
+| `"products"` (relative)     | `"/status"` (absolute)     | `/status`                   |
+| `"/v2/products"` (absolute) | `"{productId}"` (relative) | `/v2/products/{productId}`  |
 
 ::: warning Route Stability
-Convention-based routes may evolve as naming heuristics improve across library versions. If your API routes are part of a **public contract** (consumed by external clients, documented in an OpenAPI spec, or pinned in integration tests), use explicit attributes to guarantee stability:
+Convention-based routes may evolve as naming
+heuristics improve across library versions. If your API routes are part of a
+**public contract** (consumed by external clients, documented in an OpenAPI
+spec, or pinned in integration tests), use explicit attributes to guarantee
+stability:
 
 ```csharp
 [HandlerEndpointGroup(RoutePrefix = "orders")]
@@ -557,14 +663,18 @@ For internal APIs or rapid prototyping, convention-based routes are ideal.
 
 ### Route Parameters
 
-Properties named `Id` or ending with `Id` automatically become route parameters **when the route is generated** (no explicit template):
+Properties named `Id` or ending with `Id` automatically become route parameters
+**when the route is generated** (no explicit template):
 
 ```csharp
 public record GetProduct(string ProductId);
 // → GET /api/products/{productId}
 ```
 
-With an **explicit route template**, a property binds from the route only when its name matches a `{placeholder}` segment (or it carries `[FromRoute]`) — even when it isn't named `Id`, and for any HTTP method. Inline constraints (`{number:int}`) are matched too:
+With an **explicit route template**, a property binds from the route only when
+its name matches a `{placeholder}` segment (or it carries `[FromRoute]`) — even
+when it isn't named `Id`, and for any HTTP method. Inline constraints
+(`{number:int}`) are matched too:
 
 ```csharp
 [HandlerEndpoint(HandlerMethod.Get, "contracts/{contractNumber}")]
@@ -572,7 +682,11 @@ public Result<Contract> Handle(GetContract query);   // record GetContract(strin
 // → contractNumber binds from the path, not the query string
 ```
 
-The `Id`-suffix convention does **not** apply to an explicit template that lacks the matching placeholder. An `*Id` property with no `{placeholder}` stays where it belongs — in the request body for POST/PUT/PATCH, or a query parameter for GET/DELETE — instead of being lifted into a phantom parameter the client never supplies:
+The `Id`-suffix convention does **not** apply to an explicit template that lacks
+the matching placeholder. An `*Id` property with no `{placeholder}` stays where
+it belongs — in the request body for POST/PUT/PATCH, or a query parameter for
+GET/DELETE — instead of being lifted into a phantom parameter the client never
+supplies:
 
 ```csharp
 public record ExternalLogin(string ExternalId, string Provider);
@@ -584,7 +698,12 @@ public Result Handle(ExternalLogin command);
 
 ### Binding the Whole Message From the Body
 
-For a body command (POST/PUT/PATCH), apply `[FromBody]` to the handler's **message parameter** to bind the entire message from the request body and opt out of the `Id`-suffix route/query conventions — even when the route is generated. Explicit `{placeholder}` segments and `[FromRoute]`/`[FromQuery]`/`[FromHeader]` property attributes are still honored.
+For a body command (POST/PUT/PATCH), apply `[FromBody]` to the handler's
+**message parameter** to bind the entire message from the request body and opt
+out of the `Id`-suffix route/query conventions — even when the route is
+generated. Explicit `{placeholder}` segments and
+`[FromRoute]`/`[FromQuery]`/`[FromHeader]` property attributes are still
+honored.
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
@@ -610,13 +729,18 @@ public record SearchProducts(string? Category, int? MinPrice, int? MaxPrice);
 
 ## Converting to Explicit Endpoints
 
-By default, routes and HTTP methods are derived from conventions — message names, handler class names, and property types. This is great for rapid development, but renaming a message or refactoring a handler class can silently change your API surface.
+By default, routes and HTTP methods are derived from conventions — message
+names, handler class names, and property types. This is great for rapid
+development, but renaming a message or refactoring a handler class can silently
+change your API surface.
 
-Converting to **explicit endpoints** freezes the route and HTTP method into attributes so they won't change when you refactor.
+Converting to **explicit endpoints** freezes the route and HTTP method into
+attributes so they won't change when you refactor.
 
 ### Using the Code Fix
 
-The analyzer reports an `FMED017` info diagnostic on every handler method that generates (or could generate) an endpoint, showing the computed route:
+The analyzer reports an `FMED017` info diagnostic on every handler method that
+generates (or could generate) an endpoint, showing the computed route:
 
 ```text
 Endpoint: GET /api/products/{productId}
@@ -624,21 +748,32 @@ Endpoint: GET /api/products/{productId}
 
 Click the lightbulb (or `Ctrl+.`) to see:
 
-- **Make endpoint explicit** — adds `[HandlerEndpoint(HandlerMethod.Get, "{productId}")]` (or just `[HandlerEndpoint(HandlerMethod.Get)]` when there's no route segment) to the method and `[HandlerEndpointGroup("Products")]` to the class (if not already present)
-- **Make all endpoints in class explicit** — applies the same to every handler method in the class
-- **Fix All** → Document / Project / Solution — converts endpoints across a wider scope
+- **Make endpoint explicit** — adds
+  `[HandlerEndpoint(HandlerMethod.Get, "{productId}")]` (or just
+  `[HandlerEndpoint(HandlerMethod.Get)]` when there's no route segment) to the
+  method and `[HandlerEndpointGroup("Products")]` to the class (if not already
+  present)
+- **Make all endpoints in class explicit** — applies the same to every handler
+  method in the class
+- **Fix All** → Document / Project / Solution — converts endpoints across a
+  wider scope
 
-Once converted, the FMED017 diagnostic still shows the route but the code fix no longer appears (the endpoint is already explicit).
+Once converted, the FMED017 diagnostic still shows the route but the code fix no
+longer appears (the endpoint is already explicit).
 
 ### Explicit Discovery Mode
 
-When `EndpointDiscovery = EndpointDiscovery.Explicit`, only handlers with `[HandlerEndpoint]` generate endpoints. The FMED017 diagnostic still appears on all handler methods — showing what the route _would_ be — so you can use the code fix to opt in:
+When `EndpointDiscovery = EndpointDiscovery.Explicit`, only handlers with
+`[HandlerEndpoint]` generate endpoints. The FMED017 diagnostic still appears on
+all handler methods — showing what the route _would_ be — so you can use the
+code fix to opt in:
 
 ```text
 Endpoint: GET /api/products/{productId} (not generated — add [HandlerEndpoint] to opt in)
 ```
 
-Clicking "Make endpoint explicit" adds the attribute, which simultaneously opts the handler in and freezes the route.
+Clicking "Make endpoint explicit" adds the attribute, which simultaneously opts
+the handler in and freezes the route.
 
 ### Converting Manually
 
@@ -676,7 +811,8 @@ public record GetProduct(string ProductId);
 
 ### POST/PUT/PATCH Requests
 
-Request body is bound using `[FromBody]`. For PUT/PATCH with route parameters, the body is merged with route values:
+Request body is bound using `[FromBody]`. For PUT/PATCH with route parameters,
+the body is merged with route values:
 
 ```csharp
 public record UpdateProduct(string ProductId, string? Name, decimal? Price);
@@ -686,7 +822,13 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 
 #### Custom body binding (non-JSON bodies)
 
-For non-standard request bodies — JSON Patch, legacy partial JSON, XML — implement ASP.NET Core's [`IBindableFromHttpContext<TSelf>`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.ibindablefromhttpcontext-1) (or a public static `BindAsync(HttpContext, ParameterInfo)`) on the message type. The generator detects this and **omits `[FromBody]`**, so ASP.NET Core uses your custom binding instead of the default JSON binder (an explicit `[FromBody]` would otherwise take precedence and bypass it):
+For non-standard request bodies — JSON Patch, legacy partial JSON, XML —
+implement ASP.NET Core's
+[`IBindableFromHttpContext<TSelf>`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.ibindablefromhttpcontext-1)
+(or a public static `BindAsync(HttpContext, ParameterInfo)`) on the message
+type. The generator detects this and **omits `[FromBody]`**, so ASP.NET Core
+uses your custom binding instead of the default JSON binder (an explicit
+`[FromBody]` would otherwise take precedence and bypass it):
 
 ```csharp
 public record UpdateProjectPatch(...) : IBindableFromHttpContext<UpdateProjectPatch>
@@ -699,13 +841,25 @@ public record UpdateProjectPatch(...) : IBindableFromHttpContext<UpdateProjectPa
 // → MapPatch("/{id}", async (string id, UpdateProjectPatch message, ...) => ...)  // no [FromBody]
 ```
 
-To document a non-default request schema/content type in OpenAPI, implement [`IEndpointParameterMetadataProvider.PopulateMetadata`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.metadata.iendpointparametermetadataprovider) on that same type so the bound type stays the single source of truth for both binding and documentation. Listing multiple [`AcceptsContentTypes`](#handlerendpoint-customize-individual-endpoints) makes the runtime content-type matcher accept all of them. Route parameters still merge into the custom-bound message as usual.
+To document a non-default request schema/content type in OpenAPI, implement
+[`IEndpointParameterMetadataProvider.PopulateMetadata`](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.metadata.iendpointparametermetadataprovider)
+on that same type so the bound type stays the single source of truth for both
+binding and documentation. Listing multiple
+[`AcceptsContentTypes`](#handlerendpoint-customize-individual-endpoints) makes
+the runtime content-type matcher accept all of them. Route parameters still
+merge into the custom-bound message as usual.
 
-> Custom binding applies to body-bound `POST`/`PUT`/`PATCH` endpoints. For `GET`/`DELETE`, properties bind from route/query via `[AsParameters]` — write a hand-mapped minimal API for the rare custom-binding case there.
+> Custom binding applies to body-bound `POST`/`PUT`/`PATCH` endpoints. For
+> `GET`/`DELETE`, properties bind from route/query via `[AsParameters]` — write
+> a hand-mapped minimal API for the rare custom-binding case there.
 
 ### File Uploads
 
-When a POST/PUT/PATCH message exposes an `IFormFile`, `IFormFileCollection`, or `IFormCollection` property, the whole message binds from `multipart/form-data` instead of the JSON body. File properties bind by name (no attribute — how Minimal APIs bind `IFormFile`), any other fields bind with `[FromForm]`, and route placeholders still bind from the route:
+When a POST/PUT/PATCH message exposes an `IFormFile`, `IFormFileCollection`, or
+`IFormCollection` property, the whole message binds from `multipart/form-data`
+instead of the JSON body. File properties bind by name (no attribute — how
+Minimal APIs bind `IFormFile`), any other fields bind with `[FromForm]`, and
+route placeholders still bind from the route:
 
 ```csharp
 public sealed record UploadFile(string ContractNumber, IFormFile File);
@@ -716,12 +870,21 @@ public Task<Result<string>> HandleAsync(UploadFile cmd) { ... }
 //   { var message = new UploadFile(ContractNumber: contractNumber, File: file); ... })
 ```
 
-The form-field name matches the parameter name (`File` → `file`). `[FromBody]` and form binding are mutually exclusive — a message with a file property is never bound from a JSON body.
+The form-field name matches the parameter name (`File` → `file`). `[FromBody]`
+and form binding are mutually exclusive — a message with a file property is
+never bound from a JSON body.
 
 ::: warning Antiforgery
-ASP.NET Core requires [antiforgery (CSRF) validation](https://learn.microsoft.com/aspnet/core/security/anti-request-forgery#antiforgery-with-minimal-apis) on form endpoints by default, and the generator **preserves that default** — it does not call `.DisableAntiforgery()` on its own. If your app runs the antiforgery middleware, a form POST without a valid token is rejected before the handler runs.
+ASP.NET Core requires
+[antiforgery (CSRF) validation](https://learn.microsoft.com/aspnet/core/security/anti-request-forgery#antiforgery-with-minimal-apis)
+on form endpoints by default, and the generator **preserves that default** — it
+does not call `.DisableAntiforgery()` on its own. If your app runs the
+antiforgery middleware, a form POST without a valid token is rejected before the
+handler runs.
 
-Disable it **only** for endpoints that aren't vulnerable to CSRF — not callable from a browser, or secured with non-cookie auth (bearer tokens, API keys). Disabling is explicit, resolved method → class → assembly:
+Disable it **only** for endpoints that aren't vulnerable to CSRF — not callable
+from a browser, or secured with non-cookie auth (bearer tokens, API keys).
+Disabling is explicit, resolved method → class → assembly:
 
 ```csharp
 // Per endpoint or handler class:
@@ -731,12 +894,17 @@ Disable it **only** for endpoints that aren't vulnerable to CSRF — not callabl
 [assembly: MediatorConfiguration(EndpointDisableAntiforgery = true)]
 ```
 
-A handler-level `DisableAntiforgery = false` overrides an assembly default of `true`, so you can opt out globally and still re-protect a specific browser-facing endpoint.
+A handler-level `DisableAntiforgery = false` overrides an assembly default of
+`true`, so you can opt out globally and still re-protect a specific
+browser-facing endpoint.
 :::
 
 ### Binding Attributes on Message Properties
 
-You can use `[FromHeader]`, `[FromQuery]`, and `[FromRoute]` on message properties to control how individual values are bound in endpoints. This is useful for values like tenant IDs, correlation IDs, or API keys that come from HTTP headers rather than the request body.
+You can use `[FromHeader]`, `[FromQuery]`, and `[FromRoute]` on message
+properties to control how individual values are bound in endpoints. This is
+useful for values like tenant IDs, correlation IDs, or API keys that come from
+HTTP headers rather than the request body.
 
 **POST with a header-bound property:**
 
@@ -748,7 +916,8 @@ public record CreateOrder(
 );
 ```
 
-The generator extracts the attributed property as a separate endpoint parameter and merges it back into the message:
+The generator extracts the attributed property as a separate endpoint parameter
+and merges it back into the message:
 
 ```csharp
 // Generated:
@@ -763,7 +932,8 @@ MapPost("/orders", ([FromBody] CreateOrder message,
 
 **GET with a header-bound property:**
 
-For GET/DELETE messages with a parameterless constructor, `[AsParameters]` binding handles header attributes natively — no extra work from the generator:
+For GET/DELETE messages with a parameterless constructor, `[AsParameters]`
+binding handles header attributes natively — no extra work from the generator:
 
 ```csharp
 public record SearchProducts
@@ -779,7 +949,8 @@ public record SearchProducts
 
 **Query parameter aliases:**
 
-Use `[FromQuery(Name = "...")]` to bind a clean message property from a legacy or snake_case query parameter — no need to read from `HttpContext` manually:
+Use `[FromQuery(Name = "...")]` to bind a clean message property from a legacy
+or snake_case query parameter — no need to read from `HttpContext` manually:
 
 ```csharp
 public record GetEventById(
@@ -790,7 +961,9 @@ public record GetEventById(
 ```
 
 ::: tip Record syntax
-C# records use positional parameters that default to **constructor** attribute targets. To place an attribute on the generated **property**, use the `property:` target prefix:
+C# records use positional parameters that default to
+**constructor** attribute targets. To place an attribute on the generated
+**property**, use the `property:` target prefix:
 
 ```csharp
 public record MyMessage(
@@ -802,7 +975,9 @@ public record MyMessage(
 :::
 
 ::: info Transport-agnostic
-The message is still the contract. When calling via `mediator.InvokeAsync()`, you provide all values directly — the binding attributes are only used by the endpoint generator:
+The message is still the contract. When calling via
+`mediator.InvokeAsync()`, you provide all values directly — the binding
+attributes are only used by the endpoint generator:
 
 ```csharp
 // From an endpoint: TenantId comes from the X-Tenant-Id header automatically
@@ -814,7 +989,9 @@ await mediator.InvokeAsync(new CreateOrder("cust-1", 99.99m, "tenant-42"));
 
 ### Accessing HTTP Types in Handlers
 
-When a handler is invoked through a generated endpoint, `HttpContext`, `HttpRequest`, `HttpResponse`, and `ClaimsPrincipal` are automatically available as handler method parameters — no DI registration required:
+When a handler is invoked through a generated endpoint, `HttpContext`,
+`HttpRequest`, `HttpResponse`, and `ClaimsPrincipal` are automatically available
+as handler method parameters — no DI registration required:
 
 ```csharp
 public class ProductHandler
@@ -844,10 +1021,17 @@ public class ProductHandler
 }
 ```
 
-The endpoint generator populates a `CallContext` with these values before calling the handler. When the same handler is invoked directly via `mediator.InvokeAsync()` (without an endpoint), these parameters fall back to normal DI resolution.
+The endpoint generator populates a `CallContext` with these values before
+calling the handler. When the same handler is invoked directly via
+`mediator.InvokeAsync()` (without an endpoint), these parameters fall back to
+normal DI resolution.
 
 ::: warning Avoid HTTP types in handlers when possible
-Using `HttpContext`, `HttpRequest`, `HttpResponse`, or `ClaimsPrincipal` in a handler **couples it to HTTP** — the handler can only work when called from an endpoint, and it becomes harder to unit test (you need to mock or construct HTTP types). Prefer putting all the data you need into your **message type** instead:
+Using `HttpContext`,
+`HttpRequest`, `HttpResponse`, or `ClaimsPrincipal` in a handler **couples it to
+HTTP** — the handler can only work when called from an endpoint, and it becomes
+harder to unit test (you need to mock or construct HTTP types). Prefer putting
+all the data you need into your **message type** instead:
 
 ```csharp
 // ❌ Coupled to HTTP — hard to test, only works from endpoints
@@ -866,32 +1050,37 @@ public Result<Product> Handle(GetProduct query)
 }
 ```
 
-Reserve HTTP type parameters for edge cases where you genuinely need low-level HTTP access (e.g., streaming a response body, reading raw headers that can't be modeled as message properties).
+Reserve HTTP type parameters for edge cases where you genuinely need low-level
+HTTP access (e.g., streaming a response body, reading raw headers that can't be
+modeled as message properties).
 :::
 
 ## Result to HTTP Status Mapping
 
-`Result<T>` and `Result` return values are automatically mapped to HTTP responses:
+`Result<T>` and `Result` return values are automatically mapped to HTTP
+responses:
 
-| ResultStatus | HTTP Status |
-| ------------ | ----------- |
-| `Ok` | 200 OK |
-| `Created` | 201 Created |
-| `Accepted` | 202 Accepted |
-| `NoContent` | 204 No Content |
-| `BadRequest` | 400 Bad Request |
-| `Invalid` | 400 Bad Request (ValidationProblem) |
-| `NotFound` | 404 Not Found |
-| `Unauthorized` | 401 Unauthorized |
-| `Forbidden` | 403 Forbidden |
-| `Conflict` | 409 Conflict |
-| `Error` | 500 Internal Server Error |
-| `CriticalError` | 500 Internal Server Error |
-| `Unavailable` | 503 Service Unavailable |
+| ResultStatus    | HTTP Status                         |
+| --------------- | ----------------------------------- |
+| `Ok`            | 200 OK                              |
+| `Created`       | 201 Created                         |
+| `Accepted`      | 202 Accepted                        |
+| `NoContent`     | 204 No Content                      |
+| `BadRequest`    | 400 Bad Request                     |
+| `Invalid`       | 400 Bad Request (ValidationProblem) |
+| `NotFound`      | 404 Not Found                       |
+| `Unauthorized`  | 401 Unauthorized                    |
+| `Forbidden`     | 403 Forbidden                       |
+| `Conflict`      | 409 Conflict                        |
+| `Error`         | 500 Internal Server Error           |
+| `CriticalError` | 500 Internal Server Error           |
+| `Unavailable`   | 503 Service Unavailable             |
 
 ### Custom Result Mapping
 
-To customize only specific `Result` statuses while keeping the generated default mappings for everything else, configure `MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>`:
+To customize only specific `Result` statuses while keeping the generated default
+mappings for everything else, configure
+`MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>`:
 
 ```csharp
 using Foundatio.Mediator;
@@ -911,7 +1100,11 @@ services.AddMediator();
 
 #### Mapping by value shape
 
-`MapStatus` keys off the `Result` status. When the HTTP response depends on the **value type** instead — e.g. a paged result that needs pagination headers, or a custom envelope that maps to a specific status code — use `MapValue<TValue>`. Value mappers are evaluated in registration order and take precedence over status mappers, matching whenever `result.GetValue()` is assignable to `TValue`:
+`MapStatus` keys off the `Result` status. When the HTTP response depends on the
+**value type** instead — e.g. a paged result that needs pagination headers, or a
+custom envelope that maps to a specific status code — use `MapValue<TValue>`.
+Value mappers are evaluated in registration order and take precedence over
+status mappers, matching whenever `result.GetValue()` is assignable to `TValue`:
 
 ```csharp
 services.ConfigureMediatorResultMapping<Microsoft.AspNetCore.Http.IResult>(options => options
@@ -926,9 +1119,13 @@ services.ConfigureMediatorResultMapping<Microsoft.AspNetCore.Http.IResult>(optio
 services.AddMediator();
 ```
 
-A result falls through to the status mappers (and then the generated defaults) when no value mapper matches — including when a conditional mapper's predicate returns `false`.
+A result falls through to the status mappers (and then the generated defaults)
+when no value mapper matches — including when a conditional mapper's predicate
+returns `false`.
 
-For complete control over every status, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it before `AddMediator()`:
+For complete control over every status, implement
+`IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>` and register it
+before `AddMediator()`:
 
 ```csharp
 using Foundatio.Mediator;
@@ -957,8 +1154,11 @@ services.AddSingleton<IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>, 
 services.AddMediator();
 ```
 
-When no custom mapper is registered, the generated default handles all `ResultStatus` values with sensible HTTP status codes.
-For example, `Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` status code; configure a status-specific mapping if your API convention maps validation failures to a different status such as 422.
+When no custom mapper is registered, the generated default handles all
+`ResultStatus` values with sensible HTTP status codes. For example,
+`Result.Invalid()` uses ASP.NET Core's default `ValidationProblem` status code;
+configure a status-specific mapping if your API convention maps validation
+failures to a different status such as 422.
 
 ### File Downloads
 
@@ -980,11 +1180,18 @@ public class ReportHandler
 }
 ```
 
-For file endpoints, `ProducesContentTypes` documents the file media types in OpenAPI. When omitted, the generated metadata defaults to `application/octet-stream`. Either way, the runtime response content type still comes from the `Result.File(...)` value returned by the handler.
+For file endpoints, `ProducesContentTypes` documents the file media types in
+OpenAPI. When omitted, the generated metadata defaults to
+`application/octet-stream`. Either way, the runtime response content type still
+comes from the `Result.File(...)` value returned by the handler.
 
 ### OpenAPI Error Responses
 
-The generator scans your handler body for `Result` factory calls and emits matching `.ProducesProblem()` metadata automatically. `Result.Invalid()` maps to `ValidationProblem` at runtime, so its status code is emitted as `.ProducesValidationProblem()` (documenting an `HttpValidationProblemDetails` body) rather than a plain `.ProducesProblem()`:
+The generator scans your handler body for `Result` factory calls and emits
+matching `.ProducesProblem()` metadata automatically. `Result.Invalid()` maps to
+`ValidationProblem` at runtime, so its status code is emitted as
+`.ProducesValidationProblem()` (documenting an `HttpValidationProblemDetails`
+body) rather than a plain `.ProducesProblem()`:
 
 ```csharp
 public class OrderHandler
@@ -1004,16 +1211,26 @@ public class OrderHandler
 ```
 
 ::: info Explicit codes
-Status codes you list explicitly via `[HandlerEndpoint(ProducesStatusCodes = [...])]` are always emitted as plain `.ProducesProblem(code)` — the generator only uses `.ProducesValidationProblem()` for codes it auto-detects from a `Result.Invalid()` call, where the validation-problem body is known.
+Status codes you list explicitly via
+`[HandlerEndpoint(ProducesStatusCodes = [...])]` are always emitted as plain
+`.ProducesProblem(code)` — the generator only uses
+`.ProducesValidationProblem()` for codes it auto-detects from a
+`Result.Invalid()` call, where the validation-problem body is known.
 :::
 
 ### Success Status Codes
 
-The generator emits success response metadata from explicit `[HandlerEndpoint(SuccessStatusCodes = [...])]` values, or from detected `Result` factory calls such as `Result.Created()`, `Result.Accepted()`, and `Result.NoContent()`. When no success status is configured or detected, endpoints with a response body default to **200 OK**.
+The generator emits success response metadata from explicit
+`[HandlerEndpoint(SuccessStatusCodes = [...])]` values, or from detected
+`Result` factory calls such as `Result.Created()`, `Result.Accepted()`, and
+`Result.NoContent()`. When no success status is configured or detected,
+endpoints with a response body default to **200 OK**.
 
 ## Authentication & Authorization
 
-Authorization works for **both** HTTP endpoints and direct `mediator.InvokeAsync()` calls, configured via `[HandlerAuthorize]` and `[HandlerAllowAnonymous]`:
+Authorization works for **both** HTTP endpoints and direct
+`mediator.InvokeAsync()` calls, configured via `[HandlerAuthorize]` and
+`[HandlerAllowAnonymous]`:
 
 ```csharp
 // Require auth on a handler
@@ -1034,19 +1251,25 @@ public class PublicHandler
 }
 ```
 
-Authorization cascades: assembly defaults → group level → method level. For Result-returning handlers, unauthorized requests receive `Result.Unauthorized()` or `Result.Forbidden()`. For non-Result handlers, an `UnauthorizedAccessException` is thrown.
+Authorization cascades: assembly defaults → group level → method level. For
+Result-returning handlers, unauthorized requests receive `Result.Unauthorized()`
+or `Result.Forbidden()`. For non-Result handlers, an
+`UnauthorizedAccessException` is thrown.
 
-The authorization system is extensible via `IAuthorizationContextProvider` (provides the `ClaimsPrincipal`) and `IHandlerAuthorizationService` (performs the auth check). ASP.NET Core apps get automatic registration that reads from `HttpContext.User`.
+The authorization system is extensible via `IAuthorizationContextProvider`
+(provides the `ClaimsPrincipal`) and `IHandlerAuthorizationService` (performs
+the auth check). ASP.NET Core apps get automatic registration that reads from
+`HttpContext.User`.
 
 ## Discovery Modes
 
 Control which handlers generate endpoints:
 
-| Mode | Behavior |
-| --- | --- |
-| `EndpointDiscovery.All` (default) | All handlers get endpoints; use `[HandlerEndpoint(Exclude = true)]` to opt out |
-| `EndpointDiscovery.Explicit` | Only handlers with `[HandlerEndpoint]` or `[HandlerEndpointGroup]` get endpoints |
-| `EndpointDiscovery.None` | No endpoints generated |
+| Mode                              | Behavior                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| `EndpointDiscovery.All` (default) | All handlers get endpoints; use `[HandlerEndpoint(Exclude = true)]` to opt out   |
+| `EndpointDiscovery.Explicit`      | Only handlers with `[HandlerEndpoint]` or `[HandlerEndpointGroup]` get endpoints |
+| `EndpointDiscovery.None`          | No endpoints generated                                                           |
 
 ```csharp
 [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.Explicit)]
@@ -1054,19 +1277,29 @@ Control which handlers generate endpoints:
 
 ## Events and Notifications
 
-Handlers for event/notification types are automatically excluded from endpoint generation:
+Handlers for event/notification types are automatically excluded from endpoint
+generation:
 
-- Types implementing `INotification`, `IEvent`, `IDomainEvent`, or `IIntegrationEvent`
+- Types implementing `INotification`, `IEvent`, `IDomainEvent`, or
+  `IIntegrationEvent`
 - Handler classes named `*EventHandler` or `*NotificationHandler`
-- Types with names ending in event suffixes: `Created`, `Updated`, `Deleted`, `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`, `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`, `Expired`
+- Types with names ending in event suffixes: `Created`, `Updated`, `Deleted`,
+  `Changed`, `Removed`, `Added`, `Event`, `Notification`, `Published`,
+  `Occurred`, `Happened`, `Started`, `Completed`, `Failed`, `Cancelled`,
+  `Expired`
 
 ::: info INotification Is Not Required
-Events are excluded based on naming conventions regardless of interface implementation. `INotification` is a classification tool — use it when you want a handler that can receive all notification-type messages, or simply as self-documentation.
+Events are excluded based on naming
+conventions regardless of interface implementation. `INotification` is a
+classification tool — use it when you want a handler that can receive all
+notification-type messages, or simply as self-documentation.
 :::
 
 ## OpenAPI / XML Documentation
 
-XML doc `<summary>` comments on handler methods automatically become the OpenAPI summary for the generated endpoint. Enable documentation generation in your project file:
+XML doc `<summary>` comments on handler methods automatically become the OpenAPI
+summary for the generated endpoint. Enable documentation generation in your
+project file:
 
 ```xml
 <PropertyGroup>
@@ -1091,7 +1324,9 @@ public class ProductHandler
 }
 ```
 
-The generated endpoints will include these summaries in their OpenAPI metadata — visible in Swagger UI, Scalar, and any other OpenAPI tooling. You can also override the summary per-endpoint using `[HandlerEndpoint(Summary = "...")]`.
+The generated endpoints will include these summaries in their OpenAPI metadata —
+visible in Swagger UI, Scalar, and any other OpenAPI tooling. You can also
+override the summary per-endpoint using `[HandlerEndpoint(Summary = "...")]`.
 
 ## Advanced Configuration
 
@@ -1118,11 +1353,15 @@ app.MapMediatorEndpoints(c =>
 )]
 ```
 
-Set `EndpointRoutePrefix = ""` to disable the global prefix entirely. See [File Uploads](#file-uploads) for `EndpointDisableAntiforgery`.
+Set `EndpointRoutePrefix = ""` to disable the global prefix entirely. See
+[File Uploads](#file-uploads) for `EndpointDisableAntiforgery`.
 
 ## Endpoint Conventions
 
-Endpoint conventions let you create reusable attributes that configure generated endpoints at startup — rate limiting, CORS, caching headers, or any other endpoint builder customization. Implement `IEndpointConvention<TBuilder>` on an attribute and the source generator handles the rest. No runtime reflection.
+Endpoint conventions let you create reusable attributes that configure generated
+endpoints at startup — rate limiting, CORS, caching headers, or any other
+endpoint builder customization. Implement `IEndpointConvention<TBuilder>` on an
+attribute and the source generator handles the rest. No runtime reflection.
 
 ### Defining a Convention
 
@@ -1143,7 +1382,9 @@ public sealed class RateLimitedAttribute : Attribute, IEndpointConvention<RouteH
 }
 ```
 
-The `Configure` method receives the endpoint builder at startup and can call any builder extension method — `RequireRateLimiting`, `RequireCors`, `CacheOutput`, `WithMetadata`, etc.
+The `Configure` method receives the endpoint builder at startup and can call any
+builder extension method — `RequireRateLimiting`, `RequireCors`, `CacheOutput`,
+`WithMetadata`, etc.
 
 ### Applying Conventions
 
@@ -1168,13 +1409,14 @@ public class OrderHandler
 
 ### Most-Derived Wins
 
-When the same convention attribute appears at multiple scopes, the most specific one wins:
+When the same convention attribute appears at multiple scopes, the most specific
+one wins:
 
-| Scope | Priority |
-| --- | --- |
-| **Method** | Highest — overrides class and assembly |
-| **Class** | Overrides assembly |
-| **Assembly** | Lowest — global default |
+| Scope        | Priority                               |
+| ------------ | -------------------------------------- |
+| **Method**   | Highest — overrides class and assembly |
+| **Class**    | Overrides assembly                     |
+| **Assembly** | Lowest — global default                |
 
 This lets you set a global default and override it where needed:
 
@@ -1193,11 +1435,14 @@ public class ProductHandler
 }
 ```
 
-For each attribute type, only one scope applies per endpoint — there's no stacking. If you need multiple independent behaviors, use separate attribute types.
+For each attribute type, only one scope applies per endpoint — there's no
+stacking. If you need multiple independent behaviors, use separate attribute
+types.
 
 ### Group Conventions
 
-To configure the `RouteGroupBuilder` (shared prefix group) instead of individual endpoints, implement `IEndpointConvention<RouteGroupBuilder>`:
+To configure the `RouteGroupBuilder` (shared prefix group) instead of individual
+endpoints, implement `IEndpointConvention<RouteGroupBuilder>`:
 
 ```csharp
 [AttributeUsage(AttributeTargets.Class)]
@@ -1218,15 +1463,18 @@ public class GroupCorsAttribute : Attribute, IEndpointConvention<RouteGroupBuild
 public class OrderHandler { ... }
 ```
 
-Group conventions applied at the class level configure the group builder, affecting all endpoints in that group.
+Group conventions applied at the class level configure the group builder,
+affecting all endpoints in that group.
 
 ### How It Works
 
 The source generator:
 
-1. Detects attributes implementing `IEndpointConvention<T>` on methods, classes, and the assembly
+1. Detects attributes implementing `IEndpointConvention<T>` on methods, classes,
+   and the assembly
 2. Records their constructor arguments and named properties
-3. Emits code that reconstructs each attribute and calls `Configure(builder)` at startup
+3. Emits code that reconstructs each attribute and calls `Configure(builder)` at
+   startup
 
 No reflection is used at runtime. The generated code looks like:
 
@@ -1240,9 +1488,12 @@ var ep = ordersGroup.MapPost("", async (...) => { ... });
 
 ### Endpoints Not Generated
 
-1. Ensure your project references ASP.NET Core (has `Microsoft.AspNetCore.Routing`)
-2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default is `All`. Make sure it hasn't been set to `None` or `Explicit`.
-3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or `[HandlerEndpointGroup]`
+1. Ensure your project references ASP.NET Core (has
+   `Microsoft.AspNetCore.Routing`)
+2. Check `[assembly: MediatorConfiguration(EndpointDiscovery = ...)]` — default
+   is `All`. Make sure it hasn't been set to `None` or `Explicit`.
+3. In `Explicit` mode, handlers need `[HandlerEndpoint]` or
+   `[HandlerEndpointGroup]`
 4. Verify the handler isn't excluded via `[HandlerEndpoint(Exclude = true)]`
 
 ### XML Summaries Not Appearing
@@ -1252,4 +1503,5 @@ var ep = ordersGroup.MapPost("", async (...) => { ... });
 
 ### Route Conflicts
 
-When multiple handlers generate the same route, the generator automatically differentiates them using the message type name in kebab-case.
+When multiple handlers generate the same route, the generator automatically
+differentiates them using the message type name in kebab-case.

@@ -1,10 +1,22 @@
+---
+title: "Result Types"
+nav:
+    section: "Core Concepts"
+    sectionOrder: 20
+    order: 40
+---
+
 # Result Types
 
-Foundatio Mediator includes built-in `Result` and `Result<T>` types for robust error handling without relying on exceptions. These discriminated union types capture success, validation errors, conflicts, not found states, and more.
+Foundatio Mediator includes built-in `Result` and `Result<T>` types for robust
+error handling without relying on exceptions. These discriminated union types
+capture success, validation errors, conflicts, not found states, and more.
 
 ## Why Result Types?
 
-Traditional .NET applications often use exceptions for control flow, which can be expensive and make it difficult to handle expected error conditions gracefully. Result types provide a better alternative:
+Traditional .NET applications often use exceptions for control flow, which can
+be expensive and make it difficult to handle expected error conditions
+gracefully. Result types provide a better alternative:
 
 - **Performance**: No exception overhead for expected failures
 - **Explicit**: Return types clearly indicate potential failure modes
@@ -105,13 +117,15 @@ return Result.File(stream, "image/jpeg");
 
 `Result.File()` returns a `Result<FileResult>`. The `FileResult` class carries:
 
-| Property | Type | Default | Description |
-| ------------- | ---------- | ----------------------------- | ----------------------------------------------------------------- |
-| `Stream` | `Stream` | `Stream.Null` | The file content |
-| `ContentType` | `string` | `"application/octet-stream"` | MIME type |
-| `FileName` | `string?` | `null` | When set, triggers a `Content-Disposition: attachment` header |
+| Property      | Type      | Default                      | Description                                                   |
+| ------------- | --------- | ---------------------------- | ------------------------------------------------------------- |
+| `Stream`      | `Stream`  | `Stream.Null`                | The file content                                              |
+| `ContentType` | `string`  | `"application/octet-stream"` | MIME type                                                     |
+| `FileName`    | `string?` | `null`                       | When set, triggers a `Content-Disposition: attachment` header |
 
-When used with [generated endpoints](/guide/endpoints), `Result<FileResult>` is automatically mapped to `Results.File(stream, contentType, fileName)` instead of `Results.Ok()`.
+When used with [generated endpoints](/guide/endpoints), `Result<FileResult>` is
+automatically mapped to `Results.File(stream, contentType, fileName)` instead of
+`Results.Ok()`.
 
 ### Error Results
 
@@ -205,13 +219,22 @@ public Result<User> Handle(CreateUser command)
 
 ## Integration with ASP.NET Core
 
-When using [endpoint generation](/guide/endpoints), `Result<T>` and `Result` are automatically converted to the correct HTTP status codes — no manual mapping needed. See [Result to HTTP Status Mapping](/guide/endpoints#result-to-http-status-mapping) for the default mapping table.
+When using [endpoint generation](/guide/endpoints), `Result<T>` and `Result` are
+automatically converted to the correct HTTP status codes — no manual mapping
+needed. See
+[Result to HTTP Status Mapping](/guide/endpoints#result-to-http-status-mapping)
+for the default mapping table.
 
-To customize specific status mappings, configure `MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>`. For complete replacement, implement `IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>`. See [Custom Result Mapping](/guide/endpoints#custom-result-mapping) for details.
+To customize specific status mappings, configure
+`MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>`. For complete
+replacement, implement
+`IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>`. See
+[Custom Result Mapping](/guide/endpoints#custom-result-mapping) for details.
 
 ### Manual Mapping (Controllers)
 
-If you use traditional controllers instead of endpoint generation, you can map results manually:
+If you use traditional controllers instead of endpoint generation, you can map
+results manually:
 
 ```csharp
 [ApiController]
@@ -347,6 +370,8 @@ public async Task<Result<OrderSummary>> Handle(GetOrderSummary query)
 
 ## Next Steps
 
-- [Handler Conventions](/guide/handler-conventions) - See Result types in handler return values
+- [Handler Conventions](/guide/handler-conventions) - See Result types in
+  handler return values
 - [Middleware](/guide/middleware) - Middleware patterns including validation
-- [Handler Conventions](/guide/handler-conventions) - Learn handler return type rules
+- [Handler Conventions](/guide/handler-conventions) - Learn handler return type
+  rules

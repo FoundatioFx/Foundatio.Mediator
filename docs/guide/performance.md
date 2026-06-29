@@ -1,6 +1,17 @@
+---
+title: "Performance"
+nav:
+    section: "Advanced Topics"
+    sectionOrder: 30
+    order: 30
+---
+
 # Performance
 
-Foundatio.Mediator aims to get as close to direct method call performance as possible while providing a full-featured mediator with excellent developer ergonomics. Through C# interceptors and source generators, we eliminate runtime reflection entirely.
+Foundatio Mediator aims to get as close to direct method call performance as
+possible while providing a full-featured mediator with excellent developer
+ergonomics. Through C# interceptors and source generators, we eliminate runtime
+reflection entirely.
 
 ## Benchmark Results
 
@@ -63,7 +74,8 @@ Notification dispatched to 2 handlers.
 
 ### Full Query (Dependencies + Middleware)
 
-Query where handler has an injected service (IOrderService) and timing middleware (Before/Finally or IPipelineBehavior).
+Query where handler has an injected service (IOrderService) and timing
+middleware (Before/Finally or IPipelineBehavior).
 
 <table style="width:100%">
 <thead>
@@ -80,7 +92,9 @@ Query where handler has an injected service (IOrderService) and timing middlewar
 
 ### Cascading Messages
 
-CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foundatio uses tuple returns for automatic cascading; other libraries publish manually.
+CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers.
+Foundatio uses tuple returns for automatic cascading; other libraries publish
+manually.
 
 <table style="width:100%">
 <thead>
@@ -98,7 +112,9 @@ CreateOrder returns an Order and publishes OrderCreatedEvent to 2 handlers. Foun
 
 ### Short-Circuit Middleware
 
-Middleware returns cached result; handler is never invoked. Each library uses its idiomatic short-circuit approach (IPipelineBehavior, HandlerResult.ShortCircuit, HandlerContinuation.Stop, etc.).
+Middleware returns cached result; handler is never invoked. Each library uses
+its idiomatic short-circuit approach (IPipelineBehavior,
+HandlerResult.ShortCircuit, HandlerContinuation.Stop, etc.).
 
 <table style="width:100%">
 <thead>

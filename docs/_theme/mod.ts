@@ -88,8 +88,7 @@ function applyDocsTheme(
             .filter((page) => isMarkdownPage(page))
             .map((page) => {
                 const data = page.data as DocsData;
-                data.url = cleanPageUrl(data.url);
-                markPageAsHtml(page);
+                useCleanUrlWithHtmlOutput(page);
                 const markdown = readOriginalSource(page);
                 const html = transformBadgeTags(
                     normalizeInternalLinks(page.text, data.url),
@@ -141,20 +140,6 @@ function applyDocsTheme(
             });
         }
 
-        for (const entry of contentPages) {
-            const legacyUrl = legacyHtmlUrl(entry.data.url);
-            if (!legacyUrl || legacyUrl === entry.data.url) {
-                continue;
-            }
-
-            allPages.push(Page.create({
-                url: legacyUrl,
-                content: renderRedirect(entry.data.url),
-                unlisted: true,
-                search: false,
-            }));
-        }
-
         if (theme.llms) {
             allPages.push(Page.create({
                 url: "/llms.txt",
@@ -179,6 +164,20 @@ function applyDocsTheme(
             allPages.push(Page.create({
                 url: from,
                 content: renderRedirect(to),
+                unlisted: true,
+                search: false,
+            }));
+        }
+
+        for (const entry of contentPages) {
+            const redirectUrl = trailingSlashRedirectUrl(entry.data.url);
+            if (!redirectUrl) {
+                continue;
+            }
+
+            allPages.push(Page.create({
+                url: redirectUrl,
+                content: renderRedirect(entry.data.url),
                 unlisted: true,
                 search: false,
             }));
@@ -254,6 +253,35 @@ function readOriginalSource(page: Page): string {
     return page.src.entry
         ? Deno.readTextFileSync(page.src.entry.src)
         : page.text;
+}
+
+function useCleanUrlWithHtmlOutput(page: Page) {
+    const data = page.data as DocsData;
+    data.url = cleanPageUrl(data.url);
+    const outputPath = htmlOutputPath(data.url);
+
+    Object.defineProperty(page, "outputPath", {
+        configurable: true,
+        get: () => outputPath,
+    });
+    markPageAsHtml(page);
+}
+
+function htmlOutputPath(url: string) {
+    if (url === "/" || url === "") {
+        return "/index.html";
+    }
+
+    return `${url.replace(/\/$/, "")}.html`;
+}
+
+function trailingSlashRedirectUrl(url: string) {
+    const normalized = url.replace(/\/$/, "");
+    if (!normalized || normalized === "/" || normalized.includes(".")) {
+        return undefined;
+    }
+
+    return `${normalized}/index.html`;
 }
 
 function markPageAsHtml(page: Page) {

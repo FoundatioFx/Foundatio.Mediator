@@ -30,7 +30,6 @@ import type {
     ThemeLabels,
 } from "./types.ts";
 import {
-    cleanPageUrl,
     docsUrlPrefix,
     extractHeadings,
     isDocsPath,
@@ -88,7 +87,6 @@ function applyDocsTheme(
             .filter((page) => isMarkdownPage(page))
             .map((page) => {
                 const data = page.data as DocsData;
-                useCleanUrlWithHtmlOutput(page);
                 const markdown = readOriginalSource(page);
                 const html = transformBadgeTags(
                     normalizeInternalLinks(page.text, data.url),
@@ -170,13 +168,13 @@ function applyDocsTheme(
         }
 
         for (const entry of contentPages) {
-            const redirectUrl = trailingSlashRedirectUrl(entry.data.url);
-            if (!redirectUrl) {
+            const legacyUrl = legacyHtmlUrl(entry.data.url);
+            if (!legacyUrl) {
                 continue;
             }
 
             allPages.push(Page.create({
-                url: redirectUrl,
+                url: legacyUrl,
                 content: renderRedirect(entry.data.url),
                 unlisted: true,
                 search: false,
@@ -237,6 +235,10 @@ async function highlightContentEntries(
     entries: ContentEntry[],
     theme: ResolvedDocsThemeOptions,
 ) {
+    for (const entry of entries) {
+        entry.page.content = entry.html;
+    }
+
     await highlightCodeBlocks(entries.map((entry) => entry.page), theme);
     for (const entry of entries) {
         applyCodeLineAnnotations(entry.page);
@@ -255,43 +257,6 @@ function readOriginalSource(page: Page): string {
         : page.text;
 }
 
-function useCleanUrlWithHtmlOutput(page: Page) {
-    const data = page.data as DocsData;
-    data.url = cleanPageUrl(data.url);
-    const outputPath = htmlOutputPath(data.url);
-
-    Object.defineProperty(page, "outputPath", {
-        configurable: true,
-        get: () => outputPath,
-    });
-    markPageAsHtml(page);
-}
-
-function htmlOutputPath(url: string) {
-    if (url === "/" || url === "") {
-        return "/index.html";
-    }
-
-    return `${url.replace(/\/$/, "")}.html`;
-}
-
-function trailingSlashRedirectUrl(url: string) {
-    const normalized = url.replace(/\/$/, "");
-    if (!normalized || normalized === "/" || normalized.includes(".")) {
-        return undefined;
-    }
-
-    return `${normalized}/index.html`;
-}
-
-function markPageAsHtml(page: Page) {
-    // Lume's sitemap plugin reads from site.search.pages(), which only returns
-    // pages classified as HTML. Extensionless canonical URLs need that preserved.
-    Object.defineProperty(page, "isHTML", {
-        configurable: true,
-        get: () => true,
-    });
-}
 function normalizeLayout(data: DocsData) {
     if (data.layout === undefined) {
         return;

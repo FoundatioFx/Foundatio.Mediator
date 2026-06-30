@@ -149,7 +149,7 @@ function prettyPagePath(path: string): string {
     }
 
     if (path === "/" || path.endsWith("/")) {
-        return path === "/" ? "/" : path.slice(0, -1);
+        return path;
     }
 
     if (path === "index.md" || path === "index.html") {
@@ -157,14 +157,24 @@ function prettyPagePath(path: string): string {
     }
 
     if (path.endsWith("/index.md") || path.endsWith("/index.html")) {
-        return path.replace(/\/?index\.(?:md|html)$/, "") || "/";
+        return withTrailingSlash(
+            path.replace(/\/?index\.(?:md|html)$/, "") || "/",
+        );
     }
 
     if (path.endsWith(".md") || path.endsWith(".html")) {
-        return path.replace(/\.(?:md|html)$/, "");
+        return withTrailingSlash(path.replace(/\.(?:md|html)$/, ""));
     }
 
-    return path;
+    if (path.split("/").pop()?.includes(".")) {
+        return path;
+    }
+
+    return withTrailingSlash(path);
+}
+
+function withTrailingSlash(path: string): string {
+    return path === "/" || path.endsWith("/") ? path : `${path}/`;
 }
 
 export function firstHeading(data: DocsData): string | undefined {

@@ -1,10 +1,11 @@
 # Foundatio Mediator Documentation
 
 This folder contains the Lume/Deno documentation site for Foundatio Mediator.
-The reusable theme in `_theme/` is VitePress-inspired, but the implementation is
-Lume-native: pages are normal Lume pages, navigation is generated from the file
-system and front matter, and projects can add non-doc pages without fighting a
-docs-only framework.
+It uses the shared Foundatio Lume theme from
+`FoundatioFx/lume-theme`. The theme is VitePress-inspired, but the
+implementation is Lume-native: pages are normal Lume pages, navigation is
+generated from the file system and front matter, and projects can add non-doc
+pages without fighting a docs-only framework.
 
 ## Development
 
@@ -29,12 +30,12 @@ Project-specific settings live in `_config.ts`:
 
 ```ts
 import lume from "lume/mod.ts";
-import docsTheme from "./_theme/mod.ts";
+import foundatio from "foundatio-theme";
 
 const location = new URL("https://mediator.foundatio.dev");
 const site = lume({ location });
 
-site.use(docsTheme({
+site.use(foundatio({
     title: "Foundatio Mediator",
     description: "Blazingly fast C# mediator powered by source generators",
     location,
@@ -115,7 +116,7 @@ Raw pages are intentionally outside the theme pipeline. They do not receive the
 shared SEO metadata, base-path rewriting, search indexing, nav/footer, or theme
 assets unless the page includes those pieces manually.
 
-Set `rawPagesDir: false` in `docsTheme()` to disable this convention, or set it
+Set `rawPagesDir: false` in `foundatio()` to disable this convention, or set it
 to another folder name.
 
 ## Markdown Features
@@ -146,7 +147,7 @@ docs root and `~/` for the repository root.
 
 ## Theme Features
 
-`docsTheme()` keeps the reusable theme API grouped around stable site concerns:
+`foundatio()` keeps the reusable theme API grouped around stable site concerns:
 
 - Site identity and deployment: `title`, `description`, `location`, `basePath`,
   `docsRoot`, `brand`, `nav`, `social`, and `footer`.
@@ -178,7 +179,7 @@ The build generates:
 - `llms.txt` and `llms-full.txt` for AI-readable documentation.
 - markdown mirrors for guide pages, such as `_site/guide/getting-started.md`,
   generated from the markdown captured during preprocessing.
-- `404.html` using the docs theme.
+- `404.html` using the site theme.
 
 ## Contributing
 

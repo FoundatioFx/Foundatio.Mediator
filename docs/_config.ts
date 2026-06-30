@@ -1,5 +1,5 @@
 import lume from "lume/mod.ts";
-import docsTheme from "./_theme/mod.ts";
+import foundatio from "foundatio-theme";
 
 const location = new URL("https://mediator.foundatio.dev");
 const site = lume({
@@ -8,7 +8,7 @@ const site = lume({
     dest: "_site",
 });
 
-site.use(docsTheme({
+site.use(foundatio({
     title: "Foundatio Mediator",
     description:
         "Blazingly fast, convention-based C# mediator powered by source generators and interceptors",

@@ -621,6 +621,15 @@
     "https://deno.land/x/lume/mod.ts": "https://deno.land/x/lume@v3.2.5/mod.ts"
   },
   "remote": {
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/mod.ts": "64921714fcd416fe1034400c8fb0b462055ba03f2ebc8879610e5ff6e3744b38",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/authoring.ts": "98ff4925c29d48117ff03796ffd9fc1f15300d6cc7a4d42784515c8d292e2467",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/code.ts": "4c1f59ad2cb0e48e40711e4353eb2141f3dddcd651225403e666abd8c30f5614",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/markdown.ts": "3dfc912995e9d442f5515aa07c77c93163ba1537534a0f86db84e12ec57ae094",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/mod.ts": "e7431ed4c0e08b16c11c7e685397c7704f188f4749ba74f740ba27bbac54bb41",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/navigation.ts": "065753dab1921c59d792a43ab2377e76b9f183e7fd90dc7e258ba546bae92d99",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/render.ts": "3c6fc31bd458212c7d089a4262f5400b91c7a44d76e7524f492c057bcdc9bec1",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/types.ts": "1b219c842e07c27224e56d76b02a18f29dceac5986d55fd577dcbae08616df86",
+    "https://cdn.jsdelivr.net/gh/FoundatioFx/lume-theme@v0.1.0/src/utils.ts": "1bb0c459695a4c9f5f9a697dfe7e337abdfaf7d38f22a822c1f9db822378147d",
     "https://cdn.jsdelivr.net/gh/b-fuze/deno-dom@0.1.56/build/deno-wasm/deno-wasm-dynamic.js": "fd05e83a855aa68b09396dc47a7638ef526c39917971715ac37e0fc3227db886",
     "https://cdn.jsdelivr.net/gh/b-fuze/deno-dom@0.1.56/build/deno-wasm/deno-wasm.js": "ccde5219e42040b8f7a8b653acc6c8cca197c29f98d6b75f74c48111e34bcbea",
     "https://cdn.jsdelivr.net/gh/b-fuze/deno-dom@0.1.56/build/deno-wasm/deno-wasm_bg-wasm.js": "52c57905a74047d1574f0b96e301ef1d5974cd962705615555b5e46b5ac420e4",

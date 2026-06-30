@@ -3,7 +3,7 @@
     "nodeModulesDir": "none",
     "imports": {
         "lume/": "https://deno.land/x/lume@v3.2.5/",
-        "foundatio-theme": "jsr:@foundatiofx/lume-theme@0.1.6",
+        "foundatio-theme": "jsr:@foundatiofx/lume-theme@0.1.7",
         "shiki": "npm:shiki@3.22.0"
     },
     "tasks": {

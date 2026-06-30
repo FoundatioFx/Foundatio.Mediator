@@ -1,4 +1,9 @@
 import lume from "lume/mod.ts";
+import basePath from "lume/plugins/base_path.ts";
+import checkUrls from "lume/plugins/check_urls.ts";
+import markdown from "lume/plugins/markdown.ts";
+import metas from "lume/plugins/metas.ts";
+import sitemap from "lume/plugins/sitemap.ts";
 import foundatio from "foundatio-theme";
 
 const location = new URL("https://mediator.foundatio.dev");
@@ -13,6 +18,7 @@ site.use(foundatio({
     description:
         "Blazingly fast, convention-based C# mediator powered by source generators and interceptors",
     location,
+    lume: { basePath, checkUrls, markdown, metas, sitemap },
     brand: {
         label: "Mediator",
         logoLight:

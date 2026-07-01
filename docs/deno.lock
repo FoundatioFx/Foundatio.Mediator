@@ -5,7 +5,7 @@
     "jsr:@cliffy/flags@1.1.0": "1.1.0",
     "jsr:@cliffy/internal@1.1.0": "1.1.0",
     "jsr:@cliffy/table@1.1.0": "1.1.0",
-    "jsr:@foundatiofx/lume-theme@0.1.7": "0.1.7",
+    "jsr:@foundatiofx/lume-theme@0.1.8": "0.1.8",
     "jsr:@std/cli@1.0.29": "1.0.29",
     "jsr:@std/cli@^1.0.29": "1.0.29",
     "jsr:@std/collections@^1.1.3": "1.3.0",
@@ -68,8 +68,8 @@
         "jsr:@std/fmt@^1.0.9"
       ]
     },
-    "@foundatiofx/lume-theme@0.1.7": {
-      "integrity": "2b7bc1a4d108b90bd38834a4d1d68b61e17e12a176f871643170ba72e72d3a4d",
+    "@foundatiofx/lume-theme@0.1.8": {
+      "integrity": "8f23841facc1703807581e1f2d3150e4b01456eb24b8b6eb12e0ed5d3eb62cf1",
       "dependencies": [
         "npm:markdown-it",
         "npm:markdown-it-container",
@@ -779,7 +779,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@foundatiofx/lume-theme@0.1.7",
+      "jsr:@foundatiofx/lume-theme@0.1.8",
       "npm:shiki@3.22.0"
     ]
   }

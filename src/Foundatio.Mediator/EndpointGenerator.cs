@@ -271,9 +271,8 @@ internal static class EndpointGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
-        // Resolve the result mapper and message enrichers once at startup (captured in closures for zero per-request overhead)
+        // Resolve the result mapper once at startup (captured in closure for zero per-request overhead)
         source.AppendLine($"var resultMapper = endpoints.ServiceProvider.GetService<Foundatio.Mediator.IMediatorResultMapper<Microsoft.AspNetCore.Http.IResult>>() ?? new DefaultMediatorResultMapper_{assemblySuffix}(endpoints.ServiceProvider.GetService<Foundatio.Mediator.MediatorResultMapperOptions<Microsoft.AspNetCore.Http.IResult>>());");
-        source.AppendLine("var messageEnrichers = endpoints.ServiceProvider.GetServices<Foundatio.Mediator.IMediatorMessageEnricher<Microsoft.AspNetCore.Http.HttpContext>>().ToArray();");
         source.AppendLine();
 
         // Determine the parent variable name for endpoint groups
@@ -889,8 +888,7 @@ internal static class EndpointGenerator
     {
         var messageType = handler.MessageType.FullName;
         var isAsync = handler.IsAsync;
-        // Lambdas are always async: message enrichment awaits before the handler is invoked.
-        var asyncKeyword = "async ";
+        var asyncKeyword = isAsync ? "async " : "";
 
         if (endpoint.BindFromForm)
         {
@@ -932,7 +930,6 @@ internal static class EndpointGenerator
                 source.AppendLine(" };");
             }
 
-            GenerateMessageEnrichment(source, messageType, "message");
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
             source.DecrementIndent();
@@ -991,7 +988,6 @@ internal static class EndpointGenerator
                     source.AppendLine("var mergedMessage = message;");
                 }
 
-                GenerateMessageEnrichment(source, messageType, "mergedMessage");
                 GenerateHandlerCall(source, handler, wrapperClassName, "mergedMessage", isAsync, assemblySuffix);
 
                 source.DecrementIndent();
@@ -1008,7 +1004,6 @@ internal static class EndpointGenerator
 
                 source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
-                GenerateMessageEnrichment(source, messageType, "message");
                 GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
                 source.DecrementIndent();
@@ -1028,7 +1023,6 @@ internal static class EndpointGenerator
 
             source.AppendLine("using var callContext = Foundatio.Mediator.CallContext.Rent().Set(httpContext).Set(httpContext.Request).Set(httpContext.Response).Set(httpContext.User);");
 
-            GenerateMessageEnrichment(source, messageType, "message");
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
             source.DecrementIndent();
@@ -1098,24 +1092,11 @@ internal static class EndpointGenerator
                 source.AppendLine($"var message = new {messageType}();");
             }
 
-            GenerateMessageEnrichment(source, messageType, "message");
             GenerateHandlerCall(source, handler, wrapperClassName, "message", isAsync, assemblySuffix);
 
             source.DecrementIndent();
             source.Append("}");
         }
-    }
-
-    /// <summary>
-    /// Generates the message enrichment loop that runs registered
-    /// <see cref="IMediatorMessageEnricher{TContext}"/> instances before the handler is invoked.
-    /// </summary>
-    private static void GenerateMessageEnrichment(IndentedStringBuilder source, string messageType, string messageVar)
-    {
-        source.AppendLine("foreach (var enricher in messageEnrichers)");
-        source.IncrementIndent();
-        source.AppendLine($"{messageVar} = ({messageType})await enricher.EnrichAsync({messageVar}, httpContext, cancellationToken);");
-        source.DecrementIndent();
     }
 
     /// <summary>

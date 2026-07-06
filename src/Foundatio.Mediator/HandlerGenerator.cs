@@ -835,9 +835,28 @@ internal static class HandlerGenerator
             if (m.Method.ReturnType.IsHandlerResult)
             {
                 EmitShortCircuitCheck(source, m, handler, targetTupleIndex, insideExecuteDelegate, isUntypedMethod);
+                EmitMessageReplacementCheck(source, m, handler, messageVar);
             }
         }
         source.AppendLineIf(beforeMiddleware.Any());
+    }
+
+    /// <summary>
+    /// Emits the check that swaps in a replacement message returned via
+    /// <c>HandlerResult.ContinueWith</c> so the rest of the pipeline dispatches it.
+    /// </summary>
+    private static void EmitMessageReplacementCheck(
+        IndentedStringBuilder source,
+        (MiddlewareMethodInfo Method, MiddlewareInfo Middleware) m,
+        HandlerInfo handler,
+        string messageVar)
+    {
+        string resultVarName = $"{m.Middleware.Identifier.ToCamelCase()}Result";
+
+        source.AppendLine($"if ({resultVarName}.ReplacementMessage is not null)");
+        source.IncrementIndent();
+        source.AppendLine($"{messageVar} = ({handler.MessageType.FullName}){resultVarName}.ReplacementMessage;");
+        source.DecrementIndent();
     }
 
     private static void EmitShortCircuitCheck(

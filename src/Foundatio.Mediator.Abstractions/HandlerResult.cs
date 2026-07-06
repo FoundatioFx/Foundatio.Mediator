@@ -5,10 +5,11 @@ namespace Foundatio.Mediator;
 /// </summary>
 public readonly struct HandlerResult : IEquatable<HandlerResult>
 {
-    private HandlerResult(object? value, bool isShortCircuited)
+    private HandlerResult(object? value, bool isShortCircuited, object? replacementMessage = null)
     {
         Value = value;
         IsShortCircuited = isShortCircuited;
+        ReplacementMessage = replacementMessage;
     }
 
     /// <summary>
@@ -22,11 +23,34 @@ public readonly struct HandlerResult : IEquatable<HandlerResult>
     public bool IsShortCircuited { get; }
 
     /// <summary>
+    /// The message to dispatch in place of the current message, if any.
+    /// Set via <see cref="ContinueWith"/>.
+    /// </summary>
+    public object? ReplacementMessage { get; }
+
+    /// <summary>
     /// Creates a result that indicates normal execution should continue.
     /// </summary>
     /// <param name="value">Optional value to pass to After/Finally middleware.</param>
     /// <returns>A handler result that allows continued execution.</returns>
     public static HandlerResult Continue(object? value = null) => new(value, false);
+
+    /// <summary>
+    /// Creates a result that continues execution with a replacement message. The rest of the
+    /// pipeline — subsequent middleware, the handler, and After/Finally methods — receives the
+    /// replacement instead of the original message. Use this to enrich immutable messages
+    /// (e.g. a record <c>with</c> expression stamping tenant or user context).
+    /// </summary>
+    /// <param name="message">The message to dispatch. Must be of the same type as the original message.</param>
+    /// <param name="value">Optional value to pass to After/Finally middleware.</param>
+    /// <returns>A handler result that continues execution with the replacement message.</returns>
+    public static HandlerResult ContinueWith(object message, object? value = null)
+    {
+        if (message is null)
+            throw new ArgumentNullException(nameof(message));
+
+        return new(value, false, message);
+    }
 
     /// <summary>
     /// Creates a result that short-circuits handler execution.
@@ -45,7 +69,7 @@ public readonly struct HandlerResult : IEquatable<HandlerResult>
 
     /// <inheritdoc />
     public bool Equals(HandlerResult other) =>
-        IsShortCircuited == other.IsShortCircuited && Equals(Value, other.Value);
+        IsShortCircuited == other.IsShortCircuited && Equals(Value, other.Value) && Equals(ReplacementMessage, other.ReplacementMessage);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is HandlerResult other && Equals(other);
@@ -55,7 +79,9 @@ public readonly struct HandlerResult : IEquatable<HandlerResult>
     {
         unchecked
         {
-            return ((Value?.GetHashCode() ?? 0) * 397) ^ IsShortCircuited.GetHashCode();
+            int hashCode = (Value?.GetHashCode() ?? 0) * 397;
+            hashCode = (hashCode ^ IsShortCircuited.GetHashCode()) * 397;
+            return hashCode ^ (ReplacementMessage?.GetHashCode() ?? 0);
         }
     }
 
@@ -72,10 +98,11 @@ public readonly struct HandlerResult : IEquatable<HandlerResult>
 /// </summary>
 public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
 {
-    private HandlerResult(T value, bool isShortCircuited)
+    private HandlerResult(T value, bool isShortCircuited, object? replacementMessage = null)
     {
         Value = value;
         IsShortCircuited = isShortCircuited;
+        ReplacementMessage = replacementMessage;
     }
 
     /// <summary>
@@ -89,11 +116,33 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
     public bool IsShortCircuited { get; }
 
     /// <summary>
+    /// The message to dispatch in place of the current message, if any.
+    /// Set via <see cref="ContinueWith"/>.
+    /// </summary>
+    public object? ReplacementMessage { get; }
+
+    /// <summary>
     /// Creates a result that indicates normal execution should continue.
     /// </summary>
     /// <param name="value">Optional value to pass to After/Finally middleware.</param>
     /// <returns>A handler result that allows continued execution.</returns>
     public static HandlerResult<T> Continue(T value = default!) => new(value, false);
+
+    /// <summary>
+    /// Creates a result that continues execution with a replacement message. The rest of the
+    /// pipeline — subsequent middleware, the handler, and After/Finally methods — receives the
+    /// replacement instead of the original message.
+    /// </summary>
+    /// <param name="message">The message to dispatch. Must be of the same type as the original message.</param>
+    /// <param name="value">Optional value to pass to After/Finally middleware.</param>
+    /// <returns>A handler result that continues execution with the replacement message.</returns>
+    public static HandlerResult<T> ContinueWith(object message, T value = default!)
+    {
+        if (message is null)
+            throw new ArgumentNullException(nameof(message));
+
+        return new(value, false, message);
+    }
 
     /// <summary>
     /// Creates a result that short-circuits handler execution.
@@ -110,9 +159,15 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
     /// ShortCircuit&lt;T&gt; method, which would cause infinite recursion through the implicit
     /// operator when T happens to be a type that matches the generic overload better than object.
     /// </remarks>
-    public HandlerResult ToNonGeneric() => IsShortCircuited
-        ? HandlerResult.ShortCircuit((object?)Value)
-        : HandlerResult.Continue((object?)Value);
+    public HandlerResult ToNonGeneric()
+    {
+        if (IsShortCircuited)
+            return HandlerResult.ShortCircuit((object?)Value);
+
+        return ReplacementMessage is null
+            ? HandlerResult.Continue((object?)Value)
+            : HandlerResult.ContinueWith(ReplacementMessage, (object?)Value);
+    }
 
     /// <summary>
     /// Implicitly converts from generic to non-generic HandlerResult.
@@ -121,7 +176,7 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
 
     /// <inheritdoc />
     public bool Equals(HandlerResult<T> other) =>
-        IsShortCircuited == other.IsShortCircuited && EqualityComparer<T>.Default.Equals(Value, other.Value);
+        IsShortCircuited == other.IsShortCircuited && EqualityComparer<T>.Default.Equals(Value, other.Value) && Equals(ReplacementMessage, other.ReplacementMessage);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is HandlerResult<T> other && Equals(other);
@@ -131,7 +186,9 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
     {
         unchecked
         {
-            return (EqualityComparer<T>.Default.GetHashCode(Value!) * 397) ^ IsShortCircuited.GetHashCode();
+            int hashCode = EqualityComparer<T>.Default.GetHashCode(Value!) * 397;
+            hashCode = (hashCode ^ IsShortCircuited.GetHashCode()) * 397;
+            return hashCode ^ (ReplacementMessage?.GetHashCode() ?? 0);
         }
     }
 

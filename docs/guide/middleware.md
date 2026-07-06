@@ -443,6 +443,43 @@ public class AuthorizationMiddleware
 }
 ```
 
+## Replacing the Message
+
+`Before` middleware can replace the message by returning
+`HandlerResult.ContinueWith(message)`. The rest of the pipeline — subsequent
+middleware, the handler, and `After`/`Finally` methods — receives the
+replacement instead of the original. This is the way to enrich immutable record
+messages, since their init-only properties can't be mutated in place:
+
+```csharp
+public static class TenantEnrichmentMiddleware
+{
+    public static HandlerResult Before(CreateOrder message, HttpContext? httpContext)
+    {
+        string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+        if (tenantId is null)
+            return HandlerResult.Continue();
+
+        // Records are immutable — return an enriched copy instead of mutating
+        return HandlerResult.ContinueWith(message with { TenantId = tenantId });
+    }
+}
+```
+
+Key points:
+
+- The replacement must be of the **same type** as the original message.
+- Multiple middleware can each replace the message; they run in pipeline order,
+  each seeing the previous replacement.
+- Enrichment runs before later middleware, so order an enrichment middleware
+  ahead of validation (`OrderBefore = [typeof(ValidationMiddleware)]`) and the
+  validator sees the enriched message.
+- `ContinueWith(message, value)` also accepts an optional state value with the
+  same semantics as `Continue(value)` — it is passed to `After`/`Finally`.
+- Works on every dispatch path (HTTP endpoints, queues, in-process
+  `InvokeAsync`). In endpoint scenarios an `HttpContext?` parameter resolves
+  from the call context; it is `null` for non-HTTP dispatch.
+
 ## State Passing Between Lifecycle Methods
 
 Values returned from `Before` are automatically injected into `After` and

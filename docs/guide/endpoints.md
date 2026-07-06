@@ -1059,21 +1059,26 @@ modeled as message properties).
 
 Multi-tenant and authenticated APIs often need to stamp request context — a
 tenant id from an auth claim, the current user, a correlation header — onto the
-bound message before it is dispatched. Register an
-`IMediatorMessageEnricher<HttpContext>` and every generated endpoint will run it
-after binding and before invoking the handler:
+bound message before the handler runs. Use a `Before` middleware that returns
+[`HandlerResult.ContinueWith`](/guide/middleware#replacing-the-message) with an
+enriched copy of the message. Generated endpoints place `HttpContext` in the
+call context, so middleware can declare an `HttpContext?` parameter:
 
 ```csharp
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Http;
 
-public class TenantMessageEnricher : IMediatorMessageEnricher<HttpContext>
+public static class TenantEnrichmentMiddleware
 {
-    public ValueTask<object> EnrichAsync(object message, HttpContext context, CancellationToken cancellationToken)
+    public static HandlerResult Before(ITenantMessage message, HttpContext? httpContext)
     {
-        string? tenantId = context.User.FindFirst("tenant_id")?.Value;
+        // Null outside an HTTP dispatch (e.g. queue or in-process) — the caller sets tenant context
+        if (httpContext is null)
+            return HandlerResult.Continue();
 
-        return ValueTask.FromResult<object>(message switch
+        string? tenantId = httpContext.User.FindFirst("tenant_id")?.Value;
+
+        return HandlerResult.ContinueWith(message switch
         {
             CreateOrder create => create with { TenantId = tenantId },
             GetOrders query => query with { TenantId = tenantId },
@@ -1083,24 +1088,12 @@ public class TenantMessageEnricher : IMediatorMessageEnricher<HttpContext>
 }
 ```
 
-```csharp
-// Enrichers are resolved when endpoints are mapped — register as singletons
-services.AddSingleton<IMediatorMessageEnricher<HttpContext>, TenantMessageEnricher>();
-services.AddMediator();
-```
-
-Key points:
-
-- Because messages are typically immutable records, the enricher **returns** the
-  message to dispatch — either the original instance or a modified copy (e.g. a
-  `with` expression). The returned instance must be of the same message type.
-- Multiple enrichers run in registration order, each receiving the previous
-  enricher's output.
-- Enrichers are resolved once at startup, so they must be registered as
-  singletons. Scoped services can be reached through
-  `context.RequestServices` per request.
-- Enrichment runs before the handler (and its middleware pipeline), so
-  validation middleware sees the enriched message.
+Because this is ordinary middleware, everything from the
+[middleware guide](/guide/middleware) applies: scope it to specific messages by
+typing the first parameter (an interface like `ITenantMessage` works well),
+order it relative to validation middleware with `[Middleware(OrderBefore = ...)]`,
+and it runs for **every** dispatch path — HTTP endpoints, queues, and in-process
+`InvokeAsync` calls alike.
 
 ## Result to HTTP Status Mapping
 

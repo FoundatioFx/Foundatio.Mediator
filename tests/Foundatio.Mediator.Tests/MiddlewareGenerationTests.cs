@@ -628,6 +628,41 @@ public class MiddlewareGenerationTests(ITestOutputHelper output) : GeneratorTest
 
     #endregion
 
+    #region Message Replacement (ContinueWith) Tests
+
+    [Fact]
+    public void MiddlewareReturningHandlerResult_GeneratesMessageReplacementCheck()
+    {
+        // Before middleware returning HandlerResult can replace the message via
+        // HandlerResult.ContinueWith — the wrapper must swap the message variable so the
+        // rest of the pipeline (later middleware, handler, After/Finally) sees the replacement.
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record ReplaceMsg(string Value);
+
+			public class ReplaceMsgHandler { public string Handle(ReplaceMsg m) => m.Value; }
+
+			public static class EnrichmentMiddleware {
+				public static HandlerResult Before(ReplaceMsg m) {
+					return HandlerResult.ContinueWith(m with { Value = m.Value + "!" });
+				}
+			}
+			""";
+
+        var (compilation, diagnostics, trees) = RunGenerator(src, [new MediatorGenerator()]);
+
+        var wrapper = trees.First(t => t.HintName.EndsWith("_Handler.g.cs"));
+
+        Assert.Contains("EnrichmentMiddleware.Before", wrapper.Source);
+        Assert.Contains(".ReplacementMessage is not null", wrapper.Source);
+        Assert.Contains("message = (ReplaceMsg)", wrapper.Source);
+    }
+
+    #endregion
+
     #region Void Handler with ShortCircuit Middleware Tests
 
     [Fact]

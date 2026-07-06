@@ -1234,6 +1234,8 @@ internal static class EndpointGenerator
                     result.Message ?? "A critical error occurred", statusCode: 500),
                 Foundatio.Mediator.ResultStatus.Unavailable => Microsoft.AspNetCore.Http.Results.Problem(
                     result.Message ?? "Service unavailable", statusCode: 503),
+                Foundatio.Mediator.ResultStatus.RateLimited => Microsoft.AspNetCore.Http.Results.Problem(
+                    string.IsNullOrEmpty(result.Message) ? "Too many requests" : result.Message, statusCode: 429),
                 _ => Microsoft.AspNetCore.Http.Results.Problem("An unexpected error occurred", statusCode: 500)
             };
             """);

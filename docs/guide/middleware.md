@@ -393,6 +393,31 @@ public class ValidationMiddleware
 }
 ```
 
+A complete DataAnnotations-based validation middleware is a few lines with
+[MiniValidator](https://github.com/DamianEdwards/MiniValidator) (which, unlike
+the BCL `Validator`, recurses into nested objects). `Result.Invalid` accepts
+MiniValidator's field-keyed error dictionary directly, and generated endpoints
+render the result as a standard ASP.NET Core validation problem response:
+
+```csharp
+public static class ValidationMiddleware
+{
+    public static HandlerResult Before(object message)
+    {
+        if (!MiniValidator.TryValidate(message, out var errors))
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+
+        return HandlerResult.Continue();
+    }
+}
+```
+
+This runs for every dispatched message. To scope validation to specific
+messages, constrain the first parameter type — see
+[Message-Specific Middleware](#message-specific-middleware). Prefer
+FluentValidation? Its `ValidationResult.ToDictionary()` output plugs into
+`Result.Invalid` the same way.
+
 ### Short-Circuit Usage
 
 ```csharp
@@ -417,6 +442,105 @@ public class AuthorizationMiddleware
     }
 }
 ```
+
+## Replacing the Message
+
+`Before` middleware can replace the message by returning
+`HandlerResult.ContinueWith(message)`. The rest of the pipeline — subsequent
+middleware, the handler, and `After`/`Finally` methods — receives the
+replacement instead of the original.
+
+> If your messages have settable properties, you don't need this at all — set
+> them in `Before` and return `HandlerResult.Continue()`. `ContinueWith` exists
+> for immutable record messages, whose init-only properties can't be mutated in
+> place.
+
+For example, enriching an immutable record with tenant context:
+
+```csharp
+public static class TenantEnrichmentMiddleware
+{
+    public static HandlerResult Before(CreateOrder message, HttpContext? httpContext)
+    {
+        string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+        if (tenantId is null)
+            return HandlerResult.Continue();
+
+        // Records are immutable — return an enriched copy instead of mutating
+        return HandlerResult.ContinueWith(message with { TenantId = tenantId });
+    }
+}
+```
+
+To enrich a whole family of messages with one middleware, declare the shared
+properties on an abstract base record and type the first parameter as the base —
+`with` expressions on a base record type preserve the derived runtime type:
+
+```csharp
+public abstract record TenantMessage
+{
+    public string? TenantId { get; init; }
+}
+
+public static class TenantEnrichmentMiddleware
+{
+    public static HandlerResult Before(TenantMessage message, HttpContext? httpContext)
+    {
+        string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+        if (tenantId is null)
+            return HandlerResult.Continue();
+
+        // Clones the actual derived record (CreateOrder, GetOrders, ...) — no switch needed
+        return HandlerResult.ContinueWith(message with { TenantId = tenantId });
+    }
+}
+```
+
+Prefer an interface (e.g. when messages already have a base class, or one message
+belongs to several enrichment facets)? `with` expressions don't work through
+interfaces, so declare a self-copy method that each record implements as a
+one-liner — the `with` lives inside the record where the concrete type is known:
+
+```csharp
+public interface ITenantMessage
+{
+    string? TenantId { get; }
+    ITenantMessage WithTenantId(string tenantId);
+}
+
+public record CreateOrder(string Product) : ITenantMessage
+{
+    public string? TenantId { get; init; }
+    public ITenantMessage WithTenantId(string tenantId) => this with { TenantId = tenantId };
+}
+```
+
+```csharp
+public static HandlerResult Before(ITenantMessage message, HttpContext? httpContext)
+{
+    string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+    if (tenantId is null)
+        return HandlerResult.Continue();
+
+    return HandlerResult.ContinueWith(message.WithTenantId(tenantId));
+}
+```
+
+Key points:
+
+- The replacement must be of the **same type** as the original message.
+- Multiple middleware can each replace the message; they run in pipeline order,
+  each seeing the previous replacement.
+- Enrichment runs before later middleware, so order an enrichment middleware
+  ahead of validation (`OrderBefore = [typeof(ValidationMiddleware)]`) and the
+  validator sees the enriched message.
+- [State passing](#state-passing-between-lifecycle-methods) into
+  `After`/`Finally` only applies to non-`HandlerResult` `Before` return values,
+  so a replacing middleware can't also pass typed state — if `After`/`Finally`
+  need extra context, carry it on the message itself.
+- Works on every dispatch path (HTTP endpoints, queues, in-process
+  `InvokeAsync`). In endpoint scenarios an `HttpContext?` parameter resolves
+  from the call context; it is `null` for non-HTTP dispatch.
 
 ## State Passing Between Lifecycle Methods
 

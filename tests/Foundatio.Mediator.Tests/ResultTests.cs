@@ -823,4 +823,75 @@ public class ResultTests
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal("saved", result.Message);
     }
+
+    [Fact]
+    public void Invalid_WithFieldKeyedErrors_CreatesValidationErrorPerMessage()
+    {
+        var errors = new Dictionary<string, string[]>
+        {
+            ["Name"] = ["Name is required", "Name is too short"],
+            ["Age"] = ["Age must be positive"]
+        };
+
+        var result = Result.Invalid(errors);
+
+        Assert.Equal(ResultStatus.Invalid, result.Status);
+        Assert.Collection(result.ValidationErrors.OrderBy(e => e.Identifier).ThenBy(e => e.ErrorMessage),
+            e => { Assert.Equal("Age", e.Identifier); Assert.Equal("Age must be positive", e.ErrorMessage); },
+            e => { Assert.Equal("Name", e.Identifier); Assert.Equal("Name is required", e.ErrorMessage); },
+            e => { Assert.Equal("Name", e.Identifier); Assert.Equal("Name is too short", e.ErrorMessage); });
+    }
+
+    [Fact]
+    public void GenericInvalid_WithFieldKeyedErrors_CreatesValidationErrorPerMessage()
+    {
+        var errors = new Dictionary<string, string[]>
+        {
+            ["Email"] = ["Email is invalid"]
+        };
+
+        var result = Result<string>.Invalid(errors);
+
+        Assert.Equal(ResultStatus.Invalid, result.Status);
+        var error = Assert.Single(result.ValidationErrors);
+        Assert.Equal("Email", error.Identifier);
+        Assert.Equal("Email is invalid", error.ErrorMessage);
+    }
+
+    [Fact]
+    public void Invalid_WithEmptyDictionary_CreatesInvalidResultWithNoErrors()
+    {
+        var result = Result.Invalid(new Dictionary<string, string[]>());
+
+        Assert.Equal(ResultStatus.Invalid, result.Status);
+        Assert.Empty(result.ValidationErrors);
+    }
+
+    [Fact]
+    public void RateLimited_CreatesRateLimitedResult()
+    {
+        var result = Result.RateLimited();
+
+        Assert.Equal(ResultStatus.RateLimited, result.Status);
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public void RateLimited_WithMessage_SetsMessage()
+    {
+        var result = Result.RateLimited("Too many requests, retry later");
+
+        Assert.Equal(ResultStatus.RateLimited, result.Status);
+        Assert.Equal("Too many requests, retry later", result.Message);
+    }
+
+    [Fact]
+    public void GenericRateLimited_CreatesRateLimitedResult()
+    {
+        var result = Result<int>.RateLimited("Slow down");
+
+        Assert.Equal(ResultStatus.RateLimited, result.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Slow down", result.Message);
+    }
 }

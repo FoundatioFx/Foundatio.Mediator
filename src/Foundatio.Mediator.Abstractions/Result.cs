@@ -317,6 +317,18 @@ public sealed class Result : IResult
     };
 
     /// <summary>
+    /// Creates an invalid result from field-keyed error messages, the shape produced by
+    /// ASP.NET Core model validation, MiniValidator, and FluentValidation's <c>ToDictionary()</c>.
+    /// </summary>
+    /// <param name="errors">The validation errors keyed by field or property identifier.</param>
+    /// <returns>An invalid result.</returns>
+    public static Result Invalid(IEnumerable<KeyValuePair<string, string[]>> errors) => new()
+    {
+        Status = ResultStatus.Invalid,
+        ValidationErrors = [.. errors.SelectMany(kv => kv.Value.Select(v => ValidationError.Create(kv.Key, v)))]
+    };
+
+    /// <summary>
     /// Creates a bad request result.
     /// </summary>
     /// <returns>A bad request result.</returns>
@@ -453,6 +465,26 @@ public sealed class Result : IResult
     public static Result Unavailable(string message) => new()
     {
         Status = ResultStatus.Unavailable,
+        Message = message
+    };
+
+    /// <summary>
+    /// Creates a rate limited result.
+    /// </summary>
+    /// <returns>A rate limited result.</returns>
+    public static Result RateLimited() => new()
+    {
+        Status = ResultStatus.RateLimited
+    };
+
+    /// <summary>
+    /// Creates a rate limited result.
+    /// </summary>
+    /// <param name="message">The message.</param>
+    /// <returns>A rate limited result.</returns>
+    public static Result RateLimited(string message) => new()
+    {
+        Status = ResultStatus.RateLimited,
         Message = message
     };
 

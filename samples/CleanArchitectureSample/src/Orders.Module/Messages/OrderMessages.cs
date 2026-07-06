@@ -20,10 +20,12 @@ public record CreateOrder(
     string Description) : ICommand<Result<Order>>, IHasRequestedBy
 {
     /// <summary>
-    /// Populated automatically by the <see cref="Common.Module.Filters.SetRequestedByFilter"/>
-    /// endpoint filter from the HTTP context.
+    /// Populated automatically by the <c>SetRequestedByMiddleware</c> from the HTTP context.
     /// </summary>
-    public string? RequestedBy { get; set; }
+    public string? RequestedBy { get; init; }
+
+    /// <inheritdoc />
+    public IHasRequestedBy WithRequestedBy(string requestedBy) => this with { RequestedBy = requestedBy };
 }
 
 public record UpdateOrder(
@@ -33,7 +35,10 @@ public record UpdateOrder(
     OrderStatus? Status) : ICommand<Result<Order>>, IHasRequestedBy
 {
     /// <inheritdoc />
-    public string? RequestedBy { get; set; }
+    public string? RequestedBy { get; init; }
+
+    /// <inheritdoc />
+    public IHasRequestedBy WithRequestedBy(string requestedBy) => this with { RequestedBy = requestedBy };
 }
 
 public record DeleteOrder([Required] string OrderId) : ICommand<Result>;

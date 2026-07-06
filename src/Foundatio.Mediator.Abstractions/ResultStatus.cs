@@ -73,5 +73,10 @@ public enum ResultStatus
     /// <summary>
     /// The service is temporarily unavailable.
     /// </summary>
-    Unavailable = 12
+    Unavailable = 12,
+
+    /// <summary>
+    /// The caller has sent too many requests and is being rate limited.
+    /// </summary>
+    RateLimited = 13
 }

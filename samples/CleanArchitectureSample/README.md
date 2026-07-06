@@ -17,7 +17,8 @@ A working modular monolith that showcases Foundatio.Mediator's features in a rea
 | **Authorization** | `[HandlerAuthorize(Roles = ["Admin"])]`, `[HandlerAllowAnonymous]`, global `AuthorizationRequired = true` |
 | **Message validation** | `[Required]`, `[Range]`, `[StringLength]` on message records, enforced by `ValidationMiddleware` |
 | **Endpoint generation** | `MapMediatorEndpoints()` auto-generates minimal API routes from handlers |
-| **Endpoint groups & filters** | `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]` |
+| **Endpoint groups & filters** | `[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(RequestDurationFilter)])]` |
+| **Message enrichment** | `SetRequestedByMiddleware` stamps the caller's identity onto immutable records via `HandlerResult.ContinueWith` |
 | **Middleware ordering** | `OrderBefore`/`OrderAfter` declarative dependencies between middleware |
 | **Module-scoped middleware** | `OrdersModuleMiddleware`, `ProductsModuleMiddleware` run only for their module's messages |
 | **Multiple cascading events** | `UpdateProduct` returns `(Result<Product>, ProductUpdated?, ProductStockChanged?)` |
@@ -298,14 +299,20 @@ public async Task<Result<Product>> HandleAsync(GetProduct query, ...) { ... }
 
 ```csharp
 // Handlers grouped and filtered at the class level
-[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]
+[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(RequestDurationFilter)])]
 public class OrderHandler(IOrderRepository repository)
 {
     // Generated as: POST /api/orders, GET /api/orders/{orderId}, etc.
 }
 ```
 
-The `SetRequestedByFilter` enriches messages from the HTTP context before the handler runs — an endpoint filter, not mediator middleware.
+The `RequestDurationFilter` adds an `X-Request-Duration-Ms` response header — endpoint
+filters are the right tool for HTTP-shaped concerns like headers, caching, and rate
+limiting. Enriching the *message* itself is done with mediator middleware instead: the
+`SetRequestedByMiddleware` stamps the authenticated user onto any message implementing
+`IHasRequestedBy` by returning `HandlerResult.ContinueWith(message.WithRequestedBy(name))`
+— messages stay immutable records, and the enrichment also applies to messages constructed
+from route/query parameters and to non-HTTP dispatch, which endpoint filters can't reach.
 
 ### 8. Custom Attribute-Triggered Middleware
 

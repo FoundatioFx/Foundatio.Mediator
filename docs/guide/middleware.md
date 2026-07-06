@@ -393,6 +393,31 @@ public class ValidationMiddleware
 }
 ```
 
+A complete DataAnnotations-based validation middleware is a few lines with
+[MiniValidator](https://github.com/DamianEdwards/MiniValidator) (which, unlike
+the BCL `Validator`, recurses into nested objects). `Result.Invalid` accepts
+MiniValidator's field-keyed error dictionary directly, and generated endpoints
+render the result as a standard ASP.NET Core validation problem response:
+
+```csharp
+public static class ValidationMiddleware
+{
+    public static HandlerResult Before(object message)
+    {
+        if (!MiniValidator.TryValidate(message, out var errors))
+            return HandlerResult.ShortCircuit(Result.Invalid(errors));
+
+        return HandlerResult.Continue();
+    }
+}
+```
+
+This runs for every dispatched message. To scope validation to specific
+messages, constrain the first parameter type — see
+[Message-Specific Middleware](#message-specific-middleware). Prefer
+FluentValidation? Its `ValidationResult.ToDictionary()` output plugs into
+`Result.Invalid` the same way.
+
 ### Short-Circuit Usage
 
 ```csharp

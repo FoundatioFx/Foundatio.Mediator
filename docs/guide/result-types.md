@@ -74,7 +74,8 @@ public enum ResultStatus
     Forbidden,
     Conflict,
     CriticalError,
-    Unavailable
+    Unavailable,
+    RateLimited
 }
 ```
 
@@ -152,6 +153,9 @@ return Result.Forbidden("Insufficient permissions");
 // Conflict (e.g., duplicate key)
 return Result.Conflict("Email already exists");
 
+// Rate limiting (HTTP 429 in generated endpoints)
+return Result.RateLimited("Too many requests, retry in 60 seconds");
+
 // Generic error
 return Result.Error("Something went wrong");
 ```
@@ -222,6 +226,22 @@ public Result<User> Handle(CreateUser command)
 
     var user = new User(command.Name, command.Age);
     return user;
+}
+```
+
+`Result.Invalid` also accepts field-keyed error messages
+(`IEnumerable<KeyValuePair<string, string[]>>`) — the shape produced by ASP.NET
+Core model validation, [MiniValidator](https://github.com/DamianEdwards/MiniValidator),
+and FluentValidation's `ToDictionary()` — so validation output can be passed
+through directly:
+
+```csharp
+public Result<User> Handle(CreateUser command)
+{
+    if (!MiniValidator.TryValidate(command, out var errors))
+        return Result.Invalid(errors);
+
+    // ...
 }
 ```
 

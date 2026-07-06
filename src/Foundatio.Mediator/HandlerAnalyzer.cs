@@ -1543,6 +1543,7 @@ internal static class HandlerAnalyzer
         ["NotFound"] = 404,
         ["Conflict"] = 409,
         ["Invalid"] = 400,
+        ["RateLimited"] = 429,
         ["Error"] = 500,
         ["CriticalError"] = 500,
         ["Unavailable"] = 503,

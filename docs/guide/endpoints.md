@@ -1055,6 +1055,53 @@ HTTP access (e.g., streaming a response body, reading raw headers that can't be
 modeled as message properties).
 :::
 
+## Message Enrichment
+
+Multi-tenant and authenticated APIs often need to stamp request context — a
+tenant id from an auth claim, the current user, a correlation header — onto the
+bound message before it is dispatched. Register an
+`IMediatorMessageEnricher<HttpContext>` and every generated endpoint will run it
+after binding and before invoking the handler:
+
+```csharp
+using Foundatio.Mediator;
+using Microsoft.AspNetCore.Http;
+
+public class TenantMessageEnricher : IMediatorMessageEnricher<HttpContext>
+{
+    public ValueTask<object> EnrichAsync(object message, HttpContext context, CancellationToken cancellationToken)
+    {
+        string? tenantId = context.User.FindFirst("tenant_id")?.Value;
+
+        return ValueTask.FromResult<object>(message switch
+        {
+            CreateOrder create => create with { TenantId = tenantId },
+            GetOrders query => query with { TenantId = tenantId },
+            _ => message
+        });
+    }
+}
+```
+
+```csharp
+// Enrichers are resolved when endpoints are mapped — register as singletons
+services.AddSingleton<IMediatorMessageEnricher<HttpContext>, TenantMessageEnricher>();
+services.AddMediator();
+```
+
+Key points:
+
+- Because messages are typically immutable records, the enricher **returns** the
+  message to dispatch — either the original instance or a modified copy (e.g. a
+  `with` expression). The returned instance must be of the same message type.
+- Multiple enrichers run in registration order, each receiving the previous
+  enricher's output.
+- Enrichers are resolved once at startup, so they must be registered as
+  singletons. Scoped services can be reached through
+  `context.RequestServices` per request.
+- Enrichment runs before the handler (and its middleware pipeline), so
+  validation middleware sees the enriched message.
+
 ## Result to HTTP Status Mapping
 
 `Result<T>` and `Result` return values are automatically mapped to HTTP
@@ -1075,6 +1122,7 @@ responses:
 | `Error`         | 500 Internal Server Error           |
 | `CriticalError` | 500 Internal Server Error           |
 | `Unavailable`   | 503 Service Unavailable             |
+| `RateLimited`   | 429 Too Many Requests               |
 
 ### Custom Result Mapping
 

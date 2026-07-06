@@ -26,6 +26,10 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// <summary>
     /// Default DI lifetime for handlers. Individual handlers can override this
     /// via <c>[Handler(Lifetime = ...)]</c>.
+    /// Set to <see cref="MediatorLifetime.ScopedPerInvoke"/> to have the mediator create a fresh
+    /// DI scope for every handler invocation in this assembly (MassTransit/Wolverine-style
+    /// isolation); individual handlers can opt back into the ambient scope with
+    /// <c>[Handler(Lifetime = MediatorLifetime.Scoped)]</c>.
     /// Default: <see cref="MediatorLifetime.Default"/> (internally cached, not registered in DI).
     /// </summary>
     public MediatorLifetime HandlerLifetime { get; set; }
@@ -33,6 +37,8 @@ public sealed class MediatorConfigurationAttribute : Attribute
     /// <summary>
     /// Default DI lifetime for middleware. Individual middleware can override this
     /// via <c>[Middleware(Lifetime = ...)]</c>.
+    /// <see cref="MediatorLifetime.ScopedPerInvoke"/> is handler-only; middleware executes inside
+    /// the handler's pipeline scope, so it is treated as <see cref="MediatorLifetime.Scoped"/>.
     /// Default: <see cref="MediatorLifetime.Default"/> (internally cached, not registered in DI).
     /// </summary>
     public MediatorLifetime MiddlewareLifetime { get; set; }

@@ -133,6 +133,53 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
         Assert.Contains(genDiags, d => d.Id == "FMED011" && d.GetMessage().Contains("BadMiddleware"));
     }
 
+    [Fact]
+    public void FMED014_ScopedPerInvokeOnMiddleware()
+    {
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record Msg;
+			public class MsgHandler { public void Handle(Msg m) { } }
+
+			[Middleware(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+			public class BadLifetimeMiddleware
+			{
+				public void Before(Msg m) { }
+			}
+			""";
+
+        var (_, genDiags, _) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED014" && d.GetMessage().Contains("BadLifetimeMiddleware"));
+    }
+
+    [Fact]
+    public void FMED015_ScopedPerInvokeHandlerReturnsDeferredResult()
+    {
+        var src = """
+			using System.Linq;
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record GetItems;
+
+			[Handler(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+			public class GetItemsHandler
+			{
+				public IQueryable<string> Handle(GetItems m) => new string[0].AsQueryable();
+			}
+			""";
+
+        // IQueryable<> is type-forwarded to System.Linq.Expressions, which the base compilation
+        // doesn't reference — without it the return type doesn't resolve and the check can't run.
+        var queryableReference = Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(IQueryable<>).Assembly.Location);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], additionalReferences: [queryableReference]);
+        Assert.Contains(genDiags, d => d.Id == "FMED015" && d.GetMessage().Contains("GetItemsHandler"));
+    }
+
     // ── Call-site diagnostics ──────────────────────────────────────────────
 
     [Fact]

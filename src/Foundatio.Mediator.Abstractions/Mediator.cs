@@ -27,6 +27,22 @@ public sealed class Mediator : IMediator, IServiceProvider
     [EditorBrowsable(EditorBrowsableState.Never)]
     public HandlerRegistry Registry => _registry;
 
+    /// <summary>
+    /// Creates a mediator bound to the given service provider. Used by generated code for
+    /// <see cref="MediatorLifetime.ScopedPerInvoke"/> handlers so that nested and cascading
+    /// dispatches resolve from the invocation's scope regardless of how <see cref="IMediator"/>
+    /// itself is registered.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public static Mediator FromServiceProvider(IServiceProvider serviceProvider)
+    {
+        var registry = (HandlerRegistry?)serviceProvider.GetService(typeof(HandlerRegistry))
+            ?? throw new InvalidOperationException("HandlerRegistry is not registered. Call AddMediator() on the service collection.");
+        var publisher = (INotificationPublisher?)serviceProvider.GetService(typeof(INotificationPublisher))
+            ?? throw new InvalidOperationException("INotificationPublisher is not registered. Call AddMediator() on the service collection.");
+        return new Mediator(registry, publisher, serviceProvider);
+    }
+
     /// <inheritdoc />
     object? IServiceProvider.GetService(Type serviceType) => _serviceProvider.GetService(serviceType);
 

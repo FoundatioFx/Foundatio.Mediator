@@ -197,12 +197,13 @@ internal static class HandlerAnalyzer
                 var lifetimeArg = handlerAttr.NamedArguments.FirstOrDefault(na => na.Key == "Lifetime");
                 if (lifetimeArg.Value.Value is int lifetimeValue && lifetimeValue > 0)
                 {
-                    // Map enum values: 0=Default, 1=Transient, 2=Scoped, 3=Singleton
+                    // Map enum values: 0=Default, 1=Transient, 2=Scoped, 3=Singleton, 4=ScopedPerInvoke
                     lifetime = lifetimeValue switch
                     {
-                        1 => "Transient",
-                        2 => "Scoped",
-                        3 => "Singleton",
+                        1 => WellKnownTypes.LifetimeTransient,
+                        2 => WellKnownTypes.LifetimeScoped,
+                        3 => WellKnownTypes.LifetimeSingleton,
+                        4 => WellKnownTypes.LifetimeScopedPerInvoke,
                         _ => null // 0 (Default) means use project-level default
                     };
                 }

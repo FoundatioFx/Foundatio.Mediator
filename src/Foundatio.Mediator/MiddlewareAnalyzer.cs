@@ -213,14 +213,28 @@ internal static class MiddlewareAnalyzer
                 order = namedOrderValue;
 
             // Check Lifetime named argument
-            // HandlerLifetime enum: Default=0, Transient=1, Scoped=2, Singleton=3
+            // MediatorLifetime enum: Default=0, Transient=1, Scoped=2, Singleton=3, ScopedPerInvoke=4
             var lifetimeArg = middlewareAttr.NamedArguments.FirstOrDefault(na => na.Key == "Lifetime");
             if (lifetimeArg.Value.Value is int lifetimeValue && lifetimeValue > 0)
             {
+                if (lifetimeValue == 4)
+                {
+                    // ScopedPerInvoke is handler-only; middleware always executes inside the
+                    // handler's pipeline scope. Fall back to Scoped so behavior stays sensible.
+                    diagnostics.Add(new DiagnosticInfo
+                    {
+                        Identifier = "FMED014",
+                        Title = "ScopedPerInvoke Is Not Valid for Middleware",
+                        Message = $"Middleware '{classSymbol.Name}' specifies MediatorLifetime.ScopedPerInvoke, which only applies to handlers. Middleware executes inside the handler's pipeline and resolves from the handler's scope. Scoped will be used instead.",
+                        Severity = DiagnosticSeverity.Warning,
+                        Location = LocationInfo.CreateFrom(classDeclaration)
+                    });
+                }
+
                 lifetime = lifetimeValue switch
                 {
                     1 => WellKnownTypes.LifetimeTransient,
-                    2 => WellKnownTypes.LifetimeScoped,
+                    2 or 4 => WellKnownTypes.LifetimeScoped,
                     3 => WellKnownTypes.LifetimeSingleton,
                     _ => null
                 };

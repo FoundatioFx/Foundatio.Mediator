@@ -133,8 +133,9 @@ internal static class HandlerGenerator
         string methodReturnType = GetMethodSignatureReturnType(isAsyncMethod, handler.ReturnType.IsVoid, returnTypeName);
 
         // Check if we can generate a pass-through method without async state machine
-        // This applies when handler has no dependencies, no middleware, no cascading, and no OTel
-        bool canSkipAsyncStateMachine = handler.CanSkipAsyncStateMachine && !configuration.OpenTelemetryEnabled;
+        // This applies when handler has no dependencies, no middleware, no cascading, and no OTel.
+        // ScopedPerInvoke handlers always take the full path so the invocation owns a DI scope.
+        bool canSkipAsyncStateMachine = handler.CanSkipAsyncStateMachine && !configuration.OpenTelemetryEnabled && !handler.IsScopedPerInvoke;
 
         string asyncModifier = (isAsyncMethod && !canSkipAsyncStateMachine) ? "async " : "";
 
@@ -234,9 +235,7 @@ internal static class HandlerGenerator
             return;
         }
 
-        // Get service provider directly from mediator - no scope creation
-        // DI scope management is the caller's responsibility, not the mediator's
-        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        EmitServiceProviderSetup(source, handler, isAsyncMethod);
 
         // Emit the handler invocation code (middleware + logging + OTel + handler call)
         EmitHandlerInvocationCode(source, handler, configuration, "result", callContextVar: "callContext");
@@ -305,8 +304,7 @@ internal static class HandlerGenerator
             source.AppendLine("{");
             source.IncrementIndent();
 
-            // Get service provider directly from mediator - no scope creation
-            source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+            EmitServiceProviderSetup(source, handler, isAsyncMethod);
 
             // Emit the handler invocation code with the target tuple index
             EmitHandlerInvocationCode(source, handler, configuration, "result", "message", targetIndex, callContextVar: "callContext");
@@ -334,9 +332,42 @@ internal static class HandlerGenerator
     /// <param name="resultVar">Variable name to store the handler result.</param>
     /// <param name="messageVar">Variable name containing the typed message (default: "message").</param>
     /// <param name="targetTupleIndex">For tuple return types, the index of the tuple item this method returns (0 = Item1, 1 = Item2, etc.). -1 for non-tuple handlers.</param>
+    /// <summary>
+    /// Emits the serviceProvider local used by the pipeline. For ScopedPerInvoke handlers this
+    /// creates a fresh DI scope owned by the invocation and rebinds the mediator to that scope
+    /// so nested and cascading dispatches resolve from it. For all other lifetimes the caller's
+    /// ambient provider is used — DI scope management is the caller's responsibility.
+    /// </summary>
+    private static void EmitServiceProviderSetup(IndentedStringBuilder source, HandlerInfo handler, bool isAsyncMethod)
+    {
+        if (handler.IsScopedPerInvoke)
+        {
+            // ScopedPerInvoke: this invocation owns a fresh DI scope. The entire pipeline
+            // (middleware + handler + cascading messages) resolves from this scope, and the
+            // scope is disposed when the invocation completes.
+            source.AppendLine(isAsyncMethod
+                ? "await using var scope = ((System.IServiceProvider)mediator).GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>().CreateAsyncScope();"
+                : "using var scope = ((System.IServiceProvider)mediator).GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>().CreateScope();");
+            source.AppendLine("var serviceProvider = scope.ServiceProvider;");
+            source.AppendLine("mediator = Foundatio.Mediator.Mediator.FromServiceProvider(serviceProvider);");
+        }
+        else
+        {
+            // Get service provider directly from mediator - no scope creation
+            // DI scope management is the caller's responsibility, not the mediator's
+            source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        }
+    }
+
     private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false, string? callContextVar = null)
     {
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
+
+        // For ScopedPerInvoke, hand middleware/handler IMediator parameters the scope-bound
+        // mediator directly so nested dispatches flow through the invocation's scope regardless
+        // of how IMediator is registered.
+        if (handler.IsScopedPerInvoke)
+            variables["Foundatio.Mediator.IMediator"] = "mediator";
 
         // Build middleware lists - separate Execute middleware from Before/After/Finally
         // The handler.Middleware array is already sorted by topological sort (respecting OrderBefore/OrderAfter + numeric Order)
@@ -1043,8 +1074,7 @@ internal static class HandlerGenerator
         // Cast message to typed message
         source.AppendLine($"var typedMessage = ({handler.MessageType.FullName})message;");
 
-        // Get service provider directly from mediator - no scope creation
-        source.AppendLine("var serviceProvider = (System.IServiceProvider)mediator;");
+        EmitServiceProviderSetup(source, handler, isAsyncMethod);
 
         // Emit the handler invocation code - use "typedMessage" since we cast the object message above
         EmitHandlerInvocationCode(source, handler, configuration, "result", "typedMessage", isUntypedMethod: true, callContextVar: "callContext");
@@ -1565,9 +1595,39 @@ internal static class HandlerGenerator
             {
                 context.ReportDiagnostic(diagnostic.ToDiagnostic());
             }
+
+            // FMED015: ScopedPerInvoke handler returns a deferred result that outlives the scope
+            if (handler.IsScopedPerInvoke && ReturnsDeferredResult(handler))
+            {
+                context.ReportDiagnostic(new DiagnosticInfo
+                {
+                    Identifier = "FMED015",
+                    Title = "ScopedPerInvoke handler returns a deferred result",
+                    Message = $"Handler '{handler.FullName}' uses MediatorLifetime.ScopedPerInvoke but returns '{handler.ReturnType.UnwrappedFullName}', which is typically enumerated after the invocation's DI scope is disposed and will likely throw ObjectDisposedException. Use an ambient lifetime (e.g. Scoped) for this handler or materialize the result before returning.",
+                    Severity = DiagnosticSeverity.Warning
+                }.ToDiagnostic());
+            }
         }
 
         ValidateCallSites(context, handlers);
+    }
+
+    /// <summary>
+    /// Whether the handler returns a lazily-evaluated result (IQueryable/IAsyncEnumerable) that is
+    /// typically enumerated by the caller after dispatch returns — incompatible with ScopedPerInvoke,
+    /// whose scope (and the services backing the result) is disposed when the invocation completes.
+    /// </summary>
+    private static bool ReturnsDeferredResult(HandlerInfo handler)
+    {
+        static bool IsDeferred(string typeName) =>
+            typeName.StartsWith("System.Linq.IQueryable", StringComparison.Ordinal) ||
+            typeName.StartsWith("System.Linq.IOrderedQueryable", StringComparison.Ordinal) ||
+            typeName.StartsWith("System.Collections.Generic.IAsyncEnumerable<", StringComparison.Ordinal);
+
+        if (handler.ReturnType.IsTuple)
+            return handler.ReturnType.TupleItems.Length > 0 && IsDeferred(handler.ReturnType.TupleItems[0].TypeFullName.TrimEnd('?'));
+
+        return IsDeferred(handler.ReturnType.UnwrappedFullName.TrimEnd('?'));
     }
 
     private static void ValidateCallSites(SourceProductionContext context, List<HandlerInfo> handlers)

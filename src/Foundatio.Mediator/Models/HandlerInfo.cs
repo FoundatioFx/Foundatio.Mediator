@@ -214,11 +214,19 @@ internal readonly record struct HandlerInfo
 
     /// <summary>
     /// Whether the handler must be resolved from DI on every invocation.
-    /// True for Scoped or Transient lifetime handlers.
+    /// True for Scoped, Transient, or ScopedPerInvoke lifetime handlers.
     /// </summary>
     public bool RequiresDIResolutionPerInvocation =>
         string.Equals(Lifetime, WellKnownTypes.LifetimeScoped, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(Lifetime, WellKnownTypes.LifetimeTransient, StringComparison.OrdinalIgnoreCase);
+        string.Equals(Lifetime, WellKnownTypes.LifetimeTransient, StringComparison.OrdinalIgnoreCase) ||
+        IsScopedPerInvoke;
+
+    /// <summary>
+    /// Whether the generated wrapper creates a fresh DI scope for each invocation and resolves
+    /// the entire pipeline (middleware + handler) from that scope.
+    /// </summary>
+    public bool IsScopedPerInvoke =>
+        string.Equals(Lifetime, WellKnownTypes.LifetimeScopedPerInvoke, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether the handler has any explicit DI lifetime (Scoped, Transient, or Singleton).

@@ -44,6 +44,8 @@ public sealed class HandlerAttribute : Attribute
     /// Gets or sets the dependency injection lifetime for this handler.
     /// When set to <see cref="MediatorLifetime.Default"/>, uses the assembly-level
     /// <see cref="MediatorConfigurationAttribute.HandlerLifetime"/> setting.
+    /// Use <see cref="MediatorLifetime.ScopedPerInvoke"/> to have the mediator create a fresh
+    /// DI scope for each invocation (MassTransit/Wolverine-style isolation).
     /// </summary>
     public MediatorLifetime Lifetime { get; set; } = MediatorLifetime.Default;
 }

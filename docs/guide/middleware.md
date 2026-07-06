@@ -448,8 +448,14 @@ public class AuthorizationMiddleware
 `Before` middleware can replace the message by returning
 `HandlerResult.ContinueWith(message)`. The rest of the pipeline — subsequent
 middleware, the handler, and `After`/`Finally` methods — receives the
-replacement instead of the original. This is the way to enrich immutable record
-messages, since their init-only properties can't be mutated in place:
+replacement instead of the original.
+
+> If your messages have settable properties, you don't need this at all — set
+> them in `Before` and return `HandlerResult.Continue()`. `ContinueWith` exists
+> for immutable record messages, whose init-only properties can't be mutated in
+> place.
+
+For example, enriching an immutable record with tenant context:
 
 ```csharp
 public static class TenantEnrichmentMiddleware

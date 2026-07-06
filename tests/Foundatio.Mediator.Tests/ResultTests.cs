@@ -798,7 +798,7 @@ public class ResultTests
         // Documents overload resolution for T = string: the non-generic Created(string location)
         // is preferred over Created<T>(T value), so the argument is a location, not a value.
         // Use Result<string>.Created(value) when a string *value* is intended.
-        Result result = Result.Created("/orders/1");
+        var result = Result.Created("/orders/1");
 
         Assert.Equal(ResultStatus.Created, result.Status);
         Assert.Equal("/orders/1", result.Location);
@@ -808,7 +808,7 @@ public class ResultTests
     public void Ok_WithStringArgument_StillBindsToMessageOverload()
     {
         // Same string caveat as Created: Ok(string message) wins over Ok<T>(T value).
-        Result result = Result.Ok("all good");
+        var result = Result.Ok("all good");
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal("all good", result.Message);
@@ -818,7 +818,7 @@ public class ResultTests
     public void Success_WithStringArgument_StillBindsToMessageOverload()
     {
         // Same string caveat as Ok: Success(string successMessage) wins over Success<T>(T value).
-        Result result = Result.Success("saved");
+        var result = Result.Success("saved");
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal("saved", result.Message);

@@ -1064,36 +1064,41 @@ bound message before the handler runs. Use a `Before` middleware that returns
 enriched copy of the message. Generated endpoints place `HttpContext` in the
 call context, so middleware can declare an `HttpContext?` parameter:
 
+Declare the shared context on an abstract base record — `with` expressions on
+the base type preserve the derived runtime type, so one middleware enriches
+every message in the family with no per-message code:
+
 ```csharp
 using Foundatio.Mediator;
 using Microsoft.AspNetCore.Http;
 
+public abstract record TenantMessage
+{
+    public string? TenantId { get; init; }
+}
+
+public record CreateOrder(string Product) : TenantMessage;
+public record GetOrders() : TenantMessage;
+
 public static class TenantEnrichmentMiddleware
 {
-    public static HandlerResult Before(ITenantMessage message, HttpContext? httpContext)
+    public static HandlerResult Before(TenantMessage message, HttpContext? httpContext)
     {
         // Null outside an HTTP dispatch (e.g. queue or in-process) — the caller sets tenant context
-        if (httpContext is null)
+        string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+        if (tenantId is null)
             return HandlerResult.Continue();
 
-        string? tenantId = httpContext.User.FindFirst("tenant_id")?.Value;
-
-        return HandlerResult.ContinueWith(message switch
-        {
-            CreateOrder create => create with { TenantId = tenantId },
-            GetOrders query => query with { TenantId = tenantId },
-            _ => message
-        });
+        return HandlerResult.ContinueWith(message with { TenantId = tenantId });
     }
 }
 ```
 
 Because this is ordinary middleware, everything from the
-[middleware guide](/guide/middleware) applies: scope it to specific messages by
-typing the first parameter (an interface like `ITenantMessage` works well),
-order it relative to validation middleware with `[Middleware(OrderBefore = ...)]`,
-and it runs for **every** dispatch path — HTTP endpoints, queues, and in-process
-`InvokeAsync` calls alike.
+[middleware guide](/guide/middleware) applies: the base-typed first parameter
+scopes it to that message family, `[Middleware(OrderBefore = ...)]` orders it
+relative to validation middleware, and it runs for **every** dispatch path —
+HTTP endpoints, queues, and in-process `InvokeAsync` calls alike.
 
 ## Result to HTTP Status Mapping
 

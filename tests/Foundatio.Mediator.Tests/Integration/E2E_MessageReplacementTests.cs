@@ -119,6 +119,48 @@ public class E2E_MessageReplacementTests(ITestOutputHelper output) : TestWithLog
         Assert.Equal("unchanged", result);
     }
 
+    // ── Generic enrichment via abstract base record ────────────────────────
+
+    public abstract record TenantScopedMessage
+    {
+        public string TenantId { get; init; } = "";
+    }
+
+    public record CreateTenantWidget(string Name) : TenantScopedMessage;
+
+    public record RenameTenantWidget(string NewName) : TenantScopedMessage;
+
+    [Middleware]
+    public static class TenantScopedStampingMiddleware
+    {
+        // `with` on the base record type preserves the derived runtime type,
+        // so one middleware enriches every message in the family.
+        public static HandlerResult Before(TenantScopedMessage message)
+            => HandlerResult.ContinueWith(message with { TenantId = "stamped-tenant" });
+    }
+
+    public class TenantWidgetHandler
+    {
+        public string Handle(CreateTenantWidget command) => $"create:{command.Name}:{command.TenantId}";
+        public string Handle(RenameTenantWidget command) => $"rename:{command.NewName}:{command.TenantId}";
+    }
+
+    [Fact]
+    public async Task ContinueWith_BaseRecordWith_EnrichesDerivedMessagesGenerically()
+    {
+        var services = new ServiceCollection();
+        services.AddMediator(b => b.AddAssembly<TenantWidgetHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        var created = await mediator.InvokeAsync<string>(new CreateTenantWidget("w1"), TestCancellationToken);
+        var renamed = await mediator.InvokeAsync<string>(new RenameTenantWidget("w2"), TestCancellationToken);
+
+        Assert.Equal("create:w1:stamped-tenant", created);
+        Assert.Equal("rename:w2:stamped-tenant", renamed);
+    }
+
     // ── Endpoint: middleware stamps tenant from HttpContext ────────────────
 
     public record CreateStampedItem(string Name, string TenantId);

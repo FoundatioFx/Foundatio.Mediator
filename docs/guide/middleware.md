@@ -466,6 +466,30 @@ public static class TenantEnrichmentMiddleware
 }
 ```
 
+To enrich a whole family of messages with one middleware, declare the shared
+properties on an abstract base record and type the first parameter as the base —
+`with` expressions on a base record type preserve the derived runtime type:
+
+```csharp
+public abstract record TenantMessage
+{
+    public string? TenantId { get; init; }
+}
+
+public static class TenantEnrichmentMiddleware
+{
+    public static HandlerResult Before(TenantMessage message, HttpContext? httpContext)
+    {
+        string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+        if (tenantId is null)
+            return HandlerResult.Continue();
+
+        // Clones the actual derived record (CreateOrder, GetOrders, ...) — no switch needed
+        return HandlerResult.ContinueWith(message with { TenantId = tenantId });
+    }
+}
+```
+
 Key points:
 
 - The replacement must be of the **same type** as the original message.

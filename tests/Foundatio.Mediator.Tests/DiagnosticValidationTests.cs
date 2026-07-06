@@ -180,6 +180,62 @@ public class DiagnosticValidationTests(ITestOutputHelper output) : GeneratorTest
         Assert.Contains(genDiags, d => d.Id == "FMED015" && d.GetMessage().Contains("GetItemsHandler"));
     }
 
+    [Fact]
+    public void FMED015_ScopedPerInvokeHandlerReturnsDeferredResultInNonFirstTupleItem()
+    {
+        var src = """
+			using System.Linq;
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			public record GetItems;
+			public record ItemsQueried;
+
+			[Handler(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+			public class GetItemsHandler
+			{
+				// The deferred result is Item2 — reachable by callers via response-type dispatch
+				public (ItemsQueried, IQueryable<string>) Handle(GetItems m)
+					=> (new ItemsQueried(), new string[0].AsQueryable());
+			}
+			""";
+
+        var queryableReference = Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(IQueryable<>).Assembly.Location);
+        var (_, genDiags, _) = RunGenerator(src, [Gen], additionalReferences: [queryableReference]);
+        Assert.Contains(genDiags, d => d.Id == "FMED015" && d.GetMessage().Contains("IQueryable"));
+    }
+
+    [Fact]
+    public void FMED016_ScopedPerInvokeWithFireAndForgetCascades_WarnsAndAwaitsCascades()
+    {
+        var src = """
+			using System.Threading;
+			using System.Threading.Tasks;
+			using Foundatio.Mediator;
+
+			[assembly: MediatorConfiguration(NotificationPublishStrategy = NotificationPublishStrategy.FireAndForget)]
+
+			public record PlaceOrder;
+			public record OrderPlaced;
+
+			[Handler(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+			public class PlaceOrderHandler
+			{
+				public (string, OrderPlaced) Handle(PlaceOrder m) => ("ok", new OrderPlaced());
+			}
+			""";
+
+        var (_, genDiags, trees) = RunGenerator(src, [Gen]);
+        Assert.Contains(genDiags, d => d.Id == "FMED016" && d.GetMessage().Contains("PlaceOrderHandler"));
+
+        // The wrapper must await cascades instead of emitting fire-and-forget Task.Run,
+        // which would outlive the per-invocation scope and resolve from a disposed provider.
+        var wrapperSource = trees.First(t => t.HintName.StartsWith("PlaceOrderHandler")).Source;
+        Assert.DoesNotContain("Task.Run", wrapperSource);
+        Assert.Contains("await cascadeHandlers_", wrapperSource);
+    }
+
     // ── Call-site diagnostics ──────────────────────────────────────────────
 
     [Fact]

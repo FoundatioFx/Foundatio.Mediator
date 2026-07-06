@@ -229,6 +229,35 @@ public class E2E_ScopedPerInvokeTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     [Fact]
+    public async Task CascadingMessages_UntypedDispatchWithFireAndForgetPublisher_AwaitedWithinScope()
+    {
+        CascadeSourceHandler.Probes.Clear();
+        CascadedEventHandler.Probes.Clear();
+
+        var services = new ServiceCollection();
+        services.AddLogging(c => c.AddTestLogger(o => o.UseOutputHelper(() => _output)));
+        services.AddScoped<ScopedProbe>();
+        // Register the fire-and-forget publisher before AddMediator (which uses TryAddSingleton)
+        services.AddSingleton<INotificationPublisher>(new FireAndForgetPublisher());
+        services.AddMediator(b => b.AddAssembly<ScopedPerInvokeMessage>());
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+
+        // Statically-typed object forces the runtime registry dispatch (UntypedHandleAsync),
+        // whose cascades flow through the mediator's INotificationPublisher rather than the
+        // generated cascade loop.
+        object message = new CascadeSourceMessage("order");
+        await mediator.InvokeAsync<string>(message, TestContext.Current.CancellationToken);
+
+        // The scope-bound mediator swaps FireAndForgetPublisher for an awaited publisher, so the
+        // cascade must have completed inside the originating handler's scope by the time
+        // InvokeAsync returns — same probe instance, resolved while the scope was still alive.
+        var sourceProbe = Assert.Single(CascadeSourceHandler.Probes);
+        var cascadeProbe = Assert.Single(CascadedEventHandler.Probes);
+        Assert.Equal(sourceProbe.InstanceId, cascadeProbe.InstanceId);
+    }
+
+    [Fact]
     public async Task ScopedPerInvoke_SyncInvoke_FreshScopePerInvocationAndDisposed()
     {
         SyncScopedPerInvokeHandler.Probes.Clear();

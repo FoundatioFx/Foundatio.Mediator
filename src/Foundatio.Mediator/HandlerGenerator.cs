@@ -18,7 +18,7 @@ internal static class HandlerGenerator
         if (handlers.Count == 0)
             return;
 
-        Validate(context, handlers);
+        Validate(context, handlers, configuration);
 
         foreach (var handler in handlers)
         {
@@ -247,7 +247,7 @@ internal static class HandlerGenerator
 
             if (hasCascadingHandlers)
             {
-                string strategy = configuration.NotificationPublishStrategy ?? "ForeachAwait";
+                string strategy = GetCascadeStrategy(handler, configuration);
                 GenerateCascadingHandlerCalls(source, publishItems, allHandlers, strategy);
                 source.AppendLine();
             }
@@ -265,6 +265,19 @@ internal static class HandlerGenerator
     }
 
     /// <summary>
+    /// Resolves the cascade publish strategy for a handler. FireAndForget cascades run in
+    /// background tasks that can outlive a ScopedPerInvoke handler's DI scope and resolve from
+    /// a disposed provider, so ScopedPerInvoke handlers always await their cascades (FMED016).
+    /// </summary>
+    private static string GetCascadeStrategy(HandlerInfo handler, GeneratorConfiguration configuration)
+    {
+        string strategy = configuration.NotificationPublishStrategy ?? "ForeachAwait";
+        if (handler.IsScopedPerInvoke && strategy == "FireAndForget")
+            return "ForeachAwait";
+        return strategy;
+    }
+
+    /// <summary>
     /// Generates HandleItem2/HandleItem2Async, HandleItem3/HandleItem3Async, etc. for tuple handlers.
     /// Each method returns the Nth tuple item and cascades the rest.
     /// Methods are sync if the handler is sync and there are no async cascading handlers.
@@ -275,7 +288,7 @@ internal static class HandlerGenerator
             return;
 
         var tupleItems = handler.ReturnType.TupleItems;
-        string strategy = configuration.NotificationPublishStrategy ?? "ForeachAwait";
+        string strategy = GetCascadeStrategy(handler, configuration);
 
         // Generate a method for each non-first tuple item (index >= 1)
         for (int targetIndex = 1; targetIndex < tupleItems.Length; targetIndex++)
@@ -1572,7 +1585,7 @@ internal static class HandlerGenerator
         }
     }
 
-    private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers)
+    private static void Validate(SourceProductionContext context, List<HandlerInfo> handlers, GeneratorConfiguration configuration)
     {
         var processedMiddleware = new HashSet<MiddlewareInfo>();
         foreach (var handler in handlers)
@@ -1597,13 +1610,27 @@ internal static class HandlerGenerator
             }
 
             // FMED015: ScopedPerInvoke handler returns a deferred result that outlives the scope
-            if (handler.IsScopedPerInvoke && ReturnsDeferredResult(handler))
+            if (handler.IsScopedPerInvoke && GetDeferredResultType(handler) is { } deferredType)
             {
                 context.ReportDiagnostic(new DiagnosticInfo
                 {
                     Identifier = "FMED015",
                     Title = "ScopedPerInvoke handler returns a deferred result",
-                    Message = $"Handler '{handler.FullName}' uses MediatorLifetime.ScopedPerInvoke but returns '{handler.ReturnType.UnwrappedFullName}', which is typically enumerated after the invocation's DI scope is disposed and will likely throw ObjectDisposedException. Use an ambient lifetime (e.g. Scoped) for this handler or materialize the result before returning.",
+                    Message = $"Handler '{handler.FullName}' uses MediatorLifetime.ScopedPerInvoke but returns '{deferredType}', which is typically enumerated after the invocation's DI scope is disposed and will likely throw ObjectDisposedException. Use an ambient lifetime (e.g. Scoped) for this handler or materialize the result before returning.",
+                    Severity = DiagnosticSeverity.Warning
+                }.ToDiagnostic());
+            }
+
+            // FMED016: FireAndForget cascades would outlive a ScopedPerInvoke handler's scope,
+            // so the generated wrapper awaits them instead. Surface the strategy downgrade.
+            if (handler.IsScopedPerInvoke && handler.HasCascadingMessages &&
+                string.Equals(configuration.NotificationPublishStrategy, "FireAndForget", StringComparison.Ordinal))
+            {
+                context.ReportDiagnostic(new DiagnosticInfo
+                {
+                    Identifier = "FMED016",
+                    Title = "FireAndForget cascades are awaited for ScopedPerInvoke handlers",
+                    Message = $"Handler '{handler.FullName}' uses MediatorLifetime.ScopedPerInvoke with the FireAndForget notification publish strategy. Fire-and-forget cascades run in background tasks that would outlive the invocation's DI scope and resolve from a disposed provider, so cascading messages from this handler are awaited (ForeachAwait) before the scope is disposed.",
                     Severity = DiagnosticSeverity.Warning
                 }.ToDiagnostic());
             }
@@ -1613,11 +1640,14 @@ internal static class HandlerGenerator
     }
 
     /// <summary>
-    /// Whether the handler returns a lazily-evaluated result (IQueryable/IAsyncEnumerable) that is
-    /// typically enumerated by the caller after dispatch returns — incompatible with ScopedPerInvoke,
-    /// whose scope (and the services backing the result) is disposed when the invocation completes.
+    /// Returns the type name of a lazily-evaluated result (IQueryable/IAsyncEnumerable) the handler
+    /// can hand back to callers, or null if there is none. Such results are typically enumerated
+    /// after dispatch returns — incompatible with ScopedPerInvoke, whose scope (and the services
+    /// backing the result) is disposed when the invocation completes. For tuple returns, every
+    /// item is checked: any item can be returned to the caller via response-type dispatch
+    /// (HandleItem2+), not just the first.
     /// </summary>
-    private static bool ReturnsDeferredResult(HandlerInfo handler)
+    private static string? GetDeferredResultType(HandlerInfo handler)
     {
         static bool IsDeferred(string typeName) =>
             typeName.StartsWith("System.Linq.IQueryable", StringComparison.Ordinal) ||
@@ -1625,9 +1655,19 @@ internal static class HandlerGenerator
             typeName.StartsWith("System.Collections.Generic.IAsyncEnumerable<", StringComparison.Ordinal);
 
         if (handler.ReturnType.IsTuple)
-            return handler.ReturnType.TupleItems.Length > 0 && IsDeferred(handler.ReturnType.TupleItems[0].TypeFullName.TrimEnd('?'));
+        {
+            foreach (var item in handler.ReturnType.TupleItems)
+            {
+                string typeName = item.TypeFullName.TrimEnd('?');
+                if (IsDeferred(typeName))
+                    return typeName;
+            }
 
-        return IsDeferred(handler.ReturnType.UnwrappedFullName.TrimEnd('?'));
+            return null;
+        }
+
+        string unwrapped = handler.ReturnType.UnwrappedFullName.TrimEnd('?');
+        return IsDeferred(unwrapped) ? unwrapped : null;
     }
 
     private static void ValidateCallSites(SourceProductionContext context, List<HandlerInfo> handlers)

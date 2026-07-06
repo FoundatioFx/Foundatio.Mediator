@@ -32,6 +32,12 @@ public sealed class Mediator : IMediator, IServiceProvider
     /// <see cref="MediatorLifetime.ScopedPerInvoke"/> handlers so that nested and cascading
     /// dispatches resolve from the invocation's scope regardless of how <see cref="IMediator"/>
     /// itself is registered.
+    /// <para>
+    /// If the registered publisher is <see cref="FireAndForgetPublisher"/>, publishes through
+    /// this mediator are awaited (<see cref="ForeachAwaitPublisher"/>) instead: fire-and-forget
+    /// handlers run in background tasks that would outlive the invocation's DI scope and resolve
+    /// from a disposed provider.
+    /// </para>
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Mediator FromServiceProvider(IServiceProvider serviceProvider)
@@ -40,6 +46,10 @@ public sealed class Mediator : IMediator, IServiceProvider
             ?? throw new InvalidOperationException("HandlerRegistry is not registered. Call AddMediator() on the service collection.");
         var publisher = (INotificationPublisher?)serviceProvider.GetService(typeof(INotificationPublisher))
             ?? throw new InvalidOperationException("INotificationPublisher is not registered. Call AddMediator() on the service collection.");
+
+        if (publisher is FireAndForgetPublisher)
+            publisher = new ForeachAwaitPublisher();
+
         return new Mediator(registry, publisher, serviceProvider);
     }
 

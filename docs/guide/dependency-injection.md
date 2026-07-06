@@ -331,6 +331,12 @@ Scopes follow the dispatch tree:
 - **Handler-only.** `ScopedPerInvoke` on middleware reports warning `FMED014`
   and falls back to `Scoped` — middleware always executes inside the handler's
   pipeline scope.
+- **Fire-and-forget cascades are awaited.** With the `FireAndForget`
+  notification publish strategy, cascades run in background tasks that would
+  outlive the invocation's scope and resolve from a disposed provider. For
+  `ScopedPerInvoke` handlers, cascading messages are therefore always awaited
+  before the scope is disposed; the generator reports warning `FMED016` to
+  surface the strategy downgrade.
 - **Sync dispatch works too.** Synchronous `Invoke` uses a synchronous scope;
   scoped services that only implement `IAsyncDisposable` require the async
   path.

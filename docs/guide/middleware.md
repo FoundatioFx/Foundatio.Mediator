@@ -534,8 +534,10 @@ Key points:
 - Enrichment runs before later middleware, so order an enrichment middleware
   ahead of validation (`OrderBefore = [typeof(ValidationMiddleware)]`) and the
   validator sees the enriched message.
-- `ContinueWith(message, value)` also accepts an optional state value with the
-  same semantics as `Continue(value)` — it is passed to `After`/`Finally`.
+- [State passing](#state-passing-between-lifecycle-methods) into
+  `After`/`Finally` only applies to non-`HandlerResult` `Before` return values,
+  so a replacing middleware can't also pass typed state — if `After`/`Finally`
+  need extra context, carry it on the message itself.
 - Works on every dispatch path (HTTP endpoints, queues, in-process
   `InvokeAsync`). In endpoint scenarios an `HttpContext?` parameter resolves
   from the call context; it is `null` for non-HTTP dispatch.

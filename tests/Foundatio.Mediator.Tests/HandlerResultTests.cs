@@ -17,18 +17,6 @@ public class HandlerResultTests
     }
 
     [Fact]
-    public void ContinueWith_WithValue_SetsBothReplacementAndValue()
-    {
-        var replacement = new TestMessage("enriched");
-
-        var result = HandlerResult.ContinueWith(replacement, "state");
-
-        Assert.False(result.IsShortCircuited);
-        Assert.Same(replacement, result.ReplacementMessage);
-        Assert.Equal("state", result.Value);
-    }
-
-    [Fact]
     public void ContinueWith_NullMessage_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => HandlerResult.ContinueWith(null!));
@@ -48,11 +36,10 @@ public class HandlerResultTests
     {
         var replacement = new TestMessage("enriched");
 
-        HandlerResult result = HandlerResult<string>.ContinueWith(replacement, "state");
+        HandlerResult result = HandlerResult<string>.ContinueWith(replacement);
 
         Assert.False(result.IsShortCircuited);
         Assert.Same(replacement, result.ReplacementMessage);
-        Assert.Equal("state", result.Value);
     }
 
     [Fact]

@@ -42,14 +42,13 @@ public readonly struct HandlerResult : IEquatable<HandlerResult>
     /// (e.g. a record <c>with</c> expression stamping tenant or user context).
     /// </summary>
     /// <param name="message">The message to dispatch. Must be of the same type as the original message.</param>
-    /// <param name="value">Optional value to pass to After/Finally middleware.</param>
     /// <returns>A handler result that continues execution with the replacement message.</returns>
-    public static HandlerResult ContinueWith(object message, object? value = null)
+    public static HandlerResult ContinueWith(object message)
     {
         if (message is null)
             throw new ArgumentNullException(nameof(message));
 
-        return new(value, false, message);
+        return new(null, false, message);
     }
 
     /// <summary>
@@ -134,14 +133,13 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
     /// replacement instead of the original message.
     /// </summary>
     /// <param name="message">The message to dispatch. Must be of the same type as the original message.</param>
-    /// <param name="value">Optional value to pass to After/Finally middleware.</param>
     /// <returns>A handler result that continues execution with the replacement message.</returns>
-    public static HandlerResult<T> ContinueWith(object message, T value = default!)
+    public static HandlerResult<T> ContinueWith(object message)
     {
         if (message is null)
             throw new ArgumentNullException(nameof(message));
 
-        return new(value, false, message);
+        return new(default!, false, message);
     }
 
     /// <summary>
@@ -166,7 +164,7 @@ public readonly struct HandlerResult<T> : IEquatable<HandlerResult<T>>
 
         return ReplacementMessage is null
             ? HandlerResult.Continue((object?)Value)
-            : HandlerResult.ContinueWith(ReplacementMessage, (object?)Value);
+            : HandlerResult.ContinueWith(ReplacementMessage);
     }
 
     /// <summary>

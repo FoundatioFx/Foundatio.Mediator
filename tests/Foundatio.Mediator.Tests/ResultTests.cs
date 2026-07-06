@@ -726,7 +726,7 @@ public class ResultTests
         var widget = new Widget(1, "Gear");
 
         // No explicit Result<Widget> — T is inferred from the argument
-        Result<Widget> result = Result.Created(widget);
+        var result = Result.Created(widget);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ResultStatus.Created, result.Status);
@@ -739,7 +739,7 @@ public class ResultTests
     {
         var widget = new Widget(1, "Gear");
 
-        Result<Widget> result = Result.Created(widget, "/widgets/1");
+        var result = Result.Created(widget, "/widgets/1");
 
         Assert.Equal(ResultStatus.Created, result.Status);
         Assert.Same(widget, result.Value);
@@ -751,7 +751,7 @@ public class ResultTests
     {
         var widget = new Widget(2, "Sprocket");
 
-        Result<Widget> result = Result.Ok(widget);
+        var result = Result.Ok(widget);
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Same(widget, result.Value);
@@ -762,7 +762,7 @@ public class ResultTests
     {
         var widget = new Widget(2, "Sprocket");
 
-        Result<Widget> result = Result.Ok(widget, "found it");
+        var result = Result.Ok(widget, "found it");
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Same(widget, result.Value);
@@ -774,7 +774,7 @@ public class ResultTests
     {
         var widget = new Widget(3, "Cog");
 
-        Result<Widget> result = Result.Success(widget);
+        var result = Result.Success(widget);
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Same(widget, result.Value);
@@ -785,7 +785,7 @@ public class ResultTests
     {
         var widget = new Widget(3, "Cog");
 
-        Result<Widget> result = Result.Success(widget, "done");
+        var result = Result.Success(widget, "done");
 
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Same(widget, result.Value);

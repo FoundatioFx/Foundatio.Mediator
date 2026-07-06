@@ -490,6 +490,36 @@ public static class TenantEnrichmentMiddleware
 }
 ```
 
+Prefer an interface (e.g. when messages already have a base class, or one message
+belongs to several enrichment facets)? `with` expressions don't work through
+interfaces, so declare a self-copy method that each record implements as a
+one-liner — the `with` lives inside the record where the concrete type is known:
+
+```csharp
+public interface ITenantMessage
+{
+    string? TenantId { get; }
+    ITenantMessage WithTenantId(string tenantId);
+}
+
+public record CreateOrder(string Product) : ITenantMessage
+{
+    public string? TenantId { get; init; }
+    public ITenantMessage WithTenantId(string tenantId) => this with { TenantId = tenantId };
+}
+```
+
+```csharp
+public static HandlerResult Before(ITenantMessage message, HttpContext? httpContext)
+{
+    string? tenantId = httpContext?.User.FindFirst("tenant_id")?.Value;
+    if (tenantId is null)
+        return HandlerResult.Continue();
+
+    return HandlerResult.ContinueWith(message.WithTenantId(tenantId));
+}
+```
+
 Key points:
 
 - The replacement must be of the **same type** as the original message.

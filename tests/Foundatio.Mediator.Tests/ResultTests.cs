@@ -717,4 +717,110 @@ public class ResultTests
         Assert.Equal("application/octet-stream", fileResult.ContentType);
         Assert.Null(fileResult.FileName);
     }
+
+    public record Widget(int Id, string Name);
+
+    [Fact]
+    public void Created_WithValue_InfersTypeAndSetsValue()
+    {
+        var widget = new Widget(1, "Gear");
+
+        // No explicit Result<Widget> — T is inferred from the argument
+        var result = Result.Created(widget);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ResultStatus.Created, result.Status);
+        Assert.Same(widget, result.Value);
+        Assert.Empty(result.Location);
+    }
+
+    [Fact]
+    public void Created_WithValueAndLocation_SetsBoth()
+    {
+        var widget = new Widget(1, "Gear");
+
+        var result = Result.Created(widget, "/widgets/1");
+
+        Assert.Equal(ResultStatus.Created, result.Status);
+        Assert.Same(widget, result.Value);
+        Assert.Equal("/widgets/1", result.Location);
+    }
+
+    [Fact]
+    public void Ok_WithValue_InfersTypeAndSetsValue()
+    {
+        var widget = new Widget(2, "Sprocket");
+
+        var result = Result.Ok(widget);
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Same(widget, result.Value);
+    }
+
+    [Fact]
+    public void Ok_WithValueAndMessage_SetsBoth()
+    {
+        var widget = new Widget(2, "Sprocket");
+
+        var result = Result.Ok(widget, "found it");
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Same(widget, result.Value);
+        Assert.Equal("found it", result.Message);
+    }
+
+    [Fact]
+    public void Success_WithValue_IsAliasForOk()
+    {
+        var widget = new Widget(3, "Cog");
+
+        var result = Result.Success(widget);
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Same(widget, result.Value);
+    }
+
+    [Fact]
+    public void Success_WithValueAndMessage_SetsBoth()
+    {
+        var widget = new Widget(3, "Cog");
+
+        var result = Result.Success(widget, "done");
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Same(widget, result.Value);
+        Assert.Equal("done", result.Message);
+    }
+
+    [Fact]
+    public void Created_WithStringArgument_StillBindsToLocationOverload()
+    {
+        // Documents overload resolution for T = string: the non-generic Created(string location)
+        // is preferred over Created<T>(T value), so the argument is a location, not a value.
+        // Use Result<string>.Created(value) when a string *value* is intended.
+        Result result = Result.Created("/orders/1");
+
+        Assert.Equal(ResultStatus.Created, result.Status);
+        Assert.Equal("/orders/1", result.Location);
+    }
+
+    [Fact]
+    public void Ok_WithStringArgument_StillBindsToMessageOverload()
+    {
+        // Same string caveat as Created: Ok(string message) wins over Ok<T>(T value).
+        Result result = Result.Ok("all good");
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal("all good", result.Message);
+    }
+
+    [Fact]
+    public void Success_WithStringArgument_StillBindsToMessageOverload()
+    {
+        // Same string caveat as Ok: Success(string successMessage) wins over Success<T>(T value).
+        Result result = Result.Success("saved");
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal("saved", result.Message);
+    }
 }

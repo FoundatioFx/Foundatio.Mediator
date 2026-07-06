@@ -61,6 +61,36 @@ public class BasicHandlerGenerationTests(ITestOutputHelper output) : GeneratorTe
     }
 
     /// <summary>
+    /// ScopedPerInvoke lifetime with constructor DI and a cascading tuple return, OTel disabled.
+    /// Exercises: per-invocation DI scope creation (await using scope), mediator rebinding via
+    /// Mediator.FromServiceProvider, cascading messages dispatched through the scope-bound mediator.
+    /// </summary>
+    [Fact]
+    public async Task ScopedPerInvokeHandler_NoOTel()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(DisableOpenTelemetry = true)]
+
+            public record PlaceOrder(int Id);
+            public record OrderPlaced(int Id);
+            public class OrderService { public string Place(int id) => $"Order-{id}"; }
+
+            [Handler(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+            public class PlaceOrderHandler(OrderService orders)
+            {
+                public Task<(string, OrderPlaced)> HandleAsync(PlaceOrder command, CancellationToken ct)
+                    => Task.FromResult((orders.Place(command.Id), new OrderPlaced(command.Id)));
+            }
+            """;
+
+        await VerifyGenerated(source, new MediatorGenerator());
+    }
+
+    /// <summary>
     /// Handler with Before/After/Finally middleware, OTel disabled.
     /// Exercises: middleware instance creation, Before state passing to After/Finally,
     /// try-catch-finally pipeline wrapping, middleware parameter resolution.

@@ -263,6 +263,9 @@ internal static class FoundatioModuleGenerator
             return "TryAddTransient";
         if (String.Equals(lifetime, "Scoped", StringComparison.OrdinalIgnoreCase))
             return "TryAddScoped";
+        // ScopedPerInvoke registers as Scoped; the generated wrapper owns the per-invocation scope
+        if (String.Equals(lifetime, "ScopedPerInvoke", StringComparison.OrdinalIgnoreCase))
+            return "TryAddScoped";
         if (String.Equals(lifetime, "Singleton", StringComparison.OrdinalIgnoreCase))
             return "TryAddSingleton";
         // None or unknown - default to Singleton for performance

@@ -284,4 +284,5 @@ internal static class WellKnownTypes
     public const string LifetimeTransient = "Transient";
     public const string LifetimeScoped = "Scoped";
     public const string LifetimeSingleton = "Singleton";
+    public const string LifetimeScopedPerInvoke = "ScopedPerInvoke";
 }

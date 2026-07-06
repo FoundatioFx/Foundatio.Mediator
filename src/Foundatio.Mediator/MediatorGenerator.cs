@@ -132,10 +132,12 @@ public sealed class MediatorGenerator : IIncrementalGenerator
                         disableInterceptors = b;
                         break;
                     case "HandlerLifetime" when arg.Value.Value is int v:
-                        handlerLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, _ => WellKnownTypes.LifetimeNone };
+                        handlerLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, 4 => WellKnownTypes.LifetimeScopedPerInvoke, _ => WellKnownTypes.LifetimeNone };
                         break;
                     case "MiddlewareLifetime" when arg.Value.Value is int v:
-                        middlewareLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, _ => WellKnownTypes.LifetimeNone };
+                        // ScopedPerInvoke is handler-only; middleware always executes inside the handler's pipeline,
+                        // so the nearest valid lifetime (Scoped) is used instead.
+                        middlewareLifetime = v switch { 1 => WellKnownTypes.LifetimeTransient, 2 or 4 => WellKnownTypes.LifetimeScoped, 3 => WellKnownTypes.LifetimeSingleton, _ => WellKnownTypes.LifetimeNone };
                         break;
                     case "DisableOpenTelemetry" when arg.Value.Value is bool b:
                         disableOpenTelemetry = b;

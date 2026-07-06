@@ -81,6 +81,7 @@ Middleware lifetime follows the same rules as handler lifetime:
 | **Scoped**                               | Resolved from DI on every invocation                             |
 | **Transient**                            | Resolved from DI on every invocation                             |
 | **Singleton**                            | Resolved from DI on every invocation (DI handles caching)        |
+| **ScopedPerInvoke**                      | The mediator creates a fresh DI scope per invocation and resolves the entire pipeline from it |
 | **None/Default** (no constructor deps)   | Created once with `new()` and cached in static field             |
 | **None/Default** (with constructor deps) | Created once with `ActivatorUtilities.CreateInstance` and cached |
 
@@ -163,6 +164,9 @@ using Foundatio.Mediator;
 - `MediatorLifetime.Scoped` - Handlers registered as scoped services
 - `MediatorLifetime.Transient` - Handlers registered as transient services
 - `MediatorLifetime.Singleton` - Handlers registered as singleton services
+- `MediatorLifetime.ScopedPerInvoke` - Handlers registered as scoped services,
+  and the mediator creates a fresh DI scope for every invocation (see
+  [Scope-Per-Invoke Isolation](#scope-per-invoke-isolation-scopedperinvoke))
 
 **What this does:**
 
@@ -255,6 +259,87 @@ public class ScopedHandler
 - `MediatorLifetime.Transient` - New instance per request
 - `MediatorLifetime.Scoped` - Same instance within a scope
 - `MediatorLifetime.Singleton` - Single instance for application lifetime
+- `MediatorLifetime.ScopedPerInvoke` - Fresh DI scope per invocation, owned by
+  the mediator
+
+## Scope-Per-Invoke Isolation (`ScopedPerInvoke`)
+
+By default the mediator dispatches in the **caller's ambient DI scope** — scope
+management is the caller's responsibility. `ScopedPerInvoke` flips that
+contract for a handler: the mediator opens a **fresh DI scope for every
+invocation**, resolves the entire pipeline from it (middleware and handler,
+including their dependencies), and disposes the scope when the invocation —
+including any cascading messages — completes.
+
+This matches the scope-per-message semantics of bus-style libraries like
+**MassTransit's mediator** and **Wolverine**. Handlers written against those
+libraries often assume isolated scoped dependencies per dispatch — most
+commonly a fresh `DbContext` with its own change tracker, so a nested
+handler's `SaveChanges` can't flush the parent's half-built entities.
+
+```csharp
+// Fresh DbContext per dispatch, no matter who calls it or from what scope
+[Handler(Lifetime = MediatorLifetime.ScopedPerInvoke)]
+public class ProcessPaymentHandler(PaymentDbContext db)
+{
+    public async Task<Result> HandleAsync(ProcessPayment command, CancellationToken ct)
+    {
+        // This DbContext belongs to this invocation only
+        db.Payments.Add(new Payment(command.Id));
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+Migrating a whole project from MassTransit or Wolverine? Flip the default for
+the assembly and opt individual handlers back out as needed:
+
+```csharp
+[assembly: MediatorConfiguration(HandlerLifetime = MediatorLifetime.ScopedPerInvoke)]
+
+// Opts back into the ambient scope (e.g., returns a deferred IQueryable that
+// must outlive the dispatch)
+[Handler(Lifetime = MediatorLifetime.Scoped)]
+public class SearchProductsHandler(CatalogDbContext db)
+{
+    public IQueryable<Product> Handle(SearchProducts query) =>
+        db.Products.Where(p => p.Name.Contains(query.Term));
+}
+```
+
+### Scope Semantics
+
+Scopes follow the dispatch tree:
+
+- **Nested dispatches** (via an injected `IMediator`) from a `ScopedPerInvoke`
+  handler use its scope as their ambient scope.
+- **Cascading messages** returned in a tuple are published within the
+  originating handler's scope, which stays alive until they complete.
+- Targets that are themselves `ScopedPerInvoke` always open their **own**
+  fresh scope — nested, cascaded, or top-level.
+- With `PublishAsync`, each `ScopedPerInvoke` subscriber gets its own scope
+  while ambient subscribers share the caller's.
+
+### Things to Know
+
+- **Deferred results don't survive the scope.** A `ScopedPerInvoke` handler
+  returning `IQueryable<T>` or `IAsyncEnumerable<T>` hands back a result whose
+  backing services are disposed before it's enumerated — expect
+  `ObjectDisposedException`. The generator reports warning `FMED015` for this;
+  use an ambient lifetime for those handlers instead.
+- **Handler-only.** `ScopedPerInvoke` on middleware reports warning `FMED014`
+  and falls back to `Scoped` — middleware always executes inside the handler's
+  pipeline scope.
+- **Fire-and-forget cascades are awaited.** With the `FireAndForget`
+  notification publish strategy, cascades run in background tasks that would
+  outlive the invocation's scope and resolve from a disposed provider. For
+  `ScopedPerInvoke` handlers, cascading messages are therefore always awaited
+  before the scope is disposed; the generator reports warning `FMED016` to
+  surface the strategy downgrade.
+- **Sync dispatch works too.** Synchronous `Invoke` uses a synchronous scope;
+  scoped services that only implement `IAsyncDisposable` require the async
+  path.
 
 ## Constructor Injection (Use with Caution)
 

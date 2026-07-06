@@ -185,7 +185,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
                 public Result<OrderView> Handle(CreateOrder command)
                 {
                     var order = new OrderView("1", command.Name);
-                    return Result.Created(order);
+                    return Result<OrderView>.Created(order);
                 }
             }
             """;
@@ -945,7 +945,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
             public class ProductHandler
             {
                 public Result<string> Handle(CreateProduct command)
-                    => Result.Created(command.Name, "/products/1");
+                    => Result<string>.Created(command.Name, "/products/1");
             }
             """;
 

@@ -61,3 +61,6 @@ nul
 
 "samples/CleanArchitectureSample/src/Web/obj//Debug/
 
+
+# obj directory with mangled backslash path emitted by some build targets on Linux
+[Oo]bj\\*/

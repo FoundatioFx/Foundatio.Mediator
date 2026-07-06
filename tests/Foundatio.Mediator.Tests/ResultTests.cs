@@ -813,4 +813,14 @@ public class ResultTests
         Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal("all good", result.Message);
     }
+
+    [Fact]
+    public void Success_WithStringArgument_StillBindsToMessageOverload()
+    {
+        // Same string caveat as Ok: Success(string successMessage) wins over Success<T>(T value).
+        Result result = Result.Success("saved");
+
+        Assert.Equal(ResultStatus.Ok, result.Status);
+        Assert.Equal("saved", result.Message);
+    }
 }

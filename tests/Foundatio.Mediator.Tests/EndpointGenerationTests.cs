@@ -198,7 +198,7 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
 
         // The inferred form must bind for real — guard against error-recovery false positives
         // (the harness only asserts diagnostics for generated files, not the input source).
-        var inputErrors = compilation.GetDiagnostics()
+        var inputErrors = compilation.GetDiagnostics(TestContext.Current.CancellationToken)
             .Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.SourceTree?.FilePath.EndsWith(".g.cs") != true)
             .ToList();
         Assert.Empty(inputErrors);

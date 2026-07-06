@@ -101,10 +101,12 @@ return Result.NoContent();
 return user; // Automatically becomes Result<User>.Success(user)
 ```
 
-> **String values:** for `Result<string>`, calls like `Result.Created("...")` and
-> `Result.Ok("...")` bind to the non-generic overloads, where the string argument
-> means *location* and *message* respectively. Use `Result<string>.Created(value)`
-> / `Result<string>.Ok(value)` when the string is the result value.
+> **String values:** for `Result<string>`, calls like `Result.Created("...")`,
+> `Result.Ok("...")`, and `Result.Success("...")` bind to the non-generic
+> overloads, where the string argument means *location* (for `Created`) or
+> *message* (for `Ok`/`Success`). Use `Result<string>.Created(value)` /
+> `Result<string>.Ok(value)` / `Result<string>.Success(value)` when the string
+> is the result value.
 
 ### File Results
 

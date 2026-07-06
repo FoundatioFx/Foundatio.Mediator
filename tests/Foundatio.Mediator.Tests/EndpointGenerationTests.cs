@@ -185,7 +185,8 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
                 public Result<OrderView> Handle(CreateOrder command)
                 {
                     var order = new OrderView("1", command.Name);
-                    return Result<OrderView>.Created(order);
+                    // Type argument inferred via Result.Created<T>(T value)
+                    return Result.Created(order);
                 }
             }
             """;
@@ -193,7 +194,15 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         var refs = GetAspNetCoreReferences();
         if (refs.Length == 0) return;
 
-        var (_, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var (compilation, _, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+
+        // The inferred form must bind for real — guard against error-recovery false positives
+        // (the harness only asserts diagnostics for generated files, not the input source).
+        var inputErrors = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.SourceTree?.FilePath.EndsWith(".g.cs") != true)
+            .ToList();
+        Assert.Empty(inputErrors);
+
         var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
 
         Assert.NotNull(endpointSource);

@@ -85,10 +85,11 @@ public enum ResultStatus
 ```csharp
 // Simple success
 return Result.Success();
-return Result<User>.Success(user);
+return Result.Success(user);   // T inferred — same as Result<User>.Success(user)
 
-// Created with location
-return Result<Order>.Created(order, $"/orders/{order.Id}");
+// Created with the new value (T inferred from the argument)
+return Result.Created(order);
+return Result.Created(order, $"/orders/{order.Id}");
 
 // Accepted for deferred processing
 return Result.Accepted("Order queued", $"/orders/{order.Id}/status");
@@ -99,6 +100,11 @@ return Result.NoContent();
 // Implicit conversion from value
 return user; // Automatically becomes Result<User>.Success(user)
 ```
+
+> **String values:** for `Result<string>`, calls like `Result.Created("...")` and
+> `Result.Ok("...")` bind to the non-generic overloads, where the string argument
+> means *location* and *message* respectively. Use `Result<string>.Created(value)`
+> / `Result<string>.Ok(value)` when the string is the result value.
 
 ### File Results
 

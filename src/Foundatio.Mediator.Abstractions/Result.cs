@@ -95,6 +95,30 @@ public sealed class Result : IResult
     };
 
     /// <summary>
+    /// Creates a successful result with a value. Equivalent to <see cref="Result{T}.Ok(T)"/>
+    /// with the value type inferred from the argument.
+    /// <para>
+    /// Note: when the value is a <see cref="string"/>, overload resolution prefers
+    /// <see cref="Ok(string)"/> and the argument is treated as the success message —
+    /// use <c>Result&lt;string&gt;.Ok(value)</c> to be explicit.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="value">The result value.</param>
+    /// <returns>A successful result with a value.</returns>
+    public static Result<T> Ok<T>(T value) => Result<T>.Ok(value);
+
+    /// <summary>
+    /// Creates a successful result with a value and a message. Equivalent to
+    /// <see cref="Result{T}.Ok(T, string)"/> with the value type inferred from the argument.
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="value">The result value.</param>
+    /// <param name="message">The success message.</param>
+    /// <returns>A successful result with a value and a message.</returns>
+    public static Result<T> Ok<T>(T value, string message) => Result<T>.Ok(value, message);
+
+    /// <summary>
     /// Creates a successful result. Alias for <see cref="Ok()"/>.
     /// </summary>
     /// <returns>A successful result.</returns>
@@ -106,6 +130,28 @@ public sealed class Result : IResult
     /// <param name="successMessage">The success message.</param>
     /// <returns>A successful result with a message.</returns>
     public static Result Success(string successMessage) => Ok(successMessage);
+
+    /// <summary>
+    /// Creates a successful result with a value. Alias for <see cref="Ok{T}(T)"/>.
+    /// <para>
+    /// Note: when the value is a <see cref="string"/>, overload resolution prefers
+    /// <see cref="Success(string)"/> and the argument is treated as the success message —
+    /// use <c>Result&lt;string&gt;.Success(value)</c> to be explicit.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="value">The result value.</param>
+    /// <returns>A successful result with a value.</returns>
+    public static Result<T> Success<T>(T value) => Result<T>.Success(value);
+
+    /// <summary>
+    /// Creates a successful result with a value and a message. Alias for <see cref="Ok{T}(T, string)"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="value">The result value.</param>
+    /// <param name="successMessage">The success message.</param>
+    /// <returns>A successful result with a value and a message.</returns>
+    public static Result<T> Success<T>(T value, string successMessage) => Result<T>.Success(value, successMessage);
 
     /// <summary>
     /// Creates a result indicating successful creation of a resource.
@@ -159,6 +205,31 @@ public sealed class Result : IResult
         Status = ResultStatus.Created,
         Location = location
     };
+
+    /// <summary>
+    /// Creates a result indicating successful creation of a resource with the created value.
+    /// Equivalent to <see cref="Result{T}.Created(T)"/> with the value type inferred from the argument.
+    /// <para>
+    /// Note: when the value is a <see cref="string"/>, overload resolution prefers
+    /// <see cref="Created(string)"/> and the argument is treated as the location —
+    /// use <c>Result&lt;string&gt;.Created(value)</c> to be explicit.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">The type of the created value.</typeparam>
+    /// <param name="value">The created value.</param>
+    /// <returns>A result with Created status and a value.</returns>
+    public static Result<T> Created<T>(T value) => Result<T>.Created(value);
+
+    /// <summary>
+    /// Creates a result indicating successful creation of a resource with the created value and
+    /// its location. Equivalent to <see cref="Result{T}.Created(T, string)"/> with the value type
+    /// inferred from the argument.
+    /// </summary>
+    /// <typeparam name="T">The type of the created value.</typeparam>
+    /// <param name="value">The created value.</param>
+    /// <param name="location">The location of the created resource.</param>
+    /// <returns>A result with Created status, a value, and a location.</returns>
+    public static Result<T> Created<T>(T value, string location) => Result<T>.Created(value, location);
 
     /// <summary>
     /// Creates a result indicating no content.

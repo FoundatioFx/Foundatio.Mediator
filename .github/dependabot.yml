@@ -7,3 +7,9 @@ updates:
     interval: weekly
   cooldown:
     default-days: 7
+  ignore:
+    # Pinned to 5.0.0 (#269): newer Roslyn requires SDK 10.0.3xx+ and breaks the
+    # generator (CS9057) on older .NET 10 SDKs. Bump manually with SDK 10.0.1xx verification.
+    - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+    - dependency-name: "Microsoft.CodeAnalysis.CSharp.Workspaces"
+    - dependency-name: "Microsoft.CodeAnalysis.Common"

@@ -13,8 +13,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Analyzers is exempt from the 5.0.0 pin below: it only lints this project's own code at
+         build time (never shipped, never loaded by consumer compilers) and has no 5.0.0 release. -->
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" PrivateAssets="all" />
+    <!-- Pinned to 5.0.0 (#269): the code fixes bind against this at load time, and 5.3.0 requires
+         SDK 10.0.3xx+ — older .NET 10 SDKs get CS9057 and the code fixes silently don't load.
+         Do not bump without verifying on SDK 10.0.1xx. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

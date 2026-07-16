@@ -631,7 +631,8 @@ internal static class EndpointGenerator
         var route = routeOverride ?? GenerateRelativeRoute(endpoint);
         var wrapperClassName = HandlerGenerator.GetHandlerClassName(handler);
 
-        // Determine the Map method
+        // Determine the Map method. ASP.NET Core does not expose a MapQuery convenience method,
+        // so QUERY uses the generic MapMethods API.
         string mapMethod = httpMethod switch
         {
             "GET" => "MapGet",
@@ -639,6 +640,7 @@ internal static class EndpointGenerator
             "PUT" => "MapPut",
             "DELETE" => "MapDelete",
             "PATCH" => "MapPatch",
+            "QUERY" => "MapMethods",
             _ => "MapPost"
         };
 
@@ -657,6 +659,9 @@ internal static class EndpointGenerator
             source.Append($"var {epVarName} = {groupVarName}.{mapMethod}(\"{route}\", ");
         else
             source.Append($"{groupVarName}.{mapMethod}(\"{route}\", ");
+
+        if (httpMethod == "QUERY")
+            source.Append("new[] { \"QUERY\" }, ");
 
         // Generate the lambda
         GenerateEndpointLambda(source, handler, endpoint, hasAsParametersAttribute, hasFromBodyAttribute, wrapperClassName, assemblySuffix);

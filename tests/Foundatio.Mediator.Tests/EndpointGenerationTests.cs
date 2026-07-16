@@ -7,6 +7,49 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
     private static readonly MediatorGenerator Gen = new();
 
     [Fact]
+    public void QueryMethod_UsesMapMethodsAndAlwaysBindsRequestContentFromBody()
+    {
+        var source = """
+            using Foundatio.Mediator;
+
+            [assembly: MediatorConfiguration(EndpointDiscovery = EndpointDiscovery.All)]
+
+            public record SearchCatalog(string Term, int Limit);
+            public record ExecuteCatalog(string CatalogId);
+            public record QueryCatalogById(string Id);
+
+            public class CatalogHandler
+            {
+                [HandlerEndpoint(HandlerMethod.Query, "search")]
+                public string[] Handle(SearchCatalog query) => [];
+
+                [HandlerEndpoint(HandlerMethod.Query)]
+                public string[] Handle(ExecuteCatalog query) => [];
+
+                [HandlerEndpoint(HandlerMethod.Query, "{id}")]
+                public string[] Handle(QueryCatalogById query) => [];
+            }
+            """;
+
+        var refs = GetAspNetCoreReferences();
+        if (refs.Length == 0) return;
+
+        var (_, diagnostics, trees) = RunGenerator(source, [Gen], additionalReferences: refs);
+        var endpointSource = trees.FirstOrDefault(t => t.HintName == "_MediatorEndpoints.g.cs").Source;
+
+        Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.NotNull(endpointSource);
+        Assert.Equal(3, endpointSource!.Split("new[] { \"QUERY\" }").Length - 1);
+        Assert.Equal(3, endpointSource.Split("[Microsoft.AspNetCore.Mvc.FromBody]").Length - 1);
+        Assert.Contains("SearchCatalog message", endpointSource);
+        Assert.Contains("ExecuteCatalog message", endpointSource);
+        Assert.Contains("QueryCatalogById message", endpointSource);
+        AssertEndpoint(endpointSource, "QUERY", "/api/catalogs/search");
+        AssertEndpoint(endpointSource, "QUERY", "/api/catalogs/{catalogId}/execute");
+        AssertEndpoint(endpointSource, "QUERY", "/api/catalogs/{id}");
+    }
+
+    [Fact]
     public void GlobalRoutePrefix_GeneratesNestedMapGroup()
     {
         var source = """
@@ -3769,4 +3812,3 @@ public class EndpointGenerationTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.DoesNotContain(".DisableAntiforgery()", endpointSource);
     }
 }
-

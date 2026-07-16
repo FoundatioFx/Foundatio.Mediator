@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text;
 using Foundatio.Xunit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -31,6 +32,14 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
             => httpContext.Request.Path.Value ?? "(null)";
     }
 
+    public record QueryEndpointRequest(string Term);
+
+    public class QueryEndpointHandler
+    {
+        [HandlerEndpoint(HandlerMethod.Query, "/query-endpoint-test")]
+        public string Handle(QueryEndpointRequest query) => $"result:{query.Term}";
+    }
+
     // ── Tests ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -53,6 +62,74 @@ public class E2E_EndpointCallContextTests(ITestOutputHelper output) : TestWithLo
 
         var result = await response.Content.ReadFromJsonAsync<string>(TestCancellationToken);
         Assert.Equal("/api/request-paths", result);
+    }
+
+    [Fact]
+    public async Task Endpoint_Query_BindsRequestContentAndInvokesHandler()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddMediator(b => b.AddAssembly<QueryEndpointHandler>());
+
+        await using var app = builder.Build();
+        app.MapMediatorEndpoints();
+        await app.StartAsync(TestCancellationToken);
+
+        var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(new HttpMethod("QUERY"), "/query-endpoint-test")
+        {
+            Content = JsonContent.Create(new { Term = "widgets" })
+        };
+
+        var response = await client.SendAsync(request, TestCancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<string>(TestCancellationToken);
+        Assert.Equal("result:widgets", result);
+    }
+
+    [Fact]
+    public async Task Endpoint_QueryWithoutContentType_FailsRequest()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddMediator(b => b.AddAssembly<QueryEndpointHandler>());
+
+        await using var app = builder.Build();
+        app.MapMediatorEndpoints();
+        await app.StartAsync(TestCancellationToken);
+
+        var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(new HttpMethod("QUERY"), "/query-endpoint-test")
+        {
+            Content = new ByteArrayContent(Encoding.UTF8.GetBytes("{\"term\":\"widgets\"}"))
+        };
+
+        var response = await client.SendAsync(request, TestCancellationToken);
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Endpoint_QueryWithInvalidJson_FailsRequest()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddMediator(b => b.AddAssembly<QueryEndpointHandler>());
+
+        await using var app = builder.Build();
+        app.MapMediatorEndpoints();
+        await app.StartAsync(TestCancellationToken);
+
+        var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(new HttpMethod("QUERY"), "/query-endpoint-test")
+        {
+            Content = new StringContent("not-json", Encoding.UTF8, "application/json")
+        };
+
+        var response = await client.SendAsync(request, TestCancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     // ── POST with [FromHeader] on message property ─────────────────────────

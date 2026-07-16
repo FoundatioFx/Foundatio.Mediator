@@ -515,7 +515,7 @@ internal static class RouteConventions
 
         // ── From [HandlerEndpoint] ─────────────────────────────────
 
-        /// <summary>HTTP method override (1=GET,2=POST,3=PUT,4=DELETE,5=PATCH, 0=auto).</summary>
+        /// <summary>HTTP method override (1=GET,2=POST,3=PUT,4=DELETE,5=PATCH,6=QUERY, 0=auto).</summary>
         public int HttpMethodEnum { get; init; }
 
         /// <summary>Explicit route from [HandlerEndpoint(Route = "...")].</summary>
@@ -555,6 +555,7 @@ internal static class RouteConventions
             3 => "PUT",
             4 => "DELETE",
             5 => "PATCH",
+            6 => "QUERY",
             _ => input.IsStreaming ? "GET" : InferHttpMethod(input.MessageTypeName)
         };
 

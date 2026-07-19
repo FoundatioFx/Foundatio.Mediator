@@ -334,7 +334,7 @@ arguments for maximum flexibility:
 
 | Property                 | Purpose                                                                                                                                                                                            |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Method`                 | Override inferred HTTP method (`HandlerMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`)                                                                                                          |
+| `Method`                 | Override inferred HTTP method (`HandlerMethod.Get`, `.Post`, `.Put`, `.Delete`, `.Patch`, `.Query`)                                                                                                |
 | `Route`                  | Custom route template (relative to group prefix; leading `/` for absolute)                                                                                                                         |
 | `Name`                   | OpenAPI operation ID                                                                                                                                                                               |
 | `Summary`                | Override XML doc summary for OpenAPI                                                                                                                                                               |
@@ -819,6 +819,34 @@ public record UpdateProduct(string ProductId, string? Name, decimal? Price);
 // → MapPut("/{productId}", async (string productId, [FromBody] UpdateProduct message, ...) =>
 //   { var mergedMessage = message with { ProductId = productId }; ... })
 ```
+
+### QUERY Requests
+
+[RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html) defines QUERY as a
+safe, idempotent HTTP method for queries whose representation is carried in the
+request body. Opt in explicitly with `HandlerMethod.Query`:
+
+```csharp
+public record SearchProducts(string Expression, int Limit);
+
+public class ProductHandler
+{
+    [HandlerEndpoint(HandlerMethod.Query, "search")]
+    public Result<IReadOnlyList<Product>> Handle(SearchProducts query) { ... }
+}
+// → QUERY /api/products/search
+//   Content-Type: application/json
+//   { "expression": "category = 'books'", "limit": 50 }
+```
+
+QUERY endpoints always bind the message from the request body. ASP.NET Core
+rejects a missing or unsupported `Content-Type`, as required by RFC 10008. Use
+`AcceptsContentTypes` to publish the supported request formats in endpoint and
+OpenAPI metadata.
+
+The `Query*` message-name convention continues to infer GET for backward
+compatibility. Use `HandlerMethod.Query` whenever the actual QUERY method is
+intended.
 
 #### Custom body binding (non-JSON bodies)
 

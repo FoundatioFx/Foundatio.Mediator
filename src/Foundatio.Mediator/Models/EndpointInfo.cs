@@ -8,7 +8,7 @@ namespace Foundatio.Mediator.Models;
 internal readonly record struct EndpointInfo
 {
     /// <summary>
-    /// The HTTP method (GET, POST, PUT, DELETE, PATCH).
+    /// The HTTP method (GET, POST, PUT, DELETE, PATCH, QUERY).
     /// </summary>
     public string HttpMethod { get; init; }
 
@@ -93,7 +93,7 @@ internal readonly record struct EndpointInfo
     public EquatableArray<EndpointParameterInfo> BindingParameters { get; init; }
 
     /// <summary>
-    /// Whether the message should be bound from body (POST/PUT/PATCH).
+    /// Whether the message should be bound from body (POST/PUT/PATCH/QUERY).
     /// </summary>
     public bool BindFromBody { get; init; }
 
@@ -107,7 +107,7 @@ internal readonly record struct EndpointInfo
 
     /// <summary>
     /// Whether the message should be bound from a multipart/form-data request.
-    /// Set when a POST/PUT/PATCH message exposes an <c>IFormFile</c>/<c>IFormFileCollection</c>/<c>IFormCollection</c>
+    /// Set when a POST/PUT/PATCH/QUERY message exposes an <c>IFormFile</c>/<c>IFormFileCollection</c>/<c>IFormCollection</c>
     /// property. Mutually exclusive with <see cref="BindFromBody"/>; the endpoint also emits <c>.DisableAntiforgery()</c>.
     /// </summary>
     public bool BindFromForm { get; init; }

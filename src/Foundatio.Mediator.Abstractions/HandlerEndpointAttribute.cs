@@ -75,6 +75,7 @@ public sealed class HandlerEndpointAttribute : Attribute
     /// When <see cref="HandlerMethod.Default"/>, the HTTP method is inferred from the message type name:
     /// Get*/Find*/Search*/List*/Query* → GET, Create*/Add*/New* → POST,
     /// Update*/Edit*/Modify*/Set* → PUT, Delete*/Remove* → DELETE, Patch* → PATCH.
+    /// QUERY is never inferred; use <see cref="HandlerMethod.Query"/> explicitly.
     /// </summary>
     public HandlerMethod Method { get; set; }
 

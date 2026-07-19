@@ -369,6 +369,7 @@ public sealed class MediatorInfoAnalyzer : DiagnosticAnalyzer
             3 => "PUT",
             4 => "DELETE",
             5 => "PATCH",
+            6 => "QUERY",
             _ => isStreaming ? "GET" : RouteConventions.InferHttpMethod(messageType.Name)
         };
         var routeParams = GetRouteParameters(messageType, inferredHttpMethod, actionVerb != null);

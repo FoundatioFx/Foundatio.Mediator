@@ -34,5 +34,12 @@ public enum HandlerMethod
     /// <summary>
     /// HTTP PATCH — used for commands that partially update a resource.
     /// </summary>
-    Patch = 5
+    Patch = 5,
+
+    /// <summary>
+    /// HTTP QUERY — used for safe, idempotent queries whose query representation is carried
+    /// in the request body, as defined by
+    /// <see href="https://www.rfc-editor.org/rfc/rfc10008.html">RFC 10008</see>.
+    /// </summary>
+    Query = 6
 }

@@ -649,6 +649,7 @@ internal static class HandlerAnalyzer
             3 => "PUT",
             4 => "DELETE",
             5 => "PATCH",
+            6 => "QUERY",
             _ => isStreaming ? "GET" : InferHttpMethod(messageType.Name)
         };
 
@@ -767,7 +768,7 @@ internal static class HandlerAnalyzer
 
         // Determine binding strategy. Form-bound messages (multipart upload) bind from the form,
         // not from a JSON body, so the two are mutually exclusive.
-        bool bindFromBody = (httpMethod is "POST" or "PUT" or "PATCH") && !bindFromForm;
+        bool bindFromBody = (httpMethod is "POST" or "PUT" or "PATCH" or "QUERY") && !bindFromForm;
 
         // An explicit [FromBody] on the message parameter forces whole-message body binding
         // regardless of HTTP method, and below it suppresses the "all properties covered by the
@@ -778,7 +779,7 @@ internal static class HandlerAnalyzer
 
         // For auto-generated action verb routes, check if all properties are already
         // covered by route params (IDs). If so, skip body binding.
-        if (bindFromBody && !explicitFromBody && actionVerb != null && !hasExplicitRoute)
+        if (bindFromBody && httpMethod != "QUERY" && !explicitFromBody && actionVerb != null && !hasExplicitRoute)
         {
             var allProperties = messageType.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -796,7 +797,7 @@ internal static class HandlerAnalyzer
         // skip body binding — all data comes from the route (e.g., POST /{todoId}/complete).
         // An explicit [FromBody] opts out of this: the message binds from the body even when the
         // route could cover every property.
-        if (bindFromBody && !explicitFromBody && hasExplicitRoute && !string.IsNullOrEmpty(route))
+        if (bindFromBody && httpMethod != "QUERY" && !explicitFromBody && hasExplicitRoute && !string.IsNullOrEmpty(route))
         {
             var allProperties = messageType.GetMembers()
                 .OfType<IPropertySymbol>()
@@ -1067,11 +1068,11 @@ internal static class HandlerAnalyzer
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null)
             .ToList();
 
-        // A body-bound (POST/PUT/PATCH) message that exposes an IFormFile/IFormFileCollection/IFormCollection
+        // A body-bound (POST/PUT/PATCH/QUERY) message that exposes an IFormFile/IFormFileCollection/IFormCollection
         // property binds from multipart/form-data rather than from a JSON body: files bind by name and other
         // fields use [FromForm]. Without this the whole message gets [FromBody] and multipart requests fail
         // (415, and IFormFile cannot be deserialized from JSON anyway).
-        bool bindFromForm = httpMethod is "POST" or "PUT" or "PATCH"
+        bool bindFromForm = httpMethod is "POST" or "PUT" or "PATCH" or "QUERY"
             && properties.Any(p => IsFormParameterType(p.Type));
 
         foreach (var prop in properties)

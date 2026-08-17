@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Foundatio" Version="13.0.3-preview.0.5" />
+    <PackageReference Include="Foundatio" Version="13.0.3-preview.messaging-jobs-inmemory-redesign.0.6" />
     <PackageReference Include="MiniValidation" Version="0.10.0" />
   </ItemGroup>
 

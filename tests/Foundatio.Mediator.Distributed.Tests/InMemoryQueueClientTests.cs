@@ -232,23 +232,52 @@ public class InMemoryQueueClientTests(ITestOutputHelper output) : QueueClientTes
         await client.SendAsync(queueName, [new QueueEntry { Body = "delayed"u8.ToArray() }], TestCancellationToken);
         var msg = (await client.ReceiveAsync(queueName, 1, TestCancellationToken))[0];
 
-        // Start abandon with 30s delay — it will block on Task.Delay
-        var abandonTask = client.AbandonAsync(msg, TimeSpan.FromSeconds(30), TestCancellationToken);
+        // Abandon returns immediately; the redelivery is scheduled on the clock
+        await client.AbandonAsync(msg, TimeSpan.FromSeconds(30), TestCancellationToken);
+        Assert.Equal(0, client.GetInFlightCount(queueName));
 
-        // Message should NOT be re-enqueued yet
-        Assert.False(abandonTask.IsCompleted);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         var empty = await client.ReceiveAsync(queueName, 1, cts.Token);
         Assert.Empty(empty);
 
-        // Advance time past the delay
         fakeTime.Advance(TimeSpan.FromSeconds(31));
-        await abandonTask;
 
-        // Now the message should be available
         var redelivered = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
         Assert.Single(redelivered);
         Assert.Equal("delayed"u8.ToArray(), redelivered[0].Body.ToArray());
+        Assert.Equal(2, redelivered[0].DequeueCount);
+    }
+
+    [Fact]
+    public async Task VisibilityTimeout_ExpiresAndRedeliversWhenNotCompleted()
+    {
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var client = new InMemoryQueueClient(fakeTime);
+        var queueName = TestQueueName;
+
+        await client.SendAsync(queueName, [new QueueEntry { Body = "lease"u8.ToArray() }], TestCancellationToken);
+        var msg = (await client.ReceiveAsync(queueName, 1, TimeSpan.FromSeconds(10), TestCancellationToken))[0];
+        Assert.Equal(1, client.GetInFlightCount(queueName));
+
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+            Assert.Empty(await client.ReceiveAsync(queueName, 1, cts.Token));
+
+        // Renewal pushes the lease out; the original deadline passes without redelivery
+        await client.RenewTimeoutAsync(msg, TimeSpan.FromSeconds(20), TestCancellationToken);
+        fakeTime.Advance(TimeSpan.FromSeconds(11));
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+            Assert.Empty(await client.ReceiveAsync(queueName, 1, cts.Token));
+
+        fakeTime.Advance(TimeSpan.FromSeconds(10));
+        var redelivered = await client.ReceiveAsync(queueName, 1, TestCancellationToken);
+        Assert.Single(redelivered);
+        Assert.Equal(2, redelivered[0].DequeueCount);
+
+        // Completing stops the lease timer for good
+        await client.CompleteAsync(redelivered[0], TestCancellationToken);
+        fakeTime.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal(0, client.GetPendingCount(queueName));
+        Assert.Equal(0, client.GetInFlightCount(queueName));
     }
 
     [Fact]

@@ -18,13 +18,10 @@ builder.AddServiceDefaults();
 builder.AddRedisAndCaching();
 
 // ── Foundatio.Mediator ──
+// One setting decides which workers this process runs: "all", "none" (API node), or a list of
+// groups/queues such as "exports,imports". Comes from --workers, then Distributed:Workers config.
 builder.Services.AddMediator()
-    .AddDistributedQueues(opts =>
-    {
-        opts.WorkersEnabled = options.IsWorkerEnabled;
-        if (options.Queues is { Count: > 0 })
-            opts.Queues = options.Queues;
-    })
+    .AddDistributedQueues(opts => opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]))
     .AddDistributedNotifications()
     .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
     .UseRedisJobState();

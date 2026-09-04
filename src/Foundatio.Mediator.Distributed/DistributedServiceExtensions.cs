@@ -40,12 +40,15 @@ public static class DistributedServiceExtensions
         if (queueHandlers.Count == 0)
             return builder;
 
-        bool usingInMemoryClient = !services.Any(sd => sd.ServiceType == typeof(IQueueClient));
-        if (usingInMemoryClient)
+        var clientDescriptor = services.LastOrDefault(sd => sd.ServiceType == typeof(IQueueClient));
+        bool usingInMemoryClient = clientDescriptor is null
+            || clientDescriptor.ImplementationInstance is InMemoryQueueClient
+            || clientDescriptor.ImplementationType == typeof(InMemoryQueueClient);
+        if (clientDescriptor is null)
             services.AddSingleton<IQueueClient, InMemoryQueueClient>();
 
-        bool workersFiltered = !options.WorkersEnabled || options.Group is not null || options.Queues is { Count: > 0 };
-        if (usingInMemoryClient && workersFiltered && !options.AllowInMemoryWithoutWorkers)
+        // An explicitly registered in-memory client is a deliberate choice; only the silent default is a trap.
+        if (clientDescriptor is null && !options.Workers.IsAll && !options.AllowInMemoryWithoutWorkers)
         {
             throw new InvalidOperationException(
                 "Workers are disabled or filtered in this process but no IQueueClient transport is registered, so enqueued messages " +
@@ -54,6 +57,12 @@ public static class DistributedServiceExtensions
         }
 
         services.TryAddSingleton<QueueMiddleware>();
+        services.TryAddSingleton<QueueLockMiddleware>();
+
+        // A process-local lock is only safe when the queue is process-local too; with a real transport the
+        // middleware fails the first locked message with a clear error until a provider is registered.
+        if (usingInMemoryClient && !services.Any(sd => sd.ServiceType == typeof(IQueueLockProvider)))
+            services.AddSingleton<IQueueLockProvider, InMemoryQueueLockProvider>();
 
         var workerRegistry = new QueueWorkerRegistry();
         services.AddSingleton<IQueueWorkerRegistry>(workerRegistry);
@@ -157,7 +166,7 @@ public static class DistributedServiceExtensions
             };
             workerRegistry.Register(workerInfo);
 
-            if (!ShouldRunWorkerHere(options, queueName, settings.Group))
+            if (!options.Workers.Includes(queueName, settings.Group))
                 continue;
 
             registration.WorkerRunsHere = true;
@@ -199,22 +208,6 @@ public static class DistributedServiceExtensions
     {
         builder.Services.AddSingleton<IQueueHeaderProvider, TProvider>();
         return builder;
-    }
-
-    private static bool ShouldRunWorkerHere(DistributedQueueOptions options, string queueName, string? group)
-    {
-        if (!options.WorkersEnabled)
-            return false;
-
-        if (options.Group is not null && !string.Equals(options.Group, group, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (options.Queues is { Count: > 0 } queues
-            && !queues.Contains(queueName, StringComparer.OrdinalIgnoreCase)
-            && (group is null || !queues.Contains(group, StringComparer.OrdinalIgnoreCase)))
-            return false;
-
-        return true;
     }
 
     private static void ValidateQueueSettings(string queueName, List<(HandlerRegistration Handler, QueueAttribute Settings)> members)

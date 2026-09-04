@@ -57,6 +57,16 @@ public class QueueContext
     public string QueueName { get; init; } = string.Empty;
 
     /// <summary>
+    /// The transport-assigned id of the message being processed.
+    /// </summary>
+    public string MessageId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The visibility timeout the worker requested for this message.
+    /// </summary>
+    public TimeSpan VisibilityTimeout { get; init; }
+
+    /// <summary>
     /// The message type being processed.
     /// </summary>
     public Type? MessageType { get; init; }

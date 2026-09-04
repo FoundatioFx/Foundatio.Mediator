@@ -295,6 +295,8 @@ public sealed class QueueWorker : BackgroundService
             queueContext = new QueueContext
             {
                 QueueName = _options.QueueName,
+                MessageId = message.Id,
+                VisibilityTimeout = _options.VisibilityTimeout,
                 MessageType = messageType,
                 DequeueCount = message.DequeueCount,
                 MaxAttempts = _options.MaxAttempts,

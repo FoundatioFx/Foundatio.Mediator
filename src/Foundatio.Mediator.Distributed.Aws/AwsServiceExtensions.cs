@@ -120,7 +120,8 @@ public static class AwsBuilderExtensions
             sp.GetRequiredService<IAmazonSQS>(),
             options,
             sp.GetRequiredService<DistributedNotificationOptions>(),
-            sp.GetRequiredService<ILogger<SqsPubSubClient>>()));
+            sp.GetRequiredService<ILogger<SqsPubSubClient>>(),
+            sp.GetService<TimeProvider>()));
     }
 
     private static void RegisterSdkClients(IServiceCollection services, AwsTransportOptions options)

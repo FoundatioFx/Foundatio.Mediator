@@ -74,7 +74,6 @@ public class CoreBenchmarks
 
         // Setup Immediate Handlers
         var ihServices = new ServiceCollection();
-        ihServices.AddFoundatioMediatorBenchmarksBehaviors();
         ihServices.AddFoundatioMediatorBenchmarksHandlers();
         ihServices.AddSingleton<IOrderService, OrderService>();
         ihServices.AddScoped(typeof(Publisher<>));

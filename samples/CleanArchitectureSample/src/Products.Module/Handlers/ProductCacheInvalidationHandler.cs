@@ -7,9 +7,10 @@ namespace Products.Module.Handlers;
 
 /// <summary>
 /// Listens for distributed product events and invalidates the local in-memory cache.
-/// Because <see cref="ProductCreated"/>, <see cref="ProductUpdated"/>, etc. implement
-/// <c>IDistributedNotification</c>, they are replayed on every node via the pub/sub bus.
-/// This handler ensures each node's <see cref="CachingMiddleware"/> cache stays consistent.
+/// Because <see cref="ProductCreated"/>, <see cref="ProductUpdated"/>, and <see cref="ProductDeleted"/>
+/// implement <c>IDistributedNotification</c>, they are replayed on every node via the pub/sub bus, so each
+/// node's <see cref="CachingMiddleware"/> L1 cache stays consistent. <c>ProductStockChanged</c> stays off the
+/// bus: it always arrives with a <c>ProductUpdated</c> that clears the same keys.
 /// </summary>
 public class ProductCacheInvalidationHandler(ILogger<ProductCacheInvalidationHandler> logger)
 {
@@ -35,10 +36,4 @@ public class ProductCacheInvalidationHandler(ILogger<ProductCacheInvalidationHan
         await CachingMiddleware.InvalidateAsync(new GetProductCatalog());
     }
 
-    public async Task HandleAsync(ProductStockChanged evt)
-    {
-        logger.LogInformation("Invalidating product caches for ProductStockChanged {ProductId}", evt.ProductId);
-        await CachingMiddleware.InvalidateAsync(new GetProduct(evt.ProductId));
-        await CachingMiddleware.InvalidateAsync(new GetProductCatalog());
-    }
 }

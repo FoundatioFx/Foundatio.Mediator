@@ -1,50 +1,49 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+// SAMPLE_TOPOLOGY=single runs the API and every worker in one process. The default, "split", runs an
+// enqueue-only API and one worker deployment per group. Same project either way; only --mode/--workers differ.
+bool singleProcess = string.Equals(builder.Configuration["SAMPLE_TOPOLOGY"], "single", StringComparison.OrdinalIgnoreCase);
+
 // LocalStack provides SQS + SNS for local development
 var localstack = builder.AddContainer("localstack", "localstack/localstack", "2026.8.1")
     .WithHttpEndpoint(targetPort: 4566, name: "main")
     .WithHttpHealthCheck("/_localstack/health", endpointName: "main")
     .WithEnvironment("SERVICES", "sqs,sns");
 
-// Redis for shared persistence and distributed caching
+// Redis for shared persistence, distributed caching, job state, and the [QueueLock] lock
 var redis = builder.AddRedis("redis");
 
-// API project — serves HTTP endpoints and the SPA frontend, but no queue workers.
-// Queue messages are still enqueued to SQS; the worker resource below processes them.
-var api = builder.AddProject<Projects.Api>("api")
-    .WithHttpEndpoint()
-    .WithHttpsEndpoint()
-    .WithExternalHttpEndpoints()
-    .WithReplicas(3)
-    .WaitFor(localstack)
-    .WaitFor(redis)
-    .WithReference(localstack.GetEndpoint("main"))
-    .WithReference(redis)
-    .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
-    // API-only mode — no queue workers in this process
-    .WithArgs("--mode", "api");
+IResourceBuilder<ProjectResource> AddNode(string name, params string[] args) =>
+    builder.AddProject<Projects.Api>(name)
+        .WithHttpEndpoint()
+        .WithHttpsEndpoint()
+        .WaitFor(localstack)
+        .WaitFor(redis)
+        .WithReference(localstack.GetEndpoint("main"))
+        .WithReference(redis)
+        .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
+        .WithArgs(args);
 
-// Worker project — processes all queues, exposes only health checks (no API/UI).
-// Runs the same Api project in worker mode so it shares handler code and module registrations.
-builder.AddProject<Projects.Api>("worker")
-    .WithHttpEndpoint()
-    .WithHttpsEndpoint()
-    .WithReplicas(3)
-    .WaitFor(localstack)
-    .WaitFor(redis)
-    .WithReference(localstack.GetEndpoint("main"))
-    .WithReference(redis)
-    .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
-    // Worker mode — health checks only, all queue workers active
-    .WithArgs("--mode", "worker");
+IResourceBuilder<ProjectResource> api;
+if (singleProcess)
+{
+    api = AddNode("api").WithExternalHttpEndpoints();
+}
+else
+{
+    api = AddNode("api", "--mode", "api").WithExternalHttpEndpoints().WithReplicas(2);
+    AddNode("worker-exports", "--mode", "worker", "--workers", "exports").WithReplicas(2);
+    AddNode("worker-imports", "--mode", "worker", "--workers", "imports");
+    AddNode("worker-events", "--mode", "worker", "--workers", "events");
+}
 
-// Run a single Vite frontend for all API replicas in distributed mode.
+// One Vite dev server fronts every API replica.
 builder.AddViteApp("web", "../Web")
     .WithHttpsEndpoint(port: 5199, env: "PORT")
     .WithHttpsDeveloperCertificate()
     .WithExternalHttpEndpoints()
     .WithReference(api)
-    // Provide an explicit API proxy target (not VITE_ prefixed so it stays server-side).
+    // Explicit proxy target (not VITE_ prefixed so it stays server-side).
     .WithEnvironment("API_PROXY_TARGET", api.GetEndpoint("https"));
 
 builder.Build().Run();

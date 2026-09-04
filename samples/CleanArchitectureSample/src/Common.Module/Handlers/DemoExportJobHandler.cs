@@ -1,3 +1,4 @@
+using Common.Module.Events;
 using Common.Module.Messages;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
@@ -6,55 +7,56 @@ using Microsoft.Extensions.Logging;
 namespace Common.Module.Handlers;
 
 /// <summary>
-/// A demo queue handler with progress tracking enabled.
-/// Simulates a long-running export/report generation job that reports progress
-/// and supports cancellation via the queue job state store.
+/// A long-running tracked job: reports progress (which also heartbeats the message), observes cancellation
+/// requested from the dashboard, and tells the event feed which host ran it.
 /// </summary>
-[Queue(TrackProgress = true, Concurrency = 5, TimeoutSeconds = 10, Group = "exports", Description = "Processes export jobs with progress tracking")]
-public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
+[Queue(Group = "exports", TrackProgress = true, TimeoutSeconds = 60, Concurrency = 2, Description = "Simulated export with progress, heartbeat, and cancellation")]
+public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> logger)
 {
-    public async Task<Result> HandleAsync(DemoExportJob message, QueueContext queueContext, CancellationToken ct)
+    public async Task<Result> HandleAsync(DemoExportJob message, QueueContext queueContext, TenantContext tenant, IMediator mediator, CancellationToken ct)
     {
         var rng = Random.Shared;
 
-        // Add per-job variability: ±40% on step count, ±50% on delay
+        // Per-job variability so a batch of jobs finishes at different times on different hosts.
         int steps = Math.Max(3, (int)(message.Steps * (0.6 + rng.NextDouble() * 0.8)));
         int baseDelay = Math.Max(100, (int)(message.StepDelayMs * (0.5 + rng.NextDouble())));
 
-        logger.LogInformation("Starting demo export job ({Steps} steps, ~{Delay}ms each)", steps, baseDelay);
+        logger.LogInformation("Starting export job {JobId} for {Tenant} on {HostId} ({Steps} steps, ~{Delay}ms each)",
+            queueContext.JobId, tenant, host.HostId, steps, baseDelay);
 
         for (int i = 1; i <= steps; i++)
         {
             ct.ThrowIfCancellationRequested();
 
-            // ~5% chance of a transient error (e.g. network blip, temporary service outage).
-            // Returning Result.Error tells the QueueWorker to abandon the message so it can be retried.
-            if (rng.NextDouble() < 0.05)
-            {
-                logger.LogWarning("Demo export: simulated transient error on step {Step}", i);
-                return Result.Error($"Transient failure on step {i} — will be retried");
-            }
-
-            // ~1% chance of an unrecoverable error (e.g. corrupt data, invalid configuration).
-            // Returning Result.CriticalError tells the QueueWorker to dead-letter the message immediately.
+            // Result.Error is retryable: the worker abandons the message and the next attempt starts over.
             if (rng.NextDouble() < 0.01)
             {
-                logger.LogError("Demo export: simulated critical error on step {Step}", i);
-                return Result.CriticalError($"Unrecoverable failure on step {i} — will not be retried");
+                logger.LogWarning("Export job {JobId}: simulated transient error on step {Step}", queueContext.JobId, i);
+                return Result.Error($"Transient failure on step {i}; attempt {queueContext.DequeueCount} of {queueContext.MaxAttempts}");
             }
 
-            // Simulate variable work — some steps are fast, some slow
+            // Result.CriticalError is not: the message is dead-lettered immediately.
+            if (rng.NextDouble() < 0.002)
+            {
+                logger.LogError("Export job {JobId}: simulated critical error on step {Step}", queueContext.JobId, i);
+                return Result.CriticalError($"Unrecoverable failure on step {i}");
+            }
+
             int jitter = (int)(baseDelay * (0.3 + rng.NextDouble() * 1.4));
             await Task.Delay(jitter, ct).ConfigureAwait(false);
 
             int percent = (int)((double)i / steps * 100);
-            string stepMessage = $"Processing step {i} of {steps}";
-            await queueContext.ReportProgressAsync(percent, stepMessage, ct).ConfigureAwait(false);
-
-            logger.LogDebug("Demo export: {Percent}% - {Message}", percent, stepMessage);
+            await queueContext.ReportProgressAsync(percent, $"Step {i} of {steps} on {host.HostId}", ct).ConfigureAwait(false);
         }
 
-        logger.LogInformation("Demo export job completed successfully");
+        logger.LogInformation("Export job {JobId} completed on {HostId}", queueContext.JobId, host.HostId);
+
+        await mediator.PublishAsync(new DemoJobCompleted(
+            queueContext.JobId ?? queueContext.MessageId,
+            queueContext.QueueName,
+            host.HostId,
+            tenant.TenantId), ct).ConfigureAwait(false);
+
         return Result.Ok();
     }
 }

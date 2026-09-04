@@ -65,9 +65,10 @@ public static class InfrastructureExtensions
     {
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
 
-        logger.LogInformation("Running in {Mode} mode (queues: {Queues})",
+        logger.LogInformation("Host {HostId} running in {Mode} mode (workers: {Workers})",
+            app.Services.GetRequiredService<Common.Module.HostInfo>().HostId,
             options.Mode,
-            options.Workers ?? "all");
+            app.Services.GetRequiredService<DistributedQueueOptions>().Workers);
 
         var workerRegistry = app.Services.GetService<IQueueWorkerRegistry>();
         if (workerRegistry is not null)

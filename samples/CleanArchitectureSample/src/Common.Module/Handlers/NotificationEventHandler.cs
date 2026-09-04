@@ -10,11 +10,10 @@ namespace Common.Module.Handlers;
 /// This demonstrates how domain events enable business workflows
 /// without tight coupling between modules:
 /// - Low stock alerts when inventory changes
-/// - Order confirmations when orders are created
 /// - Status updates when orders change
 ///
-/// Decorated with [Queue] so notification delivery is processed asynchronously
-/// via SQS, keeping the request path fast.
+/// Order confirmations live in <see cref="OrderConfirmationHandler"/>, which shares the
+/// "order-created" queue with the Orders module's fulfillment handler.
 /// </summary>
 [Queue(Group = "events", Description = "Sends notifications for domain events")]
 public class NotificationEventHandler(INotificationService notificationService, ILogger<NotificationEventHandler> logger)
@@ -22,20 +21,6 @@ public class NotificationEventHandler(INotificationService notificationService, 
     private const int LowStockThreshold = 10;
 
     // Order notifications
-    public async Task HandleAsync(OrderCreated evt, CancellationToken cancellationToken)
-    {
-        logger.LogDebug("Sending order confirmation notification for order {OrderId}", evt.OrderId);
-
-        await notificationService.SendAsync(new Notification(
-            Id: Guid.NewGuid().ToString(),
-            Type: NotificationType.Success,
-            Title: "Order Confirmed",
-            Message: $"Your order #{evt.OrderId[..8]} for ${evt.Amount:F2} has been confirmed.",
-            RecipientId: evt.CustomerId,
-            Timestamp: DateTime.UtcNow
-        ), cancellationToken);
-    }
-
     public async Task HandleAsync(OrderUpdated evt, CancellationToken cancellationToken)
     {
         logger.LogDebug("Sending order update notification for order {OrderId}", evt.OrderId);

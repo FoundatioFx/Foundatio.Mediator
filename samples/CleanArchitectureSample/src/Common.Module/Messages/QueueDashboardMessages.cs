@@ -1,6 +1,6 @@
 namespace Common.Module.Messages;
 
-// ── Queue Dashboard Queries ──
+// ── Reads (anonymous) ──
 
 public record GetQueues;
 
@@ -10,9 +10,25 @@ public record GetJobDashboard(string QueueName, int? RecentTerminalCount = 5);
 
 public record GetQueueJobDetail(string JobId);
 
+public record GetDeadLetters(string QueueName, int Take = 20);
+
+public record GetHostInfo;
+
+// ── Operations (Admin role) ──
+
 public record CancelJob(string JobId);
 
+public record ReplayQueueDeadLetters(string QueueName, int Max = 100, string? MessageId = null);
+
+public record PurgeQueueDeadLetters(string QueueName, int Max = 1000);
+
 public record EnqueueDemoJob(int Count = 1, int Steps = 20, int StepDelayMs = 1500);
+
+public record EnqueueImportJob(int Count = 1, int Rows = 200, int RowDelayMs = 50);
+
+public record EnqueueFlakyWebhook(string Url = "https://hooks.example.com/orders", int FailTimes = 5);
+
+public record EnqueueBankFiles(string Bank = "first-national", int Count = 2);
 
 // ── DTOs ──
 
@@ -20,18 +36,24 @@ public record QueueSummary
 {
     public required string QueueName { get; init; }
     public required string MessageType { get; init; }
+    public required IReadOnlyList<string> Handlers { get; init; }
+    public string? Group { get; init; }
+    public string? Description { get; init; }
     public int Concurrency { get; init; }
     public int MaxAttempts { get; init; }
     public required string RetryPolicy { get; init; }
+    public int VisibilityTimeoutSeconds { get; init; }
     public bool TrackProgress { get; init; }
-    public string? Description { get; init; }
+
+    /// <summary>Whether the node that answered this request runs a worker for the queue.</summary>
+    public bool WorkerRunsHere { get; init; }
     public bool? IsRunning { get; init; }
     public long MessagesProcessed { get; init; }
     public long MessagesFailed { get; init; }
     public long MessagesDeadLettered { get; init; }
     public long ActiveCount { get; init; }
-    public long DeadLetterCount { get; init; }
     public long InFlightCount { get; init; }
+    public long DeadLetterCount { get; init; }
     public CounterStatsView? CounterStats { get; init; }
 }
 
@@ -47,10 +69,12 @@ public record JobSummary
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset? StartedUtc { get; init; }
     public DateTimeOffset? CompletedUtc { get; init; }
+    public DateTimeOffset? LastHeartbeatUtc { get; init; }
     public string? ErrorMessage { get; init; }
-}
 
-public record JobCancellationResult(string JobId, bool CancellationRequested);
+    /// <summary>Captured at enqueue time by <c>DistributedQueueOptions.JobMetadataProvider</c>: tenant and user here.</summary>
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+}
 
 public record JobDashboardView
 {
@@ -72,8 +96,8 @@ public record CounterBucketView
     public required IReadOnlyDictionary<string, long> Counters { get; init; }
 }
 
-public record DemoJobEnqueued(string JobId);
+/// <summary>Which process answered, and which workers it runs.</summary>
+public record HostInfoView(string HostId, string Workers);
 
-// ── Demo message that gets queued with progress tracking ──
-
-public record DemoExportJob(int Steps = 20, int StepDelayMs = 1500);
+/// <summary>What an enqueue control put on the queue. Job ids are present only for tracked queues.</summary>
+public record EnqueueReceipt(string QueueName, int Count, IReadOnlyList<string> JobIds);

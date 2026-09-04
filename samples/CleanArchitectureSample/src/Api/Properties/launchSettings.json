@@ -1,6 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
+    "Single": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Api": {
       "commandName": "Project",
       "launchBrowser": true,
@@ -18,7 +25,7 @@
     },
     "Worker-Exports": {
       "commandName": "Project",
-      "commandLineArgs": "--mode worker --queues exports",
+      "commandLineArgs": "--mode worker --workers exports",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

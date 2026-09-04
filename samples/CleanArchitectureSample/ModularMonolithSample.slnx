@@ -6,5 +6,7 @@
     <Project Path="src/Api/Api.csproj" />
     <Project Path="src/Reports.Module/Reports.Module.csproj" />
     <Project Path="src/Web/Web.esproj" />
+    <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
+    <Project Path="src/AppHost/AppHost.csproj" />
   </Folder>
 </Solution>

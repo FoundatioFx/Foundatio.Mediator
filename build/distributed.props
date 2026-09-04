@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Distributed packages are versioned separately. Bump here when releasing. -->
+  <PropertyGroup>
+    <MinVerSkip>true</MinVerSkip>
+    <Version>0.1.0-beta1</Version>
+    <PackageTags>$(PackageTags);Distributed</PackageTags>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="13.2.2" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>true</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+    <TreatProjectReferencesAsResources>false</TreatProjectReferencesAsResources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" Version="13.2.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="Foundatio.Xunit.v3" Version="13.0.0-beta3.poison-message-handling.3" />
+    <PackageReference Include="GitHubActionsTestLogger" Version="3.0.3" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Foundatio.Mediator.Distributed\Foundatio.Mediator.Distributed.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Mediator.Distributed.Aws\Foundatio.Mediator.Distributed.Aws.csproj" />
+    <!-- Shared base class from core distributed tests -->
+    <ProjectReference Include="..\Foundatio.Mediator.Distributed.Tests\Foundatio.Mediator.Distributed.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

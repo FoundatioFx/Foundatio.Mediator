@@ -12,7 +12,7 @@ namespace Common.Module.Middleware;
 /// Execute middleware that caches handler results using .NET's <see cref="HybridCache"/>.
 /// Provides L1 (in-memory) + L2 (distributed via IDistributedCache/Redis) caching.
 /// Only applies to handlers decorated with <see cref="CachedAttribute"/> (ExplicitOnly = true).
-/// Because C# records use value equality, identical query messages produce the same cache key automatically.
+/// The cache key is the message type plus its JSON form, so identical query messages share an entry on every node.
 /// </summary>
 /// <remarks>
 /// Values are wrapped in a <see cref="CacheEnvelope"/> that preserves the concrete .NET type name.
@@ -68,9 +68,9 @@ public class CachingMiddleware
         _instance = this;
     }
 
-    /// <summary>Derives a stable string cache key from a message using its type and value-based hash code.</summary>
+    /// <summary>Derives a cache key from the message type and its JSON form, so identical queries share an entry on every node.</summary>
     private static string GetCacheKey(object message)
-        => $"mediator:{message.GetType().FullName}:{message.GetHashCode()}";
+        => $"mediator:{message.GetType().FullName}:{JsonSerializer.Serialize(message, message.GetType(), JsonOptions)}";
 
     /// <summary>Derives a tag from the message type name for group invalidation.</summary>
     private static string GetTag(object message)

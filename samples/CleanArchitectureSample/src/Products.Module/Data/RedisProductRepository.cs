@@ -64,10 +64,10 @@ public class RedisProductRepository : IProductRepository
     {
         var json = JsonSerializer.Serialize(product, JsonOptions);
         var batch = Db.CreateBatch();
-        _ = batch.StringSetAsync(HashPrefix + product.Id, json);
-        _ = batch.SetAddAsync(IndexKey, product.Id);
+        var set = batch.StringSetAsync(HashPrefix + product.Id, json);
+        var index = batch.SetAddAsync(IndexKey, product.Id);
         batch.Execute();
-        await Task.CompletedTask.ConfigureAwait(false);
+        await Task.WhenAll(set, index).ConfigureAwait(false);
     }
 
     public async Task UpdateAsync(Product product, CancellationToken cancellationToken = default)

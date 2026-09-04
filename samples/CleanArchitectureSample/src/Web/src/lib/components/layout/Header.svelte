@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth.svelte';
+  import { tenant, TENANTS } from '$lib/stores/tenant.svelte';
 </script>
 
 <header class="bg-white shadow-sm border-b border-gray-200">
@@ -64,6 +65,20 @@
         </a>
       </nav>
 
+      <div class="flex items-center gap-4">
+      <label class="flex items-center gap-1.5 text-xs text-gray-500" title="Sent as the X-Tenant header on every request; the API copies it into queued messages and tracked jobs">
+        Tenant
+        <select
+          value={tenant.current}
+          onchange={(e) => tenant.set(e.currentTarget.value)}
+          class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-mono text-gray-800"
+        >
+          {#each TENANTS as t (t)}
+            <option value={t}>{t}</option>
+          {/each}
+        </select>
+      </label>
+
       {#if auth.isAuthenticated && auth.user}
         <div class="flex items-center gap-3">
           <span class="text-sm text-gray-700">
@@ -89,6 +104,7 @@
           </a>
         </div>
       {/if}
+      </div>
     </div>
   </div>
 </header>

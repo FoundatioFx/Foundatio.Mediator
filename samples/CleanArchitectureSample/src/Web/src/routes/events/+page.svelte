@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { eventStream, type EventEntry } from '$lib/stores/eventstream.svelte';
-  import { Button, Badge } from '$lib/components/ui';
-
-  let listEl: HTMLDivElement | undefined = $state();
+  import { eventStream, type EventCategory } from '$lib/stores/eventstream.svelte';
+  import { Button } from '$lib/components/ui';
 
   function formatTime(date: Date): string {
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
@@ -10,19 +8,26 @@
 
   function formatData(data: Record<string, unknown>): string {
     return Object.entries(data)
+      .filter(([k]) => k !== 'hostId' && !k.endsWith('At'))
       .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toLocaleString() : v}`)
       .join(' · ');
   }
 
-  const actionColors: Record<EventEntry['action'], string> = {
+  const actionColors: Record<string, string> = {
     created: 'bg-green-100 text-green-800',
     updated: 'bg-blue-100 text-blue-800',
+    shipped: 'bg-teal-100 text-teal-800',
     deleted: 'bg-red-100 text-red-800',
+    completed: 'bg-green-100 text-green-800',
+    generated: 'bg-emerald-100 text-emerald-800',
+    delivered: 'bg-sky-100 text-sky-800'
   };
 
-  const categoryColors: Record<EventEntry['category'], string> = {
+  const categoryColors: Record<EventCategory, string> = {
     order: 'bg-purple-100 text-purple-800',
     product: 'bg-amber-100 text-amber-800',
+    job: 'bg-indigo-100 text-indigo-800',
+    other: 'bg-gray-100 text-gray-800'
   };
 </script>
 
@@ -35,7 +40,7 @@
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Live Events</h1>
       <p class="mt-1 text-sm text-gray-500">
-        Real-time SSE events from the server
+        Every IDispatchToClient notification, streamed over SSE. Events published on other nodes arrive through the notification bus; worker events carry the host that did the work.
       </p>
     </div>
     <div class="flex items-center gap-3">
@@ -61,17 +66,14 @@
     </div>
   </div>
 
-  <div
-    bind:this={listEl}
-    class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
-  >
+  <div class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
     {#if eventStream.events.length === 0}
       <div class="flex flex-col items-center justify-center py-16 text-gray-400">
         <svg class="h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
         <p class="text-lg font-medium">Waiting for events…</p>
-        <p class="text-sm mt-1">Create, update, or delete orders and products to see live events here.</p>
+        <p class="text-sm mt-1">Create an order or product, or enqueue work from the Queues page, to see live events here.</p>
         {#if eventStream.paused}
           <p class="text-sm mt-2 text-amber-600 font-medium">Event capture is paused</p>
         {/if}
@@ -86,11 +88,14 @@
             <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold {categoryColors[event.category]}">
               {event.category}
             </span>
-            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold {actionColors[event.action]}">
+            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold {actionColors[event.action] ?? 'bg-gray-100 text-gray-800'}">
               {event.action}
             </span>
             <span class="text-sm font-medium text-gray-900">{event.type}</span>
             <span class="text-sm text-gray-500 truncate">{formatData(event.data)}</span>
+            {#if event.host}
+              <span class="ml-auto inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 text-gray-700 whitespace-nowrap" title="Host that published the event">{event.host}</span>
+            {/if}
           </div>
         {/each}
       </div>

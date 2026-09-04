@@ -1,26 +1,56 @@
 import { api } from './client';
-import type { QueueSummary, JobSummary, JobDashboardView, JobCancellationResult, DemoJobEnqueued } from '$lib/types/queue';
+import type {
+  QueueSummary,
+  JobSummary,
+  JobDashboardView,
+  JobCancellationResult,
+  DeadLetterView,
+  DeadLetterReplayResult,
+  DeadLetterPurgeResult,
+  HostInfoView,
+  EnqueueReceipt
+} from '$lib/types/queue';
+
+const q = (name: string) => encodeURIComponent(name);
 
 export const queuesApi = {
-  listWorkers: () => api.getJSON<QueueSummary[]>('/api/queues/queues'),
+  // Reads (anonymous)
+  list: () => api.getJSON<QueueSummary[]>('/api/queues/queues'),
 
-  getWorker: (queueName: string) =>
-    api.getJSON<QueueSummary>(`/api/queues/queue?queueName=${encodeURIComponent(queueName)}`),
+  get: (queueName: string) => api.getJSON<QueueSummary>(`/api/queues/queue?queueName=${q(queueName)}`),
+
+  host: () => api.getJSON<HostInfoView>('/api/queues/host'),
 
   getJobDashboard: (queueName: string, recentTerminalCount: number = 5) =>
-    api.getJSON<JobDashboardView>(
-      `/api/queues/job-dashboard?queueName=${encodeURIComponent(queueName)}&recentTerminalCount=${recentTerminalCount}`
-    ),
+    api.getJSON<JobDashboardView>(`/api/queues/job-dashboard?queueName=${q(queueName)}&recentTerminalCount=${recentTerminalCount}`),
 
   getJob: (jobId: string) => api.getJSON<JobSummary>(`/api/queues/queue-job/${jobId}`),
 
-  cancelJob: (jobId: string) =>
-    api.postJSON<JobCancellationResult>(`/api/queues/job/${jobId}/cancel-job`, {}),
+  getDeadLetters: (queueName: string, take: number = 20) =>
+    api.getJSON<DeadLetterView[]>(`/api/queues/dead-letters?queueName=${q(queueName)}&take=${take}`),
 
-  enqueueDemoJob: (count = 1, steps = 10, stepDelayMs = 500) =>
-    api.postJSON<DemoJobEnqueued>('/api/queues/demo-job/enqueue-demo-job', { count, steps, stepDelayMs }),
+  // Operations (Admin role)
+  cancelJob: (jobId: string) => api.postJSON<JobCancellationResult>(`/api/queues/job/${jobId}/cancel-job`, {}),
 
-  /** Call the DemoExportJob queue endpoint directly — the mediator enqueues it async and returns 202 Accepted. */
-  enqueueDemoJobDirect: (steps = 20, stepDelayMs = 1500) =>
+  replayDeadLetters: (queueName: string, messageId?: string, max = 100) =>
+    api.postJSON<DeadLetterReplayResult>('/api/queues/dead-letters/replay', { queueName, max, messageId: messageId ?? null }),
+
+  purgeDeadLetters: (queueName: string, max = 1000) =>
+    api.postJSON<DeadLetterPurgeResult>('/api/queues/dead-letters/purge', { queueName, max }),
+
+  enqueueExports: (count = 1, steps = 20, stepDelayMs = 1500) =>
+    api.postJSON<EnqueueReceipt>('/api/queues/enqueue/exports', { count, steps, stepDelayMs }),
+
+  enqueueImports: (count = 1, rows = 200, rowDelayMs = 50) =>
+    api.postJSON<EnqueueReceipt>('/api/queues/enqueue/imports', { count, rows, rowDelayMs }),
+
+  enqueueFlakyWebhook: (url: string, failTimes: number) =>
+    api.postJSON<EnqueueReceipt>('/api/queues/enqueue/flaky-webhook', { url, failTimes }),
+
+  enqueueBankFiles: (bank: string, count = 2) =>
+    api.postJSON<EnqueueReceipt>('/api/queues/enqueue/bank-files', { bank, count }),
+
+  /** Invoking the [Queue] handler's own endpoint enqueues and answers 202 Accepted with the job id as Location. */
+  enqueueExportDirect: (steps = 20, stepDelayMs = 1500) =>
     api.postJSON<void>('/api/export-jobs/demo', { steps, stepDelayMs })
 };

@@ -1,18 +1,23 @@
 export interface QueueSummary {
   queueName: string;
   messageType: string;
+  handlers: string[];
+  group: string | null;
+  description: string | null;
   concurrency: number;
   maxAttempts: number;
   retryPolicy: string;
+  visibilityTimeoutSeconds: number;
   trackProgress: boolean;
-  description: string | null;
+  /** Whether the node that answered the request runs a worker for this queue. */
+  workerRunsHere: boolean;
   isRunning: boolean | null;
   messagesProcessed: number;
   messagesFailed: number;
   messagesDeadLettered: number;
   activeCount: number;
-  deadLetterCount: number;
   inFlightCount: number;
+  deadLetterCount: number;
   counterStats: CounterStats | null;
 }
 
@@ -29,7 +34,10 @@ export interface JobSummary {
   createdUtc: string;
   startedUtc: string | null;
   completedUtc: string | null;
+  lastHeartbeatUtc: string | null;
   errorMessage: string | null;
+  /** Captured at enqueue time: tenant and user in this sample. */
+  metadata: Record<string, string> | null;
 }
 
 export interface JobDashboardView {
@@ -54,8 +62,39 @@ export interface JobCancellationResult {
   cancellationRequested: boolean;
 }
 
-export interface DemoJobEnqueued {
-  jobId: string;
+export interface DeadLetterView {
+  messageId: string;
+  queueName: string;
+  originalQueueName: string | null;
+  messageType: string | null;
+  reason: string | null;
+  deadLetteredAt: string | null;
+  attempts: number | null;
+  jobId: string | null;
+  correlationId: string | null;
+  body: string;
+}
+
+export interface DeadLetterReplayResult {
+  queueName: string;
+  replayed: number;
+  skipped: number;
+}
+
+export interface DeadLetterPurgeResult {
+  queueName: string;
+  purged: number;
+}
+
+export interface HostInfoView {
+  hostId: string;
+  workers: string;
+}
+
+export interface EnqueueReceipt {
+  queueName: string;
+  count: number;
+  jobIds: string[];
 }
 
 export const JOB_STATUS_COLORS: Record<JobStatus, string> = {

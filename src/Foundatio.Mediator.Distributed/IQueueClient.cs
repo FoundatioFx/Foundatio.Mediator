@@ -1,76 +1,90 @@
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Transport-agnostic contract for sending and receiving queue messages.
-/// Implementations map to specific transports (in-memory, SQS, RabbitMQ, etc.).
+/// Transport-agnostic durable queue abstraction with at-least-once delivery semantics.
 /// </summary>
+/// <remarks>
+/// A received message stays invisible to other consumers for its visibility timeout. The consumer
+/// must <see cref="CompleteAsync"/> it, <see cref="AbandonAsync"/> it for redelivery, or
+/// <see cref="DeadLetterAsync"/> it; otherwise the transport redelivers it when the timeout lapses.
+/// </remarks>
 public interface IQueueClient : IAsyncDisposable
 {
     /// <summary>
-    /// Sends one or more messages to the specified queue.
-    /// Implementations may use transport-native batch APIs for better throughput.
+    /// Sends one or more messages to the queue.
     /// </summary>
     Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Receives up to <paramref name="maxCount"/> messages from the specified queue.
-    /// Returns an empty list when no messages are available after a transport-specific wait
-    /// (e.g., SQS long-poll, RabbitMQ prefetch, in-memory channel wait).
+    /// Receives up to <paramref name="maxCount"/> messages, locking each for <paramref name="visibilityTimeout"/>.
+    /// A <c>null</c> timeout uses the queue's configured default.
     /// </summary>
-    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks a message as successfully processed and removes it from the queue.
+    /// Receives up to <paramref name="maxCount"/> messages using the queue's default visibility timeout.
+    /// </summary>
+    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
+        => ReceiveAsync(queueName, maxCount, null, cancellationToken);
+
+    /// <summary>
+    /// Removes a successfully processed message from the queue.
     /// </summary>
     Task CompleteAsync(QueueMessage message, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a message to the queue for reprocessing.
-    /// When <paramref name="delay"/> is zero (default) the message becomes visible immediately;
-    /// otherwise it remains invisible until the delay elapses. Used for retry backoff strategies.
+    /// Returns a message to the queue so it is redelivered after <paramref name="delay"/>.
     /// </summary>
     Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Extends the visibility timeout of a message so it remains invisible to other consumers
-    /// for an additional <paramref name="extension"/> duration. Used by long-running handlers
-    /// to prevent the message from being redelivered while still processing.
+    /// Extends the visibility timeout of an in-flight message by <paramref name="extension"/>.
     /// </summary>
     Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Moves a message to the dead-letter queue for the specified queue.
-    /// The message body and headers are preserved, with additional dead-letter metadata added.
+    /// Moves a message to the queue's dead-letter queue with <see cref="MessageHeaders.DeadLetterReason"/>
+    /// and related headers, then completes the original.
     /// </summary>
-    /// <remarks>
-    /// Implementations should follow this convention:
-    /// <list type="number">
-    /// <item>Send a new message to <c>{queueName}-dead-letter</c> with the original body and headers.</item>
-    /// <item>Add the metadata headers <see cref="MessageHeaders.DeadLetterReason"/>,
-    ///   <see cref="MessageHeaders.DeadLetteredAt"/>, <see cref="MessageHeaders.OriginalQueueName"/>,
-    ///   and <see cref="MessageHeaders.DeadLetterDequeueCount"/>.</item>
-    /// <item>Complete (delete) the original message from the source queue.</item>
-    /// </list>
-    /// Transports that manage dead-letter queues natively (e.g., Azure Service Bus) may use
-    /// native dead-letter operations instead, but must still preserve the metadata headers.
-    /// </remarks>
-    /// <param name="message">The message to dead-letter.</param>
-    /// <param name="reason">A human-readable reason for dead-lettering.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
     Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ensures the specified queues exist, creating them if necessary.
-    /// Implementations may batch the operations for efficiency.
+    /// Ensures the queues (and their dead-letter queues) exist with the requested settings.
     /// </summary>
     Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
-    /// Gets transport-level statistics for the specified queues.
-    /// Not all transports support all metrics; unsupported values will be zero.
+    /// Returns approximate depth statistics for the queues.
     /// </summary>
     Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<QueueStats>>(queueNames.Select(n => new QueueStats { QueueName = n }).ToList());
+
+    /// <summary>
+    /// Receives messages from the dead-letter queue of <paramref name="queueName"/>. Received messages are
+    /// locked like any other receive, so callers must complete, abandon, or <see cref="ReplayAsync"/> them.
+    /// </summary>
+    Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
+        => ReceiveAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), maxCount, null, cancellationToken);
+
+    /// <summary>
+    /// Sends a dead-lettered message back to its original queue (from <see cref="MessageHeaders.OriginalQueueName"/>)
+    /// without the dead-letter headers, then completes the dead-letter copy.
+    /// </summary>
+    async Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default)
+    {
+        if (!deadLetter.Headers.TryGetValue(MessageHeaders.OriginalQueueName, out var originalQueue) || string.IsNullOrEmpty(originalQueue))
+            throw new InvalidOperationException($"Message {deadLetter.Id} has no {MessageHeaders.OriginalQueueName} header and cannot be replayed.");
+
+        var headers = new Dictionary<string, string>(deadLetter.Headers);
+        headers.Remove(MessageHeaders.DeadLetterReason);
+        headers.Remove(MessageHeaders.DeadLetteredAt);
+        headers.Remove(MessageHeaders.OriginalQueueName);
+        headers.Remove(MessageHeaders.DeadLetterDequeueCount);
+        headers[MessageHeaders.ReplayedAt] = DateTimeOffset.UtcNow.ToString("O");
+
+        await SendAsync(originalQueue, [new QueueEntry { Body = deadLetter.Body, Headers = headers }], cancellationToken).ConfigureAwait(false);
+        await CompleteAsync(deadLetter, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     ValueTask IAsyncDisposable.DisposeAsync() => default;

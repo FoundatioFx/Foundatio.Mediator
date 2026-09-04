@@ -1,141 +1,147 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Extension methods for registering distributed queue support for Foundatio.Mediator.
+/// Registration for distributed queues and notifications.
 /// </summary>
 public static class DistributedServiceExtensions
 {
     /// <summary>
-    /// Adds distributed queue processing support to Foundatio.Mediator.
-    /// Handlers decorated with <see cref="QueueAttribute"/> will have their messages
-    /// serialized and sent to a queue for asynchronous processing.
+    /// Registers queue routing for every <see cref="QueueAttribute"/> handler: the middleware that
+    /// enqueues, one worker per queue (subject to <see cref="DistributedQueueOptions"/> filters), and
+    /// the infrastructure initializer. Register a transport before calling this; otherwise the
+    /// in-memory queue client is used.
     /// </summary>
-    /// <param name="builder">The mediator builder.</param>
-    /// <param name="configure">Optional configuration callback for <see cref="DistributedQueueOptions"/>.</param>
-    /// <returns>The mediator builder for chaining.</returns>
-    /// <example>
-    /// <code>
-    /// services.AddMediator()
-    ///     .AddDistributedQueues();
-    ///
-    /// // Or with options:
-    /// services.AddMediator()
-    ///     .AddDistributedQueues(opts => opts.Group = "order-processing");
-    /// </code>
-    /// </example>
     public static IMediatorBuilder AddDistributedQueues(
         this IMediatorBuilder builder,
         Action<DistributedQueueOptions>? configure = null)
     {
         var services = builder.Services;
 
-        // Prevent double registration
-        if (services.Any(sd => sd.ServiceType == typeof(QueueMiddleware)))
+        if (services.Any(sd => sd.ServiceType == typeof(DistributedQueuesMarker)))
             return builder;
+        services.AddSingleton<DistributedQueuesMarker>();
 
         var registry = services.GetHandlerRegistry()
-            ?? throw new InvalidOperationException(
-                "AddDistributedQueues requires AddMediator to be called first.");
+            ?? throw new InvalidOperationException("AddDistributedQueues requires AddMediator to be called first.");
 
         var options = new DistributedQueueOptions();
         configure?.Invoke(options);
-
-        // Register options as singleton for QueueMiddleware and QueueWorker to consume
         services.AddSingleton(options);
+
+        var topology = new QueueTopology();
+        services.AddSingleton(topology);
 
         var queueHandlers = registry.GetHandlersWithAttribute<QueueAttribute>();
         if (queueHandlers.Count == 0)
             return builder;
 
-        // Register IQueueClient if not already registered (default: in-memory)
-        if (!services.Any(sd => sd.ServiceType == typeof(IQueueClient)))
+        bool usingInMemoryClient = !services.Any(sd => sd.ServiceType == typeof(IQueueClient));
+        if (usingInMemoryClient)
             services.AddSingleton<IQueueClient, InMemoryQueueClient>();
 
-        // Register the middleware
-        services.AddTransient<QueueMiddleware>();
+        bool workersFiltered = !options.WorkersEnabled || options.Group is not null || options.Queues is { Count: > 0 };
+        if (usingInMemoryClient && workersFiltered && !options.AllowInMemoryWithoutWorkers)
+        {
+            throw new InvalidOperationException(
+                "Workers are disabled or filtered in this process but no IQueueClient transport is registered, so enqueued messages " +
+                "would go to an in-memory queue nothing consumes. Register a transport (for example UseAws()) before AddDistributedQueues(), " +
+                "or set DistributedQueueOptions.AllowInMemoryWithoutWorkers for tests.");
+        }
 
-        // Register the worker registry and type resolver
+        services.TryAddSingleton<QueueMiddleware>();
+
         var workerRegistry = new QueueWorkerRegistry();
         services.AddSingleton<IQueueWorkerRegistry>(workerRegistry);
         var typeResolver = GetOrAddTypeResolver(services);
-
-        // Track whether any handler uses progress tracking
-        bool anyTrackProgress = false;
-
-        // Collect queue names for startup initialization
         var infraOptions = GetOrAddInfrastructureOptions(services);
 
-        // Track which queue names already have a worker registered to avoid duplicates.
-        // Multiple handlers for the same message type share a single queue and worker.
-        var registeredQueues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queues = new Dictionary<string, List<(HandlerRegistration Handler, QueueAttribute Settings)>>(StringComparer.OrdinalIgnoreCase);
+        var queueOrder = new List<string>();
 
-        // Register a QueueWorker for each [Queue]-decorated handler
         foreach (var handler in queueHandlers)
         {
             var messageType = handler.MessageType;
             if (messageType is null)
                 continue;
 
-            var queueAttr = handler.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute;
-            var queueName = !string.IsNullOrWhiteSpace(queueAttr?.QueueName)
-                ? queueAttr!.QueueName!
-                : messageType.Name;
+            var settings = handler.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute ?? new QueueAttribute();
+            var queueName = options.ApplyPrefix(!string.IsNullOrWhiteSpace(settings.QueueName) ? settings.QueueName! : messageType.Name);
 
-            // Apply resource prefix for app-level scoping (e.g., "myapp-CreateOrder")
-            queueName = options.ApplyPrefix(queueName);
-
-            // Register this message type in the type resolver for safe deserialization
             typeResolver.Register(messageType);
 
-            // Skip if already processed this queue name.
-            // Multiple handlers for the same message type (e.g., AuditEventHandler and
-            // NotificationEventHandler both handling OrderCreated) share one queue worker.
-            if (!registeredQueues.Add(queueName))
-                continue;
+            if (!queues.TryGetValue(queueName, out var list))
+            {
+                list = [];
+                queues[queueName] = list;
+                queueOrder.Add(queueName);
+            }
 
-            var group = queueAttr?.Group;
+            list.Add((handler, settings));
+        }
 
-            // Always register infrastructure (queues must exist for enqueuing from API-only nodes).
-            // Dead-letter queues are created lazily on first dead-letter to reduce startup latency.
-            infraOptions.QueueNames.Add(new QueueDefinition { Name = queueName });
+        bool anyTrackProgress = false;
 
-            var visibilityTimeout = TimeSpan.FromSeconds(queueAttr?.TimeoutSeconds ?? 30);
-            var retryDelay = TimeSpan.FromSeconds(queueAttr?.RetryDelaySeconds ?? 5);
+        foreach (var queueName in queueOrder)
+        {
+            var members = queues[queueName];
+            var settings = members[0].Settings;
+            ValidateQueueSettings(queueName, members);
 
-            var trackProgress = queueAttr?.TrackProgress ?? false;
-            if (trackProgress)
+            var handlers = members.Select(m => m.Handler).ToList();
+            var messageType = members[0].Handler.MessageType!;
+
+            var retrySchedule = !string.IsNullOrWhiteSpace(settings.RetryDelays) ? QueueRetryDelay.ParseSchedule(settings.RetryDelays!) : null;
+            var retryPolicy = retrySchedule is not null ? QueueRetryPolicy.Schedule : settings.RetryPolicy;
+
+            var registration = new QueueRegistration
+            {
+                QueueName = queueName,
+                Settings = settings,
+                MessageType = messageType,
+                Handlers = handlers
+            };
+            topology.Add(registration);
+
+            var visibilityTimeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+
+            // Queues must exist for enqueue-only nodes too; dead-letter queues are provisioned alongside.
+            infraOptions.QueueNames.Add(new QueueDefinition
+            {
+                Name = queueName,
+                VisibilityTimeout = visibilityTimeout,
+                MaxAttempts = settings.MaxAttempts
+            });
+
+            if (settings.TrackProgress)
                 anyTrackProgress = true;
 
-            var concurrency = queueAttr?.Concurrency ?? 1;
-            var prefetchCount = queueAttr?.PrefetchCount ?? 0;
-            // Auto-scale prefetch to match concurrency when not explicitly set.
-            // This ensures each ReceiveAsync call can fill the consumer pipeline in a
-            // single round-trip, which is critical for fair distribution across nodes.
-            if (prefetchCount <= 0)
-                prefetchCount = concurrency;
+            var concurrency = Math.Max(1, settings.Concurrency);
+            var prefetchCount = settings.PrefetchCount > 0 ? settings.PrefetchCount : concurrency;
 
             var workerOptions = new QueueWorkerOptions
             {
                 QueueName = queueName,
                 MessageType = messageType,
-                Registration = handler,
+                Registrations = handlers,
                 Concurrency = concurrency,
                 PrefetchCount = prefetchCount,
                 VisibilityTimeout = visibilityTimeout,
-                MaxAttempts = queueAttr?.MaxAttempts ?? 3,
-                RetryPolicy = queueAttr?.RetryPolicy ?? QueueRetryPolicy.Exponential,
-                RetryDelay = retryDelay,
-                Group = group,
-                AutoComplete = queueAttr?.AutoComplete ?? true,
-                AutoRenewTimeout = queueAttr?.AutoRenewTimeout ?? true,
-                TrackProgress = trackProgress
+                MaxAttempts = settings.MaxAttempts,
+                RetryPolicy = retryPolicy,
+                RetryDelay = TimeSpan.FromSeconds(settings.RetryDelaySeconds),
+                RetrySchedule = retrySchedule,
+                Group = settings.Group,
+                AutoComplete = settings.AutoComplete,
+                AutoRenewTimeout = settings.AutoRenewTimeout,
+                TrackProgress = settings.TrackProgress
             };
 
-            // Always register worker info for dashboard visibility across all nodes
+            // Worker info is registered on every node so dashboards can list queues from an API-only node.
             var workerInfo = new QueueWorkerInfo
             {
                 QueueName = queueName,
@@ -147,30 +153,16 @@ public static class DistributedServiceExtensions
                 Group = workerOptions.Group,
                 RetryPolicy = workerOptions.RetryPolicy,
                 TrackProgress = workerOptions.TrackProgress,
-                Description = queueAttr?.Description
+                Description = settings.Description
             };
             workerRegistry.Register(workerInfo);
 
-            // Determine whether this worker should start in this process.
-            // Workers are skipped when:
-            // - WorkersEnabled is false (API-only nodes that only enqueue)
-            // - Group filter is set and doesn't match the handler's group
-            // - Queues filter is set and neither the queue name nor group name matches
-            if (!options.WorkersEnabled)
+            if (!ShouldRunWorkerHere(options, queueName, settings.Group))
                 continue;
 
-            if (options.Group is not null && !string.Equals(options.Group, group, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (options.Queues is { Count: > 0 } queues
-                && !queues.Contains(queueName, StringComparer.OrdinalIgnoreCase)
-                && (group is null || !queues.Contains(group, StringComparer.OrdinalIgnoreCase)))
-                continue;
-
-            // Mark that a worker is actually running on this node
+            registration.WorkerRunsHere = true;
             workerInfo.Stats.SetWorkerRegistered(true);
 
-            // Register as a hosted service using a factory so each worker gets its own options
             services.AddSingleton<IHostedService>(sp => new QueueWorker(
                 sp.GetRequiredService<IQueueClient>(),
                 sp.GetRequiredService<IServiceScopeFactory>(),
@@ -180,48 +172,99 @@ public static class DistributedServiceExtensions
                 workerInfo,
                 sp.GetService<IQueueJobStateStore>(),
                 sp.GetService<DistributedInfrastructureReady>(),
-                sp.GetService<TimeProvider>()));
+                sp.GetService<TimeProvider>(),
+                sp.GetService<MessageTypeResolver>(),
+                sp.GetServices<IQueueHeaderProvider>()));
         }
 
-        // Register default in-memory state store if any handler uses progress tracking and no store is registered
         if (anyTrackProgress && !services.Any(sd => sd.ServiceType == typeof(IQueueJobStateStore)))
             services.AddSingleton<IQueueJobStateStore, InMemoryQueueJobStateStore>();
+
+        services.AddSingleton<IHostedService>(sp => new QueueDepthMetricsService(
+            sp.GetRequiredService<IQueueClient>(),
+            sp.GetRequiredService<QueueTopology>(),
+            sp.GetRequiredService<DistributedQueueOptions>(),
+            sp.GetRequiredService<ILogger<QueueDepthMetricsService>>(),
+            sp.GetService<DistributedInfrastructureReady>(),
+            sp.GetService<TimeProvider>()));
 
         return builder;
     }
 
     /// <summary>
-    /// Adds distributed notification fan-out support to Foundatio.Mediator.
-    /// Notifications are distributed when they implement <see cref="IDistributedNotification"/>,
-    /// are decorated with <see cref="DistributedNotificationAttribute"/>, are explicitly included
-    /// via <see cref="DistributedNotificationOptions.Include{T}"/>, match
-    /// <see cref="DistributedNotificationOptions.MessageFilter"/>, or when
-    /// <see cref="DistributedNotificationOptions.IncludeAllNotifications"/> is enabled.
+    /// Registers a header provider that enriches queued messages on enqueue and restores context on the worker.
     /// </summary>
-    /// <param name="builder">The mediator builder.</param>
-    /// <param name="configure">Optional configuration callback for <see cref="DistributedNotificationOptions"/>.</param>
-    /// <returns>The mediator builder for chaining.</returns>
-    /// <example>
-    /// <code>
-    /// services.AddMediator()
-    ///     .AddDistributedNotifications();
-    ///
-    /// // Or with options:
-    /// services.AddMediator()
-    ///     .AddDistributedNotifications(opts =>
-    ///     {
-    ///         opts.Topic = "my-app-notifications";
-    ///         opts.Include&lt;OrderCreated&gt;();
-    ///     });
-    /// </code>
-    /// </example>
+    public static IMediatorBuilder AddQueueHeaderProvider<TProvider>(this IMediatorBuilder builder)
+        where TProvider : class, IQueueHeaderProvider
+    {
+        builder.Services.AddSingleton<IQueueHeaderProvider, TProvider>();
+        return builder;
+    }
+
+    private static bool ShouldRunWorkerHere(DistributedQueueOptions options, string queueName, string? group)
+    {
+        if (!options.WorkersEnabled)
+            return false;
+
+        if (options.Group is not null && !string.Equals(options.Group, group, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (options.Queues is { Count: > 0 } queues
+            && !queues.Contains(queueName, StringComparer.OrdinalIgnoreCase)
+            && (group is null || !queues.Contains(group, StringComparer.OrdinalIgnoreCase)))
+            return false;
+
+        return true;
+    }
+
+    private static void ValidateQueueSettings(string queueName, List<(HandlerRegistration Handler, QueueAttribute Settings)> members)
+    {
+        var first = members[0].Settings;
+
+        if (first.MaxAttempts == 0)
+            throw new InvalidOperationException($"Queue '{queueName}': MaxAttempts must be at least 1 (or negative for unlimited).");
+
+        if (first.TimeoutSeconds < 1 || first.TimeoutSeconds > 12 * 60 * 60)
+            throw new InvalidOperationException($"Queue '{queueName}': TimeoutSeconds must be between 1 and 43200 (12 hours).");
+
+        for (int i = 1; i < members.Count; i++)
+        {
+            var other = members[i].Settings;
+            var differences = new List<string>();
+
+            if (first.MaxAttempts != other.MaxAttempts) differences.Add(nameof(QueueAttribute.MaxAttempts));
+            if (first.TimeoutSeconds != other.TimeoutSeconds) differences.Add(nameof(QueueAttribute.TimeoutSeconds));
+            if (first.Concurrency != other.Concurrency) differences.Add(nameof(QueueAttribute.Concurrency));
+            if (first.PrefetchCount != other.PrefetchCount) differences.Add(nameof(QueueAttribute.PrefetchCount));
+            if (!string.Equals(first.Group, other.Group, StringComparison.OrdinalIgnoreCase)) differences.Add(nameof(QueueAttribute.Group));
+            if (first.AutoComplete != other.AutoComplete) differences.Add(nameof(QueueAttribute.AutoComplete));
+            if (first.AutoRenewTimeout != other.AutoRenewTimeout) differences.Add(nameof(QueueAttribute.AutoRenewTimeout));
+            if (first.RetryPolicy != other.RetryPolicy) differences.Add(nameof(QueueAttribute.RetryPolicy));
+            if (first.RetryDelaySeconds != other.RetryDelaySeconds) differences.Add(nameof(QueueAttribute.RetryDelaySeconds));
+            if (!string.Equals(first.RetryDelays, other.RetryDelays, StringComparison.Ordinal)) differences.Add(nameof(QueueAttribute.RetryDelays));
+            if (first.TrackProgress != other.TrackProgress) differences.Add(nameof(QueueAttribute.TrackProgress));
+
+            if (differences.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Queue '{queueName}' is shared by handlers '{members[0].Handler.SourceHandlerName ?? members[0].Handler.DescriptorId}' and " +
+                    $"'{members[i].Handler.SourceHandlerName ?? members[i].Handler.DescriptorId}' with different [Queue] settings ({string.Join(", ", differences)}). " +
+                    "Handlers on the same queue must declare identical settings.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bridges notifications across processes. Types selected by <see cref="DistributedNotificationOptions"/>
+    /// are published to the <see cref="IPubSubClient"/> and re-published locally on every other node.
+    /// Register a transport before calling this; otherwise the in-memory pub/sub client is used.
+    /// </summary>
     public static IMediatorBuilder AddDistributedNotifications(
         this IMediatorBuilder builder,
         Action<DistributedNotificationOptions>? configure = null)
     {
         var services = builder.Services;
 
-        // Prevent double registration
         if (services.Any(sd => sd.ServiceType == typeof(DistributedNotificationOptions)))
             return builder;
 
@@ -230,19 +273,13 @@ public static class DistributedServiceExtensions
 
         services.AddSingleton(options);
 
-        // Register IPubSubClient if not already registered (default: in-memory)
         if (!services.Any(sd => sd.ServiceType == typeof(IPubSubClient)))
             services.AddSingleton<IPubSubClient, InMemoryPubSubClient>();
 
-        // Collect topic name for startup initialization
         var infraOptions = GetOrAddInfrastructureOptions(services);
         infraOptions.TopicNames.Add(new TopicDefinition { Name = options.EffectiveTopic });
 
-        // Register the background worker
-        // Build the resolved set of distributed types for the worker to filter on.
         var distributedTypes = new HashSet<Type>();
-
-        // Register known notification types in the type resolver
         var registry = services.GetHandlerRegistry();
         var typeResolver = GetOrAddTypeResolver(services);
         if (registry is not null)
@@ -257,20 +294,19 @@ public static class DistributedServiceExtensions
             }
         }
 
-        // Also register explicitly included types that may not have handlers in the registry
-        // (e.g., types only consumed on other nodes)
-        if (distributedTypes.Count == 0 && options.IncludedTypes.Count == 0
-            && !options.IncludeAllNotifications && options.MessageFilter is null)
-        {
-            // No distributed types discovered and no dynamic filters — skip the worker entirely
-            return builder;
-        }
-
         foreach (var type in options.IncludedTypes)
         {
-            typeResolver.Register(type);
-            distributedTypes.Add(type);
+            if (options.ShouldDistribute(type))
+            {
+                typeResolver.Register(type);
+                distributedTypes.Add(type);
+            }
         }
+
+        if (distributedTypes.Count == 0 && !options.HasDynamicRules)
+            return builder;
+
+        options.ResolvedTypes = distributedTypes.OrderBy(t => t.FullName, StringComparer.Ordinal).ToList();
 
         services.AddSingleton<IHostedService>(sp => new DistributedNotificationWorker(
             sp.GetRequiredService<IServiceScopeFactory>(),
@@ -296,7 +332,6 @@ public static class DistributedServiceExtensions
         var ready = new DistributedInfrastructureReady();
         services.AddSingleton(ready);
 
-        // Register the initializer — starts infrastructure creation in the background
         services.AddSingleton<IHostedService>(sp => new DistributedInfrastructureInitializer(
             sp.GetService<IQueueClient>(),
             sp.GetService<IPubSubClient>(),
@@ -317,4 +352,6 @@ public static class DistributedServiceExtensions
         services.AddSingleton(resolver);
         return resolver;
     }
+
+    private sealed class DistributedQueuesMarker;
 }

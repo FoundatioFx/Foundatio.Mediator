@@ -3,40 +3,61 @@ using System.Collections.Concurrent;
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Resolves message types from assembly-qualified type names using a pre-registered allowlist.
-/// Prevents arbitrary type loading from untrusted message headers.
+/// Resolves message types from type names carried in message headers.
 /// </summary>
 /// <remarks>
-/// The resolver is populated during DI registration from handler registrations and known
-/// notification types. Only types that have been explicitly registered can be deserialized.
+/// Types registered during DI setup are always resolvable. Other names resolve only when the caller
+/// supplies a type the result must be assignable to, which lets a handler declared on an interface
+/// or base type receive concrete messages without opening arbitrary type loading.
 /// </remarks>
 public sealed class MessageTypeResolver
 {
     private readonly ConcurrentDictionary<string, Type> _allowedTypes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Type?> _resolvedTypes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Registers a type as allowed for deserialization.
     /// </summary>
     public void Register(Type type)
     {
-        var key = type.AssemblyQualifiedName;
-        if (key is not null)
-            _allowedTypes.TryAdd(key, type);
+        if (type.AssemblyQualifiedName is { } aqn)
+            _allowedTypes.TryAdd(aqn, type);
 
-        // Also register by full name for resilience against assembly version changes
-        var fullName = type.FullName;
-        if (fullName is not null)
+        if (type.FullName is { } fullName)
             _allowedTypes.TryAdd(fullName, type);
     }
 
     /// <summary>
-    /// Attempts to resolve a type from a type name. Returns <c>null</c> if the type
-    /// is not in the allowlist.
+    /// Resolves a registered type by name, or <c>null</c> when it was not registered.
     /// </summary>
     public Type? TryResolve(string typeName)
+        => _allowedTypes.TryGetValue(typeName, out var type) ? type : null;
+
+    /// <summary>
+    /// Resolves a type by name when it is registered or when it can be loaded and is assignable to
+    /// <paramref name="assignableTo"/>. Returns <c>null</c> otherwise.
+    /// </summary>
+    public Type? TryResolve(string typeName, Type assignableTo)
     {
-        if (_allowedTypes.TryGetValue(typeName, out var type))
+        var type = TryResolve(typeName) ?? _resolvedTypes.GetOrAdd(typeName, ResolveLoadedType);
+        return type is not null && assignableTo.IsAssignableFrom(type) ? type : null;
+    }
+
+    private static Type? ResolveLoadedType(string typeName)
+    {
+        var type = Type.GetType(typeName, throwOnError: false);
+        if (type is not null)
             return type;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic)
+                continue;
+
+            type = assembly.GetType(typeName, throwOnError: false);
+            if (type is not null)
+                return type;
+        }
 
         return null;
     }

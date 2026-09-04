@@ -3,63 +3,70 @@ using System.Text.Json;
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Options for configuring distributed queue support.
+/// Process-wide options for distributed queues.
 /// </summary>
 public class DistributedQueueOptions
 {
     /// <summary>
-    /// Custom JSON serializer options for message serialization/deserialization.
-    /// When null, <see cref="JsonSerializerOptions.Default"/> is used.
+    /// Serializer options for message bodies. Defaults to <see cref="JsonSerializerOptions.Default"/>.
     /// </summary>
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
-    /// When set, only workers for queues in the matching group will be started.
-    /// When null (default), all queue workers are started.
+    /// When set, only workers whose <see cref="QueueAttribute.Group"/> matches start in this process.
     /// </summary>
     public string? Group { get; set; }
 
     /// <summary>
-    /// Controls whether queue worker hosted services are started. When <c>false</c>,
-    /// queue middleware is still registered (so messages can be enqueued to a transport)
-    /// but no <see cref="QueueWorker"/> instances are started in this process.
-    /// Default is <c>true</c>.
+    /// When <c>false</c>, this process only enqueues; no workers start.
     /// </summary>
-    /// <remarks>
-    /// Use this to run API-only nodes that enqueue work without processing it locally.
-    /// Worker nodes in a separate process can then dequeue and handle those messages.
-    /// </remarks>
     public bool WorkersEnabled { get; set; } = true;
 
     /// <summary>
-    /// When set, only start workers whose queue name or <see cref="QueueAttribute.Group"/>
-    /// matches an entry in this set. Both queue names (e.g., <c>"DemoExportJob"</c>) and
-    /// group names (e.g., <c>"exports"</c>) are accepted.
-    /// When <c>null</c> or empty, all queue workers are started (subject to
-    /// <see cref="Group"/> and <see cref="WorkersEnabled"/> filtering).
+    /// When set, only workers whose queue name or group is in this set start in this process.
     /// </summary>
-    /// <remarks>
-    /// This is more granular than <see cref="Group"/>, which filters by a single group name.
-    /// <see cref="Queues"/> accepts multiple values and matches against both queue names and group names.
-    /// When both <see cref="Group"/> and <see cref="Queues"/> are set, both filters are applied.
-    /// </remarks>
     public HashSet<string>? Queues { get; set; }
 
     /// <summary>
-    /// Optional prefix applied to all queue names for app-level scoping.
-    /// When set, queue names become <c>"{ResourcePrefix}-{QueueName}"</c>.
-    /// When <c>null</c> or empty (default), queue names are used as-is.
+    /// Prefix applied to every queue name, for example an environment or tenant scope.
     /// </summary>
-    /// <remarks>
-    /// Use this to isolate multiple applications sharing the same infrastructure
-    /// (e.g., <c>"myapp"</c> produces queues like <c>"myapp-CreateOrder"</c>).
-    /// Dead-letter queues inherit the prefix automatically.
-    /// </remarks>
     public string? ResourcePrefix { get; set; }
 
     /// <summary>
-    /// Applies <see cref="ResourcePrefix"/> to the given queue name.
-    /// Returns the name unchanged when no prefix is configured.
+    /// How long in-flight handlers may keep running after the host begins stopping before they are
+    /// cancelled and their messages abandoned. Keep this below the host's shutdown timeout.
+    /// </summary>
+    public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How long an enqueue waits for infrastructure provisioning to finish before failing.
+    /// </summary>
+    public TimeSpan EnqueueReadyTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How long job state is kept after it is written. Applied on every state update.
+    /// </summary>
+    public TimeSpan JobStateExpiry { get; set; } = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// How often queue depth is sampled for the <c>queue.depth.*</c> metrics. <see cref="TimeSpan.Zero"/> disables sampling.
+    /// </summary>
+    public TimeSpan QueueDepthPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Allows an enqueue-only or filtered process to keep the in-memory queue client. Off by default
+    /// because messages enqueued to an in-memory queue with no worker in the same process are lost.
+    /// </summary>
+    public bool AllowInMemoryWithoutWorkers { get; set; }
+
+    /// <summary>
+    /// Produces <see cref="QueueJobState.Metadata"/> for tracked jobs from the message being enqueued,
+    /// for example a tenant or requesting-user id that a job state store can index on.
+    /// </summary>
+    public Func<object, IReadOnlyDictionary<string, string>?>? JobMetadataProvider { get; set; }
+
+    /// <summary>
+    /// Applies <see cref="ResourcePrefix"/> to a queue name.
     /// </summary>
     public string ApplyPrefix(string name) =>
         string.IsNullOrEmpty(ResourcePrefix) ? name : $"{ResourcePrefix}-{name}";

@@ -40,7 +40,8 @@ public sealed class QueueAttribute : Attribute
     public int PrefetchCount { get; set; }
 
     /// <summary>
-    /// Worker group, matched against <see cref="DistributedQueueOptions.Group"/> for selective hosting.
+    /// Worker group name. <see cref="DistributedQueueOptions.Workers"/> selects workers by group or queue
+    /// name, so grouping related handlers lets a process run or skip them together.
     /// </summary>
     public string? Group { get; set; }
 

@@ -67,7 +67,7 @@ public static class InfrastructureExtensions
 
         logger.LogInformation("Running in {Mode} mode (queues: {Queues})",
             options.Mode,
-            options.Queues is { Count: > 0 } ? string.Join(", ", options.Queues) : "all");
+            options.Workers ?? "all");
 
         var workerRegistry = app.Services.GetService<IQueueWorkerRegistry>();
         if (workerRegistry is not null)

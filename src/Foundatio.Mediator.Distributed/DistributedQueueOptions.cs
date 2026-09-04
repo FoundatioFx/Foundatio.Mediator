@@ -13,19 +13,11 @@ public class DistributedQueueOptions
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
-    /// When set, only workers whose <see cref="QueueAttribute.Group"/> matches start in this process.
+    /// Which workers run in this process. Defaults to <see cref="WorkerSelection.All"/>. Set from
+    /// configuration with <see cref="WorkerSelection.Parse"/> so the same build can be an enqueue-only
+    /// API node (<c>none</c>), run everything (<c>all</c>), or run a chosen set of groups or queues.
     /// </summary>
-    public string? Group { get; set; }
-
-    /// <summary>
-    /// When <c>false</c>, this process only enqueues; no workers start.
-    /// </summary>
-    public bool WorkersEnabled { get; set; } = true;
-
-    /// <summary>
-    /// When set, only workers whose queue name or group is in this set start in this process.
-    /// </summary>
-    public HashSet<string>? Queues { get; set; }
+    public WorkerSelection Workers { get; set; } = WorkerSelection.All;
 
     /// <summary>
     /// Prefix applied to every queue name, for example an environment or tenant scope.
@@ -54,8 +46,8 @@ public class DistributedQueueOptions
     public TimeSpan QueueDepthPollInterval { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Allows an enqueue-only or filtered process to keep the in-memory queue client. Off by default
-    /// because messages enqueued to an in-memory queue with no worker in the same process are lost.
+    /// Allows a process that runs no workers, or only some, to keep the default in-memory queue client.
+    /// Off by default because messages enqueued to an in-memory queue with no worker in the same process are lost.
     /// </summary>
     public bool AllowInMemoryWithoutWorkers { get; set; }
 

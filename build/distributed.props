@@ -1,9 +1,7 @@
 <Project>
 
-  <!-- Distributed packages are versioned separately. Bump here when releasing. -->
+  <!-- Distributed packages version with the repository through MinVer so every branch build publishes a new preview. -->
   <PropertyGroup>
-    <MinVerSkip>true</MinVerSkip>
-    <Version>0.1.0-beta1</Version>
     <PackageTags>$(PackageTags);Distributed</PackageTags>
   </PropertyGroup>
 

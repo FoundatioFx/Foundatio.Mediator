@@ -7,6 +7,8 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Foundatio.Mediator.Distributed.Redis</RootNamespace>
+    <Description>Redis job state store for Foundatio.Mediator.Distributed: atomic status transitions, progress, heartbeats, cancellation, and per-queue counters.</Description>
+    <PackageTags>$(PackageTags);Redis</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

@@ -290,7 +290,7 @@ public sealed class QueueWorker : BackgroundService
         try
         {
             if (jobId is not null)
-                await TryUpdateStateAsync(() => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Processing, startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: AckToken())).ConfigureAwait(false);
+                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Processing, startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
 
             queueContext = new QueueContext
             {
@@ -358,17 +358,17 @@ public sealed class QueueWorker : BackgroundService
             }
 
             if (_options.AutoComplete && queueContext is { IsCompleted: false, IsAbandoned: false })
-                await _client.CompleteAsync(message, AckToken()).ConfigureAwait(false);
+                await TryAckAsync(ackToken => _client.CompleteAsync(message, ackToken), message, "complete").ConfigureAwait(false);
 
             _workerInfo?.Stats.IncrementProcessed();
             DistributedMetrics.Processed.Add(1, tags);
             DistributedMetrics.HandlerDuration.Record(stopwatch.Elapsed.TotalMilliseconds, DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, "processed"));
 
             if (_stateStore is not null)
-                await TryUpdateStateAsync(() => _stateStore.IncrementCounterAsync(_options.QueueName, "processed", 1, AckToken())).ConfigureAwait(false);
+                await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "processed", 1, ackToken)).ConfigureAwait(false);
 
             if (jobId is not null)
-                await TryUpdateStateAsync(() => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed, completedUtc: _timeProvider.GetUtcNow(), progress: 100, expiry: _stateExpiry, cancellationToken: AckToken())).ConfigureAwait(false);
+                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed, completedUtc: _timeProvider.GetUtcNow(), progress: 100, expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (drainToken.IsCancellationRequested)
         {
@@ -384,7 +384,8 @@ public sealed class QueueWorker : BackgroundService
             bool cancelledByUser = false;
             if (jobId is not null)
             {
-                try { cancelledByUser = await _stateStore!.IsCancellationRequestedAsync(jobId, AckToken()).ConfigureAwait(false); }
+                using var cancelCts = new CancellationTokenSource(s_ackTimeout);
+                try { cancelledByUser = await _stateStore!.IsCancellationRequestedAsync(jobId, cancelCts.Token).ConfigureAwait(false); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Failed to read cancellation state for job {JobId}", jobId); }
             }
 
@@ -392,11 +393,11 @@ public sealed class QueueWorker : BackgroundService
             {
                 _logger.LogInformation("Message {MessageId} on {QueueName} was cancelled by request (job {JobId})", message.Id, _options.QueueName, jobId);
                 activity?.SetTag("messaging.job.cancelled", true);
-                await TryUpdateStateAsync(() => _stateStore!.UpdateJobStatusAsync(jobId!, QueueJobStatus.Cancelled, completedUtc: _timeProvider.GetUtcNow(), expiry: _stateExpiry, cancellationToken: AckToken())).ConfigureAwait(false);
+                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId!, QueueJobStatus.Cancelled, completedUtc: _timeProvider.GetUtcNow(), expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
 
                 // A requested cancellation is a normal completion; the message must not be retried.
                 if (_options.AutoComplete && queueContext is { IsCompleted: false, IsAbandoned: false })
-                    await TryAckAsync(() => _client.CompleteAsync(message, AckToken()), message, "complete").ConfigureAwait(false);
+                    await TryAckAsync(ackToken => _client.CompleteAsync(message, ackToken), message, "complete").ConfigureAwait(false);
             }
             else
             {
@@ -536,7 +537,7 @@ public sealed class QueueWorker : BackgroundService
                 await _client.RenewTimeoutAsync(message, _options.VisibilityTimeout, cancellationToken).ConfigureAwait(false);
 
                 if (jobId is not null && _stateStore is not null)
-                    await TryUpdateStateAsync(() => _stateStore.HeartbeatAsync(jobId, cancellationToken)).ConfigureAwait(false);
+                    await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, cancellationToken)).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -556,7 +557,7 @@ public sealed class QueueWorker : BackgroundService
         await _client.RenewTimeoutAsync(message, _options.VisibilityTimeout, ct).ConfigureAwait(false);
 
         if (jobId is not null && _stateStore is not null)
-            await TryUpdateStateAsync(() => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
+            await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
     }
 
     private async Task UpdateJobProgressAsync(string jobId, int percent, string? message, CancellationToken ct)
@@ -567,8 +568,8 @@ public sealed class QueueWorker : BackgroundService
         if (await _stateStore.IsCancellationRequestedAsync(jobId, ct).ConfigureAwait(false))
             throw new OperationCanceledException("Job cancellation was requested.");
 
-        await TryUpdateStateAsync(() => _stateStore.UpdateJobProgressAsync(jobId, Math.Clamp(percent, 0, 100), message, _stateExpiry, ct)).ConfigureAwait(false);
-        await TryUpdateStateAsync(() => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
+        await TryUpdateStateAsync(ackToken => _stateStore.UpdateJobProgressAsync(jobId, Math.Clamp(percent, 0, 100), message, _stateExpiry, ct)).ConfigureAwait(false);
+        await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
     }
 
     private Task FailJobAsync(string? jobId, string errorMessage)
@@ -576,7 +577,7 @@ public sealed class QueueWorker : BackgroundService
         if (jobId is null || _stateStore is null)
             return Task.CompletedTask;
 
-        return TryUpdateStateAsync(() => _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: _stateExpiry, cancellationToken: AckToken()));
+        return TryUpdateStateAsync(ackToken => _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: _stateExpiry, cancellationToken: ackToken));
     }
 
     private async Task RecordFailureAsync(QueueMessage message, System.Diagnostics.TagList tags, TimeSpan elapsed)
@@ -589,7 +590,7 @@ public sealed class QueueWorker : BackgroundService
         DistributedMetrics.HandlerDuration.Record(elapsed.TotalMilliseconds, DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, "failed"));
 
         if (_stateStore is not null)
-            await TryUpdateStateAsync(() => _stateStore.IncrementCounterAsync(_options.QueueName, "failed", 1, AckToken())).ConfigureAwait(false);
+            await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "failed", 1, ackToken)).ConfigureAwait(false);
     }
 
     private async Task RecordDeadLetterAsync(QueueMessage message, string reason, string? jobId, System.Diagnostics.TagList tags)
@@ -598,38 +599,40 @@ public sealed class QueueWorker : BackgroundService
         DistributedMetrics.DeadLettered.Add(1, tags);
 
         if (_stateStore is not null)
-            await TryUpdateStateAsync(() => _stateStore.IncrementCounterAsync(_options.QueueName, "dead_lettered", 1, AckToken())).ConfigureAwait(false);
+            await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "dead_lettered", 1, ackToken)).ConfigureAwait(false);
 
         try
         {
-            await _client.DeadLetterAsync(message, reason, AckToken()).ConfigureAwait(false);
+            using var dlqCts = new CancellationTokenSource(s_ackTimeout);
+            await _client.DeadLetterAsync(message, reason, dlqCts.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             // Without a dead-letter queue the message would otherwise reappear every visibility period; park it for the maximum delay instead.
             _logger.LogError(ex, "Failed to dead-letter message {MessageId} on {QueueName} ({Reason}); abandoning with maximum delay",
                 message.Id, _options.QueueName, reason);
-            await TryAckAsync(() => _client.AbandonAsync(message, QueueRetryDelay.MaxDelay, AckToken()), message, "abandon").ConfigureAwait(false);
+            await TryAckAsync(ackToken => _client.AbandonAsync(message, QueueRetryDelay.MaxDelay, ackToken), message, "abandon").ConfigureAwait(false);
         }
     }
 
     private Task AbandonWithBackoffAsync(QueueMessage message)
     {
         var delay = QueueRetryDelay.Compute(_options.RetryPolicy, _options.RetryDelay, message.DequeueCount, _options.RetrySchedule);
-        return TryAckAsync(() => _client.AbandonAsync(message, delay, AckToken()), message, "abandon");
+        return TryAckAsync(ackToken => _client.AbandonAsync(message, delay, ackToken), message, "abandon");
     }
 
     private Task AbandonForRedeliveryAsync(QueueMessage message, string reason)
     {
         DistributedMetrics.Abandoned.Add(1, DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, reason));
-        return TryAckAsync(() => _client.AbandonAsync(message, TimeSpan.Zero, AckToken()), message, "abandon");
+        return TryAckAsync(ackToken => _client.AbandonAsync(message, TimeSpan.Zero, ackToken), message, "abandon");
     }
 
-    private async Task TryAckAsync(Func<Task> operation, QueueMessage message, string operationName)
+    private async Task TryAckAsync(Func<CancellationToken, Task> operation, QueueMessage message, string operationName)
     {
+        using var cts = new CancellationTokenSource(s_ackTimeout);
         try
         {
-            await operation().ConfigureAwait(false);
+            await operation(cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -641,22 +644,18 @@ public sealed class QueueWorker : BackgroundService
     /// <summary>
     /// Runs a job-state operation, logging instead of failing the message when the store is unavailable.
     /// </summary>
-    private async Task TryUpdateStateAsync(Func<Task> operation)
+    private async Task TryUpdateStateAsync(Func<CancellationToken, Task> operation)
     {
+        using var cts = new CancellationTokenSource(s_ackTimeout);
         try
         {
-            await operation().ConfigureAwait(false);
+            await operation(cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to update job state store for queue {QueueName}; message processing will continue", _options.QueueName);
         }
     }
-
-    /// <summary>
-    /// Acknowledgements of finished work must not observe the stopping token; they get their own bounded timeout.
-    /// </summary>
-    private static CancellationToken AckToken() => new CancellationTokenSource(s_ackTimeout).Token;
 
     /// <summary>
     /// Whether a failed <see cref="ResultStatus"/> is transient. Content errors are dead-lettered immediately.

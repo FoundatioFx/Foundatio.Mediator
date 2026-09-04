@@ -13,28 +13,26 @@ public static class AwsBuilderExtensions
 {
     /// <summary>
     /// Configures both SQS queues and SNS/SQS pub/sub as the distributed transports.
-    /// When <see cref="AwsTransportOptions.ServiceUrl"/> is set, the SQS and SNS SDK
-    /// clients are automatically registered; otherwise you must register
-    /// <c>IAmazonSQS</c> and <c>IAmazonSimpleNotificationService</c> before calling this.
+    /// When <see cref="AwsTransportOptions.ServiceUrl"/> is set, the SQS and SNS SDK clients target that
+    /// endpoint; otherwise they come from the SDK's default credential and region chain. Either way an
+    /// <c>IAmazonSQS</c> or <c>IAmazonSimpleNotificationService</c> already registered in DI wins.
     /// </summary>
     /// <param name="builder">The mediator builder.</param>
     /// <param name="configure">Optional configuration for <see cref="AwsTransportOptions"/>.</param>
     /// <returns>The mediator builder for chaining.</returns>
     /// <example>
     /// <code>
-    /// // LocalStack / dev — SDK clients auto-registered
+    /// // LocalStack / dev — SDK clients target the emulator with test credentials
     /// services.AddMediator()
     ///     .AddDistributedQueues()
     ///     .AddDistributedNotifications()
     ///     .UseAws(aws => aws.ServiceUrl = "http://localhost:4566");
     ///
-    /// // Production — SDK clients pre-registered via AddAWSService
-    /// services.AddAWSService&lt;IAmazonSQS&gt;();
-    /// services.AddAWSService&lt;IAmazonSimpleNotificationService&gt;();
+    /// // Production — default credential chain, queues provisioned elsewhere
     /// services.AddMediator()
     ///     .AddDistributedQueues()
     ///     .AddDistributedNotifications()
-    ///     .UseAws(aws => aws.Queues.AutoCreateQueues = false);
+    ///     .UseAws(aws => aws.Queues.Provisioning = SqsProvisioningMode.Validate);
     /// </code>
     /// </example>
     public static IMediatorBuilder UseAws(
@@ -44,24 +42,9 @@ public static class AwsBuilderExtensions
         var options = new AwsTransportOptions();
         configure?.Invoke(options);
 
-        if (!string.IsNullOrEmpty(options.ServiceUrl))
-            RegisterSdkClients(builder.Services, options);
-
-        builder.UseAwsQueues(opts =>
-        {
-            opts.AutoCreateQueues = options.Queues.AutoCreateQueues;
-            opts.WaitTimeSeconds = options.Queues.WaitTimeSeconds;
-        });
-
-        builder.UseAwsNotifications(opts =>
-        {
-            opts.TopicName = options.Notifications.TopicName;
-            opts.TopicArn = options.Notifications.TopicArn;
-            opts.AutoCreate = options.Notifications.AutoCreate;
-            opts.QueuePrefix = options.Notifications.QueuePrefix;
-            opts.WaitTimeSeconds = options.Notifications.WaitTimeSeconds;
-            opts.CleanupOnDispose = options.Notifications.CleanupOnDispose;
-        });
+        RegisterSdkClients(builder.Services, options);
+        RegisterQueues(builder.Services, options.Queues);
+        RegisterNotifications(builder.Services, options.Notifications);
 
         return builder;
     }
@@ -78,20 +61,17 @@ public static class AwsBuilderExtensions
     /// services.AddAWSService&lt;IAmazonSQS&gt;();
     /// services.AddMediator()
     ///     .AddDistributedQueues()
-    ///     .UseAwsQueues(opts => opts.AutoCreateQueues = false);
+    ///     .UseAwsQueues(opts => opts.Provisioning = SqsProvisioningMode.Validate);
     /// </code>
     /// </example>
     public static IMediatorBuilder UseAwsQueues(
         this IMediatorBuilder builder,
         Action<SqsQueueClientOptions>? configure = null)
     {
-        var services = builder.Services;
         var options = new SqsQueueClientOptions();
         configure?.Invoke(options);
 
-        services.AddSingleton(options);
-        services.AddSingleton<IQueueClient, SqsQueueClient>();
-
+        RegisterQueues(builder.Services, options);
         return builder;
     }
 
@@ -115,10 +95,25 @@ public static class AwsBuilderExtensions
         this IMediatorBuilder builder,
         Action<SqsPubSubClientOptions>? configure = null)
     {
-        var services = builder.Services;
         var options = new SqsPubSubClientOptions();
         configure?.Invoke(options);
 
+        RegisterNotifications(builder.Services, options);
+        return builder;
+    }
+
+    private static void RegisterQueues(IServiceCollection services, SqsQueueClientOptions options)
+    {
+        services.AddSingleton(options);
+        services.AddSingleton<IQueueClient>(sp => new SqsQueueClient(
+            sp.GetRequiredService<IAmazonSQS>(),
+            options,
+            sp.GetService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<SqsQueueClient>>()));
+    }
+
+    private static void RegisterNotifications(IServiceCollection services, SqsPubSubClientOptions options)
+    {
         services.AddSingleton(options);
         services.AddSingleton<IPubSubClient>(sp => new SqsPubSubClient(
             sp.GetRequiredService<IAmazonSimpleNotificationService>(),
@@ -126,34 +121,45 @@ public static class AwsBuilderExtensions
             options,
             sp.GetRequiredService<DistributedNotificationOptions>(),
             sp.GetRequiredService<ILogger<SqsPubSubClient>>()));
-
-        return builder;
     }
 
     private static void RegisterSdkClients(IServiceCollection services, AwsTransportOptions options)
     {
-        var credentials = options.Credentials
-            ?? new BasicAWSCredentials("test", "test");
+        bool hasSqs = services.Any(sd => sd.ServiceType == typeof(IAmazonSQS));
+        bool hasSns = services.Any(sd => sd.ServiceType == typeof(IAmazonSimpleNotificationService));
+        if (hasSqs && hasSns)
+            return;
 
-        if (!services.Any(sd => sd.ServiceType == typeof(IAmazonSQS)))
+        if (string.IsNullOrEmpty(options.ServiceUrl))
         {
-            var sqsConfig = new AmazonSQSConfig
-            {
-                ServiceURL = options.ServiceUrl,
-                AuthenticationRegion = options.Region
-            };
-            services.AddSingleton<IAmazonSQS>(_ => new AmazonSQSClient(credentials, sqsConfig));
+            // Default SDK chain: environment, profile, instance/task role, and the configured region.
+            if (!hasSqs)
+                services.AddSingleton<IAmazonSQS>(_ => options.Credentials is null ? new AmazonSQSClient() : new AmazonSQSClient(options.Credentials));
+            if (!hasSns)
+                services.AddSingleton<IAmazonSimpleNotificationService>(_ => options.Credentials is null
+                    ? new AmazonSimpleNotificationServiceClient()
+                    : new AmazonSimpleNotificationServiceClient(options.Credentials));
+            return;
         }
 
-        if (!services.Any(sd => sd.ServiceType == typeof(IAmazonSimpleNotificationService)))
+        var credentials = options.Credentials ?? new BasicAWSCredentials("test", "test");
+
+        if (!hasSqs)
         {
-            var snsConfig = new AmazonSimpleNotificationServiceConfig
+            services.AddSingleton<IAmazonSQS>(_ => new AmazonSQSClient(credentials, new AmazonSQSConfig
             {
                 ServiceURL = options.ServiceUrl,
                 AuthenticationRegion = options.Region
-            };
-            services.AddSingleton<IAmazonSimpleNotificationService>(
-                _ => new AmazonSimpleNotificationServiceClient(credentials, snsConfig));
+            }));
+        }
+
+        if (!hasSns)
+        {
+            services.AddSingleton<IAmazonSimpleNotificationService>(_ => new AmazonSimpleNotificationServiceClient(credentials, new AmazonSimpleNotificationServiceConfig
+            {
+                ServiceURL = options.ServiceUrl,
+                AuthenticationRegion = options.Region
+            }));
         }
     }
 }

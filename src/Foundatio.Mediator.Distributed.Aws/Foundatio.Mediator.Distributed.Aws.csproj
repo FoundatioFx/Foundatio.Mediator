@@ -7,6 +7,8 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Foundatio.Mediator.Distributed.Aws</RootNamespace>
+    <Description>Amazon SQS queues and SNS fan-out for Foundatio.Mediator.Distributed, with queue provisioning modes, redrive policies, and self-cleaning per-node subscription queues.</Description>
+    <PackageTags>$(PackageTags);AWS;SQS;SNS</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

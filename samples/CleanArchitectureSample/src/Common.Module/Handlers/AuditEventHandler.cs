@@ -6,71 +6,13 @@ using Microsoft.Extensions.Logging;
 namespace Common.Module.Handlers;
 
 /// <summary>
-/// Listens to domain events from ALL modules and creates audit log entries.
-/// This demonstrates Clean Architecture's event-driven loose coupling:
-/// - Orders.Module and Products.Module don't know this handler exists
-/// - They just publish events; subscribers react independently
-/// - Adding new audit capabilities requires no changes to source modules
-///
-/// Decorated with [Queue] so audit logging is processed asynchronously via SQS,
-/// keeping the request path fast.
+/// Audits product events. Products.Module never sees this handler; it publishes events and subscribers react.
+/// Each message type gets its own queue named after the type, all in the "events" worker group.
+/// Order events are audited by <see cref="OrderAuditHandler"/> through the <c>IOrderEvent</c> interface.
 /// </summary>
-[Queue(Group = "events", Description = "Logs audit trail entries for tracked operations")]
+[Queue(Group = "events", Description = "Audit trail for product events")]
 public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHandler> logger)
 {
-    // Order events
-    public async Task HandleAsync(OrderCreated evt, CancellationToken cancellationToken)
-    {
-        logger.LogDebug("Auditing OrderCreated event for order {OrderId}", evt.OrderId);
-
-        await auditService.LogAsync(new AuditEntry(
-            Id: Guid.NewGuid().ToString(),
-            EventType: nameof(OrderCreated),
-            EntityType: "Order",
-            EntityId: evt.OrderId,
-            Description: $"Order created for customer {evt.CustomerId} with amount ${evt.Amount:F2}",
-            Timestamp: evt.CreatedAt,
-            Metadata: new Dictionary<string, object?>
-            {
-                ["CustomerId"] = evt.CustomerId,
-                ["Amount"] = evt.Amount
-            }
-        ), cancellationToken);
-    }
-
-    public async Task HandleAsync(OrderUpdated evt, CancellationToken cancellationToken)
-    {
-        logger.LogDebug("Auditing OrderUpdated event for order {OrderId}", evt.OrderId);
-
-        await auditService.LogAsync(new AuditEntry(
-            Id: Guid.NewGuid().ToString(),
-            EventType: nameof(OrderUpdated),
-            EntityType: "Order",
-            EntityId: evt.OrderId,
-            Description: $"Order updated: amount ${evt.Amount:F2}, status {evt.Status}",
-            Timestamp: evt.UpdatedAt,
-            Metadata: new Dictionary<string, object?>
-            {
-                ["Amount"] = evt.Amount,
-                ["Status"] = evt.Status
-            }
-        ), cancellationToken);
-    }
-
-    public async Task HandleAsync(OrderDeleted evt, CancellationToken cancellationToken)
-    {
-        logger.LogDebug("Auditing OrderDeleted event for order {OrderId}", evt.OrderId);
-
-        await auditService.LogAsync(new AuditEntry(
-            Id: Guid.NewGuid().ToString(),
-            EventType: nameof(OrderDeleted),
-            EntityType: "Order",
-            EntityId: evt.OrderId,
-            Description: "Order deleted",
-            Timestamp: evt.DeletedAt
-        ), cancellationToken);
-    }
-
     // Product events
     public async Task HandleAsync(ProductCreated evt, CancellationToken cancellationToken)
     {

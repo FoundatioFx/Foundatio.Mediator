@@ -1,4 +1,6 @@
+using Api.Infrastructure;
 using Common.Module;
+using Common.Module.Events;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
 using Foundatio.Mediator.Distributed.Aws;
@@ -17,12 +19,34 @@ var options = AppOptions.Parse(args);
 builder.AddServiceDefaults();
 builder.AddRedisAndCaching();
 
+// Created up front so the job metadata provider below can read the current request before the container exists.
+var httpContextAccessor = new HttpContextAccessor();
+builder.Services.AddSingleton<IHttpContextAccessor>(httpContextAccessor);
+
+// Handlers take TenantContext as a parameter: on a worker it comes from the message headers via the
+// CallContext; inline, DI resolves it from the current request.
+builder.Services.AddScoped(_ => TenantHeaderProvider.Resolve(httpContextAccessor.HttpContext));
+
+// [QueueLock] needs a lock every replica shares; the library only supplies a process-local one for in-memory queues.
+builder.Services.AddSingleton<IQueueLockProvider, RedisQueueLockProvider>();
+
 // ── Foundatio.Mediator ──
-// One setting decides which workers this process runs: "all", "none" (API node), or a list of
-// groups/queues such as "exports,imports". Comes from --workers, then Distributed:Workers config.
 builder.Services.AddMediator()
-    .AddDistributedQueues(opts => opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]))
-    .AddDistributedNotifications()
+    .AddDistributedQueues(opts =>
+    {
+        // One setting decides which workers this process runs: "all", "none" (API node), or a list of
+        // groups/queues such as "exports,imports". Comes from --workers, then Distributed:Workers config.
+        opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]);
+
+        // Tracked jobs remember who asked for them; the dashboard shows tenant and user per job.
+        opts.JobMetadataProvider = _ => TenantHeaderProvider.JobMetadata(httpContextAccessor.HttpContext);
+    })
+    .AddQueueHeaderProvider<TenantHeaderProvider>()
+    .AddDistributedNotifications(notifications => notifications
+        // Every domain event in Common.Module crosses the bus (the event feed may be connected to any API node)...
+        .IncludeNotificationsFromAssemblyOf<IOrderEvent>()
+        // ...except this one: only queued handlers consume it, and the publishing node already enqueued them.
+        .Exclude<ProductStockChanged>())
     .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
     .UseRedisJobState();
 
@@ -34,7 +58,6 @@ builder.Services.AddReportsModule();
 
 if (options.IsApiEnabled)
 {
-    builder.Services.AddHttpContextAccessor();
     builder.Services.AddOpenApi();
     builder.AddSampleAuthentication();
 
@@ -65,7 +88,7 @@ var app = builder.Build();
 
 app.LogStartupDiagnostics(options);
 app.MapHealthCheckEndpoints();
-app.UseSuppressInstrumentation("/api/queues/queues", "/api/queues/job-dashboard", "/api/events");
+app.UseSuppressInstrumentation("/api/queues/queues", "/api/queues/queue", "/api/queues/job-dashboard", "/api/queues/dead-letters", "/api/queues/host", "/api/events");
 
 if (options.IsApiEnabled)
 {

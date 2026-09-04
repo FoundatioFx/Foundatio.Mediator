@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Foundatio.Mediator.Distributed;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -39,7 +41,9 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    // queue.* and notifications.* counters, histograms, and depth gauges from the distributed workers
+                    .AddMeter(DistributedMetrics.MeterName);
             })
             .WithTracing(tracing =>
             {
@@ -49,8 +53,7 @@ public static class Extensions
                         // The SuppressInstrumentation middleware in Program.cs prevents child spans.
                         o.Filter = ctx =>
                             !ctx.Request.Path.StartsWithSegments("/api/events")
-                            && ctx.Request.Path != "/api/queues/queues"
-                            && ctx.Request.Path != "/api/queues/job-dashboard";
+                            && !(HttpMethods.IsGet(ctx.Request.Method) && ctx.Request.Path.StartsWithSegments("/api/queues"));
                     })
                     .AddHttpClientInstrumentation(o =>
                     {

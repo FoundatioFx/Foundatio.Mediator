@@ -2,101 +2,63 @@ using Common.Module.Messages;
 using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
+using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Handlers;
 
 /// <summary>
-/// Queue dashboard handler — exposes queue workers, job tracking, and cancellation
-/// as mediator endpoints under <c>/api/queues</c>.
-///
-/// Uses <c>[Cached]</c> on read-heavy endpoints so multiple browser tabs or
-/// overlapping poll intervals share a single SQS/Redis call instead of each
-/// hitting the transport independently.
+/// The sample's HTTP surface for queue operations under <c>/api/queues</c>. The library's administration
+/// handlers (<see cref="GetQueueOverview"/>, <see cref="ListDeadLetters"/>, <see cref="ReplayDeadLetters"/>, ...)
+/// have no endpoints of their own; this handler delegates to them through the mediator and adds the host's
+/// authorization: reads are anonymous, anything that changes state needs the Admin role.
 /// </summary>
 [HandlerEndpointGroup("Queues")]
-[HandlerAllowAnonymous]
-public class QueueDashboardHandler
+public class QueueDashboardHandler(
+    QueueTopology topology,
+    DistributedQueueOptions queueOptions,
+    HostInfo host,
+    ILogger<QueueDashboardHandler> logger,
+    IQueueJobStateStore? stateStore = null,
+    DistributedInfrastructureReady? infraReady = null)
 {
-    private readonly IQueueWorkerRegistry _registry;
-    private readonly IQueueClient _queueClient;
-    private readonly IQueueJobStateStore? _stateStore;
-    private readonly DistributedInfrastructureReady? _infraReady;
+    // ── Reads ──
 
-    public QueueDashboardHandler(
-        IQueueWorkerRegistry registry,
-        IQueueClient queueClient,
-        IQueueJobStateStore? stateStore = null,
-        DistributedInfrastructureReady? infraReady = null)
-    {
-        _registry = registry;
-        _queueClient = queueClient;
-        _stateStore = stateStore;
-        _infraReady = infraReady;
-    }
-
+    [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 2)]
-    public async Task<Result<List<QueueSummary>>> HandleAsync(GetQueues query, CancellationToken ct)
+    public async Task<Result<List<QueueSummary>>> HandleAsync(GetQueues query, IMediator mediator, CancellationToken ct)
     {
-        var workers = _registry.GetWorkers();
+        await WaitForInfrastructureAsync(ct).ConfigureAwait(false);
 
-        if (_infraReady is not null)
-            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
+        var overview = await mediator.InvokeAsync<Result<IReadOnlyList<QueueOverview>>>(new GetQueueOverview(), ct);
+        if (!overview.IsSuccess)
+            return Result<List<QueueSummary>>.FromResult(overview);
 
-        // Batch-fetch stats for all queues in a single call.
-        var queueNames = workers.Select(w => w.QueueName).ToList();
-        IReadOnlyList<QueueStats> allStats = [];
-        try { allStats = await _queueClient.GetQueueStatsAsync(queueNames, ct).ConfigureAwait(false); }
-        catch { /* Transport may not support stats */ }
-
-        var statsMap = allStats.ToDictionary(s => s.QueueName);
-
-        var tasks = new Task<QueueSummary>[workers.Count];
-        for (int i = 0; i < workers.Count; i++)
-        {
-            var worker = workers[i];
-            statsMap.TryGetValue(worker.QueueName, out var stats);
-            tasks[i] = ToSummaryAsync(worker, stats, ct);
-        }
-
-        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        return results.ToList();
+        return overview.Value!.Select(ToSummary).ToList();
     }
 
+    [HandlerAllowAnonymous]
     [Cached(DurationSeconds = 2)]
-    public async Task<Result<QueueSummary>> HandleAsync(GetQueue query, CancellationToken ct)
+    public async Task<Result<QueueSummary>> HandleAsync(GetQueue query, IMediator mediator, CancellationToken ct)
     {
-        var worker = _registry.GetWorker(query.QueueName);
-        if (worker is null)
-            return Result.NotFound($"Queue worker '{query.QueueName}' not found");
+        await WaitForInfrastructureAsync(ct).ConfigureAwait(false);
 
-        if (_infraReady is not null)
-            await _infraReady.WaitAsync(ct).ConfigureAwait(false);
-
-        QueueStats? stats = null;
-        try
-        {
-            var statsList = await _queueClient.GetQueueStatsAsync([query.QueueName], ct).ConfigureAwait(false);
-            stats = statsList.FirstOrDefault();
-        }
-        catch { /* Transport may not support stats */ }
-
-        return await ToSummaryAsync(worker, stats, ct).ConfigureAwait(false);
+        var detail = await mediator.InvokeAsync<Result<QueueOverview>>(new GetQueueDetail(query.QueueName), ct);
+        return detail.IsSuccess ? ToSummary(detail.Value!) : Result<QueueSummary>.FromResult(detail);
     }
 
+    [HandlerAllowAnonymous]
     public async Task<Result<JobDashboardView>> HandleAsync(GetJobDashboard query, CancellationToken ct)
     {
-        if (_stateStore is null)
-            return Result.Error("Job state tracking is not configured.");
+        if (stateStore is null)
+            return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
 
-        var queuedCount = await _stateStore.GetJobCountByStatusAsync(query.QueueName, QueueJobStatus.Queued, ct).ConfigureAwait(false);
-
-        var activeJobs = await _stateStore.GetJobsByStatusAsync(
-            query.QueueName, QueueJobStatus.Processing, 0, 200, ct).ConfigureAwait(false);
+        var queuedCount = await stateStore.GetJobCountByStatusAsync(query.QueueName, QueueJobStatus.Queued, ct).ConfigureAwait(false);
+        var activeJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Processing, 0, 200, ct).ConfigureAwait(false);
 
         var recentTerminalCount = query.RecentTerminalCount ?? 20;
-        var completedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Completed, 0, recentTerminalCount, ct).ConfigureAwait(false);
-        var failedJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Failed, 0, recentTerminalCount, ct).ConfigureAwait(false);
-        var cancelledJobs = await _stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Cancelled, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var completedJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Completed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var failedJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Failed, 0, recentTerminalCount, ct).ConfigureAwait(false);
+        var cancelledJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Cancelled, 0, recentTerminalCount, ct).ConfigureAwait(false);
 
         var recentJobs = completedJobs.Concat(failedJobs).Concat(cancelledJobs)
             .OrderByDescending(j => j.CompletedUtc ?? j.LastUpdatedUtc)
@@ -106,18 +68,12 @@ public class QueueDashboardHandler
         CounterStatsView? counterStats = null;
         try
         {
-            var stats = await _stateStore.GetCounterStatsAsync(query.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false);
-            counterStats = new CounterStatsView
-            {
-                Totals = stats.Totals,
-                Buckets = stats.Buckets.Select(b => new CounterBucketView
-                {
-                    Hour = b.Hour,
-                    Counters = b.Counters
-                }).ToList()
-            };
+            counterStats = ToCounterStats(await stateStore.GetCounterStatsAsync(query.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false));
         }
-        catch { /* State store may not support counters */ }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Failed to read counters for {QueueName}", query.QueueName);
+        }
 
         return new JobDashboardView
         {
@@ -128,94 +84,120 @@ public class QueueDashboardHandler
         };
     }
 
-    public async Task<Result<JobSummary>> HandleAsync(GetQueueJobDetail query, CancellationToken ct)
+    [HandlerAllowAnonymous]
+    public async Task<Result<JobSummary>> HandleAsync(GetQueueJobDetail query, IMediator mediator, CancellationToken ct)
     {
-        if (_stateStore is null)
-            return Result.Error("Job state tracking is not configured.");
-
-        var state = await _stateStore.GetJobStateAsync(query.JobId, ct).ConfigureAwait(false);
-        if (state is null)
-            return Result.NotFound($"Job '{query.JobId}' not found");
-
-        return ToJobSummary(state);
+        var job = await mediator.InvokeAsync<Result<QueueJobState>>(new GetQueueJob(query.JobId), ct);
+        return job.IsSuccess ? ToJobSummary(job.Value!) : Result<JobSummary>.FromResult(job);
     }
 
-    public async Task<Result<JobCancellationResult>> HandleAsync(CancelJob command, CancellationToken ct)
+    [HandlerAllowAnonymous]
+    [HandlerEndpoint(HandlerMethod.Get, "dead-letters")]
+    public async Task<Result<IReadOnlyList<DeadLetterView>>> HandleAsync(GetDeadLetters query, IMediator mediator, CancellationToken ct)
     {
-        if (_stateStore is null)
-            return Result.Error("Job state tracking is not configured.");
-
-        var requested = await _stateStore.RequestCancellationAsync(command.JobId, ct).ConfigureAwait(false);
-        if (!requested)
-            return Result.NotFound($"Job '{command.JobId}' not found or already in a terminal state");
-
-        return new JobCancellationResult(command.JobId, true);
+        await WaitForInfrastructureAsync(ct).ConfigureAwait(false);
+        return await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(query.QueueName, query.Take), ct);
     }
 
-    public async Task<Result<DemoJobEnqueued>> HandleAsync(EnqueueDemoJob command, IMediator mediator, CancellationToken ct)
-    {
-        var count = Math.Clamp(command.Count, 1, 100);
-        string? lastJobId = null;
+    [HandlerAllowAnonymous]
+    [HandlerEndpoint(HandlerMethod.Get, "host")]
+    public HostInfoView Handle(GetHostInfo query) => new(host.HostId, queueOptions.Workers.ToString());
 
+    // ── Operations ──
+
+    [HandlerAuthorize(Roles = ["Admin"])]
+    public async Task<Result<QueueJobCancellation>> HandleAsync(CancelJob command, IMediator mediator, CancellationToken ct)
+        => await mediator.InvokeAsync<Result<QueueJobCancellation>>(new CancelQueueJob(command.JobId), ct);
+
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "dead-letters/replay")]
+    public async Task<Result<DeadLetterReplayResult>> HandleAsync(ReplayQueueDeadLetters command, IMediator mediator, CancellationToken ct)
+        => await mediator.InvokeAsync<Result<DeadLetterReplayResult>>(new ReplayDeadLetters(command.QueueName, command.Max, command.MessageId), ct);
+
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "dead-letters/purge")]
+    public async Task<Result<DeadLetterPurgeResult>> HandleAsync(PurgeQueueDeadLetters command, IMediator mediator, CancellationToken ct)
+        => await mediator.InvokeAsync<Result<DeadLetterPurgeResult>>(new PurgeDeadLetters(command.QueueName, command.Max), ct);
+
+    /// <summary>
+    /// Invoking a <c>[Queue]</c> handler enqueues instead of running; the job id of a tracked job comes back in
+    /// <see cref="Result.Location"/>.
+    /// </summary>
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "enqueue/exports")]
+    public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueDemoJob command, IMediator mediator, CancellationToken ct)
+        => EnqueueAsync<DemoExportJob>(mediator, Math.Clamp(command.Count, 1, 100), _ => new DemoExportJob(command.Steps, command.StepDelayMs), ct);
+
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "enqueue/imports")]
+    public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueImportJob command, IMediator mediator, CancellationToken ct)
+        => EnqueueAsync<ImportProductCatalog>(mediator, Math.Clamp(command.Count, 1, 20), _ => new ImportProductCatalog(command.Rows, command.RowDelayMs), ct);
+
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "enqueue/flaky-webhook")]
+    public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueFlakyWebhook command, IMediator mediator, CancellationToken ct)
+        => EnqueueAsync<DeliverWebhook>(mediator, 1, _ => new DeliverWebhook(command.Url, Math.Max(0, command.FailTimes)), ct);
+
+    /// <summary>Two files for one bank land on the queue together; <c>[QueueLock]</c> lets exactly one of them run.</summary>
+    [HandlerAuthorize(Roles = ["Admin"])]
+    [HandlerEndpoint(HandlerMethod.Post, "enqueue/bank-files")]
+    public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueBankFiles command, IMediator mediator, CancellationToken ct)
+    {
+        var bank = string.IsNullOrWhiteSpace(command.Bank) ? "first-national" : command.Bank.Trim().ToLowerInvariant();
+        return EnqueueAsync<GenerateBankFile>(mediator, Math.Clamp(command.Count, 1, 5), _ => new GenerateBankFile(bank, Guid.NewGuid().ToString("N")), ct);
+    }
+
+    private async Task<Result<EnqueueReceipt>> EnqueueAsync<TMessage>(IMediator mediator, int count, Func<int, TMessage> create, CancellationToken ct)
+        where TMessage : class
+    {
+        var jobIds = new List<string>(count);
         for (int i = 0; i < count; i++)
         {
-            var result = await mediator.InvokeAsync<Result>(new DemoExportJob(command.Steps, command.StepDelayMs), ct);
-            if (result.Status == ResultStatus.Accepted && !string.IsNullOrEmpty(result.Message))
-                lastJobId = result.Message;
+            var result = await mediator.InvokeAsync<Result>(create(i), ct);
+            if (!result.IsSuccess)
+                return Result<EnqueueReceipt>.FromResult(result);
+
+            if (!string.IsNullOrEmpty(result.Location))
+                jobIds.Add(result.Location);
         }
 
-        return new DemoJobEnqueued(lastJobId ?? string.Empty);
+        return new EnqueueReceipt(QueueNameFor<TMessage>(), count, jobIds);
     }
 
-    private async Task<QueueSummary> ToSummaryAsync(QueueWorkerInfo worker, QueueStats? stats, CancellationToken ct)
+    private string QueueNameFor<TMessage>()
+        => topology.Queues.FirstOrDefault(q => q.MessageType == typeof(TMessage))?.QueueName ?? typeof(TMessage).Name;
+
+    private Task WaitForInfrastructureAsync(CancellationToken ct)
+        => infraReady?.WaitAsync(ct) ?? Task.CompletedTask;
+
+    private static QueueSummary ToSummary(QueueOverview q) => new()
     {
-        QueueCounterStats? counterStats = null;
-        long? processingCount = null;
-        if (_stateStore is not null)
-        {
-            try { counterStats = await _stateStore.GetCounterStatsAsync(worker.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false); }
-            catch { /* State store may not be available */ }
+        QueueName = q.QueueName,
+        MessageType = q.MessageType,
+        Handlers = q.Handlers,
+        Group = q.Group,
+        Description = q.Description,
+        Concurrency = q.Concurrency,
+        MaxAttempts = q.MaxAttempts,
+        RetryPolicy = q.RetryPolicy,
+        VisibilityTimeoutSeconds = (int)q.VisibilityTimeout.TotalSeconds,
+        TrackProgress = q.TrackProgress,
+        WorkerRunsHere = q.WorkerRunsHere,
+        IsRunning = q.IsRunning,
+        MessagesProcessed = q.Processed,
+        MessagesFailed = q.Failed,
+        MessagesDeadLettered = q.DeadLettered,
+        ActiveCount = q.ActiveCount,
+        InFlightCount = q.InFlightCount,
+        DeadLetterCount = q.DeadLetterCount,
+        CounterStats = q.Counters is null ? null : ToCounterStats(q.Counters)
+    };
 
-            if (worker.TrackProgress)
-            {
-                try { processingCount = await _stateStore.GetJobCountByStatusAsync(worker.QueueName, QueueJobStatus.Processing, ct).ConfigureAwait(false); }
-                catch { /* State store may not be available */ }
-            }
-        }
-
-        CounterStatsView? counterStatsView = null;
-        if (counterStats is not null)
-        {
-            counterStatsView = new CounterStatsView
-            {
-                Totals = counterStats.Totals,
-                Buckets = counterStats.Buckets.Select(b => new CounterBucketView
-                {
-                    Hour = b.Hour,
-                    Counters = b.Counters
-                }).ToList()
-            };
-        }
-
-        return new QueueSummary
-        {
-            QueueName = worker.QueueName,
-            MessageType = worker.MessageTypeName,
-            Concurrency = worker.Concurrency,
-            MaxAttempts = worker.MaxAttempts,
-            RetryPolicy = worker.RetryPolicy.ToString(),
-            TrackProgress = worker.TrackProgress,
-            Description = worker.Description,
-            IsRunning = worker.Stats.WorkerRegistered ? worker.Stats.IsRunning : null,
-            MessagesProcessed = counterStats?.Totals.GetValueOrDefault("processed") ?? worker.Stats.MessagesProcessed,
-            MessagesFailed = counterStats?.Totals.GetValueOrDefault("failed") ?? worker.Stats.MessagesFailed,
-            MessagesDeadLettered = counterStats?.Totals.GetValueOrDefault("dead_lettered") ?? worker.Stats.MessagesDeadLettered,
-            ActiveCount = stats?.ActiveCount ?? 0,
-            DeadLetterCount = counterStats?.Totals.GetValueOrDefault("dead_lettered") ?? stats?.DeadLetterCount ?? 0,
-            InFlightCount = processingCount ?? stats?.InFlightCount ?? 0,
-            CounterStats = counterStatsView
-        };
-    }
+    private static CounterStatsView ToCounterStats(QueueCounterStats stats) => new()
+    {
+        Totals = stats.Totals,
+        Buckets = stats.Buckets.Select(b => new CounterBucketView { Hour = b.Hour, Counters = b.Counters }).ToList()
+    };
 
     private static JobSummary ToJobSummary(QueueJobState s) => new()
     {
@@ -229,6 +211,8 @@ public class QueueDashboardHandler
         CreatedUtc = s.CreatedUtc,
         StartedUtc = s.StartedUtc,
         CompletedUtc = s.CompletedUtc,
-        ErrorMessage = s.ErrorMessage
+        LastHeartbeatUtc = s.LastHeartbeatUtc,
+        ErrorMessage = s.ErrorMessage,
+        Metadata = s.Metadata
     };
 }

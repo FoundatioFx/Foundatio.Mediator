@@ -11,9 +11,10 @@ public class AwsTransportOptions
 {
     /// <summary>
     /// The AWS service URL (e.g. <c>"http://localhost:4566"</c> for LocalStack).
-    /// When set, the SQS and SNS SDK clients are automatically registered with this endpoint.
-    /// When <c>null</c>, you must register <c>IAmazonSQS</c> and <c>IAmazonSimpleNotificationService</c>
-    /// in DI before calling <c>UseAws()</c>.
+    /// When set, the SQS and SNS SDK clients target this endpoint with <see cref="Region"/> as the signing region.
+    /// When <c>null</c>, the clients come from the SDK's default credential and region chain (environment,
+    /// profile, instance or task role). An <c>IAmazonSQS</c> or <c>IAmazonSimpleNotificationService</c>
+    /// already registered in DI is always used as-is.
     /// </summary>
     public string? ServiceUrl { get; set; }
 
@@ -24,8 +25,8 @@ public class AwsTransportOptions
 
     /// <summary>
     /// Optional AWS credentials. When <c>null</c> and <see cref="ServiceUrl"/> is set,
-    /// dummy credentials (<c>"test"/"test"</c>) are used (suitable for LocalStack).
-    /// When <see cref="ServiceUrl"/> is not set, this is ignored (SDK clients must be pre-registered).
+    /// static test credentials (<c>"test"/"test"</c>) are used (suitable for LocalStack).
+    /// When <c>null</c> and <see cref="ServiceUrl"/> is not set, the SDK's default credential chain is used.
     /// </summary>
     public AWSCredentials? Credentials { get; set; }
 

@@ -77,11 +77,11 @@ public class RedisOrderRepository : IOrderRepository
     {
         var json = JsonSerializer.Serialize(order, JsonOptions);
         var batch = Db.CreateBatch();
-        _ = batch.StringSetAsync(HashPrefix + order.Id, json);
-        _ = batch.SetAddAsync(IndexKey, order.Id);
-        _ = batch.SetAddAsync(CustomerIndexPrefix + order.CustomerId, order.Id);
+        var set = batch.StringSetAsync(HashPrefix + order.Id, json);
+        var index = batch.SetAddAsync(IndexKey, order.Id);
+        var customerIndex = batch.SetAddAsync(CustomerIndexPrefix + order.CustomerId, order.Id);
         batch.Execute();
-        await Task.CompletedTask.ConfigureAwait(false);
+        await Task.WhenAll(set, index, customerIndex).ConfigureAwait(false);
     }
 
     public async Task UpdateAsync(Order order, CancellationToken cancellationToken = default)

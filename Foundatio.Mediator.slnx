@@ -27,6 +27,7 @@
     <Project Path="src/Foundatio.Mediator.Distributed/Foundatio.Mediator.Distributed.csproj" />
     <Project Path="src/Foundatio.Mediator.Distributed.Aws/Foundatio.Mediator.Distributed.Aws.csproj" />
     <Project Path="src/Foundatio.Mediator.Distributed.Redis/Foundatio.Mediator.Distributed.Redis.csproj" />
+    <Project Path="src/Foundatio.Mediator.Distributed.Testing/Foundatio.Mediator.Distributed.Testing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />

@@ -38,6 +38,7 @@
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" />
     <ProjectReference Include="..\..\src\Foundatio.Mediator.Distributed\Foundatio.Mediator.Distributed.csproj" />
+    <ProjectReference Include="..\..\src\Foundatio.Mediator.Distributed.Testing\Foundatio.Mediator.Distributed.Testing.csproj" />
   </ItemGroup>
 
 </Project>

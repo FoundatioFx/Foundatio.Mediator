@@ -7,11 +7,14 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>Foundatio.Mediator.Distributed</RootNamespace>
+    <Description>Durable queues, distributed notifications, and background workers for Foundatio.Mediator. Route a handler through a queue with [Queue]; select which workers a process runs with one setting.</Description>
+    <PackageTags>$(PackageTags);Queue;Worker;PubSub;Distributed</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Foundatio.Mediator.Abstractions\Foundatio.Mediator.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.5" />
+    <ProjectReference Include="..\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
   </ItemGroup>
 
 </Project>

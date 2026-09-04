@@ -19,6 +19,12 @@ public sealed record QueueJobState
     public DateTimeOffset LastUpdatedUtc { get; init; }
 
     /// <summary>
+    /// When the worker last signalled that the job is alive, through a visibility renewal or a progress
+    /// report. A processing job whose heartbeat is stale has most likely lost its worker.
+    /// </summary>
+    public DateTimeOffset? LastHeartbeatUtc { get; init; }
+
+    /// <summary>
     /// Caller-supplied metadata captured at enqueue time via <see cref="DistributedQueueOptions.JobMetadataProvider"/>,
     /// such as a tenant or user id, so stores can index and display jobs by them.
     /// </summary>

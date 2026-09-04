@@ -132,6 +132,8 @@ public class OrderAuditHandler
 
 Only types a registered handler can accept are ever deserialized; the header cannot make the worker load arbitrary types.
 
+Handlers on a shared queue run in sequence. If one fails with a retryable result or an exception, the message is abandoned and every handler runs again on the next attempt, so handlers that share a queue must be idempotent, like any queued handler.
+
 ## QueueContext
 
 When the handler runs inside a worker, a `QueueContext` parameter is available:

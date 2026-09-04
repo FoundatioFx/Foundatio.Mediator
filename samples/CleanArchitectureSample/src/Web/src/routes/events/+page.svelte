@@ -1,33 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { eventStream } from '$lib/stores/eventstream.svelte';
+  import { eventStream, type EventEntry } from '$lib/stores/eventstream.svelte';
   import { Button, Badge } from '$lib/components/ui';
 
-  type EventEntry = {
-    id: number;
-    timestamp: Date;
-    type: string;
-    category: 'order' | 'product';
-    action: 'created' | 'updated' | 'deleted';
-    data: Record<string, unknown>;
-  };
-
-  let events = $state<EventEntry[]>([]);
-  let paused = $state(false);
-  let autoScroll = $state(true);
-  let maxEvents = 200;
-  let nextId = 0;
   let listEl: HTMLDivElement | undefined = $state();
-
-  function addEvent(type: string, category: EventEntry['category'], action: EventEntry['action'], data: Record<string, unknown>) {
-    if (paused) return;
-    const entry: EventEntry = { id: nextId++, timestamp: new Date(), type, category, action, data };
-    events = [entry, ...events].slice(0, maxEvents);
-  }
-
-  function clearEvents() {
-    events = [];
-  }
 
   function formatTime(date: Date): string {
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
@@ -49,31 +24,6 @@
     order: 'bg-purple-100 text-purple-800',
     product: 'bg-amber-100 text-amber-800',
   };
-
-  onMount(() => {
-    const unsubs = [
-      eventStream.onOrderCreated((e) =>
-        addEvent('OrderCreated', 'order', 'created', { orderId: e.orderId, customerId: e.customerId, amount: e.amount })
-      ),
-      eventStream.onOrderUpdated((e) =>
-        addEvent('OrderUpdated', 'order', 'updated', { orderId: e.orderId, amount: e.amount, status: e.status })
-      ),
-      eventStream.onOrderDeleted((e) =>
-        addEvent('OrderDeleted', 'order', 'deleted', { orderId: e.orderId })
-      ),
-      eventStream.onProductCreated((e) =>
-        addEvent('ProductCreated', 'product', 'created', { productId: e.productId, name: e.name, price: e.price })
-      ),
-      eventStream.onProductUpdated((e) =>
-        addEvent('ProductUpdated', 'product', 'updated', { productId: e.productId, name: e.name, price: e.price, status: e.status })
-      ),
-      eventStream.onProductDeleted((e) =>
-        addEvent('ProductDeleted', 'product', 'deleted', { productId: e.productId })
-      ),
-    ];
-
-    return () => unsubs.forEach((fn) => fn());
-  });
 </script>
 
 <svelte:head>
@@ -101,11 +51,11 @@
         <span class="text-sm text-gray-600">{eventStream.isConnected ? 'Connected' : 'Disconnected'}</span>
       </div>
       <span class="text-sm text-gray-400">|</span>
-      <span class="text-sm text-gray-500">{events.length} event{events.length !== 1 ? 's' : ''}</span>
-      <Button variant="outline" onclick={() => paused = !paused}>
-        {paused ? '▶ Resume' : '⏸ Pause'}
+      <span class="text-sm text-gray-500">{eventStream.events.length} event{eventStream.events.length !== 1 ? 's' : ''}</span>
+      <Button variant="outline" onclick={() => eventStream.paused = !eventStream.paused}>
+        {eventStream.paused ? '▶ Resume' : '⏸ Pause'}
       </Button>
-      <Button variant="secondary" onclick={clearEvents}>
+      <Button variant="secondary" onclick={() => eventStream.clearEvents()}>
         Clear
       </Button>
     </div>
@@ -115,20 +65,20 @@
     bind:this={listEl}
     class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
   >
-    {#if events.length === 0}
+    {#if eventStream.events.length === 0}
       <div class="flex flex-col items-center justify-center py-16 text-gray-400">
         <svg class="h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
         <p class="text-lg font-medium">Waiting for events…</p>
         <p class="text-sm mt-1">Create, update, or delete orders and products to see live events here.</p>
-        {#if paused}
+        {#if eventStream.paused}
           <p class="text-sm mt-2 text-amber-600 font-medium">Event capture is paused</p>
         {/if}
       </div>
     {:else}
       <div class="divide-y divide-gray-100 max-h-[calc(100vh-220px)] overflow-y-auto">
-        {#each events as event (event.id)}
+        {#each eventStream.events as event (event.id)}
           <div class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors animate-fade-in">
             <span class="text-xs font-mono text-gray-400 pt-0.5 whitespace-nowrap">
               {formatTime(event.timestamp)}
@@ -147,7 +97,7 @@
     {/if}
   </div>
 
-  {#if paused}
+  {#if eventStream.paused}
     <div class="text-center py-2">
       <span class="inline-flex items-center gap-1.5 text-sm text-amber-600 font-medium">
         <span class="h-2 w-2 rounded-full bg-amber-500"></span>

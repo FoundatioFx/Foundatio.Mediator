@@ -1,0 +1,360 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using Amazon.SQS;
+using Amazon.SQS.Model;
+using Microsoft.Extensions.Logging;
+
+namespace Foundatio.Mediator.Distributed.Aws;
+
+/// <summary>
+/// <see cref="IQueueClient"/> implementation backed by Amazon SQS.
+/// Headers are mapped to SQS MessageAttributes. Body is sent as the MessageBody string
+/// (base64-encoded from the raw bytes).
+/// </summary>
+public sealed class SqsQueueClient : IQueueClient
+{
+    private readonly IAmazonSQS _sqs;
+    private readonly SqsQueueClientOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<SqsQueueClient> _logger;
+    private readonly ConcurrentDictionary<string, string> _queueUrlCache = new();
+    private readonly ConcurrentDictionary<string, bool> _dlqNotFound = new();
+
+    public SqsQueueClient(IAmazonSQS sqs, SqsQueueClientOptions? options = null, TimeProvider? timeProvider = null, ILogger<SqsQueueClient>? logger = null)
+    {
+        _sqs = sqs;
+        _options = options ?? new SqsQueueClientOptions();
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SqsQueueClient>.Instance;
+    }
+
+    /// <summary>
+    /// SQS allows a maximum of 10 message attributes per message.
+    /// </summary>
+    private const int MaxSqsMessageAttributes = 10;
+
+    public async Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
+    {
+        if (entries.Count == 0)
+            return;
+
+        var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
+
+        // SQS batch limit is 10 messages
+        for (int i = 0; i < entries.Count; i += 10)
+        {
+            var batch = new SendMessageBatchRequest
+            {
+                QueueUrl = queueUrl,
+                Entries = []
+            };
+
+            var end = Math.Min(i + 10, entries.Count);
+            for (int j = i; j < end; j++)
+            {
+                var entry = entries[j];
+
+                ValidateHeaderCount(entry.Headers, queueName);
+
+                var batchEntry = new SendMessageBatchRequestEntry
+                {
+                    Id = j.ToString(CultureInfo.InvariantCulture),
+                    MessageBody = Convert.ToBase64String(entry.Body.Span),
+                    MessageAttributes = new Dictionary<string, MessageAttributeValue>()
+                };
+
+                if (entry.Headers is { Count: > 0 })
+                {
+                    foreach (var (key, value) in entry.Headers)
+                    {
+                        batchEntry.MessageAttributes[key] = new MessageAttributeValue
+                        {
+                            DataType = "String",
+                            StringValue = value
+                        };
+                    }
+                }
+
+                batch.Entries.Add(batchEntry);
+            }
+
+            var response = await _sqs.SendMessageBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+
+            if (response.Failed is { Count: > 0 })
+            {
+                var first = response.Failed[0];
+                throw new InvalidOperationException(
+                    $"Failed to send {response.Failed.Count} message(s) to SQS queue '{queueName}': [{first.Code}] {first.Message}");
+            }
+        }
+    }
+
+    public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
+    {
+        var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
+
+        // SQS maximum is 10 messages per receive
+        var request = new ReceiveMessageRequest
+        {
+            QueueUrl = queueUrl,
+            MaxNumberOfMessages = Math.Min(maxCount, 10),
+            WaitTimeSeconds = _options.WaitTimeSeconds,
+            MessageSystemAttributeNames = ["ApproximateReceiveCount", "SentTimestamp"],
+            MessageAttributeNames = ["All"]
+        };
+
+        var response = await _sqs.ReceiveMessageAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.Messages is not { Count: > 0 })
+            return [];
+
+        var now = _timeProvider.GetUtcNow();
+        var results = new List<QueueMessage>(response.Messages.Count);
+
+        foreach (var sqsMessage in response.Messages)
+        {
+            var headers = new Dictionary<string, string>();
+            if (sqsMessage.MessageAttributes is { Count: > 0 })
+            {
+                foreach (var (key, attr) in sqsMessage.MessageAttributes)
+                    headers[key] = attr.StringValue;
+            }
+
+            int dequeueCount = 1;
+            if (sqsMessage.Attributes?.TryGetValue("ApproximateReceiveCount", out var receiveCountStr) == true
+                && int.TryParse(receiveCountStr, out var parsed))
+                dequeueCount = parsed;
+
+            var enqueuedAt = now;
+            if (sqsMessage.Attributes?.TryGetValue("SentTimestamp", out var sentTimestampStr) == true
+                && long.TryParse(sentTimestampStr, out var epochMs))
+                enqueuedAt = DateTimeOffset.FromUnixTimeMilliseconds(epochMs);
+
+            results.Add(new QueueMessage
+            {
+                Id = sqsMessage.MessageId,
+                Body = Convert.FromBase64String(sqsMessage.Body),
+                Headers = headers,
+                QueueName = queueName,
+                DequeueCount = dequeueCount,
+                EnqueuedAt = enqueuedAt,
+                DequeuedAt = now,
+                NativeMessage = sqsMessage  // Carry the full SQS message for ReceiptHandle access
+            });
+        }
+
+        return results;
+    }
+
+    public async Task CompleteAsync(QueueMessage message, CancellationToken cancellationToken = default)
+    {
+        var queueUrl = await GetQueueUrlAsync(message.QueueName, cancellationToken).ConfigureAwait(false);
+        var sqsMessage = GetNativeMessage(message);
+
+        await _sqs.DeleteMessageAsync(new DeleteMessageRequest
+        {
+            QueueUrl = queueUrl,
+            ReceiptHandle = sqsMessage.ReceiptHandle
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken cancellationToken = default)
+    {
+        var queueUrl = await GetQueueUrlAsync(message.QueueName, cancellationToken).ConfigureAwait(false);
+        var sqsMessage = GetNativeMessage(message);
+
+        var visibilityTimeout = Math.Max(0, (int)Math.Ceiling(delay.TotalSeconds));
+        await _sqs.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+        {
+            QueueUrl = queueUrl,
+            ReceiptHandle = sqsMessage.ReceiptHandle,
+            VisibilityTimeout = visibilityTimeout
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default)
+    {
+        var dlqName = $"{message.QueueName}-dead-letter";
+
+        // Build a new entry with original body + headers + dead-letter metadata
+        var headers = new Dictionary<string, string>(message.Headers)
+        {
+            [MessageHeaders.DeadLetterReason] = reason,
+            [MessageHeaders.DeadLetteredAt] = _timeProvider.GetUtcNow().ToString("O"),
+            [MessageHeaders.OriginalQueueName] = message.QueueName,
+            [MessageHeaders.DeadLetterDequeueCount] = message.DequeueCount.ToString()
+        };
+
+        var entry = new QueueEntry
+        {
+            Body = message.Body,
+            Headers = headers
+        };
+
+        // Send to DLQ then complete the original message
+        await SendAsync(dlqName, [entry], cancellationToken).ConfigureAwait(false);
+        _dlqNotFound.TryRemove(dlqName, out _);
+        await CompleteAsync(message, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken cancellationToken = default)
+    {
+        var queueUrl = await GetQueueUrlAsync(message.QueueName, cancellationToken).ConfigureAwait(false);
+        var sqsMessage = GetNativeMessage(message);
+
+        try
+        {
+            await _sqs.ChangeMessageVisibilityAsync(new ChangeMessageVisibilityRequest
+            {
+                QueueUrl = queueUrl,
+                ReceiptHandle = sqsMessage.ReceiptHandle,
+                VisibilityTimeout = (int)Math.Ceiling(extension.TotalSeconds)
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ReceiptHandleIsInvalidException ex)
+        {
+            // Receipt handle expired or message already completed/deleted (e.g., leftover from a previous run).
+            // This is not fatal — the message is already gone from the queue.
+            _logger.LogDebug(ex, "Receipt handle invalid for message {MessageId} on {QueueName}, message may have been completed or expired",
+                message.Id, message.QueueName);
+        }
+        catch (MessageNotInflightException ex)
+        {
+            _logger.LogDebug(ex, "Message {MessageId} on {QueueName} is not in-flight, visibility timeout change skipped",
+                message.Id, message.QueueName);
+        }
+        catch (AmazonSQSException ex) when (ex.Message.Contains("does not exist or is not available", StringComparison.OrdinalIgnoreCase))
+        {
+            // LocalStack may throw a generic AmazonSQSException instead of the specific types above.
+            _logger.LogDebug(ex, "Receipt handle for message {MessageId} on {QueueName} is no longer valid, visibility timeout change skipped",
+                message.Id, message.QueueName);
+        }
+    }
+
+    private async Task<string> GetQueueUrlAsync(string queueName, CancellationToken cancellationToken)
+    {
+        if (_queueUrlCache.TryGetValue(queueName, out var cached))
+            return cached;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        if (_options.AutoCreateQueues)
+        {
+            var createResponse = await _sqs.CreateQueueAsync(new CreateQueueRequest
+            {
+                QueueName = queueName
+            }, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug("CreateQueue {QueueName} completed in {ElapsedMs}ms", queueName, sw.ElapsedMilliseconds);
+
+            _queueUrlCache[queueName] = createResponse.QueueUrl;
+            return createResponse.QueueUrl;
+        }
+
+        var response = await _sqs.GetQueueUrlAsync(new GetQueueUrlRequest
+        {
+            QueueName = queueName
+        }, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogDebug("GetQueueUrl {QueueName} completed in {ElapsedMs}ms", queueName, sw.ElapsedMilliseconds);
+
+        _queueUrlCache[queueName] = response.QueueUrl;
+        return response.QueueUrl;
+    }
+
+    /// <inheritdoc />
+    public async Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        await Task.WhenAll(queues.Select(q => GetQueueUrlAsync(q.Name, cancellationToken))).ConfigureAwait(false);
+
+        _logger.LogInformation("EnsureQueues: {Count} queues ready in {ElapsedMs}ms", queues.Count, sw.ElapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default)
+    {
+        var results = new List<QueueStats>(queueNames.Count);
+        foreach (var queueName in queueNames)
+        {
+            var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
+
+            var response = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+            {
+                QueueUrl = queueUrl,
+                AttributeNames = ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
+            }, cancellationToken).ConfigureAwait(false);
+
+            long activeCount = 0;
+            if (response.Attributes.TryGetValue("ApproximateNumberOfMessages", out var activeStr)
+                && long.TryParse(activeStr, out var parsedActive))
+                activeCount = parsedActive;
+
+            long inFlightCount = 0;
+            if (response.Attributes.TryGetValue("ApproximateNumberOfMessagesNotVisible", out var inFlightStr)
+                && long.TryParse(inFlightStr, out var parsedInFlight))
+                inFlightCount = parsedInFlight;
+
+            // Try to get dead-letter queue stats (DLQ is created lazily on first dead-letter)
+            long deadLetterCount = 0;
+            var dlqName = $"{queueName}-dead-letter";
+            // Skip lookup if we already know the DLQ doesn't exist.
+            // The negative cache is cleared when DeadLetterAsync creates the queue.
+            if (!_dlqNotFound.ContainsKey(dlqName))
+            {
+                try
+                {
+                    string dlqUrl;
+                    if (_queueUrlCache.TryGetValue(dlqName, out var cachedDlqUrl))
+                    {
+                        dlqUrl = cachedDlqUrl;
+                    }
+                    else
+                    {
+                        var dlqResponse = await _sqs.GetQueueUrlAsync(new GetQueueUrlRequest { QueueName = dlqName }, cancellationToken).ConfigureAwait(false);
+                        dlqUrl = dlqResponse.QueueUrl;
+                        _queueUrlCache[dlqName] = dlqUrl;
+                    }
+
+                    var dlqAttrs = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
+                    {
+                        QueueUrl = dlqUrl,
+                        AttributeNames = ["ApproximateNumberOfMessages"]
+                    }, cancellationToken).ConfigureAwait(false);
+
+                    if (dlqAttrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var dlqStr)
+                        && long.TryParse(dlqStr, out var parsedDlq))
+                        deadLetterCount = parsedDlq;
+                }
+                catch
+                {
+                    // DLQ doesn't exist yet — remember so we don't retry on every poll
+                    _dlqNotFound[dlqName] = true;
+                }
+            }
+
+            results.Add(new QueueStats
+            {
+                QueueName = queueName,
+                ActiveCount = activeCount,
+                InFlightCount = inFlightCount,
+                DeadLetterCount = deadLetterCount
+            });
+        }
+
+        return results;
+    }
+
+    private static Message GetNativeMessage(QueueMessage message)
+        => message.NativeMessage as Message
+           ?? throw new InvalidOperationException(
+               "QueueMessage.NativeMessage is not an SQS Message. This QueueMessage was not created by SqsQueueClient.");
+
+    private static void ValidateHeaderCount(Dictionary<string, string>? headers, string queueName)
+    {
+        if (headers is { Count: > MaxSqsMessageAttributes })
+            throw new InvalidOperationException(
+                $"Message for queue '{queueName}' has {headers.Count} headers, but SQS allows a maximum of {MaxSqsMessageAttributes} message attributes.");
+    }
+}

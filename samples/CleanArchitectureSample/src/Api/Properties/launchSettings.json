@@ -1,15 +1,27 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "Web": {
+    "Api": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "https://localhost:5173",
+      "commandLineArgs": "--mode api",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES": "Microsoft.AspNetCore.SpaProxy"
-      },
-      "applicationUrl": "https://localhost:58702;http://localhost:58703"
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Worker": {
+      "commandName": "Project",
+      "commandLineArgs": "--mode worker",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Worker-Exports": {
+      "commandName": "Project",
+      "commandLineArgs": "--mode worker --queues exports",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

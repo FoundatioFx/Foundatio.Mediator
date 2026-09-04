@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Foundatio.Mediator;
+using Foundatio.Mediator.Distributed;
 using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Middleware;
@@ -19,12 +20,19 @@ public class ObservabilityMiddleware
 {
     private const long SlowHandlerThresholdMs = 100;
 
-    public Stopwatch Before(object message, HandlerExecutionInfo info, ILogger<IMediator> logger)
+    public Stopwatch Before(object message, HandlerExecutionInfo info, QueueContext? queueContext, ILogger<IMediator> logger)
     {
+        var source = queueContext is not null
+            ? "queue"
+            : message is IDistributedNotification
+                ? "distributed event"
+                : "local";
+
         logger.LogInformation(
-            "Handling {MessageType} in {HandlerType}",
+            "Handling {MessageType} in {HandlerType} (source: {Source})",
             message.GetType().Name,
-            info.HandlerType.Name);
+            info.HandlerType.Name,
+            source);
 
         return Stopwatch.StartNew();
     }

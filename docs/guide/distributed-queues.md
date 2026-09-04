@@ -8,9 +8,7 @@ nav:
 
 # Distributed Queues
 
-Distributed queues let you offload handler execution to background workers — across processes, containers, or machines. Messages are serialized, sent to a queue, and processed asynchronously with full retry, dead-lettering, and optional progress tracking.
-
-The best part: your handler code barely changes.
+Distributed queues offload handler execution to background workers, across processes, containers, or machines. Messages are serialized, sent to a queue, and processed with retries, dead-lettering, visibility timeouts, and optional progress tracking. Your handler code barely changes.
 
 ## Installation
 
@@ -18,27 +16,20 @@ The best part: your handler code barely changes.
 dotnet add package Foundatio.Mediator.Distributed
 ```
 
-Register the distributed queue services:
-
 ```csharp
 builder.Services.AddMediator()
     .AddDistributedQueues();
 ```
 
-That's it. By default, this uses an in-memory queue — perfect for development and testing. For production, add a [transport provider](./distributed-transports).
+With no transport registered this uses an in-memory queue, which is right for development and tests. For production add a [transport provider](./distributed-transports) before `AddDistributedQueues()`.
 
 ## Making a Handler Queue-Based
-
-Add `[Queue]` to any handler class:
 
 ```csharp
 [Queue]
 public class OrderProcessingHandler
 {
-    public async Task<Result> HandleAsync(
-        ProcessOrder cmd,
-        IOrderService orders,
-        CancellationToken ct)
+    public async Task<Result> HandleAsync(ProcessOrder cmd, IOrderService orders, CancellationToken ct)
     {
         await orders.ProcessAsync(cmd, ct);
         return Result.Ok();
@@ -46,156 +37,116 @@ public class OrderProcessingHandler
 }
 ```
 
-Now when you call `mediator.InvokeAsync(new ProcessOrder(...))`, instead of running the handler inline, the message is:
+`mediator.InvokeAsync(new ProcessOrder(...))` now:
 
-1. Serialized to JSON
-2. Sent to a queue named after the message type (e.g., `ProcessOrder`)
-3. Returns immediately with `Result.Accepted()`
+1. Serializes the message to JSON.
+2. Sends it to a queue named after the message type (`ProcessOrder`), or `QueueName` if set.
+3. Returns `Result.Accepted("Message queued")` immediately.
 
-A background worker picks up the message and runs your handler — with the full middleware pipeline, DI, and error handling intact.
+A worker receives the message and runs the handler through the full middleware pipeline with a fresh DI scope. Authorization runs on the enqueuing node, so the worker skips it.
 
-## How It Works
-
-The `[Queue]` attribute injects `QueueMiddleware` into the handler's middleware pipeline. This middleware intercepts the call:
-
-- **On the caller side:** Serializes the message, sends it to the queue, returns `Result.Accepted()`
-- **On the worker side:** Deserializes the message, invokes the handler through the normal pipeline
-
-```text
-Caller                          Queue                          Worker
-  │                               │                              │
-  ├─ InvokeAsync(msg) ──────────►│                              │
-  │                               │                              │
-  ◄── Result.Accepted() ─────────┤                              │
-                                  │                              │
-                                  ├─── message ─────────────────►│
-                                  │                              │
-                                  │       ┌─ Middleware Pipeline ─┤
-                                  │       │  Before hooks        │
-                                  │       │  Handler.HandleAsync  │
-                                  │       │  After hooks          │
-                                  │       └──────────────────────┘
-                                  │                              │
-                                  ◄── complete / abandon ────────┤
-```
+Queue handlers must return `void`, `Task`, `Result`, or `Result<T>`. Anything else is rejected at enqueue time.
 
 ## Queue Configuration
 
-The `[Queue]` attribute accepts several configuration options:
-
 ```csharp
 [Queue(
-    QueueName = "custom-name",         // Default: message type name
-    Concurrency = 5,                   // Concurrent consumers (default: 1)
-    PrefetchCount = 10,                // Messages to prefetch (default: matches Concurrency)
-    MaxAttempts = 3,                   // Total attempts: 1 initial + 2 retries (default: 3)
-    TimeoutSeconds = 30,               // Visibility timeout (default: 30)
-    RetryPolicy = QueueRetryPolicy.Exponential,  // Retry strategy (default: Exponential)
-    RetryDelaySeconds = 5,             // Base delay between retries (default: 5)
-    AutoComplete = true,               // Auto-complete on success (default: true)
-    AutoRenewTimeout = true,           // Auto-extend visibility timeout (default: true)
-    Group = "background-jobs",         // Worker group for selective hosting
-    TrackProgress = false              // Enable job progress tracking (default: false)
-)]
-public class MyHandler { ... }
+    QueueName = "order-processing",    // default: message type name
+    Group = "orders",                  // for worker selection, see Scaling Out
+    Concurrency = 5,                   // concurrent handlers per worker (default 1)
+    PrefetchCount = 10,                // messages per receive (default: Concurrency)
+    MaxAttempts = 3,                   // 1 attempt + 2 retries (default 3); negative = unlimited
+    TimeoutSeconds = 30,               // visibility timeout (default 30; max 43200)
+    RetryPolicy = QueueRetryPolicy.Exponential,
+    RetryDelaySeconds = 5,             // base delay for Fixed and Exponential
+    RetryDelays = "5s,1m,15m,30m",     // explicit schedule; sets RetryPolicy = Schedule
+    AutoComplete = true,               // complete/abandon from the handler result
+    AutoRenewTimeout = true,           // renew the visibility timeout while the handler runs
+    TrackProgress = false,             // job state and progress reporting
+    Description = "Fulfils paid orders")]
+public class OrderProcessingHandler { ... }
 ```
 
-### Concurrency
+Handlers that share a `QueueName` share one queue and one worker, and must declare identical settings. Mismatches fail at startup naming both handlers.
 
-Control how many messages are processed simultaneously:
+## Retries
 
-```csharp
-[Queue(Concurrency = 10)]
-public class BulkImportHandler { ... }
-```
+The worker decides what happens to a message from the handler's result, or its exception:
 
-Each worker instance runs the specified number of concurrent consumers. Scale further by running multiple worker instances.
-
-### Retry Policies
-
-Three retry strategies are available:
-
-| Policy | Behavior |
+| Outcome | Action |
 | --- | --- |
-| `None` | Failed messages are redelivered immediately |
-| `Fixed` | Constant delay between retries |
-| `Exponential` | Doubling delay with ±10% jitter (prevents thundering herd) |
+| Success statuses, or a `void`/`Task` handler that returns | Complete |
+| `Error`, `Unavailable`, `RateLimited`, or an unhandled exception | Abandon; redelivered after the retry delay |
+| `Invalid`, `BadRequest`, `NotFound`, `Unauthorized`, `Forbidden`, `Conflict`, `CriticalError` | Dead-letter immediately |
+| Attempts exceed `MaxAttempts` | Dead-letter |
+| Body cannot be deserialized, or names an unknown type | Dead-letter immediately, on the first attempt |
 
-```csharp
-[Queue(MaxAttempts = 5, RetryPolicy = QueueRetryPolicy.Exponential, RetryDelaySeconds = 2)]
-public class FlakeyApiHandler { ... }
-```
+Retry delay policies:
 
-With `Exponential` and `RetryDelaySeconds = 2`, retries occur at approximately 2s, 4s, 8s, 16s (with jitter).
-
-### Result-Based Retry Decisions
-
-The worker uses your handler's `Result` status to decide what happens next:
-
-| Result Status | Action |
+| Policy | Delay before attempt _n_+1 |
 | --- | --- |
-| Success, Created, Accepted, NoContent | Complete — message removed from queue |
-| Error, Timeout, Unauthorized, Forbidden | Abandon — message retried up to `MaxAttempts` |
-| NotFound, Invalid, CriticalError, Conflict, Gone | Dead-letter — message moved to dead-letter queue immediately |
-
-This means your handlers can make intelligent decisions about retry-ability:
+| `None` | Immediate |
+| `Fixed` | `RetryDelaySeconds`, with ±10% jitter |
+| `Exponential` | `RetryDelaySeconds × 2^(n-1)`, with ±10% jitter, capped at 15 minutes |
+| `Schedule` | The _n_-th entry of `RetryDelays`; the last entry repeats. No jitter |
 
 ```csharp
-[Queue]
-public class PaymentHandler
-{
-    public async Task<Result> HandleAsync(ProcessPayment cmd, IPaymentGateway gateway, CancellationToken ct)
-    {
-        try
-        {
-            await gateway.ChargeAsync(cmd.Amount, cmd.CardToken, ct);
-            return Result.Ok();
-        }
-        catch (GatewayTimeoutException)
-        {
-            return Result.Error("Gateway timeout — will retry");
-        }
-        catch (InvalidCardException)
-        {
-            return Result.Invalid("Card declined — no retry");
-        }
-    }
-}
+// Reproduce an existing retry policy exactly: 5 s, then 1 m, then 15 m, then 30 m for every further attempt
+[Queue(MaxAttempts = 5, RetryDelays = "5s,1m,15m,30m")]
+public class ImportBankFileHandler { ... }
 ```
+
+Use `Result.Conflict(...)` for "somebody else already did this": it dead-letters at once with your message as the reason instead of retrying.
 
 ## Dead-Letter Queues
 
-Messages that exceed `MaxAttempts` or return a non-retryable result are moved to a dead-letter queue named `{queue}-dead-letter`. The original message is preserved along with metadata headers:
+Messages that exhaust their attempts or fail with a non-retryable result move to `{queue}-dead-letter` with the original body and headers plus:
 
-| Header | Description |
+| Header | Meaning |
 | --- | --- |
-| `fm-dead-letter-reason` | Why the message was dead-lettered |
-| `fm-dead-lettered-at` | When it was dead-lettered (ISO 8601) |
-| `fm-original-queue-name` | The source queue |
-| `fm-dead-letter-dequeue-count` | Total processing attempts |
+| `fm-dead-letter-reason` | Why it was dead-lettered |
+| `fm-dead-lettered-at` | When (ISO 8601) |
+| `fm-original-queue-name` | Where it came from |
+| `fm-dead-letter-dequeue-count` | How many attempts were made |
+
+Dead letters can be inspected, replayed to their original queue, or purged through the [administration handlers](./distributed-operations). Replayed messages carry `fm-replayed-at`.
+
+## Several Handlers, Interfaces, and Base Types
+
+A queue carries one message no matter how many handlers accept it. Publishing `OrderCreated` with two `[Queue]` handlers on it sends one message; the worker dispatches it to both.
+
+Handlers may be declared on an interface or base type. The message header `fm-message-type` names the concrete type, and the worker deserializes to it before dispatching to every handler on the queue whose parameter type accepts it:
+
+```csharp
+public interface IOrderEvent { string OrderId { get; } }
+public record OrderCreated(string OrderId) : IOrderEvent;
+public record OrderShipped(string OrderId) : IOrderEvent;
+
+[Queue(Group = "audit")]
+public class OrderAuditHandler
+{
+    // One queue named "IOrderEvent"; receives OrderCreated and OrderShipped as their concrete types
+    public Task HandleAsync(IOrderEvent evt, IAuditLog audit, CancellationToken ct) => audit.WriteAsync(evt, ct);
+}
+```
+
+Only types a registered handler can accept are ever deserialized; the header cannot make the worker load arbitrary types.
 
 ## QueueContext
 
-When your handler runs inside a queue worker, a `QueueContext` is injected as a parameter. Use it for lifecycle control and progress reporting:
+When the handler runs inside a worker, a `QueueContext` parameter is available:
 
 ```csharp
-[Queue(TimeoutSeconds = 60)]
+[Queue(TimeoutSeconds = 300, TrackProgress = true)]
 public class DataImportHandler
 {
-    public async Task<Result> HandleAsync(
-        ImportData cmd,
-        QueueContext ctx,
-        IImportService imports,
-        CancellationToken ct)
+    public async Task<Result> HandleAsync(ImportData cmd, QueueContext ctx, IImportService imports, CancellationToken ct)
     {
         var batches = await imports.GetBatchesAsync(cmd.FileId, ct);
-
-        foreach (var batch in batches)
+        for (int i = 0; i < batches.Count; i++)
         {
-            await imports.ProcessBatchAsync(batch, ct);
-
-            // Extend the visibility timeout for long-running work
-            await ctx.RenewTimeoutAsync(TimeSpan.FromSeconds(60), ct);
+            await imports.ProcessBatchAsync(batches[i], ct);
+            await ctx.ReportProgressAsync((i + 1) * 100 / batches.Count, $"Batch {i + 1}/{batches.Count}", ct);
         }
 
         return Result.Ok();
@@ -203,234 +154,136 @@ public class DataImportHandler
 }
 ```
 
-### Available Properties and Methods
-
 ```csharp
-// Properties
-ctx.QueueName          // Name of the queue
-ctx.MessageType        // Type of the message being processed
-ctx.DequeueCount       // How many times this message has been dequeued
-ctx.MaxAttempts        // Maximum attempts before dead-lettering
-ctx.EnqueuedAt         // When the message was originally enqueued
-ctx.JobId              // Job ID (when TrackProgress is enabled)
+ctx.QueueName          // queue the message came from
+ctx.MessageId          // transport message id
+ctx.MessageType        // concrete message type
+ctx.DequeueCount       // 1 on the first attempt
+ctx.MaxAttempts
+ctx.VisibilityTimeout
+ctx.EnqueuedAt
+ctx.JobId              // when TrackProgress is on
 
-// Lifecycle methods
-await ctx.CompleteAsync(ct);                           // Mark as successfully processed
-await ctx.AbandonAsync(delay, ct);                     // Return to queue for retry
-await ctx.RenewTimeoutAsync(TimeSpan.FromSeconds(30), ct);  // Extend visibility timeout
-
-// Progress reporting (requires TrackProgress = true)
-await ctx.ReportProgressAsync(ct);                     // Heartbeat
-await ctx.ReportProgressAsync(75, "Processing batch 3/4", ct);  // Percent + message
+await ctx.ReportProgressAsync(ct);                       // heartbeat: renews the visibility timeout and the job's heartbeat
+await ctx.ReportProgressAsync(75, "Rendering", ct);      // also records progress; throws OperationCanceledException if cancellation was requested
+await ctx.RenewTimeoutAsync(TimeSpan.FromMinutes(5), ct);
+await ctx.CompleteAsync(ct);                             // manual lifecycle when AutoComplete = false
+await ctx.AbandonAsync(TimeSpan.FromSeconds(30), ct);
 ```
 
-::: tip Auto-Complete
-When `AutoComplete = true` (the default), the worker automatically completes or abandons the message based on your handler's result. You only need explicit lifecycle calls for advanced scenarios.
-:::
+With `AutoRenewTimeout` on (the default) the worker renews the visibility timeout at two thirds of `TimeoutSeconds` for as long as the handler runs, and keeps renewing after a failed renewal. A handler may run for hours on a 30-second timeout. `TimeoutSeconds` is capped at 12 hours, the SQS maximum.
 
-::: tip Auto-Renew Timeout
-When `AutoRenewTimeout = true` (the default), the worker automatically renews the visibility timeout at 2/3 intervals. This prevents messages from becoming visible to other consumers while your handler is still processing. You only need manual `RenewTimeoutAsync` for very long-running handlers where you want explicit control.
-:::
+## Progress Tracking and Cancellation
 
-## Progress Tracking
+`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `Completed`, `Failed`, or `Cancelled`, with progress, attempt, error message, and a heartbeat on every renewal and progress report. The default store is in-memory; use [Redis](./distributed-transports#redis) for more than one node, or implement the interface over a store you already have.
 
-For long-running jobs, enable progress tracking to give callers visibility into execution status:
+The job id comes back in the accepted result's `Location`:
 
 ```csharp
-[Queue(TrackProgress = true, Concurrency = 5)]
-public class ReportGenerationHandler
+var result = await mediator.InvokeAsync<Result>(new GenerateReport("monthly"), ct);
+var jobId = result.Location!;
+
+var state = await stateStore.GetJobStateAsync(jobId, ct);
+Console.WriteLine($"{state.Status} {state.Progress}% {state.ProgressMessage}");
+
+await stateStore.RequestCancellationAsync(jobId, ct);
+// The worker observes the request on the next progress report or its cancellation poll (every 5 s)
+// and cancels the handler's CancellationToken. A cancelled job completes the message; it is not retried.
+```
+
+Attach tenant, user, or any other context to jobs so a store can index them:
+
+```csharp
+.AddDistributedQueues(o => o.JobMetadataProvider = message => message is ITenantMessage t
+    ? new Dictionary<string, string> { ["tenant"] = t.TenantId, ["user"] = t.RequestedBy }
+    : null);
+```
+
+The dictionary is stored as `QueueJobState.Metadata`.
+
+## Single Flight with [QueueLock]
+
+Because delivery is at least once, work that must never run twice concurrently gets a distributed lock:
+
+```csharp
+public record GenerateBankFile(string Bank) : IHaveLockKey
 {
-    public async Task<Result> HandleAsync(
-        GenerateReport cmd,
-        QueueContext ctx,
-        IReportService reports,
-        CancellationToken ct)
-    {
-        var data = await reports.GatherDataAsync(cmd, ct);
-        await ctx.ReportProgressAsync(25, "Data gathered", ct);
+    public string LockKey => $"bank-file:{Bank}";
+}
 
-        var analysis = await reports.AnalyzeAsync(data, ct);
-        await ctx.ReportProgressAsync(50, "Analysis complete", ct);
-
-        await reports.RenderAsync(analysis, cmd.Format, ct);
-        await ctx.ReportProgressAsync(75, "Report rendered", ct);
-
-        await reports.UploadAsync(cmd.OutputPath, ct);
-        return Result.Ok();
-    }
+[Queue(Group = "exports")]
+[QueueLock(LifetimeSeconds = 120)]
+public class GenerateBankFileHandler
+{
+    public Task<Result> HandleAsync(GenerateBankFile cmd, IBankFiles files, CancellationToken ct) => files.GenerateAsync(cmd.Bank, ct);
 }
 ```
 
-### Querying Job State
+The lock key is `Key` on the attribute, then the message's `IHaveLockKey.LockKey`, then queue name plus message id. The lock is renewed while the handler runs and released afterwards. When another worker already holds it, the message is **completed without running the handler**: that work is already happening. Set `AcquireTimeoutSeconds` to wait instead of giving up immediately.
 
-When progress tracking is enabled, `InvokeAsync` returns a job ID in the accepted result. Use the `IQueueJobStateStore` to query status:
+Register an `IQueueLockProvider` over your lock service (Redis, a database) as a singleton. The in-memory provider is registered automatically only when the in-memory queue client is in use, because a process-local lock is only safe with a process-local queue.
 
-```csharp
-var result = await mediator.InvokeAsync(new GenerateReport("monthly", "pdf"), ct);
-var jobId = result.Value; // The job ID
+## Carrying Context in Headers
 
-// Later, check progress
-var stateStore = serviceProvider.GetRequiredService<IQueueJobStateStore>();
-var state = await stateStore.GetJobStateAsync(jobId, ct);
-
-Console.WriteLine($"Status: {state.Status}");       // Queued, Processing, Completed, Failed, Cancelled
-Console.WriteLine($"Progress: {state.Progress}%");   // 0-100
-Console.WriteLine($"Message: {state.ProgressMessage}");
-```
-
-### Job Cancellation
-
-Request cancellation of a tracked job:
+An `IQueueHeaderProvider` adds headers on enqueue and restores context on the worker, for example a tenant scope or a request id:
 
 ```csharp
-await stateStore.RequestCancellationAsync(jobId, ct);
-```
+public sealed class TenantHeaderProvider(IHttpContextAccessor http) : IQueueHeaderProvider
+{
+    public void Enrich(object message, IDictionary<string, string> headers)
+    {
+        if (http.HttpContext?.Request.Headers["X-Tenant"] is { Count: > 0 } tenant)
+            headers["x-tenant"] = tenant!;
+    }
 
-The worker polls for cancellation and triggers the `CancellationToken` passed to your handler. Your handler should check `ct.ThrowIfCancellationRequested()` at appropriate points.
+    public void Restore(IReadOnlyDictionary<string, string> headers, CallContext callContext)
+    {
+        if (headers.TryGetValue("x-tenant", out var tenant))
+            callContext.Set(new TenantContext(tenant));
+    }
+}
 
-### State Store Providers
-
-By default, job state is stored in-memory. For production multi-node setups, use a persistent store:
-
-```csharp
-// Redis (recommended for most deployments)
 builder.Services.AddMediator()
     .AddDistributedQueues()
-    .UseRedisJobState(opts => opts.KeyPrefix = "fm:jobs");
+    .AddQueueHeaderProvider<TenantHeaderProvider>();
 ```
 
-See [Transport Providers](./distributed-transports) for setup details.
-
-## Worker Groups
-
-In larger deployments, you may want different nodes to process different queues — API servers handle web requests while dedicated workers process background jobs:
-
-```csharp
-// Handler declares its group
-[Queue(Group = "exports")]
-public class ExportHandler { ... }
-
-[Queue(Group = "imports")]
-public class ImportHandler { ... }
-```
-
-```csharp
-// API server — enqueue only, no workers
-builder.Services.AddMediator()
-    .AddDistributedQueues(opts => opts.WorkersEnabled = false);
-
-// Export worker — only processes export queues
-builder.Services.AddMediator()
-    .AddDistributedQueues(opts => opts.Group = "exports");
-
-// Import worker — only processes import queues
-builder.Services.AddMediator()
-    .AddDistributedQueues(opts => opts.Group = "imports");
-```
-
-You can also limit by specific queue names:
-
-```csharp
-builder.Services.AddMediator()
-    .AddDistributedQueues(opts =>
-    {
-        opts.Queues = new() { "ProcessOrder", "ProcessPayment" };
-    });
-```
-
-## Resource Prefixing
-
-Use `ResourcePrefix` to namespace your queues, avoiding collisions in shared infrastructure:
-
-```csharp
-builder.Services.AddMediator()
-    .AddDistributedQueues(opts => opts.ResourcePrefix = "myapp-prod");
-```
-
-This prefixes all queue names: `ProcessOrder` becomes `myapp-prod-ProcessOrder`.
+Anything placed in the `CallContext` is available as a parameter on the handler and its middleware, exactly like `QueueContext`. Every message also carries `fm-correlation-id` (the current trace id, or a new id) and W3C `traceparent`.
 
 ## Middleware Integration
 
-Queue-processed handlers run through the same middleware pipeline as local handlers. Middleware can detect queue context:
+Queued handlers run through the same middleware pipeline as local handlers, on the worker. Middleware can tell where it is:
 
 ```csharp
 [Middleware]
 public class ObservabilityMiddleware
 {
-    public Stopwatch Before(object message, HandlerExecutionInfo info, QueueContext? queueContext)
+    public Stopwatch Before(object message, QueueContext? queue)
     {
-        var source = queueContext is not null ? "queue" : "local";
-        Log.Information("Handling {Type} (source: {Source})", message.GetType().Name, source);
+        Log.Information("Handling {Type} from {Source}", message.GetType().Name, queue is null ? "local" : queue.QueueName);
         return Stopwatch.StartNew();
     }
 
-    public void After(object message, Stopwatch sw, QueueContext? queueContext)
-    {
-        Log.Information("Handled in {Elapsed}ms", sw.ElapsedMilliseconds);
-    }
+    public void After(object message, Stopwatch sw) => Log.Information("Handled in {Elapsed}ms", sw.ElapsedMilliseconds);
 }
 ```
 
-`QueueContext` is `null` for non-queue invocations, so your middleware works naturally in both contexts.
+`QueueContext` is `null` for local invocations.
 
-## Full Example
-
-Here's a complete example putting it all together:
+## Options
 
 ```csharp
-// Message
-public record ProcessOrder(string OrderId, string CustomerId, decimal Amount);
-
-// Handler
-[Queue(
-    Concurrency = 3,
-    MaxAttempts = 5,
-    RetryPolicy = QueueRetryPolicy.Exponential,
-    TrackProgress = true,
-    Group = "order-processing")]
-public class OrderProcessingHandler
-{
-    public async Task<Result> HandleAsync(
-        ProcessOrder cmd,
-        QueueContext ctx,
-        IOrderService orders,
-        ILogger<OrderProcessingHandler> logger,
-        CancellationToken ct)
-    {
-        logger.LogInformation("Processing order {OrderId}, attempt {Attempt}",
-            cmd.OrderId, ctx.DequeueCount);
-
-        await ctx.ReportProgressAsync(10, "Validating order", ct);
-        var validation = await orders.ValidateAsync(cmd, ct);
-        if (!validation.IsValid)
-            return Result.Invalid(validation.Errors);
-
-        await ctx.ReportProgressAsync(50, "Charging payment", ct);
-        var charge = await orders.ChargeAsync(cmd, ct);
-        if (!charge.Success)
-            return Result.Error("Payment failed — will retry");
-
-        await ctx.ReportProgressAsync(90, "Finalizing", ct);
-        await orders.FinalizeAsync(cmd, ct);
-
-        return Result.Ok();
-    }
-}
-```
-
-```csharp
-// DI registration
 builder.Services.AddMediator()
-    .AddDistributedQueues(opts =>
+    .AddDistributedQueues(o =>
     {
-        opts.WorkersEnabled = true;
-        opts.Group = "order-processing";
+        o.Workers = WorkerSelection.Parse(builder.Configuration["Distributed:Workers"]); // which workers run here
+        o.ResourcePrefix = "myapp-prod";              // prefixes every queue name
+        o.ShutdownTimeout = TimeSpan.FromSeconds(60); // drain window for in-flight handlers on stop
+        o.EnqueueReadyTimeout = TimeSpan.FromSeconds(30);
+        o.JobStateExpiry = TimeSpan.FromHours(24);
+        o.QueueDepthPollInterval = TimeSpan.FromSeconds(30); // queue.depth.* metrics; Zero disables
+        o.JsonSerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
     });
 ```
 
-```csharp
-// Enqueue from an API endpoint or another handler
-var result = await mediator.InvokeAsync(new ProcessOrder("ORD-001", "CUST-42", 99.99m), ct);
-// result.StatusCode == Accepted
-// result.Value contains the job ID (when TrackProgress = true)
-```
+If workers are disabled or filtered and no transport is registered, registration fails: messages sent to an in-memory queue with no worker in the same process would be lost. Set `AllowInMemoryWithoutWorkers` in tests that want exactly that.

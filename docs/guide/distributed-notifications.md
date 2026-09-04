@@ -8,362 +8,127 @@ nav:
 
 # Distributed Notifications
 
-Distributed notifications broadcast events across all nodes in your cluster. When one node publishes an event, every node hears about it — without changing your publishing code or handler structure.
-
-This is the pattern for cache invalidation, real-time state sync, configuration propagation, or any scenario where every instance of your app needs to react to the same event.
+Distributed notifications broadcast events to every node in a cluster. When one node publishes, every node hears about it, without changing publishing code or handlers. This is the pattern for cache invalidation, real-time state sync, and configuration changes.
 
 ## Installation
-
-```bash
-dotnet add package Foundatio.Mediator.Distributed
-```
-
-Register the distributed notification services:
 
 ```csharp
 builder.Services.AddMediator()
     .AddDistributedNotifications();
 ```
 
-By default, this uses an in-memory pub/sub — useful for single-process development. For multi-node deployments, add a [transport provider](./distributed-transports).
+With no transport registered this uses an in-memory pub/sub, which is right for a single process. For a cluster add a [transport provider](./distributed-transports).
 
-## Making a Notification Distributed
+## Choosing What to Distribute
 
-There are several ways to mark a notification for distributed fan-out. Pick whichever fits your architecture.
-
-### Option 1: Marker Interface
-
-Implement `IDistributedNotification` on your event record:
+Only the events you choose cross the bus. Everything else stays local and costs nothing.
 
 ```csharp
-public record OrderCreated(string OrderId, string CustomerId, decimal Amount)
-    : IDistributedNotification;
-```
+// Marker interface
+public record ProductPriceChanged(string ProductId, decimal NewPrice) : IDistributedNotification;
 
-`IDistributedNotification` extends `INotification` — it's a marker interface that tells the distributed infrastructure to broadcast this event beyond the local process.
-
-### Option 2: Attribute
-
-When you can't or don't want to modify the type hierarchy, use the `[DistributedNotification]` attribute:
-
-```csharp
+// Attribute, when the type hierarchy is not yours to change
 [DistributedNotification]
-public record OrderCreated(string OrderId, string CustomerId, decimal Amount);
-```
+public record OrderShipped(string OrderId, DateTime ShippedAt);
 
-This is equivalent to implementing `IDistributedNotification` — no interface needed.
-
-### Option 3: Options-Based Configuration
-
-For maximum flexibility, configure distribution at registration time without modifying message types at all:
-
-```csharp
+// Options, without touching the types at all
 builder.Services.AddMediator()
-    .AddDistributedNotifications(opts =>
+    .AddDistributedNotifications(o =>
     {
-        // Explicitly include specific types
-        opts.Include<OrderCreated>();
-        opts.Include<ProductUpdated>();
-
-        // Or include all notification types from an assembly
-        opts.IncludeNotificationsFromAssemblyOf<OrderCreated>();
-
-        // Or use a predicate for dynamic filtering
-        opts.MessageFilter = type => type.Namespace?.StartsWith("MyApp.Events") == true;
-
-        // Or distribute everything
-        opts.IncludeAllNotifications = true;
+        o.Include<ClientCreated>();
+        o.Include<ClientUpdated>();
+        o.IncludeAssignableTo<IScriptTriggerEvent>();   // every event implementing the interface
+        o.Exclude<NoisyLocalEvent>();                   // never, even if a rule above matches
     });
 ```
 
-See [Controlling Which Types Are Distributed](#controlling-which-types-are-distributed) below for the full reference.
+Rules are evaluated in this order; the first match wins:
 
-Regardless of which approach you use, your publish code stays exactly the same:
+| Priority | Rule |
+| --- | --- |
+| 1 | `Exclude<T>()` (always wins) |
+| 2 | `Include<T>()` |
+| 3 | `IDistributedNotification` |
+| 4 | `[DistributedNotification]` |
+| 5 | `IncludeAssignableTo<T>()` |
+| 6 | `MessageFilter` predicate |
+| 7 | `IncludeAllNotifications` |
 
-```csharp
-await mediator.PublishAsync(new OrderCreated("ORD-001", "CUST-42", 99.99m));
-```
+`IncludeNotificationsFromAssemblyOf<T>()` includes every concrete `INotification` in an assembly. `IncludeAllNotifications = true` distributes every notification; use it deliberately, every published notification is then serialized and sent.
+
+The worker logs the resolved list at startup, so a deployment's bus traffic is visible in one log line.
 
 ## How It Works
 
-When you publish a distributed notification:
-
-1. **Local handlers run first** — same as any notification, all matching handlers on the publishing node execute
-2. **Outbound bridge** — the `DistributedNotificationWorker` picks up the event, serializes it, and publishes it to the configured pub/sub transport
-3. **Remote nodes** — each node's worker receives the message, deserializes it, and publishes it locally via `mediator.PublishAsync()`
-4. **Self-loop prevention** — the originating node ignores its own broadcast, so handlers don't fire twice
+1. Local handlers run first, as for any notification.
+2. The outbound bridge serializes the event and publishes it to the transport with `fm-message-type`, `fm-origin-host-id`, and W3C trace headers.
+3. Every other node receives it, resolves the type through its allowlist, deserializes, and publishes it locally.
+4. The originating node ignores its own broadcast by host id.
 
 ```text
-Node A                        Pub/Sub Bus                    Node B
-  │                               │                            │
-  ├─ PublishAsync(event) ─────►   │                            │
-  │                               │                            │
-  │  ┌─ Local Handlers ─┐        │                            │
-  │  │  EmailHandler     │        │                            │
-  │  │  AuditHandler     │        │                            │
-  │  └──────────────────┘        │                            │
-  │                               │                            │
-  ├─ serialize & publish ────────►│                            │
-  │                               │                            │
-  │                               ├─── message ───────────────►│
-  │                               │                            │
-  │                               │    ┌─ Local Handlers ─┐   │
-  │                               │    │  CacheHandler     │   │
-  │                               │    │  DashboardHandler  │   │
-  │                               │    └──────────────────┘   │
+Node A                        Bus                          Node B
+  │ PublishAsync(event)        │                            │
+  │ local handlers run         │                            │
+  ├─ serialize & publish ─────►├─── message ───────────────►│ local handlers run
 ```
 
-Each node runs its own local handlers for the event. The distributed layer just handles the transport.
+Delivery is at most once per node: a node that is down when the event is published does not receive it later. If the transport subscription fails, the node keeps publishing, logs the failure, and retries subscribing with backoff.
+
+## With Queue Handlers
+
+A distributed event may also have `[Queue]` handlers. The publishing node enqueues the work once; every node runs its local handlers; the queue's worker runs the queued handler. Receiving nodes do not enqueue again.
+
+```csharp
+public record OrderCreated(string OrderId) : IDistributedNotification;
+
+[Queue(Group = "events")]
+public class AuditEventHandler
+{
+    public Task HandleAsync(OrderCreated e, IAuditService audit, CancellationToken ct) => audit.LogAsync(e, ct);
+}
+
+public class CacheHandler
+{
+    public void Handle(OrderCreated e, ICache cache) => cache.Remove("recent-orders");
+}
+```
+
+Commands sent from inside a notification handler are enqueued normally; only the notification itself is exempt.
 
 ## Configuration
 
 ```csharp
-builder.Services.AddMediator()
-    .AddDistributedNotifications(opts =>
-    {
-        opts.Topic = "app-events";          // Topic name (default: "distributed-notifications")
-        opts.HostId = "node-1";             // Unique ID per node (default: random GUID)
-        opts.ResourcePrefix = "myapp";      // Namespace prefix
-        opts.MaxCapacity = 1000;            // Outbound buffer size (default: 1000)
-    });
-```
-
-### Host Identity
-
-Each node needs a unique `HostId` to prevent self-loop broadcasting. By default, a random GUID is generated — this works for most deployments. Set it explicitly when you need stable identity for debugging or monitoring:
-
-```csharp
-opts.HostId = Environment.MachineName;
-// or
-opts.HostId = Environment.GetEnvironmentVariable("HOSTNAME") ?? Guid.NewGuid().ToString("N");
-```
-
-### Resource Prefixing
-
-Use `ResourcePrefix` to namespace your topics, avoiding collisions in shared infrastructure:
-
-```csharp
-opts.ResourcePrefix = "myapp-prod";
-// Topic becomes: "myapp-prod-distributed-notifications"
-```
-
-## Controlling Which Types Are Distributed {#controlling-which-types-are-distributed}
-
-You have several mechanisms to control which notification types get distributed. They are evaluated in priority order — the first match wins:
-
-| Priority | Mechanism | Scope |
-| -------- | --------- | ----- |
-| 1 | `opts.Include<T>()` | Per-type, at registration |
-| 2 | `IDistributedNotification` interface | Per-type, in source |
-| 3 | `[DistributedNotification]` attribute | Per-type, in source |
-| 4 | `opts.MessageFilter` predicate | Dynamic, at registration |
-| 5 | `opts.IncludeAllNotifications` flag | Global, at registration |
-
-### Explicit Include
-
-Registers specific types for distribution. Use this when the message types are defined in a library you don't control:
-
-```csharp
-opts.Include<OrderCreated>();
-opts.Include<ProductUpdated>();
-```
-
-### Assembly Scanning
-
-Includes all types implementing `INotification` in the given assembly:
-
-```csharp
-opts.IncludeNotificationsFromAssemblyOf<OrderCreated>();
-```
-
-### Custom Predicate
-
-Filter by any criteria — namespace, naming convention, custom attributes, etc.:
-
-```csharp
-// By namespace
-opts.MessageFilter = type => type.Namespace?.StartsWith("MyApp.DomainEvents") == true;
-
-// By naming convention
-opts.MessageFilter = type => type.Name.EndsWith("DomainEvent");
-```
-
-The predicate is only evaluated for types that weren't already matched by `Include<T>()`, `IDistributedNotification`, or `[DistributedNotification]`.
-
-### Include All Notifications
-
-Opt in to distribute every notification type. Useful for small applications or during development:
-
-```csharp
-opts.IncludeAllNotifications = true;
-```
-
-::: warning
-This distributes _all_ notification types, including those that may have been intentionally local-only. Use with care in production — every published notification will be serialized and sent to the bus.
-:::
-
-### Combining Approaches
-
-All mechanisms work together. You can use the interface for most events and `Include<T>()` for third-party types:
-
-```csharp
-// OrderCreated uses the interface
-public record OrderCreated(string OrderId) : IDistributedNotification;
-
-// ThirdPartyEvent uses explicit include
-builder.Services.AddMediator()
-    .AddDistributedNotifications(opts =>
-    {
-        opts.Include<ThirdPartyEvent>();
-    });
-```
-
-### Checking the Configuration
-
-You can verify whether a type would be distributed using `ShouldDistribute()`:
-
-```csharp
-var options = new DistributedNotificationOptions();
-options.Include<OrderCreated>();
-
-options.ShouldDistribute(typeof(OrderCreated));  // true
-options.ShouldDistribute(typeof(LocalEvent));     // false
-```
-
-## Working with Handlers
-
-Distributed notifications use the same handler conventions as local notifications. Nothing special is required:
-
-```csharp
-public class CacheInvalidationHandler
+.AddDistributedNotifications(o =>
 {
-    public void Handle(ProductPriceChanged e, ICache cache)
-    {
-        cache.Remove($"product:{e.ProductId}");
-    }
-}
-
-public class DashboardUpdateHandler
-{
-    public async Task HandleAsync(ProductPriceChanged e, IDashboardService dashboard, CancellationToken ct)
-    {
-        await dashboard.RefreshProductAsync(e.ProductId, ct);
-    }
-}
+    o.Topic = "app-events";           // default "distributed-notifications"
+    o.ResourcePrefix = "myapp-prod";  // topic becomes "myapp-prod-app-events"
+    o.HostId = Environment.MachineName; // default: a new id per process
+    o.MaxCapacity = 1000;             // outbound buffer
+});
 ```
 
-These handlers run on every node that receives the notification — including the originating node (where they run as normal local handlers before the event is broadcast).
+Give `HostId` a stable value when you want per-node subscription resources to be recognizable in the transport; with SQS/SNS the per-node queue is named from it.
 
-## Mixing Local and Distributed Events
+## Detecting Bus Origin in Middleware
 
-Not every event needs to be distributed. Only mark events for distribution when they need cross-node fanout. Regular events stay local and avoid the serialization overhead:
-
-```csharp
-// Local only — no serialization, just in-process handlers
-public record OrderValidated(string OrderId);
-
-// Distributed via interface
-public record OrderCreated(string OrderId, string CustomerId) : IDistributedNotification;
-
-// Distributed via attribute
-[DistributedNotification]
-public record ProductUpdated(string ProductId, decimal NewPrice);
-```
-
-Both types work with `mediator.PublishAsync()`. The distributed layer only intercepts types that match the configured distribution criteria — whether via interface, attribute, or options.
-
-## With Queue Handlers
-
-Distributed notifications and queues work together naturally. A common pattern is to publish a distributed event that triggers queued work:
-
-```csharp
-// Distributed event — all nodes hear about it
-public record OrderCreated(string OrderId, string CustomerId, decimal Amount)
-    : IDistributedNotification;
-
-// Queue handler — processes audit logging asynchronously
-[Queue(Group = "events")]
-public class AuditEventHandler
-{
-    public async Task HandleAsync(OrderCreated e, IAuditService audit, CancellationToken ct)
-    {
-        await audit.LogAsync($"Order {e.OrderId} created", ct);
-    }
-}
-
-// Local handler — runs on every node that receives the event
-public class CacheHandler
-{
-    public void Handle(OrderCreated e, ICache cache)
-    {
-        cache.Remove("recent-orders");
-    }
-}
-```
-
-The same event triggers both a queued background job and a local cache invalidation on every node.
-
-## Middleware Integration
-
-Middleware can detect whether a message arrived via the distributed notification bus:
+`DistributedContext.IsNotification` is true while a node re-publishes an event it received from the bus; `DistributedContext.IsInboundNotification(message)` tells you whether a particular message is that event.
 
 ```csharp
 [Middleware]
 public class ObservabilityMiddleware
 {
-    public void Before(object message, HandlerExecutionInfo info, ILogger<IMediator> logger)
+    public void Before(object message, ILogger<ObservabilityMiddleware> logger)
     {
-        var source = message is IDistributedNotification ? "distributed" : "local";
-        logger.LogInformation("Handling {Type} (source: {Source})",
-            message.GetType().Name, source);
+        var source = DistributedContext.IsInboundNotification(message) ? "bus" : "local";
+        logger.LogInformation("Handling {Type} from {Source}", message.GetType().Name, source);
     }
 }
 ```
 
-## Full Example
+## Verifying the Configuration
 
 ```csharp
-// Events
-public record ProductPriceChanged(string ProductId, decimal OldPrice, decimal NewPrice)
-    : IDistributedNotification;
-
-public record ProductStockChanged(string ProductId, int OldQuantity, int NewQuantity)
-    : IDistributedNotification;
-
-// Handlers — run on every node
-public class ProductCacheHandler
-{
-    public void Handle(ProductPriceChanged e, ICache cache)
-        => cache.Remove($"product:{e.ProductId}");
-
-    public void Handle(ProductStockChanged e, ICache cache)
-        => cache.Remove($"product:{e.ProductId}");
-}
-
-public class RealTimeNotificationHandler
-{
-    public async Task HandleAsync(ProductPriceChanged e, IHubContext<ProductHub> hub, CancellationToken ct)
-    {
-        await hub.Clients.All.SendAsync("PriceChanged", new
-        {
-            e.ProductId,
-            e.NewPrice
-        }, ct);
-    }
-}
-```
-
-```csharp
-// DI registration
-builder.Services.AddMediator()
-    .AddDistributedNotifications(opts =>
-    {
-        opts.Topic = "product-events";
-    });
-```
-
-```csharp
-// Publishing — same as always
-await mediator.PublishAsync(new ProductPriceChanged("PROD-1", 29.99m, 24.99m));
-// Runs local handlers, then broadcasts to all other nodes
+var options = new DistributedNotificationOptions().IncludeAssignableTo<IScriptTriggerEvent>();
+options.ShouldDistribute(typeof(ScriptTriggered));   // true
+options.ShouldDistribute(typeof(LocalOnlyEvent));    // false
 ```

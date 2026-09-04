@@ -561,6 +561,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             ErrorMessage = NullIfEmpty(dict.GetValueOrDefault("ErrorMessage")),
             Attempt = int.TryParse(dict.GetValueOrDefault("Attempt"), out var a) ? a : 0,
             LastUpdatedUtc = ParseDateTimeOffset(dict.GetValueOrDefault("LastUpdatedUtc")),
+            LastHeartbeatUtc = ParseNullableDateTimeOffset(dict.GetValueOrDefault("LastHeartbeatUtc")),
             Metadata = metadata
         };
     }

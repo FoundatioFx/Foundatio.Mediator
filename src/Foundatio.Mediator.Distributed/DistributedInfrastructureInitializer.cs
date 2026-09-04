@@ -18,6 +18,8 @@ internal sealed class DistributedInfrastructureInitializer(
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        ready.MarkStarted();
+
         if (options.QueueNames.Count == 0 && options.TopicNames.Count == 0)
         {
             ready.SetReady();
@@ -90,6 +92,19 @@ internal sealed class DistributedInfrastructureInitializer(
 public sealed class DistributedInfrastructureReady
 {
     private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private volatile bool _started;
+
+    /// <summary>
+    /// Whether the initializer has started. Before the host starts there is nothing to wait for.
+    /// </summary>
+    public bool IsStarted => _started;
+
+    /// <summary>
+    /// Whether provisioning has completed successfully.
+    /// </summary>
+    public bool IsReady => _tcs.Task.IsCompletedSuccessfully;
+
+    internal void MarkStarted() => _started = true;
 
     /// <summary>
     /// Blocks until infrastructure is ready or throws if initialization failed.

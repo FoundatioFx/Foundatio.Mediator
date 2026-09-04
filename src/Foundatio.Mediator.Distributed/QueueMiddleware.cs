@@ -1,44 +1,54 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Middleware that intercepts handler invocations for <see cref="QueueAttribute"/>-decorated handlers.
+/// Middleware attached to <see cref="QueueAttribute"/> handlers. On the caller side it serializes
+/// the message, sends it to the handler's queue, and returns <see cref="Result.Accepted()"/>.
+/// On the worker side, where a <see cref="QueueContext"/> is present, it runs the handler.
 /// </summary>
 /// <remarks>
-/// <para>
-/// On the <b>enqueue path</b> (normal caller), this middleware serializes the message
-/// and sends it to the queue via <see cref="IQueueClient"/>.
-/// The call returns immediately with <see cref="Result.Accepted(string)"/>.
-/// </para>
-/// <para>
-/// On the <b>process path</b> (when <see cref="QueueWorker"/> dispatches a dequeued message),
-/// the presence of a <see cref="QueueContext"/> in <see cref="CallContext"/>
-/// signals that this is a processing invocation. The middleware passes through to <c>next()</c>
-/// so the full pipeline (logging, validation, auth, etc.) executes before the handler.
-/// </para>
+/// <para>When several handlers share a queue, only one of them (the designated enqueuer, chosen
+/// deterministically) sends the message; the worker then dispatches the single message to every
+/// handler that accepts it.</para>
+/// <para>A notification re-published from the distributed bus is not enqueued again: the node that
+/// published it already did.</para>
 /// </remarks>
-[Middleware(Order = -100, ExplicitOnly = true)]
+[Middleware(Order = -100, ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton)]
 public class QueueMiddleware
 {
+    private static readonly HashSet<string> s_voidReturnTypes = new(StringComparer.Ordinal)
+    {
+        "void", "Task", "ValueTask", "System.Threading.Tasks.Task", "System.Threading.Tasks.ValueTask"
+    };
+
     private readonly IQueueClient _client;
+    private readonly QueueTopology _topology;
+    private readonly DistributedQueueOptions _options;
     private readonly IQueueJobStateStore? _stateStore;
-    private readonly HandlerRegistry _registry;
+    private readonly DistributedInfrastructureReady? _infraReady;
+    private readonly IQueueHeaderProvider[] _headerProviders;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
-    private readonly string? _resourcePrefix;
-    private readonly ConcurrentDictionary<string, QueueHandlerMetadata> _metadataCache = new(StringComparer.Ordinal);
 
-    public QueueMiddleware(IQueueClient client, HandlerRegistry registry, DistributedQueueOptions? options = null, IQueueJobStateStore? stateStore = null, TimeProvider? timeProvider = null)
+    public QueueMiddleware(
+        IQueueClient client,
+        QueueTopology topology,
+        DistributedQueueOptions? options = null,
+        IQueueJobStateStore? stateStore = null,
+        DistributedInfrastructureReady? infraReady = null,
+        IEnumerable<IQueueHeaderProvider>? headerProviders = null,
+        TimeProvider? timeProvider = null)
     {
         _client = client;
-        _registry = registry;
+        _topology = topology;
+        _options = options ?? new DistributedQueueOptions();
         _stateStore = stateStore;
-        _jsonOptions = options?.JsonSerializerOptions ?? JsonSerializerOptions.Default;
+        _infraReady = infraReady;
+        _headerProviders = headerProviders?.ToArray() ?? [];
+        _jsonOptions = _options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _resourcePrefix = options?.ResourcePrefix;
     }
 
     public async ValueTask<object?> ExecuteAsync(
@@ -48,111 +58,125 @@ public class QueueMiddleware
         CallContext? callContext,
         CancellationToken cancellationToken)
     {
-        // Process path: QueueContext in CallContext signals we're processing from the queue
+        // Worker side: the queue already owns this message, run the handler.
         if (callContext?.TryGet<QueueContext>(out _) == true)
             return await next().ConfigureAwait(false);
 
-        // Inbound notification path: message arrived from the distributed bus.
-        // The originating node already enqueued to the shared queue, so skip re-enqueueing.
-        if (DistributedContext.IsNotification)
-            return await next().ConfigureAwait(false);
+        // The originating node enqueued this notification before publishing it to the bus.
+        if (DistributedContext.IsInboundNotification(message))
+            return Result.Accepted("Message queued by the originating node");
 
-        // Enqueue path: serialize and send to the queue
+        var registration = _topology.GetByDescriptorId(handlerInfo.DescriptorId)
+            ?? throw new InvalidOperationException(
+                $"Handler '{handlerInfo.DescriptorId}' is marked [Queue] but has no queue registration. Call AddDistributedQueues() after AddMediator().");
+
         var messageType = message.GetType();
-        var metadata = GetMetadata(handlerInfo.DescriptorId, messageType);
 
-        // Validate that the handler's declared return type is compatible with queue processing.
-        // Queue handlers can only return void/Task/ValueTask, Result, or Result<T>.
-        // This must be checked before sending to avoid enqueueing messages for incompatible handlers.
-        if (!string.IsNullOrEmpty(metadata.ReturnTypeName)
-            && !metadata.ReturnTypeName.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Queue handler '{handlerInfo.DescriptorId}' returns '{metadata.ReturnTypeName}' which is incompatible with queue processing. " +
-                "Queue handlers must return void, Task, Result, or Result<T>.");
-        }
+        var designated = registration.DesignatedEnqueuerFor(messageType);
+        if (designated is not null && !string.Equals(designated, handlerInfo.DescriptorId, StringComparison.Ordinal))
+            return Result.Accepted("Message queued");
+
+        ValidateReturnType(registration, handlerInfo.DescriptorId);
+
+        await WaitForInfrastructureAsync(registration.QueueName, messageType, cancellationToken).ConfigureAwait(false);
 
         var body = JsonSerializer.SerializeToUtf8Bytes(message, messageType, _jsonOptions);
+        var now = _timeProvider.GetUtcNow();
 
         var headers = new Dictionary<string, string>
         {
             [MessageHeaders.MessageType] = messageType.FullName!,
-            [MessageHeaders.EnqueuedAt] = _timeProvider.GetUtcNow().ToString("O")
+            [MessageHeaders.EnqueuedAt] = now.ToString("O"),
+            [MessageHeaders.CorrelationId] = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N")
         };
 
-        // Propagate W3C trace context so queue consumers appear in the same trace
-        var currentActivity = Activity.Current;
-        if (currentActivity is not null)
+        using var activity = MediatorActivitySource.Instance.StartActivity($"Enqueue {registration.QueueName}", ActivityKind.Producer);
+        activity?.SetTag("messaging.operation.type", "send");
+        activity?.SetTag("messaging.destination.name", registration.QueueName);
+        activity?.SetTag("messaging.message.type", messageType.FullName);
+
+        var traceActivity = activity ?? Activity.Current;
+        if (traceActivity is not null)
         {
-            headers[MessageHeaders.TraceParent] = currentActivity.Id!;
-            if (currentActivity.TraceStateString is { Length: > 0 } traceState)
+            headers[MessageHeaders.TraceParent] = traceActivity.Id!;
+            if (traceActivity.TraceStateString is { Length: > 0 } traceState)
                 headers[MessageHeaders.TraceState] = traceState;
         }
 
-        // Generate job ID and track initial state when progress tracking is enabled
+        foreach (var provider in _headerProviders)
+            provider.Enrich(message, headers);
+
         string? jobId = null;
-        if (metadata.TrackProgress && _stateStore is not null)
+        if (registration.Settings.TrackProgress && _stateStore is not null)
         {
             jobId = Guid.NewGuid().ToString("N");
             headers[MessageHeaders.JobId] = jobId;
 
-            var now = _timeProvider.GetUtcNow();
             var jobState = new QueueJobState
             {
                 JobId = jobId,
-                QueueName = metadata.QueueName,
+                QueueName = registration.QueueName,
                 MessageType = messageType.FullName ?? messageType.Name,
                 Status = QueueJobStatus.Queued,
                 CreatedUtc = now,
-                LastUpdatedUtc = now
+                LastUpdatedUtc = now,
+                Metadata = _options.JobMetadataProvider?.Invoke(message)
             };
 
-            await _stateStore.SetJobStateAsync(jobState, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await _stateStore.SetJobStateAsync(jobState, _options.JobStateExpiry, cancellationToken).ConfigureAwait(false);
+            activity?.SetTag("messaging.job.id", jobId);
         }
 
-        var entry = new QueueEntry
-        {
-            Body = body,
-            Headers = headers
-        };
+        await _client.SendAsync(registration.QueueName, [new QueueEntry { Body = body, Headers = headers }], cancellationToken).ConfigureAwait(false);
 
-        await _client.SendAsync(metadata.QueueName, [entry], cancellationToken).ConfigureAwait(false);
+        DistributedMetrics.Enqueued.Add(1, DistributedMetrics.Tags(registration.QueueName, messageType.Name, registration.Settings.Group));
 
-        if (jobId is not null)
-            return Result.Accepted("Message queued", jobId);
-
-        return Result.Accepted("Message queued");
+        return jobId is not null
+            ? Result.Accepted("Message queued", jobId)
+            : Result.Accepted("Message queued");
     }
 
-    private QueueHandlerMetadata GetMetadata(string descriptorId, Type messageType)
+    private async Task WaitForInfrastructureAsync(string queueName, Type messageType, CancellationToken cancellationToken)
     {
-        return _metadataCache.GetOrAdd(descriptorId, static (id, state) =>
+        // Provisioning only runs once the host starts; before that (unit tests, plain containers) there is nothing to wait for.
+        if (_infraReady is null || !_infraReady.IsStarted || _infraReady.IsReady)
+            return;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_options.EnqueueReadyTimeout);
+
+        try
         {
-            var (registry, fallbackName, prefix) = state;
-            string queueName;
-            bool trackProgress;
-            string? returnTypeName = null;
-
-            if (registry.TryGetHandlerByDescriptorId(id, out var registration) && registration is not null)
-            {
-                var queueAttr = registration.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute;
-                queueName = !string.IsNullOrWhiteSpace(queueAttr?.QueueName) ? queueAttr!.QueueName! : fallbackName;
-                trackProgress = queueAttr?.TrackProgress ?? false;
-                returnTypeName = registration.ReturnTypeName;
-            }
-            else
-            {
-                queueName = fallbackName;
-                trackProgress = false;
-            }
-
-            // Apply resource prefix for app-level scoping
-            if (!string.IsNullOrEmpty(prefix))
-                queueName = $"{prefix}-{queueName}";
-
-            return new QueueHandlerMetadata(queueName, trackProgress, returnTypeName);
-        }, (_registry, messageType.Name, _resourcePrefix));
+            await _infraReady.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Queue infrastructure was not ready within {_options.EnqueueReadyTimeout}; cannot enqueue {messageType.Name} to '{queueName}'.");
+        }
     }
 
-    private sealed record QueueHandlerMetadata(string QueueName, bool TrackProgress, string? ReturnTypeName);
+    private static void ValidateReturnType(QueueRegistration registration, string descriptorId)
+    {
+        HandlerRegistration? handler = null;
+        foreach (var candidate in registration.Handlers)
+        {
+            if (string.Equals(candidate.DescriptorId, descriptorId, StringComparison.Ordinal))
+            {
+                handler = candidate;
+                break;
+            }
+        }
+
+        var returnTypeName = handler?.ReturnTypeName;
+        if (string.IsNullOrEmpty(returnTypeName) || s_voidReturnTypes.Contains(returnTypeName!))
+            return;
+
+        if (!returnTypeName!.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal) && !returnTypeName.StartsWith("Result", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Queue handler '{descriptorId}' returns '{returnTypeName}' which is incompatible with queue processing. " +
+                "Queue handlers must return void, Task, Result, or Result<T>.");
+        }
+    }
 }

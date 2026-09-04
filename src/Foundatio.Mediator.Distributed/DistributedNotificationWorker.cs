@@ -79,8 +79,8 @@ public sealed class DistributedNotificationWorker : BackgroundService
         }
 
         _logger.LogInformation(
-            "Distributed notification worker starting (HostId={HostId}, Topic={Topic})",
-            _options.HostId, _options.EffectiveTopic);
+            "Distributed notification worker starting (HostId={HostId}, Topic={Topic}, Types={TypeCount}): {Types}",
+            _options.HostId, _options.EffectiveTopic, _options.ResolvedTypes.Count, _options.ResolvedTypes.Select(t => t.Name));
 
         var outboundTask = RunOutboundLoopAsync(stoppingToken);
         var inboundTask = RunInboundLoopAsync(stoppingToken);
@@ -149,7 +149,12 @@ public sealed class DistributedNotificationWorker : BackgroundService
                             headers[MessageHeaders.TraceState] = traceState;
                     }
 
+                    activity?.SetTag("messaging.operation.type", "publish");
+                    activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
+                    activity?.SetTag("messaging.message.type", messageType.FullName);
+
                     await _bus.PublishAsync(_options.EffectiveTopic, [new PubSubEntry { Body = body, Headers = headers }], stoppingToken).ConfigureAwait(false);
+                    DistributedMetrics.NotificationsPublished.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -173,25 +178,42 @@ public sealed class DistributedNotificationWorker : BackgroundService
     /// </summary>
     private async Task RunInboundLoopAsync(CancellationToken stoppingToken)
     {
-        IAsyncDisposable? subscription = null;
-        try
+        int attempt = 0;
+        while (!stoppingToken.IsCancellationRequested)
         {
-            subscription = await _bus.SubscribeAsync(_options.EffectiveTopic, async (message, ct) =>
+            IAsyncDisposable? subscription = null;
+            try
             {
-                await ProcessInboundMessageAsync(message, ct).ConfigureAwait(false);
-            }, stoppingToken).ConfigureAwait(false);
+                subscription = await _bus.SubscribeAsync(_options.EffectiveTopic, async (message, ct) =>
+                {
+                    await ProcessInboundMessageAsync(message, ct).ConfigureAwait(false);
+                }, stoppingToken).ConfigureAwait(false);
 
-            // Keep alive until cancellation
-            await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Normal shutdown
-        }
-        finally
-        {
-            if (subscription is not null)
-                await subscription.DisposeAsync().ConfigureAwait(false);
+                attempt = 0;
+                _logger.LogInformation("Subscribed to notification topic {Topic}", _options.EffectiveTopic);
+
+                // Keep alive until cancellation
+                await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                attempt++;
+                var delay = TimeSpan.FromSeconds(Math.Min(Math.Pow(2, Math.Min(attempt, 6)), 60));
+                _logger.LogError(ex, "Failed to subscribe to notification topic {Topic}; this node will not receive notifications until it succeeds. Retrying in {Delay}",
+                    _options.EffectiveTopic, delay);
+
+                try { await Task.Delay(delay, _timeProvider, stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+            }
+            finally
+            {
+                if (subscription is not null)
+                    await subscription.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -222,7 +244,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         {
             notification = JsonSerializer.Deserialize(message.Body.Span, messageType, _jsonOptions);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to deserialize bus message as {TypeName}", typeName);
             return;
@@ -263,10 +285,15 @@ public sealed class DistributedNotificationWorker : BackgroundService
                 $"Process {messageType.Name}",
                 ActivityKind.Consumer,
                 parentContext);
+            activity?.SetTag("messaging.operation.type", "process");
+            activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
+            activity?.SetTag("messaging.message.type", messageType.FullName);
 
-            // Mark the scope as an inbound notification so middleware (e.g., QueueMiddleware)
-            // skips re-enqueueing — the originating node already enqueued to shared infra.
-            using var distributedScope = DistributedContext.BeginNotificationScope();
+            DistributedMetrics.NotificationsReceived.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
+
+            // The originating node already enqueued any [Queue] handlers for this notification;
+            // QueueMiddleware checks this scope so they are not enqueued again here.
+            using var distributedScope = DistributedContext.BeginNotificationScope(notification);
 
             // Create a scope per inbound message for proper scoped service lifetime
             await using var scope = _scopeFactory.CreateAsyncScope();

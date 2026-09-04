@@ -3,104 +3,80 @@ using Foundatio.Mediator;
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Marks a handler class or method for queue-based processing.
-/// When applied, invocations via <c>mediator.InvokeAsync()</c> will serialize the message
-/// and send it to a queue for asynchronous processing instead of executing the handler inline.
+/// Routes a handler's messages through a durable queue instead of running them inline.
+/// Invoking the handler enqueues the message and returns <see cref="Result.Accepted()"/>; a
+/// <see cref="QueueWorker"/> runs the handler through the normal middleware pipeline.
 /// </summary>
-/// <example>
-/// <code>
-/// [Queue(Concurrency = 3)]
-/// public class OrderProcessingHandler
-/// {
-///     public async Task&lt;Result&gt; HandleAsync(
-///         ProcessOrder message,
-///         CancellationToken ct)
-///     {
-///         // ... do work ...
-///         return Result.Success();
-///     }
-/// }
-/// </code>
-/// </example>
 [UseMiddleware(typeof(QueueMiddleware))]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
 public sealed class QueueAttribute : Attribute
 {
     /// <summary>
-    /// Override the queue name. Defaults to the message type name.
+    /// Queue name. Defaults to the message type name. Handlers sharing a name share one queue and one
+    /// worker and must declare identical settings.
     /// </summary>
     public string? QueueName { get; set; }
 
     /// <summary>
-    /// Maximum number of times the message will be attempted before dead-lettering.
-    /// Default is 3 (1 initial attempt + 2 retries).
+    /// Total attempts before dead-lettering: one initial attempt plus retries. Must be at least 1;
+    /// a negative value retries without limit.
     /// </summary>
     public int MaxAttempts { get; set; } = 3;
 
     /// <summary>
-    /// Work item timeout in seconds.
-    /// The timeout auto-renews on a background timer unless <see cref="AutoRenewTimeout"/> is disabled,
-    /// in which case the message is automatically abandoned if not completed within this duration.
-    /// Default is 30.
+    /// Visibility timeout in seconds. Renewed automatically at two thirds while the handler runs when
+    /// <see cref="AutoRenewTimeout"/> is on.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Number of concurrent consumer tasks processing this queue. Default is 1.
+    /// Messages processed concurrently per worker instance.
     /// </summary>
     public int Concurrency { get; set; } = 1;
 
     /// <summary>
-    /// Number of messages to fetch per receive batch.
-    /// When 0 (the default), automatically matches <see cref="Concurrency"/>
-    /// so each receive call can fill the consumer pipeline in a single round-trip.
+    /// Messages fetched per receive. Defaults to <see cref="Concurrency"/>.
     /// </summary>
     public int PrefetchCount { get; set; }
 
     /// <summary>
-    /// Queue group name for selective hosting. When set, only workers configured
-    /// for the matching group will process messages from this queue.
+    /// Worker group, matched against <see cref="DistributedQueueOptions.Group"/> for selective hosting.
     /// </summary>
     public string? Group { get; set; }
 
     /// <summary>
-    /// When true, the worker automatically completes the message on success
-    /// and abandons it on exception. When false, the handler must call
-    /// <see cref="QueueContext.CompleteAsync"/> or <see cref="QueueContext.AbandonAsync(CancellationToken)"/>
-    /// explicitly. Default is true.
+    /// Whether the worker completes or abandons the message from the handler's result.
     /// </summary>
     public bool AutoComplete { get; set; } = true;
 
     /// <summary>
-    /// When true, the worker automatically renews the message visibility timeout
-    /// on a background timer, preventing the message from being redelivered while
-    /// the handler is still processing. When false, the handler must call
-    /// <see cref="QueueContext.RenewTimeoutAsync"/> manually for long-running work.
-    /// Default is true.
+    /// Whether the worker renews the visibility timeout while the handler runs.
     /// </summary>
     public bool AutoRenewTimeout { get; set; } = true;
 
     /// <summary>
-    /// The retry delay strategy for failed messages. Default is <see cref="QueueRetryPolicy.Exponential"/>.
+    /// Delay strategy between retries.
     /// </summary>
     public QueueRetryPolicy RetryPolicy { get; set; } = QueueRetryPolicy.Exponential;
 
     /// <summary>
-    /// The base delay between retries in seconds.
-    /// For <see cref="QueueRetryPolicy.Fixed"/>, this is the constant delay.
-    /// For <see cref="QueueRetryPolicy.Exponential"/>, this is the initial delay that doubles on each retry.
-    /// Default is 5.
+    /// Base delay in seconds for <see cref="QueueRetryPolicy.Fixed"/> and <see cref="QueueRetryPolicy.Exponential"/>.
     /// </summary>
     public int RetryDelaySeconds { get; set; } = 5;
 
     /// <summary>
-    /// When true, the job's progress and state are tracked via <see cref="IQueueJobStateStore"/>.
-    /// Enables progress reporting, cancellation, and dashboard visibility. Default is false.
+    /// Explicit delays for <see cref="QueueRetryPolicy.Schedule"/>, for example <c>"5s,1m,15m,30m"</c>.
+    /// Setting this selects the schedule policy.
+    /// </summary>
+    public string? RetryDelays { get; set; }
+
+    /// <summary>
+    /// Tracks job state and progress in the <see cref="IQueueJobStateStore"/>.
     /// </summary>
     public bool TrackProgress { get; set; }
 
     /// <summary>
-    /// A human-readable description of the queue, shown in the dashboard tooltip.
+    /// Human-readable description shown by queue administration tooling.
     /// </summary>
     public string? Description { get; set; }
 }

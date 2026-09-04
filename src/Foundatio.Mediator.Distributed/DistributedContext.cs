@@ -1,34 +1,42 @@
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Ambient context that indicates the current execution scope originated from
-/// distributed infrastructure (e.g., a pub/sub bus or remote queue).
-/// Middleware such as <see cref="QueueMiddleware"/> checks this to avoid
-/// re-enqueueing messages that have already been dispatched through shared infrastructure.
+/// Ambient context for a notification that arrived from the distributed bus and is being
+/// re-published locally. <see cref="QueueMiddleware"/> uses it to avoid enqueueing that same
+/// notification a second time; the originating node already did.
 /// </summary>
 public static class DistributedContext
 {
-    private static readonly AsyncLocal<bool> _isNotification = new();
+    private static readonly AsyncLocal<object?> _current = new();
 
     /// <summary>
-    /// Gets whether the current execution scope is processing a notification
-    /// received from the distributed bus.
+    /// The notification currently being re-published from the bus, or <c>null</c>.
     /// </summary>
-    public static bool IsNotification => _isNotification.Value;
+    public static object? CurrentNotification => _current.Value;
 
     /// <summary>
-    /// Enters a notification scope. The returned <see cref="IDisposable"/>
-    /// restores the previous value when disposed.
+    /// Whether the current execution scope is re-publishing a notification received from the bus.
     /// </summary>
-    public static IDisposable BeginNotificationScope()
+    public static bool IsNotification => _current.Value is not null;
+
+    /// <summary>
+    /// Whether <paramref name="message"/> is the notification currently being re-published from the bus.
+    /// Messages sent from inside that notification's handlers are not, so they are enqueued normally.
+    /// </summary>
+    public static bool IsInboundNotification(object message) => ReferenceEquals(_current.Value, message);
+
+    /// <summary>
+    /// Enters a scope for re-publishing <paramref name="notification"/>. Dispose to restore the previous scope.
+    /// </summary>
+    public static IDisposable BeginNotificationScope(object notification)
     {
-        var previous = _isNotification.Value;
-        _isNotification.Value = true;
+        var previous = _current.Value;
+        _current.Value = notification;
         return new NotificationScope(previous);
     }
 
-    private sealed class NotificationScope(bool previous) : IDisposable
+    private sealed class NotificationScope(object? previous) : IDisposable
     {
-        public void Dispose() => _isNotification.Value = previous;
+        public void Dispose() => _current.Value = previous;
     }
 }

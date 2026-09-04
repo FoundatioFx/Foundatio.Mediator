@@ -19,5 +19,11 @@ public enum QueueRetryPolicy
     /// Exponential backoff between retries. Each successive retry doubles the delay.
     /// A proportional jitter (±10%) is added to prevent thundering herd.
     /// </summary>
-    Exponential
+    Exponential,
+
+    /// <summary>
+    /// Explicit per-attempt delays from <see cref="QueueAttribute.RetryDelays"/>, for example
+    /// <c>"5s,1m,15m,30m"</c>. The last entry repeats for any further attempts. No jitter is applied.
+    /// </summary>
+    Schedule
 }

@@ -89,7 +89,13 @@ public sealed class SqsQueueClient : IQueueClient
         }
     }
 
-    public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Receives using the queue's configured visibility timeout.
+    /// </summary>
+    public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
+        => ReceiveAsync(queueName, maxCount, null, cancellationToken);
+
+    public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
     {
         var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
 
@@ -102,6 +108,9 @@ public sealed class SqsQueueClient : IQueueClient
             MessageSystemAttributeNames = ["ApproximateReceiveCount", "SentTimestamp"],
             MessageAttributeNames = ["All"]
         };
+
+        if (visibilityTimeout is { } vt && vt > TimeSpan.Zero)
+            request.VisibilityTimeout = (int)Math.Ceiling(vt.TotalSeconds);
 
         var response = await _sqs.ReceiveMessageAsync(request, cancellationToken).ConfigureAwait(false);
 

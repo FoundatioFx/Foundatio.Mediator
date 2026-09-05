@@ -17,12 +17,14 @@ public class QueueLockMiddleware
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, QueueLockAttribute?> _settings = new(StringComparer.Ordinal);
 
-    public QueueLockMiddleware(QueueTopology topology, ILogger<QueueLockMiddleware> logger, IQueueLockProvider? lockProvider = null, TimeProvider? timeProvider = null)
+    public QueueLockMiddleware(QueueTopology topology, ILogger<QueueLockMiddleware> logger, IQueueClient queueClient, IQueueLockProvider? lockProvider = null, TimeProvider? timeProvider = null)
     {
         _topology = topology;
         _logger = logger;
-        _lockProvider = lockProvider;
         _timeProvider = timeProvider ?? TimeProvider.System;
+
+        // A process-local lock is only safe when the queue is process-local too.
+        _lockProvider = lockProvider ?? (queueClient is InMemoryQueueClient ? new InMemoryQueueLockProvider(_timeProvider) : null);
     }
 
     public async ValueTask<object?> ExecuteAsync(
@@ -42,7 +44,8 @@ public class QueueLockMiddleware
 
         if (_lockProvider is null)
             throw new InvalidOperationException(
-                $"Handler '{handlerInfo.DescriptorId}' uses [QueueLock] but no IQueueLockProvider is registered.");
+                $"Handler '{handlerInfo.DescriptorId}' uses [QueueLock] but no IQueueLockProvider is registered. " +
+                "Register one every worker shares (Redis, a database); the in-memory lock is only used with the in-memory queue.");
 
         var key = settings.Key
             ?? (message as IHaveLockKey)?.LockKey

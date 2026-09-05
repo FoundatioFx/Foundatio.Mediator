@@ -474,17 +474,28 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
     }
 
     [Fact]
-    public void EnqueueOnlyProcess_WithoutTransport_FailsAtRegistration()
+    public void EnqueueOnlyProcess_WithoutTransport_FailsWhenClientResolved()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(new HandlerSignal());
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
-                .AddDistributedQueues(o => o.Workers = WorkerSelection.None));
+        services.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues(o => o.Workers = WorkerSelection.None);
 
+        // The guard fires when the queue client is first resolved (host start in an app), not at registration,
+        // so a transport registered after AddDistributedQueues() is still honored.
+        var ex = Assert.Throws<InvalidOperationException>(() => services.BuildServiceProvider().GetRequiredService<IQueueClient>());
         Assert.Contains("no IQueueClient transport", ex.Message, StringComparison.Ordinal);
+
+        var transportAfter = new ServiceCollection();
+        transportAfter.AddLogging();
+        transportAfter.AddSingleton(new HandlerSignal());
+        transportAfter.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
+            .AddDistributedQueues(o => o.Workers = WorkerSelection.None);
+        var explicitClient = new InMemoryQueueClient();
+        transportAfter.AddSingleton<IQueueClient>(explicitClient);
+        Assert.Same(explicitClient, transportAfter.BuildServiceProvider().GetRequiredService<IQueueClient>());
 
         var allowed = new ServiceCollection();
         allowed.AddLogging();

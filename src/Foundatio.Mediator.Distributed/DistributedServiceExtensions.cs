@@ -13,8 +13,8 @@ public static class DistributedServiceExtensions
     /// <summary>
     /// Registers queue routing for every <see cref="QueueAttribute"/> handler: the middleware that
     /// enqueues, one worker per queue (subject to <see cref="DistributedQueueOptions"/> filters), and
-    /// the infrastructure initializer. Register a transport before calling this; otherwise the
-    /// in-memory queue client is used.
+    /// the infrastructure initializer. A transport may be registered before or after this call;
+    /// without one the in-memory queue client is used.
     /// </summary>
     public static IMediatorBuilder AddDistributedQueues(
         this IMediatorBuilder builder,
@@ -40,29 +40,24 @@ public static class DistributedServiceExtensions
         if (queueHandlers.Count == 0)
             return builder;
 
-        var clientDescriptor = services.LastOrDefault(sd => sd.ServiceType == typeof(IQueueClient));
-        bool usingInMemoryClient = clientDescriptor is null
-            || clientDescriptor.ImplementationInstance is InMemoryQueueClient
-            || clientDescriptor.ImplementationType == typeof(InMemoryQueueClient);
-        if (clientDescriptor is null)
-            services.AddSingleton<IQueueClient, InMemoryQueueClient>();
-
-        // An explicitly registered in-memory client is a deliberate choice; only the silent default is a trap.
-        if (clientDescriptor is null && !options.Workers.IsAll && !options.AllowInMemoryWithoutWorkers)
+        // Transports register IQueueClient with AddSingleton and DI resolves the last registration, so this
+        // default only wins when nothing else is added, regardless of whether UseAws() comes before or after.
+        services.TryAddSingleton<IQueueClient>(sp =>
         {
-            throw new InvalidOperationException(
-                "Workers are disabled or filtered in this process but no IQueueClient transport is registered, so enqueued messages " +
-                "would go to an in-memory queue nothing consumes. Register a transport (for example UseAws()) before AddDistributedQueues(), " +
-                "or set DistributedQueueOptions.AllowInMemoryWithoutWorkers for tests.");
-        }
+            var queueOptions = sp.GetRequiredService<DistributedQueueOptions>();
+            if (!queueOptions.Workers.IsAll && !queueOptions.AllowInMemoryWithoutWorkers)
+            {
+                throw new InvalidOperationException(
+                    "Workers are disabled or filtered in this process but no IQueueClient transport is registered, so enqueued messages " +
+                    "would go to an in-memory queue nothing consumes. Register a transport (for example UseAws()), " +
+                    "or set DistributedQueueOptions.AllowInMemoryWithoutWorkers for tests.");
+            }
+
+            return new InMemoryQueueClient(sp.GetService<TimeProvider>());
+        });
 
         services.TryAddSingleton<QueueMiddleware>();
         services.TryAddSingleton<QueueLockMiddleware>();
-
-        // A process-local lock is only safe when the queue is process-local too; with a real transport the
-        // middleware fails the first locked message with a clear error until a provider is registered.
-        if (usingInMemoryClient && !services.Any(sd => sd.ServiceType == typeof(IQueueLockProvider)))
-            services.AddSingleton<IQueueLockProvider, InMemoryQueueLockProvider>();
 
         var workerRegistry = new QueueWorkerRegistry();
         services.AddSingleton<IQueueWorkerRegistry>(workerRegistry);

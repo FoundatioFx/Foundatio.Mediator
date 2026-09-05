@@ -5,7 +5,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 bool singleProcess = string.Equals(builder.Configuration["SAMPLE_TOPOLOGY"], "single", StringComparison.OrdinalIgnoreCase);
 
 // LocalStack provides SQS + SNS for local development
-var localstack = builder.AddContainer("localstack", "localstack/localstack", "2026.8.1")
+var localstack = builder.AddContainer("localstack", "localstack/localstack", "3.8.1")
     .WithHttpEndpoint(targetPort: 4566, name: "main")
     .WithHttpHealthCheck("/_localstack/health", endpointName: "main")
     .WithEnvironment("SERVICES", "sqs,sns");

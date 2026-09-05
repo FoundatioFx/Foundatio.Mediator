@@ -19,4 +19,9 @@ public static class MessageHeaders
     public const string DeadLetterDequeueCount = "fm-dead-letter-dequeue-count";
     public const string ReplayedAt = "fm-replayed-at";
     public const string JobId = "fm-job-id";
+
+    /// <summary>
+    /// Every header as one JSON object, used by transports whose native attribute count is capped.
+    /// </summary>
+    public const string PackedHeaders = "fm-headers";
 }

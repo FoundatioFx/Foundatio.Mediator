@@ -101,6 +101,9 @@ public class QueueAdministrationHandler(
     private const int MaxBodyPreview = 4096;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    // Long enough for SQS to consult every server, short enough that administration calls stay snappy.
+    private static readonly TimeSpan s_adminPollWait = TimeSpan.FromSeconds(1);
+
     public async Task<Result<IReadOnlyList<QueueOverview>>> HandleAsync(GetQueueOverview query, CancellationToken ct)
     {
         var queueNames = topology.Queues.Select(q => q.QueueName).ToList();
@@ -269,20 +272,8 @@ public class QueueAdministrationHandler(
         return new DeadLetterPurgeResult(command.QueueName, purged);
     }
 
-    private async Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersWithTimeoutAsync(string queueName, int maxCount, CancellationToken ct)
-    {
-        // Transports long-poll when a queue is empty; a short bound keeps administration calls snappy.
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(2));
-        try
-        {
-            return await client.ReceiveDeadLettersAsync(queueName, maxCount, timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return [];
-        }
-    }
+    private Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersWithTimeoutAsync(string queueName, int maxCount, CancellationToken ct)
+        => client.ReceiveDeadLettersAsync(queueName, maxCount, s_adminPollWait, ct);
 
     private async Task<Dictionary<string, QueueStats>> SafeStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct)
     {

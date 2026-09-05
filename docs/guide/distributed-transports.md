@@ -21,7 +21,7 @@ builder.Services.AddMediator()
 The in-memory queue models real lease semantics (received messages stay invisible until completed, abandoned, or expired) so behaviour in tests matches production, but nothing survives a restart and nothing crosses processes.
 
 ::: warning
-Registration fails if workers are disabled or filtered while the in-memory queue is the default, because messages would be enqueued to a queue nothing consumes. Register a transport, or set `AllowInMemoryWithoutWorkers` in tests.
+Startup fails if workers are disabled or filtered while the in-memory queue is the default, because messages would be enqueued to a queue nothing consumes. Register a transport, or set `AllowInMemoryWithoutWorkers` in tests. Transports can be registered before or after `AddDistributedQueues()`.
 :::
 
 ## AWS (SQS + SNS)
@@ -63,7 +63,7 @@ builder.Services.AddMediator()
 
 Each queue is an SQS standard queue named from `ResourcePrefix` plus the message type or `QueueName`, with a dead-letter queue `{queue}-dead-letter`. The `[Queue]` settings become queue attributes: `TimeoutSeconds` is the SQS visibility timeout (also requested on every receive, so the transport lock and the worker's renewal cadence always agree), `MaxAttempts` sets a redrive policy whose receive count sits above it so the library's own dead-lettering runs first, and dead-letter queues keep messages for `DeadLetterRetention`.
 
-Bodies travel as UTF-8 JSON text; headers are message attributes. A message over 256 KB fails at enqueue naming the queue, the size, and the message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
+Bodies travel as UTF-8 JSON text; headers are message attributes, or one `fm-headers` JSON attribute once there are more than the ten SQS allows. A message over 256 KB fails at enqueue naming the queue, the size, and the message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
 
 ### Provisioning {#provisioning}
 
@@ -149,7 +149,7 @@ Status transitions are single MULTI/EXEC transactions conditioned on the previou
 
 ## Custom Providers
 
-Implement `IQueueClient` (or derive from `QueueClientBase`) for a queue transport and `IPubSubClient` for fan-out, and register them before `AddDistributedQueues()` / `AddDistributedNotifications()`.
+Implement `IQueueClient` (or derive from `QueueClientBase`) for a queue transport and `IPubSubClient` for fan-out, and register them as singletons; before or after `AddDistributedQueues()` / `AddDistributedNotifications()` both work.
 
 ```csharp
 public interface IQueueClient : IAsyncDisposable
@@ -165,11 +165,12 @@ public interface IQueueClient : IAsyncDisposable
     Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken ct = default);
     Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct = default);
     Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, CancellationToken ct = default);
+    Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken ct = default);
     Task ReplayAsync(QueueMessage deadLetter, CancellationToken ct = default);
 }
 ```
 
-A `ReceiveAsync` implementation must honour `visibilityTimeout`: the worker renews at two thirds of it, so a transport that ignores it will redeliver long-running messages early. `QueueDefinition` carries the visibility timeout, retention, and max attempts your `EnsureQueuesAsync` should apply.
+A `ReceiveAsync` implementation must honour `visibilityTimeout`: the worker renews at two thirds of it, so a transport that ignores it will redeliver long-running messages early. If the transport long-polls, override the `ReceiveDeadLettersAsync` overload that takes `waitTime` and bound the poll on the server: the default cancels client-side, and a poll the server keeps running can swallow a message an administrator just released. `QueueDefinition` carries the visibility timeout, retention, and max attempts your `EnsureQueuesAsync` should apply.
 
 ## Startup
 

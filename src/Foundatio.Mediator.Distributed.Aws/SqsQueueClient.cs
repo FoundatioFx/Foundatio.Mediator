@@ -17,6 +17,7 @@ public sealed class SqsQueueClient : IQueueClient
     private const int MaxBatchEntries = 10;
     private const int MaxRedriveReceiveCount = 1000;
     private static readonly TimeSpan s_maxVisibilityTimeout = TimeSpan.FromHours(12);
+    private const int MaxWaitTimeSeconds = 20;
     private static readonly TimeSpan s_minRetention = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan s_maxRetention = TimeSpan.FromDays(14);
     private static readonly TimeSpan s_dlqNotFoundTtl = TimeSpan.FromMinutes(1);
@@ -96,7 +97,17 @@ public sealed class SqsQueueClient : IQueueClient
     public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, CancellationToken cancellationToken = default)
         => ReceiveAsync(queueName, maxCount, null, cancellationToken);
 
-    public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
+        => ReceiveAsync(queueName, maxCount, visibilityTimeout, null, cancellationToken);
+
+    /// <summary>
+    /// Bounds the poll on the server, so a caller that only wants a quick look never has to cancel a request
+    /// LocalStack or SQS is still holding open.
+    /// </summary>
+    public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken cancellationToken = default)
+        => ReceiveAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), maxCount, null, waitTime, cancellationToken);
+
+    private async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, TimeSpan? waitTime, CancellationToken cancellationToken)
     {
         var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
 
@@ -104,7 +115,7 @@ public sealed class SqsQueueClient : IQueueClient
         {
             QueueUrl = queueUrl,
             MaxNumberOfMessages = Math.Min(maxCount, MaxBatchEntries),
-            WaitTimeSeconds = _options.WaitTimeSeconds,
+            WaitTimeSeconds = waitTime is { } wait ? Math.Clamp(ToSeconds(wait), 0, MaxWaitTimeSeconds) : _options.WaitTimeSeconds,
             MessageSystemAttributeNames = ["ApproximateReceiveCount", "SentTimestamp"],
             MessageAttributeNames = ["All"]
         };
@@ -127,6 +138,7 @@ public sealed class SqsQueueClient : IQueueClient
             {
                 foreach (var (key, attr) in sqsMessage.MessageAttributes)
                     headers[key] = attr.StringValue;
+                SqsPayload.UnpackHeaders(headers);
             }
 
             int dequeueCount = 1;
@@ -605,11 +617,9 @@ public sealed class SqsQueueClient : IQueueClient
 
     private static Dictionary<string, MessageAttributeValue> ToMessageAttributes(Dictionary<string, string>? headers)
     {
-        var attributes = new Dictionary<string, MessageAttributeValue>(headers?.Count ?? 0);
-        if (headers is null)
-            return attributes;
-
-        foreach (var (key, value) in headers)
+        var values = SqsPayload.ToAttributeValues(headers);
+        var attributes = new Dictionary<string, MessageAttributeValue>(values.Count);
+        foreach (var (key, value) in values)
             attributes[key] = new MessageAttributeValue { DataType = "String", StringValue = value };
 
         return attributes;

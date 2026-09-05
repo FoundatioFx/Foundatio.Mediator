@@ -92,10 +92,11 @@ public sealed class SqsPubSubClient : IPubSubClient
                 Message = body
             };
 
-            if (message.Headers is { Count: > 0 })
+            var attributeValues = SqsPayload.ToAttributeValues(message.Headers);
+            if (attributeValues.Count > 0)
             {
-                entry.MessageAttributes = new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>(message.Headers.Count);
-                foreach (var (key, value) in message.Headers)
+                entry.MessageAttributes = new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>(attributeValues.Count);
+                foreach (var (key, value) in attributeValues)
                     entry.MessageAttributes[key] = new Amazon.SimpleNotificationService.Model.MessageAttributeValue { DataType = "String", StringValue = value };
             }
 
@@ -513,6 +514,7 @@ public sealed class SqsPubSubClient : IPubSubClient
             {
                 foreach (var (key, attribute) in sqsMessage.MessageAttributes)
                     headers[key] = attribute.StringValue;
+                SqsPayload.UnpackHeaders(headers);
             }
 
             await handler(new PubSubMessage

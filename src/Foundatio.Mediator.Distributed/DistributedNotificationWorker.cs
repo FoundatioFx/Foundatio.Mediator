@@ -232,10 +232,15 @@ public sealed class DistributedNotificationWorker : BackgroundService
             return;
         }
 
+        // Types registered at startup resolve directly. A concrete type published elsewhere for a handler
+        // declared on an interface or base type is loaded only if this node's own rules would distribute it.
         var messageType = _typeResolver?.TryResolve(typeName);
+        if (messageType is null && _typeResolver?.TryResolve(typeName, typeof(object)) is { } candidate && _options.ShouldDistribute(candidate))
+            messageType = candidate;
+
         if (messageType is null)
         {
-            _logger.LogWarning("Cannot resolve type '{TypeName}' from bus message — type not registered in MessageTypeResolver, skipping", typeName);
+            _logger.LogWarning("Cannot resolve type '{TypeName}' from bus message — not registered and not selected by the distribution rules, skipping", typeName);
             return;
         }
 

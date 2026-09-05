@@ -19,6 +19,18 @@ public record TriggerBeta(string Value) : ITriggerEvent;
 
 public record QueuedDistributedEvent(string Value) : IDistributedNotification;
 
+public interface IScriptTrigger : IDistributedNotification
+{
+    string Script { get; }
+}
+
+public record ObligationPaid(string Script) : IScriptTrigger;
+
+public class ScriptTriggerHandler(HandlerSignal signal)
+{
+    public void Handle(IScriptTrigger trigger) => signal.Record($"{trigger.GetType().Name}:{trigger.Script}");
+}
+
 public record PoisonBodyMessage(string Value);
 
 public record TenantScopedCommand(string Value);
@@ -256,6 +268,48 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
 
             Assert.Single(signal.Values);
             Assert.Equal(1, sharedQueue.Sends);
+        }
+        finally
+        {
+            await hosted.StopAllAsync();
+            sharedBus.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task InterfaceTypedNotificationHandler_ReceivesConcreteEventsFromAnotherNode()
+    {
+        var signalA = new HandlerSignal();
+        var signalB = new HandlerSignal();
+        var sharedBus = new InMemoryPubSubClient();
+
+        ServiceProvider BuildNode(string hostId, HandlerSignal signal)
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton(signal);
+            services.AddSingleton<IPubSubClient>(sharedBus);
+            services.AddMediator(b => b.AddAssembly<ScriptTriggerHandler>())
+                .AddDistributedNotifications(o => o.HostId = hostId);
+            return services.BuildServiceProvider();
+        }
+
+        await using var nodeA = BuildNode("node-a", signalA);
+        await using var nodeB = BuildNode("node-b", signalB);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var hosted = await nodeA.StartHostedServicesAsync(cts.Token);
+        hosted.AddRange(await nodeB.StartHostedServicesAsync(cts.Token));
+        try
+        {
+            await Task.Delay(200, cts.Token);
+
+            // Only the interface is registered as a handler type; the concrete event is resolved on the receiving node
+            await nodeA.GetRequiredService<IMediator>().PublishAsync(new ObligationPaid("late-fee"), cts.Token);
+
+            await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(10));
+            await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(10));
+            Assert.Equal("ObligationPaid:late-fee", signalB.Values[0]);
         }
         finally
         {

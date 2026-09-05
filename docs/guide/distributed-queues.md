@@ -223,7 +223,7 @@ public class GenerateBankFileHandler
 
 The lock key is `Key` on the attribute, then the message's `IHaveLockKey.LockKey`, then queue name plus message id. The lock is renewed while the handler runs and released afterwards. When another worker already holds it, the message is **completed without running the handler**: that work is already happening. Set `AcquireTimeoutSeconds` to wait instead of giving up immediately.
 
-Register an `IQueueLockProvider` over your lock service (Redis, a database) as a singleton. The in-memory provider is registered automatically only when the in-memory queue client is in use, because a process-local lock is only safe with a process-local queue.
+Register an `IQueueLockProvider` over your lock service (Redis, a database) as a singleton. The in-memory provider is used automatically only when the in-memory queue client is in use, because a process-local lock is only safe with a process-local queue.
 
 ## Carrying Context in Headers
 
@@ -288,4 +288,4 @@ builder.Services.AddMediator()
     });
 ```
 
-If workers are disabled or filtered and no transport is registered, registration fails: messages sent to an in-memory queue with no worker in the same process would be lost. Set `AllowInMemoryWithoutWorkers` in tests that want exactly that.
+If workers are disabled or filtered and no transport is registered, startup fails: messages sent to an in-memory queue with no worker in the same process would be lost. Set `AllowInMemoryWithoutWorkers` in tests that want exactly that.

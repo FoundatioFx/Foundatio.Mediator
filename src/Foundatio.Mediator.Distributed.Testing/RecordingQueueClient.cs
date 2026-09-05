@@ -155,6 +155,7 @@ public sealed class RecordingQueueClient : IQueueClient
     public Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken cancellationToken = default) => _inner.EnsureQueuesAsync(queues, cancellationToken);
     public Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default) => _inner.GetQueueStatsAsync(queueNames, cancellationToken);
     public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, CancellationToken cancellationToken = default) => _inner.ReceiveDeadLettersAsync(queueName, maxCount, cancellationToken);
+    public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken cancellationToken = default) => _inner.ReceiveDeadLettersAsync(queueName, maxCount, waitTime, cancellationToken);
     public Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default) => _inner.ReplayAsync(deadLetter, cancellationToken);
     public ValueTask DisposeAsync() => _inner.DisposeAsync();
 }

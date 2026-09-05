@@ -8,6 +8,7 @@ using Foundatio.Mediator.Distributed;
 using Foundatio.Mediator.Distributed.Aws;
 using Foundatio.Mediator.Distributed.Tests;
 using Foundatio.Xunit;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 
@@ -278,9 +279,9 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         var client = CreateClient();
         var queueName = TestQueueName;
 
-        // SQS supports up to 10 message attributes
+        // SQS allows 10 message attributes; anything beyond that travels packed in one, invisibly to callers.
         var headers = new Dictionary<string, string>();
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 12; i++)
             headers[$"header-{i}"] = $"value-{i}-{new string('x', 100)}";
 
         await client.SendAsync(queueName, [new QueueEntry
@@ -298,8 +299,9 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
             Assert.Equal(value, messages[0].Headers[key]);
         }
 
-        headers["header-10"] = "one too many";
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(queueName, [new QueueEntry { Body = "test"u8.ToArray(), Headers = headers }], TestCancellationToken));
+        Assert.False(messages[0].Headers.ContainsKey(MessageHeaders.PackedHeaders));
+        var native = Assert.IsType<Message>(messages[0].NativeMessage);
+        Assert.Equal([MessageHeaders.PackedHeaders], native.MessageAttributes.Keys);
     }
 
     [Fact]
@@ -407,5 +409,53 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         Assert.Equal("poison"u8.ToArray(), replayed[0].Body.ToArray());
         Assert.False(replayed[0].Headers.ContainsKey(MessageHeaders.DeadLetterReason));
         Assert.True(replayed[0].Headers.ContainsKey(MessageHeaders.ReplayedAt));
+    }
+
+    [Fact]
+    public async Task ListDeadLetters_PeekedMessageIsVisibleToTheNextPeek()
+    {
+        // Production long-polls for 20s. Cancelling that poll client-side used to leave it running on the server,
+        // where it swallowed the message the peek had just released, so the next peek and any replay came back empty.
+        var client = new SqsQueueClient(fixture.CreateSqsClient(), new SqsQueueClientOptions { WaitTimeSeconds = 20 }, null, Log.CreateLogger<SqsQueueClient>());
+        var prefix = $"t{Guid.NewGuid():N}";
+        var queueName = $"{prefix}-PoisonBodyMessage";
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IQueueClient>(client);
+        services.AddSingleton(new HandlerSignal());
+        services.AddMediator(b => b.AddAssembly<PoisonBodyMessageHandler>().AddAssembly<QueueAdministrationHandler>())
+            .AddDistributedQueues(o =>
+            {
+                o.Workers = WorkerSelection.None;
+                o.ResourcePrefix = prefix;
+            });
+        await using var provider = services.BuildServiceProvider();
+
+        await client.EnsureQueuesAsync([new QueueDefinition { Name = queueName }], TestCancellationToken);
+        await client.SendAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), [new QueueEntry
+        {
+            Body = "poison"u8.ToArray(),
+            Headers = new Dictionary<string, string>
+            {
+                [MessageHeaders.MessageType] = typeof(PoisonBodyMessage).FullName!,
+                [MessageHeaders.OriginalQueueName] = queueName,
+                [MessageHeaders.DeadLetterReason] = "test"
+            }
+        }], TestCancellationToken);
+
+        var mediator = provider.GetRequiredService<IMediator>();
+        var sw = Stopwatch.StartNew();
+        var first = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queueName), TestCancellationToken);
+        var second = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queueName), TestCancellationToken);
+        sw.Stop();
+
+        Assert.Equal("poison", Assert.Single(first.Value!).Body);
+        Assert.Single(second.Value!);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"Two peeks took {sw.Elapsed}; the poll is not bounded on the server");
+
+        var replay = await mediator.InvokeAsync<Result<DeadLetterReplayResult>>(new ReplayDeadLetters(queueName), TestCancellationToken);
+        Assert.Equal(1, replay.Value!.Replayed);
+        Assert.Single(await client.ReceiveAsync(queueName, 10, TestCancellationToken));
     }
 }

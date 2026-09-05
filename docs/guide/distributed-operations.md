@@ -38,7 +38,7 @@ public class QueueAdminEndpoints
 }
 ```
 
-Peeking and replaying receive from the dead-letter queue, so they lock the messages briefly; with SQS a peek returns them with a zero visibility timeout.
+Peeking and replaying receive from the dead-letter queue, so they lock the messages briefly; with SQS a peek returns them with a zero visibility timeout and polls for at most a second, so an empty listing answers in about a second.
 
 ## Metrics
 

@@ -67,6 +67,25 @@ public interface IQueueClient : IAsyncDisposable
         => ReceiveAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), maxCount, null, cancellationToken);
 
     /// <summary>
+    /// Receives dead letters, waiting at most <paramref name="waitTime"/> for messages when the queue is empty.
+    /// Transports that long-poll should bound the wait on the server: cancelling a receive client-side leaves
+    /// the server-side poll running, and it can grab a message another caller releases moments later.
+    /// </summary>
+    async Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(waitTime);
+        try
+        {
+            return await ReceiveDeadLettersAsync(queueName, maxCount, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Sends a dead-lettered message back to its original queue (from <see cref="MessageHeaders.OriginalQueueName"/>)
     /// without the dead-letter headers, then completes the dead-letter copy.
     /// </summary>

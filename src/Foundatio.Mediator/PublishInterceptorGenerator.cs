@@ -98,9 +98,15 @@ internal static class PublishInterceptorGenerator
         source.AppendLine("{");
         source.IncrementIndent();
 
+        if (!messageType.IsFinal)
+        {
+            // A derived message must reach the handlers of its runtime type, which only the mediator knows.
+            source.AppendLine($"if (message.GetType() != typeof({messageType.GlobalName})) return mediator.PublishAsync(message, cancellationToken);");
+        }
+
         source.AppendLine($"var registry = ((global::Foundatio.Mediator.Mediator)mediator).Registry;");
         source.AppendLine($"if (registry.HasSubscribers) registry.TryWriteSubscription(message);");
-        source.AppendLine($"var handlers = registry.GetPublishHandlersForType(typeof(global::{messageType.FullName}));");
+        source.AppendLine($"var handlers = registry.GetPublishHandlersForType(typeof({messageType.GlobalName}));");
         source.AppendLine();
 
         switch (configuration.NotificationPublishStrategy)

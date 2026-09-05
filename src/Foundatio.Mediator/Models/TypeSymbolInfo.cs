@@ -9,6 +9,16 @@ internal readonly record struct TypeSymbolInfo
     /// </summary>
     public string Identifier { get; init; }
     /// <summary>
+    /// Indicates the static type is always the runtime type: a sealed class, a value type, or an enum.
+    /// A publish call site whose message type is not final has to dispatch by the runtime type.
+    /// </summary>
+    public bool IsFinal { get; init; }
+    /// <summary>
+    /// The globally qualified name usable in <c>typeof(...)</c>, with special types spelled out
+    /// (<c>global::System.String</c>, never the <c>string</c> keyword).
+    /// </summary>
+    public string GlobalName { get; init; }
+    /// <summary>
     /// The full name of the type, including namespace and any generic parameters.
     /// This may use short names when types are in scope via using directives.
     /// </summary>
@@ -196,6 +206,8 @@ internal readonly record struct TypeSymbolInfo
         return new TypeSymbolInfo
         {
             Identifier = identifier,
+            IsFinal = typeSymbol.IsSealed || typeSymbol.IsValueType,
+            GlobalName = GetGlobalName(typeSymbol),
             FullName = typeSymbol.ToDisplayString(),
             QualifiedName = qualifiedName,
             UnwrappedFullName = unwrappedTypeFullName,
@@ -220,6 +232,15 @@ internal readonly record struct TypeSymbolInfo
             IsAsyncEnumerable = isAsyncEnumerable,
             AsyncEnumerableItemFullName = asyncEnumerableItemFullName
         };
+    }
+
+    private static readonly SymbolDisplayFormat s_globalNameFormat = SymbolDisplayFormat.FullyQualifiedFormat
+        .WithMiscellaneousOptions(SymbolDisplayFormat.FullyQualifiedFormat.MiscellaneousOptions & ~SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    private static string GetGlobalName(ITypeSymbol typeSymbol)
+    {
+        var name = typeSymbol.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(s_globalNameFormat);
+        return name.EndsWith("?") && typeSymbol.IsReferenceType ? name.Substring(0, name.Length - 1) : name;
     }
 
     /// <summary>

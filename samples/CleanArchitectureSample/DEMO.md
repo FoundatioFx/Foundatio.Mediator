@@ -77,16 +77,16 @@ samples/CleanArchitectureSample/src/
 
 > "This is a modular monolith — four independent domain modules that communicate exclusively through the mediator. No module directly references another's handlers or data layer. The Reports module queries Orders and Products, but only through message types — it has no idea how those modules store their data.
 >
-> The Api project is the composition root. It wires up all the modules, configures distributed messaging, and calls `MapMediatorEndpoints()` to auto-generate all the API routes. The AppHost uses .NET Aspire to orchestrate 3 API replicas, 3 worker replicas, LocalStack for SQS/SNS, and Redis — all running locally."
+> The Api project is the composition root. It wires up all the modules, configures distributed messaging, and calls `MapMediatorEndpoints()` to auto-generate all the API routes. The AppHost uses .NET Aspire to orchestrate 2 API replicas, three worker groups (exports ×2, imports, events), LocalStack for SQS/SNS, and Redis — all running locally. The `single` launch profile runs the very same project once with every worker inside it."
 
 ### Show: `Api/Program.cs`
 
 Open [samples/CleanArchitectureSample/src/Api/Program.cs](samples/CleanArchitectureSample/src/Api/Program.cs) and highlight:
 
 ```csharp
-// Three lines to wire everything up
+// One setting decides which workers this process runs: all, none, or a list of groups
 builder.Services.AddMediator()
-    .AddDistributedQueues(opts => { opts.WorkersEnabled = options.IsWorkerEnabled; })
+    .AddDistributedQueues(opts => opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]))
     .AddDistributedNotifications()
     .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
     .UseRedisJobState();
@@ -349,19 +349,19 @@ Navigate to the Scalar API docs (find URL from Aspire Dashboard, typically at `/
 ### Show: Endpoint Group + Filter
 
 ```csharp
-[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(SetRequestedByFilter)])]
+[HandlerEndpointGroup("Orders", EndpointFilters = [typeof(RequestDurationFilter)])]
 public class OrderHandler(IOrderRepository repository) { ... }
 ```
 
-> "Endpoint groups control the route prefix and let you attach endpoint filters — these are ASP.NET Core endpoint filters, not mediator middleware. `SetRequestedByFilter` reads the authenticated user from `HttpContext` and populates a `RequestedBy` property on messages that implement `IHasRequestedBy`."
+> "Endpoint groups control the route prefix and let you attach endpoint filters — these are ASP.NET Core endpoint filters, not mediator middleware. `RequestDurationFilter` adds an `X-Request-Duration-Ms` response header. Stamping the authenticated user onto messages is done by `SetRequestedByMiddleware`, which is mediator middleware and therefore also runs for messages that never touched HTTP."
 
 ---
 
 ## Part 9: Real-Time Streaming (1 min)
 
-### Show: ClientEventStreamHandler
+### Show: EventHandler
 
-Open [samples/CleanArchitectureSample/src/Api/Handlers/ClientEventStreamHandler.cs](samples/CleanArchitectureSample/src/Api/Handlers/ClientEventStreamHandler.cs)
+Open [src/Api/Handlers/EventHandler.cs](src/Api/Handlers/EventHandler.cs)
 
 ```csharp
 [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
@@ -381,7 +381,7 @@ public async IAsyncEnumerable<ClientEvent> Handle(
 
 > "This is the entire streaming handler. It returns `IAsyncEnumerable<ClientEvent>` and the `ServerSentEvents` attribute tells the endpoint generator to use `TypedResults.ServerSentEvents()`. The mediator's `SubscribeAsync` API yields every notification matching `IDispatchToClient` as it's published — from any handler, any module.
 >
-> The browser connects with `EventSource('/api/events/stream')` and gets a live feed of every domain event. That's what powers the real-time updates on the dashboard, the event log page, and the toast notifications."
+> The browser connects with `EventSource('/api/events')` and gets a live feed of every domain event. That's what powers the real-time updates on the dashboard, the event log page, and the toast notifications."
 
 ### Action: Show Events Page
 

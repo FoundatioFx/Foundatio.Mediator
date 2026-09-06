@@ -4,6 +4,12 @@ namespace Foundatio.Mediator.Distributed.Redis;
 // remain creation times for pagination; a separate index records actual server expiration deadlines.
 internal static class RedisJobScripts
 {
+    public const string IncrementCounter = """
+        local value = redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
+        redis.call('PEXPIRE', KEYS[1], ARGV[3])
+        return value
+        """;
+
     public const string Mutate = """
         local op, prefix, id = ARGV[1], ARGV[2], ARGV[3]
         local key, ttl, expected, now = KEYS[1], tonumber(ARGV[4]), ARGV[5], ARGV[6]

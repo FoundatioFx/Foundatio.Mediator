@@ -77,3 +77,5 @@ The in-memory queue models real lease semantics: a received message is invisible
 ## Testing the Worker Itself
 
 The library's own suites are a useful reference: `tests/Foundatio.Mediator.Distributed.Tests` covers dispatch to several handlers, interface-typed handlers, one execution per inbound notification across two nodes, poison messages, renewal after a failed renew, drain on stop, locks, header providers, and the administration handlers, all in memory. The AWS and Redis suites run against LocalStack and Redis containers. CI requires both suites and treats skipped tests as failures. Locally, the AWS suite can skip when Docker is unavailable; Redis requires Docker. Pass `-p:RequireDistributedIntegrationTests=true` when building to enable the same skip-failure setting locally.
+
+The [distributed load probe](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/benchmarks/Foundatio.Mediator.Distributed.Load) measures enqueue-to-completion latency, allocations, transport calls, Redis command round trips, and bounded outstanding work. Its README includes reproducible commands and measurement limits.

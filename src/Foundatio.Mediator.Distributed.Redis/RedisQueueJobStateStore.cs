@@ -118,13 +118,9 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         var db = _redis.GetDatabase();
         var bucketKey = CounterBucketKey(queueName, _timeProvider.GetUtcNow());
 
-        // Buckets only receive writes during their own hour, so refreshing the TTL on every increment
-        // keeps them alive for at most retention + 1h. Unconditional EXPIRE works on Redis 6.
-        var txn = db.CreateTransaction();
-        _ = txn.HashIncrementAsync(bucketKey, counterName, value);
-        _ = txn.KeyExpireAsync(bucketKey, CounterBucketRetention);
-
-        return txn.ExecuteAsync().WaitAsync(cancellationToken);
+        // Increment and retention refresh form one atomic server operation, without MULTI/EXEC overhead.
+        return db.ScriptEvaluateAsync(RedisJobScripts.IncrementCounter, [bucketKey],
+            [counterName, value, (long)CounterBucketRetention.TotalMilliseconds]).WaitAsync(cancellationToken);
     }
 
     public async Task<QueueCounterStats> GetCounterStatsAsync(string queueName, TimeSpan? window = null, CancellationToken cancellationToken = default)

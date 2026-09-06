@@ -48,6 +48,33 @@ public class QueueWorkerReliabilityTests
     }
 
     [Fact]
+    public async Task ReceiveCoalescing_WithRoomForFullBatches_DoesNotDelayFillingWorkers()
+    {
+        var time = new FakeTimeProvider();
+        await using var client = new ObservedQueueClient(time) { MaxReceiveCount = 10 };
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int executions = 0;
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, async (_, _, _, ct, _, _) =>
+        {
+            if (Interlocked.Increment(ref executions) == 60) entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return null;
+        }, time: time, prefetch: 64, concurrency: 64);
+        await SendAsync(client, 60);
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            // No clock advancement: an unnecessary collection delay would prevent later batches.
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(60, client.Inner.GetInFlightCount("work"));
+            Assert.Equal(new[] { 64, 54, 44, 34, 24, 14 }, client.ReceiveBatchSizes);
+        }
+        finally { release.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
     public async Task ReceiveCoalescing_DoesNotWaitForASlowPeerOrExceedConcurrency()
     {
         await using var client = new ObservedQueueClient();
@@ -397,6 +424,7 @@ public class QueueWorkerReliabilityTests
         public InMemoryQueueClient Inner { get; } = new(time);
         public Channel<bool> Renewed { get; } = Channel.CreateUnbounded<bool>();
         public List<int> ReceiveBatchSizes { get; } = [];
+        public int MaxReceiveCount { get; init; } = int.MaxValue;
         public bool FailCompletion { get; init; }
         public bool DelayCompletion { get; init; }
         public TaskCompletionSource CompletionEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -413,7 +441,7 @@ public class QueueWorkerReliabilityTests
             ReceiveBatchSizes.Add(maxCount);
             ReceiveEntered.TrySetResult();
             if (DelayReceive) await ReleaseReceive.Task;
-            return await Inner.ReceiveAsync(name, maxCount, visibility, DelayReceive ? CancellationToken.None : ct);
+            return await Inner.ReceiveAsync(name, Math.Min(maxCount, MaxReceiveCount), visibility, DelayReceive ? CancellationToken.None : ct);
         }
         public async Task CompleteAsync(QueueMessage message, CancellationToken ct = default)
         {

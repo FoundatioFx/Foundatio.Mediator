@@ -169,10 +169,10 @@ public class QueueWorkerLifecycleTests(ITestOutputHelper output) : TestWithLoggi
             await provider.GetRequiredService<IMediator>().InvokeAsync(new RenewedCommand("renew"), cts.Token);
             await gate.Started.WaitAsync(TimeSpan.FromSeconds(10), cts.Token);
 
-            // Renewal fires at 2/3 of the 30 s visibility timeout. The first one throws; the second must still happen.
-            fakeTime.Advance(TimeSpan.FromSeconds(21));
+            // The first renewal fails; retry must happen before the original lease expires.
+            fakeTime.Advance(TimeSpan.FromSeconds(16));
             await WaitUntilAsync(() => client.RenewCalls >= 1, cts.Token);
-            fakeTime.Advance(TimeSpan.FromSeconds(21));
+            fakeTime.Advance(TimeSpan.FromSeconds(2));
             await WaitUntilAsync(() => client.RenewCalls >= 2, cts.Token);
 
             gate.Release();

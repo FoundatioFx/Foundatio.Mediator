@@ -223,21 +223,10 @@ public sealed class SqsQueueClient : IQueueClient
                 VisibilityTimeout = ToSeconds(extension)
             }, cancellationToken).ConfigureAwait(false);
         }
-        catch (ReceiptHandleIsInvalidException ex)
+        catch (AmazonSQSException ex) when (ex is ReceiptHandleIsInvalidException or MessageNotInflightException
+            || ex.Message.Contains("does not exist or is not available", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug(ex, "Receipt handle invalid for message {MessageId} on {QueueName}, message may have been completed or expired",
-                message.Id, message.QueueName);
-        }
-        catch (MessageNotInflightException ex)
-        {
-            _logger.LogDebug(ex, "Message {MessageId} on {QueueName} is not in-flight, visibility timeout change skipped",
-                message.Id, message.QueueName);
-        }
-        catch (AmazonSQSException ex) when (ex.Message.Contains("does not exist or is not available", StringComparison.OrdinalIgnoreCase))
-        {
-            // LocalStack reports an expired receipt handle as a generic AmazonSQSException.
-            _logger.LogDebug(ex, "Receipt handle for message {MessageId} on {QueueName} is no longer valid, visibility timeout change skipped",
-                message.Id, message.QueueName);
+            throw new QueueLeaseLostException($"Receipt for message {message.Id} on {message.QueueName} is no longer valid.", ex);
         }
     }
 
@@ -551,13 +540,14 @@ public sealed class SqsQueueClient : IQueueClient
             var response = await _sqs.GetQueueAttributesAsync(new GetQueueAttributesRequest
             {
                 QueueUrl = queueUrl,
-                AttributeNames = [QueueAttributeName.ApproximateNumberOfMessages, QueueAttributeName.ApproximateNumberOfMessagesNotVisible]
+                AttributeNames = [QueueAttributeName.ApproximateNumberOfMessages, QueueAttributeName.ApproximateNumberOfMessagesNotVisible, QueueAttributeName.ApproximateNumberOfMessagesDelayed]
             }, cancellationToken).ConfigureAwait(false);
 
             results.Add(new QueueStats
             {
                 QueueName = queueName,
                 ActiveCount = ReadCount(response.Attributes, QueueAttributeName.ApproximateNumberOfMessages),
+                DelayedCount = ReadCount(response.Attributes, QueueAttributeName.ApproximateNumberOfMessagesDelayed),
                 InFlightCount = ReadCount(response.Attributes, QueueAttributeName.ApproximateNumberOfMessagesNotVisible),
                 DeadLetterCount = await GetDeadLetterCountAsync(queueName, cancellationToken).ConfigureAwait(false)
             });

@@ -37,5 +37,9 @@ public enum QueueJobStatus
     Processing = 1,
     Completed = 2,
     Failed = 3,
-    Cancelled = 4
+    Cancelled = 4,
+    /// <summary>The current attempt did not settle successfully and may be delivered again.</summary>
+    RetryPending = 5,
+    /// <summary>The transport call failed without confirming whether the message was accepted.</summary>
+    EnqueueUnknown = 6
 }

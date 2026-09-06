@@ -21,7 +21,8 @@ public interface IQueueLock : IAsyncDisposable
     string Key { get; }
 
     /// <summary>
-    /// Extends the lock by <paramref name="lifetime"/> from now.
+    /// Extends the lock by <paramref name="lifetime"/> from now. Throws
+    /// <see cref="QueueLeaseLostException"/> when the lock is expired or owned by another worker.
     /// </summary>
     Task RenewAsync(TimeSpan lifetime, CancellationToken cancellationToken = default);
 }

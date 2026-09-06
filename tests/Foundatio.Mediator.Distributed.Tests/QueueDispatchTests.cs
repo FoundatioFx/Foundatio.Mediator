@@ -93,7 +93,7 @@ public class MetadataTrackedCommandHandler(HandlerSignal signal)
 
 public record LockedUpload(string Bank) : IHaveLockKey
 {
-    public string LockKey => $"upload:{Bank}";
+    public string GetLockKey() => $"upload:{Bank}";
 }
 
 [Queue]
@@ -421,7 +421,7 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
     }
 
     [Fact]
-    public async Task QueueLock_HeldElsewhere_CompletesWithoutRunning_ThenRunsWhenFree()
+    public async Task QueueLock_HeldElsewhere_PreservesBothMessagesUntilFree()
     {
         var signal = new HandlerSignal();
         var queueClient = new InMemoryQueueClient();
@@ -441,25 +441,25 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
         {
             var mediator = provider.GetRequiredService<IMediator>();
 
-            // Another worker "owns" the bank's upload; this message must be completed, not run and not retried.
+            // Another worker owns the resource; both distinct deliveries must wait and eventually execute.
             var held = await lockProvider.TryAcquireAsync("upload:chase", TimeSpan.FromMinutes(1), TimeSpan.Zero, cts.Token);
             Assert.NotNull(held);
 
             await mediator.InvokeAsync(new LockedUpload("chase"), cts.Token);
 
             var deadline = DateTime.UtcNow.AddSeconds(5);
-            while ((queueClient.GetPendingCount("LockedUpload") > 0 || queueClient.GetInFlightCount("LockedUpload") > 0) && DateTime.UtcNow < deadline)
+            while (queueClient.GetInFlightCount("LockedUpload") == 0 && DateTime.UtcNow < deadline)
                 await Task.Delay(25, cts.Token);
 
             Assert.Empty(signal.Values);
-            Assert.Equal(0, queueClient.GetPendingCount("LockedUpload"));
+            Assert.Equal(1, queueClient.GetInFlightCount("LockedUpload"));
             Assert.Equal(0, queueClient.GetDeadLetterCount("LockedUpload"));
 
-            await held.DisposeAsync();
-
             await mediator.InvokeAsync(new LockedUpload("chase"), cts.Token);
-            await signal.WaitAsync(timeout: TimeSpan.FromSeconds(10));
-            Assert.Equal("chase", signal.Values[0]);
+            await held.DisposeAsync();
+            await signal.WaitAsync(count: 2, timeout: TimeSpan.FromSeconds(10));
+            Assert.Equal(2, signal.Values.Count);
+            Assert.All(signal.Values, value => Assert.Equal("chase", value));
 
             // The lock is released after the handler returns, which is after the signal fires.
             deadline = DateTime.UtcNow.AddSeconds(5);

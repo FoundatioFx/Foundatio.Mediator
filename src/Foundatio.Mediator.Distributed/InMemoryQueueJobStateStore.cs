@@ -9,6 +9,7 @@ namespace Foundatio.Mediator.Distributed;
 /// </summary>
 public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
 {
+    private readonly object _gate = new();
     private readonly ConcurrentDictionary<string, JobEntry> _jobs = new();
     private readonly ConcurrentDictionary<string, bool> _cancellations = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, long>> _counterBuckets = new();
@@ -22,94 +23,136 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
 
     public Task SetJobStateAsync(QueueJobState state, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
     {
-        var now = _timeProvider.GetUtcNow();
-        var expiresAt = expiry.HasValue ? now + expiry.Value : DateTimeOffset.MaxValue;
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _timeProvider.GetUtcNow();
+            var expiresAt = expiry.HasValue ? now + expiry.Value : DateTimeOffset.MaxValue;
 
-        _jobs[state.JobId] = new JobEntry(state, expiresAt);
+            _cancellations.TryRemove(state.JobId, out _);
+            _jobs[state.JobId] = new JobEntry(state, expiresAt, expiry);
 
-        CleanupIfNeeded();
+            CleanupIfNeeded();
 
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+
+        }
     }
 
     public Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        if (!_jobs.TryGetValue(jobId, out var entry))
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(jobId, out var entry))
+                return Task.FromResult<QueueJobState?>(null);
+
+            if (!IsExpired(entry))
+                return Task.FromResult<QueueJobState?>(entry.State);
+
+            // Remove expired entry on access
+            _jobs.TryRemove(jobId, out _);
+            _cancellations.TryRemove(jobId, out _);
+
             return Task.FromResult<QueueJobState?>(null);
 
-        if (!IsExpired(entry))
-            return Task.FromResult<QueueJobState?>(entry.State);
-
-        // Remove expired entry on access
-        _jobs.TryRemove(jobId, out _);
-        _cancellations.TryRemove(jobId, out _);
-
-        return Task.FromResult<QueueJobState?>(null);
+        }
     }
 
-    public Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    public Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
     {
-        if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry))
-            return Task.CompletedTask;
-
-        var now = _timeProvider.GetUtcNow();
-        var expiresAt = expiry.HasValue ? now + expiry.Value : entry.ExpiresAt;
-        var updated = entry.State with
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
-            Status = status,
-            StartedUtc = startedUtc ?? entry.State.StartedUtc,
-            CompletedUtc = completedUtc ?? entry.State.CompletedUtc,
-            ErrorMessage = errorMessage ?? entry.State.ErrorMessage,
-            Progress = progress ?? entry.State.Progress,
-            Attempt = attempt ?? entry.State.Attempt,
-            LastUpdatedUtc = now
-        };
+            if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry)
+                || IsTerminal(entry.State.Status) || attempt < entry.State.Attempt
+                || (status == QueueJobStatus.Processing && attempt == entry.State.Attempt && entry.State.Status == QueueJobStatus.RetryPending)
+                || (status == QueueJobStatus.EnqueueUnknown && entry.State.Status != QueueJobStatus.Queued))
+                return Task.FromResult(false);
 
-        _jobs[jobId] = new JobEntry(updated, expiresAt);
-        return Task.CompletedTask;
+            var now = _timeProvider.GetUtcNow();
+            var updated = entry.State with
+            {
+                Status = status,
+                StartedUtc = startedUtc ?? entry.State.StartedUtc,
+                CompletedUtc = IsTerminal(status) ? completedUtc ?? now : null,
+                ErrorMessage = errorMessage ?? (status == QueueJobStatus.Processing ? null : entry.State.ErrorMessage),
+                Progress = progress ?? entry.State.Progress,
+                Attempt = attempt ?? entry.State.Attempt,
+                LastUpdatedUtc = now
+            };
+            _jobs[jobId] = new JobEntry(updated, expiry.HasValue ? now + expiry.Value : entry.ExpiresAt, expiry ?? entry.Retention);
+            return Task.FromResult(true);
+        }
     }
 
-    public Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
-    {
-        if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry))
-            return Task.CompletedTask;
-
-        var now = _timeProvider.GetUtcNow();
-        var expiresAt = expiry.HasValue ? now + expiry.Value : entry.ExpiresAt;
-        var updated = entry.State with
+    public Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, int? expectedAttempt = null)
+        => UpdateLiveJobAsync(jobId, expectedAttempt, expiry, state => state with
         {
             Progress = progress,
             ProgressMessage = progressMessage,
-            LastUpdatedUtc = now
-        };
+            LastUpdatedUtc = _timeProvider.GetUtcNow()
+        }, cancellationToken);
 
-        _jobs[jobId] = new JobEntry(updated, expiresAt);
-        return Task.CompletedTask;
+    public Task HeartbeatAsync(string jobId, CancellationToken cancellationToken = default, int? expectedAttempt = null, TimeSpan? expiry = null)
+        => UpdateLiveJobAsync(jobId, expectedAttempt, expiry, state => state with
+        {
+            LastHeartbeatUtc = _timeProvider.GetUtcNow(),
+            LastUpdatedUtc = _timeProvider.GetUtcNow()
+        }, cancellationToken);
+
+    private Task UpdateLiveJobAsync(string jobId, int? expectedAttempt, TimeSpan? expiry, Func<QueueJobState, QueueJobState> update, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_jobs.TryGetValue(jobId, out var entry) && !IsExpired(entry) && !IsTerminal(entry.State.Status)
+                && (!expectedAttempt.HasValue || expectedAttempt == entry.State.Attempt))
+                _jobs[jobId] = new JobEntry(update(entry.State), (expiry ?? entry.Retention) is { } retention ? _timeProvider.GetUtcNow() + retention : entry.ExpiresAt, expiry ?? entry.Retention);
+            return Task.CompletedTask;
+        }
     }
+
+    private static bool IsTerminal(QueueJobStatus status) => status is QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled;
 
     public Task<bool> RequestCancellationAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry))
-            return Task.FromResult(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(jobId, out var entry) || IsExpired(entry))
+                return Task.FromResult(false);
 
-        // Only allow cancellation for non-terminal states
-        if (entry.State.Status is QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled)
-            return Task.FromResult(false);
+            // Only allow cancellation for non-terminal states
+            if (entry.State.Status is QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled)
+                return Task.FromResult(false);
 
-        _cancellations[jobId] = true;
-        return Task.FromResult(true);
+            _cancellations[jobId] = true;
+            return Task.FromResult(true);
+
+        }
     }
 
     public Task<bool> IsCancellationRequestedAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(_cancellations.ContainsKey(jobId));
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            return Task.FromResult(_cancellations.ContainsKey(jobId));
+
+        }
     }
 
     public Task RemoveJobStateAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        _jobs.TryRemove(jobId, out _);
-        _cancellations.TryRemove(jobId, out _);
-        return Task.CompletedTask;
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            _jobs.TryRemove(jobId, out _);
+            _cancellations.TryRemove(jobId, out _);
+            return Task.CompletedTask;
+
+        }
     }
 
     public Task IncrementCounterAsync(string queueName, string counterName, long value = 1, CancellationToken cancellationToken = default)
@@ -206,5 +249,5 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
         }
     }
 
-    private sealed record JobEntry(QueueJobState State, DateTimeOffset ExpiresAt);
+    private sealed record JobEntry(QueueJobState State, DateTimeOffset ExpiresAt, TimeSpan? Retention);
 }

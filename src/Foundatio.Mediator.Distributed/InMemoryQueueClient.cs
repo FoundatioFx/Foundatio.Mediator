@@ -26,6 +26,7 @@ public sealed class InMemoryQueueClient : IQueueClient
 
     public Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var queue = GetQueue(queueName);
         var now = _timeProvider.GetUtcNow();
         foreach (var entry in entries)
@@ -50,6 +51,7 @@ public sealed class InMemoryQueueClient : IQueueClient
 
     public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCount, 1);
         var queue = GetQueue(queueName);
         var results = new List<QueueMessage>(Math.Max(1, maxCount));
 
@@ -74,24 +76,30 @@ public sealed class InMemoryQueueClient : IQueueClient
 
     public Task CompleteAsync(QueueMessage message, CancellationToken cancellationToken = default)
     {
-        GetQueue(message.QueueName).Complete(message.Id);
+        cancellationToken.ThrowIfCancellationRequested();
+        GetQueue(message.QueueName).Complete(message);
         return Task.CompletedTask;
     }
 
     public Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken cancellationToken = default)
     {
-        GetQueue(message.QueueName).Abandon(message.Id, delay, _timeProvider);
+        cancellationToken.ThrowIfCancellationRequested();
+        GetQueue(message.QueueName).Abandon(message, delay, _timeProvider);
         return Task.CompletedTask;
     }
 
     public Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken cancellationToken = default)
     {
-        GetQueue(message.QueueName).Renew(message.Id, extension);
+        cancellationToken.ThrowIfCancellationRequested();
+        GetQueue(message.QueueName).Renew(message, extension);
         return Task.CompletedTask;
     }
 
-    public async Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default)
+    public Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Claim this receipt before copying to the DLQ: an expired worker cannot dead-letter newer work.
+        GetQueue(message.QueueName).Complete(message);
         var headers = new Dictionary<string, string>(message.Headers)
         {
             [MessageHeaders.DeadLetterReason] = reason,
@@ -100,8 +108,7 @@ public sealed class InMemoryQueueClient : IQueueClient
             [MessageHeaders.DeadLetterDequeueCount] = message.DequeueCount.ToString()
         };
 
-        await SendAsync(QueueDefinition.DeadLetterQueueNameFor(message.QueueName), [new QueueEntry { Body = message.Body, Headers = headers }], cancellationToken).ConfigureAwait(false);
-        await CompleteAsync(message, cancellationToken).ConfigureAwait(false);
+        return SendAsync(QueueDefinition.DeadLetterQueueNameFor(message.QueueName), [new QueueEntry { Body = message.Body, Headers = headers }], cancellationToken);
     }
 
     /// <inheritdoc />
@@ -114,6 +121,7 @@ public sealed class InMemoryQueueClient : IQueueClient
             {
                 QueueName = queueName,
                 ActiveCount = GetPendingCount(queueName),
+                DelayedCount = GetDelayedCount(queueName),
                 InFlightCount = GetInFlightCount(queueName),
                 DeadLetterCount = GetDeadLetterCount(queueName)
             });
@@ -127,6 +135,10 @@ public sealed class InMemoryQueueClient : IQueueClient
     /// </summary>
     public int GetPendingCount(string queueName)
         => _queues.TryGetValue(queueName, out var queue) ? queue.Ready.Reader.Count : 0;
+
+    /// <summary>Number of messages scheduled for later delivery.</summary>
+    public int GetDelayedCount(string queueName)
+        => _queues.TryGetValue(queueName, out var queue) ? queue.DelayedCount : 0;
 
     /// <summary>
     /// Number of received messages that have not been completed, abandoned, or expired.
@@ -170,80 +182,112 @@ public sealed class InMemoryQueueClient : IQueueClient
 
     private sealed class InMemoryQueue(string name) : IDisposable
     {
-        private readonly ConcurrentDictionary<string, Lease> _inFlight = new();
-        private readonly ConcurrentDictionary<Guid, ITimer> _scheduled = new();
+        private readonly object _gate = new();
+        private readonly Dictionary<string, Lease> _inFlight = new();
+        private readonly Dictionary<Guid, ITimer> _scheduled = new();
 
         public Channel<InMemoryEntry> Ready { get; } = Channel.CreateUnbounded<InMemoryEntry>(
             new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
 
-        public int InFlightCount => _inFlight.Count;
+        public int InFlightCount { get { lock (_gate) return _inFlight.Count; } }
+        public int DelayedCount { get { lock (_gate) return _scheduled.Count; } }
 
         public void Enqueue(InMemoryEntry entry) => Ready.Writer.TryWrite(entry);
 
         public QueueMessage Lease(InMemoryEntry entry, TimeSpan visibilityTimeout, TimeProvider timeProvider)
         {
-            var dequeueCount = entry.IncrementDequeueCount();
-            var lease = new Lease(entry);
-            _inFlight[entry.Id] = lease;
-
-            if (visibilityTimeout > TimeSpan.Zero)
-                lease.Timer = timeProvider.CreateTimer(_ => Expire(entry.Id, lease), null, visibilityTimeout, Timeout.InfiniteTimeSpan);
-
-            return entry.ToMessage(name, timeProvider.GetUtcNow(), dequeueCount);
-        }
-
-        public void Complete(string id)
-        {
-            if (_inFlight.TryRemove(id, out var lease))
-                lease.Timer?.Dispose();
-        }
-
-        public void Abandon(string id, TimeSpan delay, TimeProvider timeProvider)
-        {
-            if (!_inFlight.TryRemove(id, out var lease))
-                return;
-
-            lease.Timer?.Dispose();
-
-            if (delay <= TimeSpan.Zero)
+            lock (_gate)
             {
-                Enqueue(lease.Entry);
-                return;
+                var dequeueCount = entry.IncrementDequeueCount();
+                var lease = new Lease(entry);
+                _inFlight.Add(entry.Id, lease);
+                // Arm after publishing the receipt, including with a concurrently advancing fake clock.
+                lease.Timer = timeProvider.CreateTimer(_ => Expire(entry.Id, lease), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                if (visibilityTimeout > TimeSpan.Zero)
+                    lease.Timer.Change(visibilityTimeout, Timeout.InfiniteTimeSpan);
+                return entry.ToMessage(name, timeProvider.GetUtcNow(), dequeueCount, lease);
             }
-
-            var key = Guid.NewGuid();
-            ITimer? timer = null;
-            timer = timeProvider.CreateTimer(_ =>
-            {
-                if (_scheduled.TryRemove(key, out var t))
-                    t.Dispose();
-                Enqueue(lease.Entry);
-            }, null, delay, Timeout.InfiniteTimeSpan);
-            _scheduled[key] = timer;
         }
 
-        public void Renew(string id, TimeSpan extension)
+        private Lease RequireLease(QueueMessage message)
         {
-            if (_inFlight.TryGetValue(id, out var lease) && extension > TimeSpan.Zero)
-                lease.Timer?.Change(extension, Timeout.InfiniteTimeSpan);
+            if (!_inFlight.TryGetValue(message.Id, out var lease) || !ReferenceEquals(lease, message.NativeMessage))
+                throw new QueueLeaseLostException($"Delivery {message.Id} on {name} no longer owns its lease.");
+            return lease;
+        }
+
+        public void Complete(QueueMessage message)
+        {
+            lock (_gate)
+            {
+                var lease = RequireLease(message);
+                _inFlight.Remove(message.Id);
+                lease.Timer?.Dispose();
+            }
+        }
+
+        public void Abandon(QueueMessage message, TimeSpan delay, TimeProvider timeProvider)
+        {
+            lock (_gate)
+            {
+                var lease = RequireLease(message);
+                _inFlight.Remove(message.Id);
+                lease.Timer?.Dispose();
+                if (delay <= TimeSpan.Zero)
+                {
+                    Enqueue(lease.Entry);
+                    return;
+                }
+
+                var key = Guid.NewGuid();
+                var timer = timeProvider.CreateTimer(_ =>
+                {
+                    lock (_gate)
+                    {
+                        if (_scheduled.Remove(key, out var scheduled))
+                        {
+                            Enqueue(lease.Entry);
+                            scheduled.Dispose();
+                        }
+                    }
+                }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                _scheduled.Add(key, timer);
+                timer.Change(delay, Timeout.InfiniteTimeSpan);
+            }
+        }
+
+        public void Renew(QueueMessage message, TimeSpan extension)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(extension, TimeSpan.Zero);
+            lock (_gate)
+                RequireLease(message).Timer?.Change(extension, Timeout.InfiniteTimeSpan);
         }
 
         private void Expire(string id, Lease lease)
         {
-            if (_inFlight.TryRemove(new KeyValuePair<string, Lease>(id, lease)))
+            lock (_gate)
             {
-                lease.Timer?.Dispose();
-                Enqueue(lease.Entry);
+                if (_inFlight.TryGetValue(id, out var current) && ReferenceEquals(current, lease))
+                {
+                    _inFlight.Remove(id);
+                    Enqueue(lease.Entry);
+                    lease.Timer?.Dispose();
+                }
             }
         }
 
         public void Dispose()
         {
-            foreach (var lease in _inFlight.Values)
-                lease.Timer?.Dispose();
-            foreach (var timer in _scheduled.Values)
-                timer.Dispose();
-            Ready.Writer.TryComplete();
+            lock (_gate)
+            {
+                foreach (var lease in _inFlight.Values)
+                    lease.Timer?.Dispose();
+                foreach (var timer in _scheduled.Values)
+                    timer.Dispose();
+                _inFlight.Clear();
+                _scheduled.Clear();
+                Ready.Writer.TryComplete();
+            }
         }
     }
 
@@ -264,7 +308,7 @@ public sealed class InMemoryQueueClient : IQueueClient
         public int DequeueCount => _dequeueCount;
         public int IncrementDequeueCount() => Interlocked.Increment(ref _dequeueCount);
 
-        public QueueMessage ToMessage(string queueName, DateTimeOffset dequeuedAt, int? dequeueCount = null) => new()
+        public QueueMessage ToMessage(string queueName, DateTimeOffset dequeuedAt, int? dequeueCount = null, object? receipt = null) => new()
         {
             Id = Id,
             Body = Body,
@@ -272,6 +316,7 @@ public sealed class InMemoryQueueClient : IQueueClient
             QueueName = queueName,
             DequeueCount = dequeueCount ?? _dequeueCount,
             EnqueuedAt = EnqueuedAt,
+            NativeMessage = receipt,
             DequeuedAt = dequeuedAt
         };
     }

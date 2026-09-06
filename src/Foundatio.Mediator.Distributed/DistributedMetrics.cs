@@ -21,6 +21,7 @@ public static class DistributedMetrics
     internal static readonly Counter<long> Processed = Meter.CreateCounter<long>("queue.messages.processed", "{message}", "Messages completed successfully.");
     internal static readonly Counter<long> Failed = Meter.CreateCounter<long>("queue.messages.failed", "{message}", "Messages whose handler failed and were abandoned for retry.");
     internal static readonly Counter<long> DeadLettered = Meter.CreateCounter<long>("queue.messages.dead_lettered", "{message}", "Messages moved to a dead-letter queue.");
+    internal static readonly Counter<long> Deferred = Meter.CreateCounter<long>("queue.messages.deferred", "{message}", "Deliveries waiting for a resource lock without consuming a handler retry.");
     internal static readonly Counter<long> Abandoned = Meter.CreateCounter<long>("queue.messages.abandoned", "{message}", "Messages returned to the queue without processing, for example during shutdown.");
     internal static readonly Histogram<double> HandlerDuration = Meter.CreateHistogram<double>("queue.handler.duration", "ms", "Handler execution time per message.");
     internal static readonly UpDownCounter<long> InFlight = Meter.CreateUpDownCounter<long>("queue.messages.in_flight", "{message}", "Messages currently being processed by this process.");
@@ -32,6 +33,7 @@ public static class DistributedMetrics
     static DistributedMetrics()
     {
         Meter.CreateObservableGauge("queue.depth.visible", () => Snapshot(s => s.ActiveCount), "{message}", "Messages waiting in the queue.");
+        Meter.CreateObservableGauge("queue.depth.delayed", () => Snapshot(s => s.DelayedCount), "{message}", "Messages scheduled for later delivery.");
         Meter.CreateObservableGauge("queue.depth.in_flight", () => Snapshot(s => s.InFlightCount), "{message}", "Messages received but not yet completed, across all consumers.");
         Meter.CreateObservableGauge("queue.depth.dead_letter", () => Snapshot(s => s.DeadLetterCount), "{message}", "Messages waiting in the dead-letter queue.");
     }

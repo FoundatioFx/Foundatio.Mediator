@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,7 +8,7 @@ namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
 /// Background service that processes messages from a single queue. A receive loop pulls batches
-/// from the <see cref="IQueueClient"/> into a bounded channel; N consumer tasks deserialize each
+/// from the <see cref="IQueueClient"/> only when processing capacity is available. Each task deserializes its
 /// message by its <see cref="MessageHeaders.MessageType"/> header and dispatch it to every handler
 /// on the queue that accepts that type, through the normal middleware pipeline.
 /// </summary>
@@ -90,30 +89,14 @@ public sealed class QueueWorker : BackgroundService
             _logger.LogInformation("Queue worker starting for {QueueName} (concurrency={Concurrency}, prefetch={PrefetchCount}, handlers={HandlerCount})",
                 _options.QueueName, _options.Concurrency, _options.PrefetchCount, _options.Registrations.Count);
 
-            var channel = Channel.CreateBounded<QueueMessage>(new BoundedChannelOptions(_options.Concurrency + _options.PrefetchCount)
-            {
-                SingleWriter = true,
-                SingleReader = _options.Concurrency == 1,
-                FullMode = BoundedChannelFullMode.Wait
-            });
-
-            var consumers = new Task[_options.Concurrency];
-            for (int i = 0; i < _options.Concurrency; i++)
-                consumers[i] = RunConsumerAsync(channel.Reader, drainCts.Token);
-
+            var active = new List<Task>(_options.Concurrency);
             try
             {
-                await RunReceiveLoopAsync(channel.Writer, stoppingToken).ConfigureAwait(false);
+                await RunReceiveLoopAsync(active, stoppingToken, drainCts.Token).ConfigureAwait(false);
             }
             finally
             {
-                channel.Writer.Complete();
-
-                // Buffered messages are already invisible at the transport; hand them back so another worker gets them now.
-                while (channel.Reader.TryRead(out var orphan))
-                    await AbandonForRedeliveryAsync(orphan, "shutdown").ConfigureAwait(false);
-
-                await Task.WhenAll(consumers).ConfigureAwait(false);
+                await Task.WhenAll(active).ConfigureAwait(false);
             }
 
             _logger.LogInformation("Queue worker stopped for {QueueName}", _options.QueueName);
@@ -126,16 +109,25 @@ public sealed class QueueWorker : BackgroundService
         }
     }
 
-    private async Task RunReceiveLoopAsync(ChannelWriter<QueueMessage> writer, CancellationToken stoppingToken)
+    private async Task RunReceiveLoopAsync(List<Task> active, CancellationToken stoppingToken, CancellationToken drainToken)
     {
         int consecutiveErrors = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            active.RemoveAll(task => task.IsCompleted);
+            if (active.Count >= _options.Concurrency)
+            {
+                try { await Task.WhenAny(active).WaitAsync(stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                continue;
+            }
+
             IReadOnlyList<QueueMessage> messages;
             try
             {
-                messages = await _client.ReceiveAsync(_options.QueueName, _options.PrefetchCount, _options.VisibilityTimeout, stoppingToken).ConfigureAwait(false);
+                int capacity = Math.Min(_options.PrefetchCount, _options.Concurrency - active.Count);
+                messages = await _client.ReceiveAsync(_options.QueueName, capacity, _options.VisibilityTimeout, stoppingToken).ConfigureAwait(false);
                 consecutiveErrors = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -152,42 +144,35 @@ public sealed class QueueWorker : BackgroundService
                 continue;
             }
 
-            for (int i = 0; i < messages.Count; i++)
+            foreach (var message in messages)
             {
-                try
-                {
-                    await writer.WriteAsync(messages[i], stoppingToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    // The rest of this batch never reached a consumer; release it immediately.
-                    for (int j = i; j < messages.Count; j++)
-                        await AbandonForRedeliveryAsync(messages[j], "shutdown").ConfigureAwait(false);
-                    return;
-                }
-            }
-        }
-    }
-
-    private async Task RunConsumerAsync(ChannelReader<QueueMessage> reader, CancellationToken drainToken)
-    {
-        await foreach (var message in reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            try
-            {
-                await ProcessMessageAsync(message, drainToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                // ProcessMessageAsync handles its own failures; anything escaping is a bug in the worker itself.
-                _logger.LogError(ex, "Unexpected error processing message {MessageId} on {QueueName}; the consumer will continue with the next message",
-                    message.Id, _options.QueueName);
-                await AbandonForRedeliveryAsync(message, "worker-error").ConfigureAwait(false);
+                if (stoppingToken.IsCancellationRequested)
+                    await AbandonForRedeliveryAsync(message, "shutdown").ConfigureAwait(false);
+                else
+                    active.Add(ProcessMessageAsync(message, drainToken));
             }
         }
     }
 
     private async Task ProcessMessageAsync(QueueMessage message, CancellationToken drainToken)
+    {
+        await using var lease = new QueueLease(_client, message, _options.VisibilityTimeout,
+            _options.AutoRenewTimeout, _timeProvider, _logger, drainToken);
+        // Install every receipt's monitor before allowing user code to occupy a thread.
+        await Task.Yield();
+        try
+        {
+            await ProcessMessageCoreAsync(message, lease, drainToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error processing {MessageId} on {QueueName}", message.Id, _options.QueueName);
+            if (!lease.IsLost)
+                await AbandonForRedeliveryAsync(message, "worker-error").ConfigureAwait(false);
+        }
+    }
+
+    private async Task ProcessMessageCoreAsync(QueueMessage message, QueueLease lease, CancellationToken drainToken)
     {
         ActivityContext producerContext = default;
         if (message.Headers.TryGetValue(MessageHeaders.TraceParent, out var traceParent)
@@ -211,17 +196,6 @@ public sealed class QueueWorker : BackgroundService
 
         var tags = DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group);
 
-        if (_options.MaxAttempts >= 0 && message.DequeueCount > _options.MaxAttempts)
-        {
-            _logger.LogWarning(
-                "Message {MessageId} on {QueueName} exceeded max attempts ({DequeueCount}/{MaxAttempts}), dead-lettering",
-                message.Id, _options.QueueName, message.DequeueCount, _options.MaxAttempts);
-
-            activity?.SetTag("messaging.dead_letter.reason", "MaxAttemptsExceeded");
-            await RecordDeadLetterAsync(message, $"Exceeded max attempts ({_options.MaxAttempts})", jobId: null, tags).ConfigureAwait(false);
-            return;
-        }
-
         string? jobId = null;
         var trackProgress = _options.TrackProgress && _stateStore is not null;
         if (trackProgress)
@@ -229,12 +203,22 @@ public sealed class QueueWorker : BackgroundService
         if (jobId is not null)
             activity?.SetTag("messaging.job.id", jobId);
 
+        if (_options.MaxAttempts >= 0 && message.DequeueCount > _options.MaxAttempts)
+        {
+            _logger.LogWarning(
+                "Message {MessageId} on {QueueName} exceeded max attempts ({DequeueCount}/{MaxAttempts}), dead-lettering",
+                message.Id, _options.QueueName, message.DequeueCount, _options.MaxAttempts);
+
+            activity?.SetTag("messaging.dead_letter.reason", "MaxAttemptsExceeded");
+            await RecordDeadLetterAsync(message, $"Exceeded max attempts ({_options.MaxAttempts})", jobId, tags).ConfigureAwait(false);
+            return;
+        }
+
         var messageType = ResolveMessageType(message);
         if (messageType is null)
         {
             var typeName = message.Headers.GetValueOrDefault(MessageHeaders.MessageType) ?? "<none>";
             _logger.LogWarning("Message {MessageId} on {QueueName} has unknown type '{TypeName}', dead-lettering", message.Id, _options.QueueName, typeName);
-            await FailJobAsync(jobId, $"Unknown message type '{typeName}'").ConfigureAwait(false);
             await RecordDeadLetterAsync(message, $"Unknown message type '{typeName}'", jobId, tags).ConfigureAwait(false);
             return;
         }
@@ -248,7 +232,6 @@ public sealed class QueueWorker : BackgroundService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Message {MessageId} on {QueueName} could not be deserialized as {MessageType}, dead-lettering", message.Id, _options.QueueName, messageType.Name);
-            await FailJobAsync(jobId, $"Deserialization failed for type {messageType.Name}: {ex.Message}").ConfigureAwait(false);
             await RecordDeadLetterAsync(message, $"Deserialization failed for type {messageType.Name}: {ex.Message}", jobId, tags).ConfigureAwait(false);
             return;
         }
@@ -256,7 +239,6 @@ public sealed class QueueWorker : BackgroundService
         if (typedMessage is null)
         {
             _logger.LogWarning("Message {MessageId} on {QueueName} deserialized to null as {MessageType}, dead-lettering", message.Id, _options.QueueName, messageType.Name);
-            await FailJobAsync(jobId, $"Deserialization returned null for type {messageType.Name}").ConfigureAwait(false);
             await RecordDeadLetterAsync(message, $"Deserialization returned null for type {messageType.Name}", jobId, tags).ConfigureAwait(false);
             return;
         }
@@ -265,32 +247,42 @@ public sealed class QueueWorker : BackgroundService
         if (handlers.Count == 0)
         {
             _logger.LogWarning("No handler on {QueueName} accepts message type {MessageType}, dead-lettering {MessageId}", _options.QueueName, messageType.Name, message.Id);
-            await FailJobAsync(jobId, $"No handler accepts message type {messageType.Name}").ConfigureAwait(false);
             await RecordDeadLetterAsync(message, $"No handler accepts message type {messageType.Name}", jobId, tags).ConfigureAwait(false);
             return;
         }
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(drainToken);
-        if (!_options.AutoRenewTimeout)
-            timeoutCts.CancelAfter(_options.VisibilityTimeout);
-
         Task? cancellationPollTask = null;
-        if (jobId is not null)
-            cancellationPollTask = PollForCancellationAsync(jobId, timeoutCts, drainToken);
-
-        Task? autoRenewTask = null;
-        if (_options.AutoRenewTimeout)
-            autoRenewTask = AutoRenewTimeoutAsync(message, jobId, timeoutCts.Token);
-
-        var handlerToken = timeoutCts.Token;
+        var handlerToken = lease.Token;
         var stopwatch = Stopwatch.StartNew();
         DistributedMetrics.InFlight.Add(1, tags);
         QueueContext? queueContext = null;
 
         try
         {
+            if (jobId is not null && await ReadCancellationAsync(jobId, handlerToken).ConfigureAwait(false))
+            {
+                if (await TryAckAsync(ct => _client.CompleteAsync(message, ct), message, "cancel").ConfigureAwait(false))
+                    await SetJobStatusAsync(jobId, QueueJobStatus.Cancelled, message.DequeueCount).ConfigureAwait(false);
+                return;
+            }
             if (jobId is not null)
-                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Processing, startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
+                cancellationPollTask = PollForCancellationAsync(jobId, message.DequeueCount, lease);
+
+            if (jobId is not null)
+            {
+                bool accepted = await QueueOperation.RunAsync(ct => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Processing,
+                    startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: ct),
+                    s_ackTimeout, _timeProvider, handlerToken).ConfigureAwait(false);
+                if (!accepted)
+                {
+                    var current = await QueueOperation.RunAsync(ct => _stateStore!.GetJobStateAsync(jobId, ct), s_ackTimeout, _timeProvider, handlerToken).ConfigureAwait(false);
+                    if (current?.Status is QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled)
+                        await TryAckAsync(ct => _client.CompleteAsync(message, ct), message, "settle-terminal-job").ConfigureAwait(false);
+                    else
+                        await AbandonWithBackoffAsync(message).ConfigureAwait(false);
+                    return;
+                }
+            }
 
             queueContext = new QueueContext
             {
@@ -302,24 +294,26 @@ public sealed class QueueWorker : BackgroundService
                 MaxAttempts = _options.MaxAttempts,
                 EnqueuedAt = message.EnqueuedAt,
                 JobId = jobId,
-                OnRenewTimeout = (extension, ct) => _client.RenewTimeoutAsync(message, extension, ct),
-                OnReportProgress = ct => HeartbeatAsync(message, jobId, ct),
+                OnSettled = lease.StopRenewing,
+                OnCancelProcessing = lease.Cancel,
+                OnRenewTimeout = lease.RenewAsync,
+                OnReportProgress = ct => HeartbeatAsync(lease, jobId, message.DequeueCount, ct),
                 OnReportDetailedProgress = jobId is not null
-                    ? (percent, msg, ct) => UpdateJobProgressAsync(jobId, percent, msg, ct)
+                    ? (percent, msg, ct) => UpdateJobProgressAsync(jobId, message.DequeueCount, percent, msg, ct)
                     : null,
-                OnComplete = ct => _client.CompleteAsync(message, ct),
-                OnAbandon = (delay, ct) => _client.AbandonAsync(message, delay, ct)
+                OnComplete = ct => QueueOperation.RunAsync(t => _client.CompleteAsync(message, t), s_ackTimeout, _timeProvider, ct),
+                OnAbandon = (delay, ct) => QueueOperation.RunAsync(t => _client.AbandonAsync(message, delay, t), s_ackTimeout, _timeProvider, ct)
             };
 
-            using var callContext = CallContext.Rent().Set(queueContext);
-            RestoreHeaders(message, callContext);
-
             await using var scope = _scopeFactory.CreateAsyncScope();
+            using var callContext = CallContext.Rent().Set(queueContext);
+            RestoreHeaders(message, callContext, scope.ServiceProvider);
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
             IResult? failure = null;
             foreach (var handler in handlers)
             {
+                handlerToken.ThrowIfCancellationRequested();
                 // Authorization ran on the enqueuing node; typeof(object) makes the wrapper return the real result.
                 var handlerResult = await handler.HandleAsync(mediator, typedMessage, callContext, handlerToken, typeof(object), skipAuthorization: true).ConfigureAwait(false);
 
@@ -342,71 +336,65 @@ public sealed class QueueWorker : BackgroundService
                     _logger.LogWarning("Handler returned retryable status {Status} for message {MessageId} on {QueueName}: {Message}",
                         failure.Status, message.Id, _options.QueueName, errorMessage);
 
-                    await FailJobAsync(jobId, errorMessage).ConfigureAwait(false);
-                    await RecordFailureAsync(message, tags, stopwatch.Elapsed).ConfigureAwait(false);
+                    await RecordFailureAsync(message, jobId, errorMessage, tags, stopwatch.Elapsed).ConfigureAwait(false);
                 }
                 else
                 {
                     _logger.LogWarning("Handler returned non-retryable status {Status} for message {MessageId} on {QueueName}: {Message}",
                         failure.Status, message.Id, _options.QueueName, errorMessage);
 
-                    await FailJobAsync(jobId, errorMessage).ConfigureAwait(false);
                     await RecordDeadLetterAsync(message, $"{failure.Status}: {errorMessage}", jobId, tags).ConfigureAwait(false);
                 }
 
                 return;
             }
 
-            if (_options.AutoComplete && queueContext is { IsCompleted: false, IsAbandoned: false })
-                await TryAckAsync(ackToken => _client.CompleteAsync(message, ackToken), message, "complete").ConfigureAwait(false);
+            if (queueContext.IsAbandoned)
+                return;
 
-            _workerInfo?.Stats.IncrementProcessed();
-            DistributedMetrics.Processed.Add(1, tags);
-            DistributedMetrics.HandlerDuration.Record(stopwatch.Elapsed.TotalMilliseconds, DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, "processed"));
+            handlerToken.ThrowIfCancellationRequested();
+            if (_options.AutoComplete && !queueContext.IsCompleted)
+                await TryAckAsync(queueContext.CompleteAsync, message, "complete").ConfigureAwait(false);
 
-            if (_stateStore is not null)
-                await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "processed", 1, ackToken)).ConfigureAwait(false);
+            if (!queueContext.IsCompleted)
+            {
+                await SetJobStatusAsync(jobId, QueueJobStatus.RetryPending, message.DequeueCount,
+                    "Handler finished without confirmed acknowledgment; delivery may recur.").ConfigureAwait(false);
+                return;
+            }
 
-            if (jobId is not null)
-                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed, completedUtc: _timeProvider.GetUtcNow(), progress: 100, expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
+
         }
         catch (OperationCanceledException) when (drainToken.IsCancellationRequested)
         {
             stopwatch.Stop();
             _logger.LogInformation("Host stopping, abandoning in-flight message {MessageId} on {QueueName} for redelivery", message.Id, _options.QueueName);
             activity?.SetStatus(ActivityStatusCode.Error, "shutdown");
-            if (queueContext is not { IsCompleted: true } and not { IsAbandoned: true })
+            if (!lease.IsLost && queueContext is not { IsCompleted: true } and not { IsAbandoned: true })
+            {
                 await AbandonForRedeliveryAsync(message, "shutdown").ConfigureAwait(false);
+                await SetJobStatusAsync(jobId, QueueJobStatus.RetryPending, message.DequeueCount).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
             stopwatch.Stop();
-            bool cancelledByUser = false;
-            if (jobId is not null)
+            if (lease.IsLost)
             {
-                using var cancelCts = new CancellationTokenSource(s_ackTimeout);
-                try { cancelledByUser = await _stateStore!.IsCancellationRequestedAsync(jobId, cancelCts.Token).ConfigureAwait(false); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Failed to read cancellation state for job {JobId}", jobId); }
+                activity?.SetStatus(ActivityStatusCode.Error, "lease-lost");
+                // Ownership passed to another worker. Do not settle or update its attempt.
+                return;
             }
-
-            if (cancelledByUser)
+            if (queueContext is { IsCompleted: true } or { IsAbandoned: true })
+                return;
+            bool cancelled = jobId is not null && await ReadCancellationAsync(jobId, CancellationToken.None).ConfigureAwait(false);
+            if (cancelled)
             {
-                _logger.LogInformation("Message {MessageId} on {QueueName} was cancelled by request (job {JobId})", message.Id, _options.QueueName, jobId);
-                activity?.SetTag("messaging.job.cancelled", true);
-                await TryUpdateStateAsync(ackToken => _stateStore!.UpdateJobStatusAsync(jobId!, QueueJobStatus.Cancelled, completedUtc: _timeProvider.GetUtcNow(), expiry: _stateExpiry, cancellationToken: ackToken)).ConfigureAwait(false);
-
-                // A requested cancellation is a normal completion; the message must not be retried.
-                if (_options.AutoComplete && queueContext is { IsCompleted: false, IsAbandoned: false })
-                    await TryAckAsync(ackToken => _client.CompleteAsync(message, ackToken), message, "complete").ConfigureAwait(false);
+                if (await TryAckAsync(ct => _client.CompleteAsync(message, ct), message, "cancel").ConfigureAwait(false))
+                    await SetJobStatusAsync(jobId, QueueJobStatus.Cancelled, message.DequeueCount).ConfigureAwait(false);
             }
             else
-            {
-                _logger.LogWarning("Message {MessageId} on {QueueName} timed out after {Timeout}", message.Id, _options.QueueName, _options.VisibilityTimeout);
-                activity?.SetStatus(ActivityStatusCode.Error, "timeout");
-                await FailJobAsync(jobId, $"Timed out after {_options.VisibilityTimeout}").ConfigureAwait(false);
-                if (queueContext is not { IsCompleted: true } and not { IsAbandoned: true })
-                    await RecordFailureAsync(message, tags, stopwatch.Elapsed).ConfigureAwait(false);
-            }
+                await RecordFailureAsync(message, jobId, "Processing was cancelled", tags, stopwatch.Elapsed).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -415,20 +403,37 @@ public sealed class QueueWorker : BackgroundService
                 message.Id, _options.QueueName, message.DequeueCount, _options.MaxAttempts);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
-            await FailJobAsync(jobId, ex.Message).ConfigureAwait(false);
-            if (queueContext is not { IsCompleted: true } and not { IsAbandoned: true })
-                await RecordFailureAsync(message, tags, stopwatch.Elapsed).ConfigureAwait(false);
+            if (!lease.IsLost && queueContext is not { IsCompleted: true } and not { IsAbandoned: true })
+                await RecordFailureAsync(message, jobId, ex.Message, tags, stopwatch.Elapsed).ConfigureAwait(false);
         }
         finally
         {
             DistributedMetrics.InFlight.Add(-1, tags);
-            await timeoutCts.CancelAsync().ConfigureAwait(false);
-
-            if (autoRenewTask is not null)
-                await autoRenewTask.ConfigureAwait(false);
+            lease.StopRenewing();
+            lease.Cancel();
 
             if (cancellationPollTask is not null)
                 await cancellationPollTask.ConfigureAwait(false);
+
+            // Explicit settlement remains authoritative even if later handler code throws.
+            if (queueContext is { IsCompleted: true })
+            {
+                _workerInfo?.Stats.IncrementProcessed();
+                DistributedMetrics.Processed.Add(1, tags);
+                DistributedMetrics.HandlerDuration.Record(stopwatch.Elapsed.TotalMilliseconds,
+                    DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, "processed"));
+                if (jobId is not null)
+                    await TryUpdateStateAsync(ct => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Completed,
+                        attempt: message.DequeueCount, completedUtc: _timeProvider.GetUtcNow(), progress: 100,
+                        expiry: _stateExpiry, cancellationToken: ct)).ConfigureAwait(false);
+                if (_stateStore is not null)
+                    await TryUpdateStateAsync(ct => _stateStore.IncrementCounterAsync(_options.QueueName, "processed", 1, ct)).ConfigureAwait(false);
+            }
+            else if (queueContext is { IsAbandoned: true })
+            {
+                await SetJobStatusAsync(jobId, QueueJobStatus.RetryPending, message.DequeueCount).ConfigureAwait(false);
+                DistributedMetrics.Abandoned.Add(1, tags);
+            }
         }
     }
 
@@ -464,155 +469,92 @@ public sealed class QueueWorker : BackgroundService
         return handlers;
     }
 
-    private void RestoreHeaders(QueueMessage message, CallContext callContext)
+    private void RestoreHeaders(QueueMessage message, CallContext callContext, IServiceProvider services)
     {
-        foreach (var provider in _headerProviders)
+        foreach (var provider in _headerProviders.Concat(services.GetServices<IQueueHeaderProvider>()).Distinct())
+            provider.Restore(message.Headers, callContext);
+    }
+
+    private Task<bool> ReadCancellationAsync(string jobId, CancellationToken token)
+        => QueueOperation.RunAsync(ct => _stateStore!.IsCancellationRequestedAsync(jobId, ct), s_ackTimeout, _timeProvider, token);
+
+    private async Task PollForCancellationAsync(string jobId, int attempt, QueueLease lease)
+    {
+        var token = lease.Token;
+        while (!token.IsCancellationRequested)
         {
             try
             {
-                provider.Restore(message.Headers, callContext);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Header provider {Provider} failed to restore context for message {MessageId} on {QueueName}",
-                    provider.GetType().Name, message.Id, _options.QueueName);
-            }
-        }
-    }
-
-    private async Task PollForCancellationAsync(string jobId, CancellationTokenSource messageTimeoutCts, CancellationToken drainToken)
-    {
-        try
-        {
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(messageTimeoutCts.Token, drainToken);
-            while (!linkedCts.Token.IsCancellationRequested)
-            {
-                await Task.Delay(_options.CancellationPollInterval, _timeProvider, linkedCts.Token).ConfigureAwait(false);
-
-                bool requested;
-                try
+                await Task.Delay(_options.CancellationPollInterval, _timeProvider, token).ConfigureAwait(false);
+                if (await ReadCancellationAsync(jobId, token).ConfigureAwait(false))
                 {
-                    requested = await _stateStore!.IsCancellationRequestedAsync(jobId, linkedCts.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
-                {
+                    lease.Cancel();
                     return;
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to poll cancellation for job {JobId} on {QueueName}; will retry", jobId, _options.QueueName);
-                    continue;
-                }
-
-                if (requested)
-                {
-                    _logger.LogDebug("Cancellation requested for job {JobId} on {QueueName}", jobId, _options.QueueName);
-                    await messageTimeoutCts.CancelAsync().ConfigureAwait(false);
-                    return;
-                }
+                await TryUpdateStateAsync(ct => _stateStore!.HeartbeatAsync(jobId, ct, attempt, _stateExpiry), token).ConfigureAwait(false);
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Message finished or host is stopping
-        }
-    }
-
-    private async Task AutoRenewTimeoutAsync(QueueMessage message, string? jobId, CancellationToken cancellationToken)
-    {
-        // Renew at 2/3 of the visibility timeout to keep the lock with margin
-        var renewInterval = _options.VisibilityTimeout * (2.0 / 3.0);
-        if (renewInterval <= TimeSpan.Zero)
-            return;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(renewInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
-
-                _logger.LogDebug("Auto-renewing timeout for message {MessageId} on {QueueName} by {Timeout}",
-                    message.Id, _options.QueueName, _options.VisibilityTimeout);
-
-                await _client.RenewTimeoutAsync(message, _options.VisibilityTimeout, cancellationToken).ConfigureAwait(false);
-
-                if (jobId is not null && _stateStore is not null)
-                    await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, cancellationToken)).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
             catch (Exception ex)
             {
-                // One failed renewal is not fatal; the next tick tries again before the lock lapses.
-                _logger.LogWarning(ex, "Failed to auto-renew timeout for message {MessageId} on {QueueName}; retrying on the next interval",
-                    message.Id, _options.QueueName);
+                _logger.LogWarning(ex, "Failed to poll job {JobId}; will retry", jobId);
             }
         }
     }
 
-    private async Task HeartbeatAsync(QueueMessage message, string? jobId, CancellationToken ct)
+    private async Task HeartbeatAsync(QueueLease lease, string? jobId, int attempt, CancellationToken ct)
     {
-        await _client.RenewTimeoutAsync(message, _options.VisibilityTimeout, ct).ConfigureAwait(false);
-
-        if (jobId is not null && _stateStore is not null)
-            await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
+        await lease.RenewAsync(_options.VisibilityTimeout, ct).ConfigureAwait(false);
+        if (jobId is not null)
+            await TryUpdateStateAsync(token => _stateStore!.HeartbeatAsync(jobId, token, attempt, _stateExpiry), ct).ConfigureAwait(false);
     }
 
-    private async Task UpdateJobProgressAsync(string jobId, int percent, string? message, CancellationToken ct)
+    private async Task UpdateJobProgressAsync(string jobId, int attempt, int percent, string? message, CancellationToken ct)
     {
         if (_stateStore is null) return;
 
         // Cancellation checks must propagate, so this call is deliberately not wrapped.
-        if (await _stateStore.IsCancellationRequestedAsync(jobId, ct).ConfigureAwait(false))
+        if (await ReadCancellationAsync(jobId, ct).ConfigureAwait(false))
             throw new OperationCanceledException("Job cancellation was requested.");
 
-        await TryUpdateStateAsync(ackToken => _stateStore.UpdateJobProgressAsync(jobId, Math.Clamp(percent, 0, 100), message, _stateExpiry, ct)).ConfigureAwait(false);
-        await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, ct)).ConfigureAwait(false);
+        await TryUpdateStateAsync(ackToken => _stateStore.UpdateJobProgressAsync(jobId, Math.Clamp(percent, 0, 100), message, _stateExpiry, ackToken, attempt), ct).ConfigureAwait(false);
+        await TryUpdateStateAsync(ackToken => _stateStore.HeartbeatAsync(jobId, ackToken, attempt, _stateExpiry), ct).ConfigureAwait(false);
     }
 
-    private Task FailJobAsync(string? jobId, string errorMessage)
-    {
-        if (jobId is null || _stateStore is null)
-            return Task.CompletedTask;
+    private Task SetJobStatusAsync(string? jobId, QueueJobStatus status, int attempt, string? error = null)
+        => jobId is null ? Task.CompletedTask : TryUpdateStateAsync(ct => _stateStore!.UpdateJobStatusAsync(jobId, status,
+            attempt: attempt, completedUtc: status is QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled ? _timeProvider.GetUtcNow() : null,
+            errorMessage: error, expiry: _stateExpiry, cancellationToken: ct));
 
-        return TryUpdateStateAsync(ackToken => _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.Failed, completedUtc: _timeProvider.GetUtcNow(), errorMessage: errorMessage, expiry: _stateExpiry, cancellationToken: ackToken));
-    }
-
-    private async Task RecordFailureAsync(QueueMessage message, System.Diagnostics.TagList tags, TimeSpan elapsed)
+    private async Task RecordFailureAsync(QueueMessage message, string? jobId, string error, System.Diagnostics.TagList tags, TimeSpan elapsed)
     {
-        if (_options.AutoComplete)
-            await AbandonWithBackoffAsync(message).ConfigureAwait(false);
+        if (_options.AutoComplete && _options.MaxAttempts > 0 && message.DequeueCount >= _options.MaxAttempts)
+            await RecordDeadLetterAsync(message, error, jobId, tags).ConfigureAwait(false);
+        else
+        {
+            if (_options.AutoComplete)
+                await AbandonWithBackoffAsync(message).ConfigureAwait(false);
+            await SetJobStatusAsync(jobId, QueueJobStatus.RetryPending, message.DequeueCount, error).ConfigureAwait(false);
+        }
 
         _workerInfo?.Stats.IncrementFailed();
         DistributedMetrics.Failed.Add(1, tags);
         DistributedMetrics.HandlerDuration.Record(elapsed.TotalMilliseconds, DistributedMetrics.Tags(_options.QueueName, _options.MessageType.Name, _options.Group, "failed"));
-
         if (_stateStore is not null)
-            await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "failed", 1, ackToken)).ConfigureAwait(false);
+            await TryUpdateStateAsync(ct => _stateStore.IncrementCounterAsync(_options.QueueName, "failed", 1, ct)).ConfigureAwait(false);
     }
 
     private async Task RecordDeadLetterAsync(QueueMessage message, string reason, string? jobId, System.Diagnostics.TagList tags)
     {
+        if (!await TryAckAsync(ct => _client.DeadLetterAsync(message, reason, ct), message, "dead-letter").ConfigureAwait(false))
+        {
+            await SetJobStatusAsync(jobId, QueueJobStatus.RetryPending, message.DequeueCount, reason).ConfigureAwait(false);
+            return;
+        }
         _workerInfo?.Stats.IncrementDeadLettered();
         DistributedMetrics.DeadLettered.Add(1, tags);
-
+        await SetJobStatusAsync(jobId, QueueJobStatus.Failed, message.DequeueCount, reason).ConfigureAwait(false);
         if (_stateStore is not null)
-            await TryUpdateStateAsync(ackToken => _stateStore.IncrementCounterAsync(_options.QueueName, "dead_lettered", 1, ackToken)).ConfigureAwait(false);
-
-        try
-        {
-            using var dlqCts = new CancellationTokenSource(s_ackTimeout);
-            await _client.DeadLetterAsync(message, reason, dlqCts.Token).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Without a dead-letter queue the message would otherwise reappear every visibility period; park it for the maximum delay instead.
-            _logger.LogError(ex, "Failed to dead-letter message {MessageId} on {QueueName} ({Reason}); abandoning with maximum delay",
-                message.Id, _options.QueueName, reason);
-            await TryAckAsync(ackToken => _client.AbandonAsync(message, QueueRetryDelay.MaxDelay, ackToken), message, "abandon").ConfigureAwait(false);
-        }
+            await TryUpdateStateAsync(ct => _stateStore.IncrementCounterAsync(_options.QueueName, "dead_lettered", 1, ct)).ConfigureAwait(false);
     }
 
     private Task AbandonWithBackoffAsync(QueueMessage message)
@@ -627,29 +569,32 @@ public sealed class QueueWorker : BackgroundService
         return TryAckAsync(ackToken => _client.AbandonAsync(message, TimeSpan.Zero, ackToken), message, "abandon");
     }
 
-    private async Task TryAckAsync(Func<CancellationToken, Task> operation, QueueMessage message, string operationName)
+    private async Task<bool> TryAckAsync(Func<CancellationToken, Task> operation, QueueMessage message, string operationName)
     {
-        using var cts = new CancellationTokenSource(s_ackTimeout);
         try
         {
-            await operation(cts.Token).ConfigureAwait(false);
+            await QueueOperation.RunAsync(operation, s_ackTimeout, _timeProvider).ConfigureAwait(false);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to {Operation} message {MessageId} on {QueueName}; the transport will redeliver it when the visibility timeout lapses",
                 operationName, message.Id, _options.QueueName);
+            return false;
         }
     }
 
     /// <summary>
     /// Runs a job-state operation, logging instead of failing the message when the store is unavailable.
     /// </summary>
-    private async Task TryUpdateStateAsync(Func<CancellationToken, Task> operation)
+    private Task TryUpdateStateAsync(Func<CancellationToken, Task<bool>> operation, CancellationToken cancellationToken = default)
+        => TryUpdateStateAsync(async ct => { _ = await operation(ct).ConfigureAwait(false); }, cancellationToken);
+
+    private async Task TryUpdateStateAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
     {
-        using var cts = new CancellationTokenSource(s_ackTimeout);
         try
         {
-            await operation(cts.Token).ConfigureAwait(false);
+            await QueueOperation.RunAsync(operation, s_ackTimeout, _timeProvider, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

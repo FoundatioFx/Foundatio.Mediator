@@ -51,6 +51,12 @@ namespace Foundatio.Mediator.Distributed;
 /// </remarks>
 public class QueueContext
 {
+    private readonly SemaphoreSlim _settlementGate = new(1);
+    private int _settlement;
+
+    internal Action? OnSettled { get; init; }
+    internal Action? OnCancelProcessing { get; init; }
+
     /// <summary>
     /// The name of the queue this message was received from.
     /// </summary>
@@ -129,14 +135,14 @@ public class QueueContext
     /// Indicates whether the handler explicitly completed the message via <see cref="CompleteAsync"/>.
     /// When true, the worker infrastructure will skip automatic completion.
     /// </summary>
-    public bool IsCompleted { get; internal set; }
+    public bool IsCompleted => Volatile.Read(ref _settlement) == 1;
 
     /// <summary>
     /// Indicates whether the handler explicitly abandoned the message via <see cref="AbandonAsync(CancellationToken)"/>
     /// or <see cref="AbandonAsync(TimeSpan, CancellationToken)"/>.
     /// When true, the worker infrastructure will skip automatic abandonment.
     /// </summary>
-    public bool IsAbandoned { get; internal set; }
+    public bool IsAbandoned => Volatile.Read(ref _settlement) == 2;
 
     /// <summary>
     /// Reports that the handler is still actively processing the message.
@@ -182,12 +188,27 @@ public class QueueContext
     /// processing successfully. If <c>AutoComplete</c> is enabled, the worker
     /// infrastructure will skip its own completion when this has been called.
     /// </summary>
-    public async Task CompleteAsync(CancellationToken cancellationToken = default)
-    {
-        if (OnComplete is not null)
-            await OnComplete(cancellationToken).ConfigureAwait(false);
+    public Task CompleteAsync(CancellationToken cancellationToken = default)
+        => SettleAsync(1, OnComplete, cancellationToken);
 
-        IsCompleted = true;
+    private async Task SettleAsync(int outcome, Func<CancellationToken, Task>? operation, CancellationToken cancellationToken)
+    {
+        await _settlementGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_settlement == outcome)
+                return;
+            if (_settlement != 0)
+                throw new InvalidOperationException("This delivery has already been settled with a different outcome.");
+            if (operation is not null)
+                await operation(cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _settlement, outcome);
+            OnSettled?.Invoke();
+        }
+        finally
+        {
+            _settlementGate.Release();
+        }
     }
 
     /// <summary>
@@ -205,11 +226,6 @@ public class QueueContext
     /// </summary>
     /// <param name="delay">How long before the message becomes visible again. Use <see cref="TimeSpan.Zero"/> for immediate redelivery.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    public async Task AbandonAsync(TimeSpan delay, CancellationToken cancellationToken = default)
-    {
-        if (OnAbandon is not null)
-            await OnAbandon(delay, cancellationToken).ConfigureAwait(false);
-
-        IsAbandoned = true;
-    }
+    public Task AbandonAsync(TimeSpan delay, CancellationToken cancellationToken = default)
+        => SettleAsync(2, ct => OnAbandon?.Invoke(delay, ct) ?? Task.CompletedTask, cancellationToken);
 }

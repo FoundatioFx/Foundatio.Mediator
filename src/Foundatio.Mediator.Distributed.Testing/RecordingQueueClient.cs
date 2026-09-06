@@ -105,25 +105,25 @@ public sealed class RecordingQueueClient : IQueueClient
 
     private async Task<bool> IsIdleAsync(CancellationToken cancellationToken)
     {
-        var queues = _queueNames.Keys.Where(q => !q.EndsWith("-dead-letter", StringComparison.OrdinalIgnoreCase)).ToList();
+        var queues = _queueNames.Keys.Where(q => !q.EndsWith(QueueDefinition.DeadLetterQueueNameFor(string.Empty), StringComparison.OrdinalIgnoreCase)).ToList();
         if (queues.Count == 0)
             return true;
 
         if (_inMemory is not null)
-            return queues.All(q => _inMemory.GetPendingCount(q) == 0 && _inMemory.GetInFlightCount(q) == 0);
+            return queues.All(q => _inMemory.GetPendingCount(q) == 0 && _inMemory.GetInFlightCount(q) == 0 && _inMemory.GetDelayedCount(q) == 0);
 
         var stats = await _inner.GetQueueStatsAsync(queues, cancellationToken).ConfigureAwait(false);
-        return stats.All(s => s.ActiveCount == 0 && s.InFlightCount == 0);
+        return stats.All(s => s.ActiveCount == 0 && s.InFlightCount == 0 && s.DelayedCount == 0);
     }
 
     private async Task<IEnumerable<string>> PendingSummaryAsync(CancellationToken cancellationToken)
     {
         var queues = _queueNames.Keys.ToList();
         if (_inMemory is not null)
-            return queues.Select(q => $"{q}: {_inMemory.GetPendingCount(q)} pending, {_inMemory.GetInFlightCount(q)} in flight");
+            return queues.Select(q => $"{q}: {_inMemory.GetPendingCount(q)} pending, {_inMemory.GetInFlightCount(q)} in flight, {_inMemory.GetDelayedCount(q)} delayed");
 
         var stats = await _inner.GetQueueStatsAsync(queues, cancellationToken).ConfigureAwait(false);
-        return stats.Select(s => $"{s.QueueName}: {s.ActiveCount} pending, {s.InFlightCount} in flight");
+        return stats.Select(s => $"{s.QueueName}: {s.ActiveCount} pending, {s.InFlightCount} in flight, {s.DelayedCount} delayed");
     }
 
     public Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)

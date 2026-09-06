@@ -14,18 +14,20 @@ public interface IQueueJobStateStore
 
     /// <summary>
     /// Updates a job's status and optional fields. Implementations should apply the change atomically
-    /// relative to other status updates for the same job.
+    /// relative to other status updates for the same job. Returns false for a missing job, a terminal
+    /// job, an older attempt, or a repeated start of an attempt already waiting for retry.
+    /// Use SetJobStateAsync explicitly to reset a terminal job for administrative replay.
     /// </summary>
-    Task UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
+    Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
 
-    Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, int? expectedAttempt = null)
         => Task.CompletedTask;
 
     /// <summary>
     /// Signals that the job is still alive. Called on every visibility renewal and progress report
     /// so stores can detect stalled jobs. Default is a no-op.
     /// </summary>
-    Task HeartbeatAsync(string jobId, CancellationToken cancellationToken = default)
+    Task HeartbeatAsync(string jobId, CancellationToken cancellationToken = default, int? expectedAttempt = null, TimeSpan? expiry = null)
         => Task.CompletedTask;
 
     Task<bool> RequestCancellationAsync(string jobId, CancellationToken cancellationToken = default);

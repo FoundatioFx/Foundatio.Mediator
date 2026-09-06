@@ -6,7 +6,7 @@ namespace Foundatio.Mediator.Distributed;
 /// <summary>
 /// Worker-side middleware for <see cref="QueueLockAttribute"/>. Acquires the lock before the handler
 /// runs, renews it while the handler runs, and releases it afterwards. When the lock is held elsewhere
-/// the message is completed without running the handler.
+/// the worker waits with bounded jitter while retaining its queue lease. Distinct work is never discarded.
 /// </summary>
 [Middleware(Order = -90, ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton)]
 public class QueueLockMiddleware
@@ -48,7 +48,7 @@ public class QueueLockMiddleware
                 "Register one every worker shares (Redis, a database); the in-memory lock is only used with the in-memory queue.");
 
         var key = settings.Key
-            ?? (message as IHaveLockKey)?.LockKey
+            ?? (message as IHaveLockKey)?.GetLockKey()
             ?? $"{queueContext.QueueName}:{queueContext.MessageId}";
 
         var lifetime = settings.LifetimeSeconds > 0 ? TimeSpan.FromSeconds(settings.LifetimeSeconds) : queueContext.VisibilityTimeout;
@@ -57,18 +57,29 @@ public class QueueLockMiddleware
 
         var acquireTimeout = TimeSpan.FromSeconds(Math.Max(0, settings.AcquireTimeoutSeconds));
 
-        var queueLock = await _lockProvider.TryAcquireAsync(key, lifetime, acquireTimeout, cancellationToken).ConfigureAwait(false);
-        if (queueLock is null)
+        IQueueLock? queueLock = null;
+        bool reportedContention = false;
+        while (queueLock is null)
         {
-            _logger.LogInformation("Lock '{LockKey}' is held by another worker; completing message {MessageId} on {QueueName} without running {Handler}",
-                key, queueContext.MessageId, queueContext.QueueName, handlerInfo.DescriptorId);
-
-            await queueContext.CompleteAsync(cancellationToken).ConfigureAwait(false);
-            return Result.Ok();
+            cancellationToken.ThrowIfCancellationRequested();
+            queueLock = await QueueOperation.RunAsync(
+                ct => _lockProvider.TryAcquireAsync(key, lifetime, acquireTimeout, ct),
+                acquireTimeout + TimeSpan.FromSeconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+            if (queueLock is not null)
+                break;
+            if (!reportedContention)
+            {
+                reportedContention = true;
+                DistributedMetrics.Deferred.Add(1, DistributedMetrics.Tags(queueContext.QueueName, queueContext.MessageType?.Name, null, "lock-contention"));
+                _logger.LogDebug("Waiting for lock for message {MessageId} on {QueueName}", queueContext.MessageId, queueContext.QueueName);
+            }
+            // Keep the same delivery and retry budget. Re-enqueueing here would consume attempts,
+            // or require a non-atomic copy/delete operation that could duplicate distinct work.
+            await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(100, 501)), _timeProvider, cancellationToken).ConfigureAwait(false);
         }
 
         using var renewCts = new CancellationTokenSource();
-        var renewTask = RenewAsync(queueLock, lifetime, renewCts.Token);
+        var renewTask = RenewAsync(queueLock, lifetime, queueContext, renewCts.Token);
 
         try
         {
@@ -78,28 +89,43 @@ public class QueueLockMiddleware
         {
             await renewCts.CancelAsync().ConfigureAwait(false);
             await renewTask.ConfigureAwait(false);
-            await queueLock.DisposeAsync().ConfigureAwait(false);
+            await queueLock.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
         }
     }
 
-    private async Task RenewAsync(IQueueLock queueLock, TimeSpan lifetime, CancellationToken cancellationToken)
+    private async Task RenewAsync(IQueueLock queueLock, TimeSpan lifetime, QueueContext context, CancellationToken cancellationToken)
     {
-        var interval = lifetime * (2.0 / 3.0);
+        var expires = _timeProvider.GetUtcNow() + lifetime;
+        bool retry = false;
         while (!cancellationToken.IsCancellationRequested)
         {
+            var remaining = expires - _timeProvider.GetUtcNow();
+            if (remaining <= TimeSpan.Zero)
+                break;
             try
             {
-                await Task.Delay(interval, _timeProvider, cancellationToken).ConfigureAwait(false);
-                await queueLock.RenewAsync(lifetime, cancellationToken).ConfigureAwait(false);
+                var delay = retry ? TimeSpan.FromTicks(Math.Min(TimeSpan.TicksPerSecond, remaining.Ticks / 4)) : remaining / 2;
+                await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
+                remaining = expires - _timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                    break;
+                var started = _timeProvider.GetUtcNow();
+                await QueueOperation.RunAsync(ct => queueLock.RenewAsync(lifetime, ct), remaining, _timeProvider, cancellationToken).ConfigureAwait(false);
+                expires = started + lifetime;
+                retry = false;
             }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+            catch (QueueLeaseLostException) { break; }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to renew lock '{LockKey}'; retrying on the next interval", queueLock.Key);
+                retry = true;
+                _logger.LogWarning(ex, "Lock renewal failed on {QueueName}; retrying within the remaining lease", context.QueueName);
             }
+        }
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Lock lost for message {MessageId} on {QueueName}; cancelling processing", context.MessageId, context.QueueName);
+            context.OnCancelProcessing?.Invoke();
         }
     }
 

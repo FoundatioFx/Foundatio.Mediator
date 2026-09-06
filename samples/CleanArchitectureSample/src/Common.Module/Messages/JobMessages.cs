@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using Foundatio.Mediator.Distributed;
 
 namespace Common.Module.Messages;
@@ -15,6 +14,5 @@ public record DeliverWebhook(string Url, int FailTimes);
 /// <summary>Bank file for one bank. Requests for the same bank share a lock key, so only one runs at a time.</summary>
 public record GenerateBankFile(string Bank, string BatchId) : IHaveLockKey
 {
-    [JsonIgnore]
-    public string LockKey => $"bank-file:{Bank}";
+    public string GetLockKey() => $"bank-file:{Bank}";
 }

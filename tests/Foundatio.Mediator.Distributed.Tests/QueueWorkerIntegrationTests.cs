@@ -330,7 +330,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
 
             var dlqMessages = queueClient.DrainDeadLetterMessages("PoisonMessage");
             Assert.Single(dlqMessages);
-            Assert.Contains("max attempts", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Simulated failure", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason]);
         }
         finally
         {
@@ -422,7 +422,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
 
             var dlqMessages = queueClient.DrainDeadLetterMessages("NoRetryMessage");
             Assert.Single(dlqMessages);
-            Assert.Contains("max attempts", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason], StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Always fails", dlqMessages[0].Headers[MessageHeaders.DeadLetterReason]);
         }
         finally
         {

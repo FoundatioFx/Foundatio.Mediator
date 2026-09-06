@@ -83,6 +83,32 @@ public class PublishInterceptorTests(ITestOutputHelper output) : GeneratorTestBa
         Assert.Contains("registry.GetPublishHandlersForType(typeof(global::OrderShipped))", interceptors);
     }
 
+    [Fact]
+    public void NullableValueTypePublishSites_AreNotIntercepted()
+    {
+        var source = """
+            using System.Threading.Tasks;
+            using Foundatio.Mediator;
+
+            public readonly record struct ValueEvent(int Value);
+
+            public class Publisher(IMediator mediator)
+            {
+                public ValueTask Nullable(ValueEvent? evt) => mediator.PublishAsync(evt!);
+                public ValueTask NullableInt(int? evt) => mediator.PublishAsync(evt!);
+                public ValueTask Generic<T>(T? evt) where T : struct => mediator.PublishAsync(evt!);
+                public ValueTask Value(ValueEvent evt) => mediator.PublishAsync(evt);
+            }
+            """;
+
+        var (_, _, trees) = RunGenerator(source, [new MediatorGenerator()]);
+        var interceptors = trees.First(t => t.HintName == "_PublishInterceptors.g.cs").Source;
+
+        Assert.Equal(1, CountOccurrences(interceptors, "[InterceptsLocation("));
+        Assert.Contains("registry.GetPublishHandlersForType(typeof(global::ValueEvent))", interceptors);
+        Assert.DoesNotContain("message.GetType()", interceptors);
+    }
+
     private static int CountOccurrences(string text, string value)
     {
         int count = 0, index = 0;

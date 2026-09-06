@@ -57,9 +57,11 @@ internal static class CallSiteAnalyzer
 
         // PublishAsync dispatches on the runtime type. A call site typed as object, an interface, an abstract
         // class or a type parameter cannot be resolved at compile time; leave it to the runtime path.
+        // Nullable value types box as their underlying type (or null), never as Nullable<T>.
         if (isPublish && (messageType.SpecialType == SpecialType.System_Object
                           || messageType.TypeKind is TypeKind.Interface or TypeKind.TypeParameter or TypeKind.Dynamic
-                          || messageType.IsAbstract))
+                          || messageType.IsAbstract
+                          || messageType.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T))
             return null;
 
         ITypeSymbol? responseType = null;

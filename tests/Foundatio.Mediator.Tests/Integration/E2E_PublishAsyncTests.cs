@@ -11,6 +11,96 @@ public class E2E_PublishAsyncTests(ITestOutputHelper output) : TestWithLoggingBa
     public interface IE2eEvent { }
     public record E2eEvent(string Name) : IE2eEvent;
     public record E2eCommand(string Name) : ICommand;
+    public readonly record struct ValueEvent(string Name);
+    public sealed record DerivedEvent(string Name) : E2eEvent(Name);
+
+    public class ValueEventHandler(EventCollector collector)
+    {
+        public void Handle(ValueEvent message) => collector.AddEvent(message.Name);
+    }
+
+    public class DerivedEventHandler(EventCollector collector)
+    {
+        public void Handle(DerivedEvent message) => collector.AddEvent("derived:" + message.Name);
+    }
+
+    public class ArrayEventHandler(EventCollector collector)
+    {
+        public void Handle(string[] message) => collector.AddEvent(message[0]);
+    }
+
+    [Fact]
+    public async Task PublishAsync_CovariantArray_DispatchesToRuntimeTypeHandler()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<EventCollector>();
+        services.AddMediator(b => b.AddAssembly<ValueEvent>());
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        object[] message = new string[] { "array" };
+
+        await mediator.PublishAsync(message, TestCancellationToken);
+
+        Assert.Equal(["array"], provider.GetRequiredService<EventCollector>().Events);
+    }
+
+    [Fact]
+    public async Task PublishAsync_NullableValueType_DispatchesToUnderlyingTypeHandler()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<EventCollector>();
+        services.AddMediator(b => b.AddAssembly<ValueEvent>());
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        ValueEvent? message = new ValueEvent("nullable");
+
+        await mediator.PublishAsync(message, TestCancellationToken);
+
+        Assert.Equal(["nullable"], provider.GetRequiredService<EventCollector>().Events);
+    }
+
+    [Theory]
+    [InlineData("object")]
+    [InlineData("interface")]
+    [InlineData("base")]
+    [InlineData("generic")]
+    public async Task PublishAsync_PolymorphicMessage_DispatchesToRuntimeTypeHandlers(string staticType)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<EventCollector>();
+        services.AddMediator(b => b.AddAssembly<DerivedEvent>());
+        await using var provider = services.BuildServiceProvider();
+        var mediator = provider.GetRequiredService<IMediator>();
+        var message = new DerivedEvent("event");
+
+        switch (staticType)
+        {
+            case "object":
+                await mediator.PublishAsync((object)message, TestCancellationToken);
+                break;
+            case "interface":
+                await mediator.PublishAsync((IE2eEvent)message, TestCancellationToken);
+                break;
+            case "base":
+                await mediator.PublishAsync((E2eEvent)message, TestCancellationToken);
+                break;
+            case "generic":
+                await PublishGenericAsync(mediator, message, TestCancellationToken);
+                break;
+        }
+
+        var events = provider.GetRequiredService<EventCollector>().Events;
+        Assert.Equal(3, events.Count);
+        Assert.Contains("derived:event", events);
+        Assert.Contains("second:event", events);
+        Assert.Contains("first:DerivedEvent", events);
+    }
+
+    private static ValueTask PublishGenericAsync<T>(IMediator mediator, T message, CancellationToken cancellationToken)
+        where T : class => mediator.PublishAsync(message, cancellationToken);
 
     public class EventCollector
     {

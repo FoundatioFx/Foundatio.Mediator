@@ -265,7 +265,7 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
             Headers = new Dictionary<string, string> { [MessageHeaders.MessageType] = "BigMessage" }
         }], TestCancellationToken));
 
-        int expectedSize = big.Length + Encoding.UTF8.GetByteCount(MessageHeaders.MessageType) + "BigMessage".Length;
+        int expectedSize = big.Length + Encoding.UTF8.GetByteCount(MessageHeaders.MessageType) + "BigMessage".Length + "String".Length;
         Assert.Contains(queueName, ex.Message);
         Assert.Contains(expectedSize.ToString("N0"), ex.Message);
         Assert.Contains("BigMessage", ex.Message);

@@ -18,6 +18,7 @@ namespace Foundatio.Mediator.Distributed.Aws;
 public sealed class SqsPubSubClient : IPubSubClient
 {
     private const int MaxBatchEntries = 10;
+    private const string ExcludedHostAttribute = "fm-exclude-host";
     internal const string RoleTag = "fm:role";
     internal const string HostTag = "fm:host";
     internal const string HeartbeatTag = "fm:heartbeat";
@@ -42,6 +43,7 @@ public sealed class SqsPubSubClient : IPubSubClient
     private Task? _sweepTask;
     private string? _appliedPolicyKey;
     private int _disposed;
+    private readonly AwsBatchers<PublishBatchRequestEntry> _publishes;
 
     public SqsPubSubClient(
         IAmazonSimpleNotificationService sns,
@@ -60,28 +62,43 @@ public sealed class SqsPubSubClient : IPubSubClient
             : $"{notificationOptions.ResourcePrefix}-{options.QueuePrefix}";
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        ArgumentNullException.ThrowIfNull(_options.Batching);
+        _publishes = new AwsBatchers<PublishBatchRequestEntry>(_options.Batching.Snapshot(), PublishBatchAsync);
     }
 
     /// <inheritdoc />
     public async Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> messages, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
         if (messages.Count == 0)
             return;
 
         var topicArn = await GetOrCreateTopicArnAsync(topic, cancellationToken).ConfigureAwait(false);
 
-        var batch = new List<PublishBatchRequestEntry>(MaxBatchEntries);
+        var batcher = _publishes.Get(topicArn);
+        var batch = new List<(PublishBatchRequestEntry Value, int Size)>(MaxBatchEntries);
         int batchBytes = 0;
 
         for (int i = 0; i < messages.Count; i++)
         {
             var message = messages[i];
             var body = SqsPayload.EncodeBody(message.Body);
-            int size = SqsPayload.Validate("topic", topic, body, message.Headers);
+            var attributeValues = SqsPayload.ToAttributeValues(message.Headers, _options.PackHeaders);
+            if (_options.FilterSelfPublications)
+            {
+                // A transport-only attribute stays visible even when application headers are packed.
+                // A distinct sentinel permits publications without an origin (AWS forbids empty values).
+                if (attributeValues.Count == SqsPayload.MaxMessageAttributes)
+                    attributeValues = new Dictionary<string, string> { [MessageHeaders.PackedHeaders] = JsonSerializer.Serialize(message.Headers) };
+                attributeValues[ExcludedHostAttribute] = message.Headers?.TryGetValue(MessageHeaders.OriginHostId, out var origin) == true
+                    ? "host:" + origin : "none";
+            }
+            int size = SqsPayload.Validate("topic", topic, body, message.Headers, attributeValues);
 
             if (batch.Count == MaxBatchEntries || (batch.Count > 0 && batchBytes + size > SqsPayload.MaxMessageBytes))
             {
-                await PublishBatchAsync(topicArn, topic, batch, cancellationToken).ConfigureAwait(false);
+                await Task.WhenAll(batch.Select(e => batcher.AddAsync(e.Value, e.Size, cancellationToken))).ConfigureAwait(false);
                 batch.Clear();
                 batchBytes = 0;
             }
@@ -92,7 +109,6 @@ public sealed class SqsPubSubClient : IPubSubClient
                 Message = body
             };
 
-            var attributeValues = SqsPayload.ToAttributeValues(message.Headers);
             if (attributeValues.Count > 0)
             {
                 entry.MessageAttributes = new Dictionary<string, Amazon.SimpleNotificationService.Model.MessageAttributeValue>(attributeValues.Count);
@@ -100,28 +116,29 @@ public sealed class SqsPubSubClient : IPubSubClient
                     entry.MessageAttributes[key] = new Amazon.SimpleNotificationService.Model.MessageAttributeValue { DataType = "String", StringValue = value };
             }
 
-            batch.Add(entry);
+            batch.Add((entry, size));
             batchBytes += size;
         }
 
         if (batch.Count > 0)
-            await PublishBatchAsync(topicArn, topic, batch, cancellationToken).ConfigureAwait(false);
+            await Task.WhenAll(batch.Select(e => batcher.AddAsync(e.Value, e.Size, cancellationToken))).ConfigureAwait(false);
     }
 
-    private async Task PublishBatchAsync(string topicArn, string topic, List<PublishBatchRequestEntry> entries, CancellationToken cancellationToken)
+    private async Task PublishBatchAsync(string topicArn, IReadOnlyList<AwsBatcher<PublishBatchRequestEntry>.Entry> entries, CancellationToken cancellationToken)
     {
+        var requests = new List<PublishBatchRequestEntry>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            entries[i].Value.Id = i.ToString(CultureInfo.InvariantCulture);
+            requests.Add(entries[i].Value);
+        }
         var response = await _sns.PublishBatchAsync(new PublishBatchRequest
         {
             TopicArn = topicArn,
-            PublishBatchRequestEntries = [.. entries]
+            PublishBatchRequestEntries = requests
         }, cancellationToken).ConfigureAwait(false);
-
-        if (response.Failed is { Count: > 0 })
-        {
-            var first = response.Failed[0];
-            throw new InvalidOperationException(
-                $"Failed to publish {response.Failed.Count} message(s) to SNS topic '{topic}': [{first.Code}] {first.Message}");
-        }
+        AwsBatchResults.Complete(entries, (response.Successful ?? []).Select(e => e.Id),
+            (response.Failed ?? []).Select(e => (e.Id, e.Code, e.Message)), "publish", topicArn);
     }
 
     /// <inheritdoc />
@@ -148,7 +165,7 @@ public sealed class SqsPubSubClient : IPubSubClient
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var queueTask = EnsureSharedQueueAsync(cancellationToken);
-        await Task.WhenAll(topics.Select(t => GetOrCreateTopicArnAsync(t.Name, cancellationToken))).ConfigureAwait(false);
+        await Task.WhenAll(topics.Select(t => GetOrCreateTopicArnAsync(t.Name, cancellationToken).AsTask())).ConfigureAwait(false);
         await queueTask.ConfigureAwait(false);
 
         await Task.WhenAll(topics.Select(t => EnsureSubscriptionSetupAsync(t.Name, cancellationToken))).ConfigureAwait(false);
@@ -178,19 +195,43 @@ public sealed class SqsPubSubClient : IPubSubClient
 
         await ApplyQueuePolicyAsync(queue, cancellationToken).ConfigureAwait(false);
 
-        var subscribeResponse = await _sns.SubscribeAsync(new SubscribeRequest
+        var request = new SubscribeRequest
         {
             TopicArn = topicArn,
             Protocol = "sqs",
             Endpoint = queue.Arn,
-            Attributes = new Dictionary<string, string> { ["RawMessageDelivery"] = "true" }
-        }, cancellationToken).ConfigureAwait(false);
+            Attributes = CreateSubscriptionAttributes()
+        };
+        SubscribeResponse subscribeResponse;
+        try
+        {
+            subscribeResponse = await _sns.SubscribeAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (FilterPolicyLimitExceededException) when (_options.FilterSelfPublications)
+        {
+            // Filtering is an optimization. Exhausting the account/topic quota must not prevent
+            // a node from receiving notifications; the bridge still checks origin locally.
+            _logger.LogWarning("SNS filter-policy quota reached for {TopicArn}; using local self-delivery filtering", topicArn);
+            request.Attributes.Remove("FilterPolicy");
+            subscribeResponse = await _sns.SubscribeAsync(request, cancellationToken).ConfigureAwait(false);
+        }
 
         _logger.LogInformation("Subscribed SQS queue {QueueName} to SNS topic {TopicArn} (subscription={SubscriptionArn})",
             queue.Name, topicArn, subscribeResponse.SubscriptionArn);
 
         await sweep.ConfigureAwait(false);
         return new SubscriptionSetup(topic, topicArn, queue, subscribeResponse.SubscriptionArn);
+    }
+
+    private Dictionary<string, string> CreateSubscriptionAttributes()
+    {
+        var attributes = new Dictionary<string, string> { ["RawMessageDelivery"] = "true" };
+        if (_options.FilterSelfPublications)
+            attributes["FilterPolicy"] = JsonSerializer.Serialize(new Dictionary<string, object[]>
+            {
+                [ExcludedHostAttribute] = [new Dictionary<string, object> { ["anything-but"] = "host:" + _hostId }, new Dictionary<string, object> { ["exists"] = false }]
+            });
+        return attributes;
     }
 
     private async Task<SharedQueue> EnsureSharedQueueAsync(CancellationToken cancellationToken)
@@ -514,6 +555,7 @@ public sealed class SqsPubSubClient : IPubSubClient
             {
                 foreach (var (key, attribute) in sqsMessage.MessageAttributes)
                     headers[key] = attribute.StringValue;
+                headers.Remove(ExcludedHostAttribute);
                 SqsPayload.UnpackHeaders(headers);
             }
 
@@ -532,7 +574,7 @@ public sealed class SqsPubSubClient : IPubSubClient
         }
     }
 
-    private async Task<string> GetOrCreateTopicArnAsync(string topic, CancellationToken cancellationToken)
+    private async ValueTask<string> GetOrCreateTopicArnAsync(string topic, CancellationToken cancellationToken)
     {
         if (_topicArnCache.TryGetValue(topic, out var cached))
             return cached;
@@ -575,6 +617,7 @@ public sealed class SqsPubSubClient : IPubSubClient
             return;
 
         await _lifetime.CancelAsync().ConfigureAwait(false);
+        await _publishes.DisposeAsync().ConfigureAwait(false);
 
         foreach (var handle in _activeSubscriptions)
             await handle.DisposeAsync().ConfigureAwait(false);

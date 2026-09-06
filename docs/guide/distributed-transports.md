@@ -63,7 +63,7 @@ builder.Services.AddMediator()
 
 Each queue is an SQS standard queue named from `ResourcePrefix` plus the logical handler/message subscription name or explicit `QueueName`, with a dead-letter queue `{queue}-dead-letter`. The `[Queue]` settings become queue attributes: `TimeoutSeconds` is the SQS visibility timeout (also requested on every receive, so the transport lock and the worker's renewal cadence always agree), `MaxAttempts` sets a redrive policy whose receive count sits above it so the library's own dead-lettering runs first, and dead-letter queues keep messages for `DeadLetterRetention`.
 
-Bodies travel as UTF-8 JSON text; headers are message attributes, or one `fm-headers` JSON attribute once there are more than the ten SQS allows. A message over 256 KB fails at enqueue naming the queue, the size, and the message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
+Bodies travel as UTF-8 JSON text. Multiple headers pack into one `fm-headers` JSON attribute by default, reducing transport overhead. Receivers accept both packed and individual attributes. Set `aws.Queues.PackHeaders = false` or `aws.Notifications.PackHeaders = false` for external consumers or SNS filters that need individual attributes; exceeding the native attribute limit still requires packing. The transport uses a conservative shared SQS/SNS limit of 256 KiB, including attribute names, data types, and values. An oversized message fails at enqueue naming the destination, size, and message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
 
 ### Provisioning {#provisioning}
 
@@ -92,7 +92,29 @@ IAM actions by role:
 | Notifications | adds `sqs:CreateQueue`, `sqs:DeleteQueue`, `sqs:SetQueueAttributes`, `sqs:TagQueue`, `sqs:ListQueues`, `sqs:ListQueueTags`, `sns:Subscribe`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:Publish` |
 | Provisioning | adds `sqs:CreateQueue`, `sqs:SetQueueAttributes`, `sqs:TagQueue`, `sns:CreateTopic`, `sns:GetTopicAttributes` |
 
+### Broker batching
+
+Concurrent queue sends and completions automatically share SQS batch requests. Concurrent notifications share SNS publish batches. Each caller waits for its own broker result: a failed entry fails that caller, while successful entries complete normally. An absent result is an unknown outcome and fails the affected caller. Successful entries are never retried as part of another entry's failure.
+
+`aws.Queues.Batching` and `aws.Notifications.Batching` expose these defaults:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `MaxBatchSize` | 10 | Entries per request; full batches dispatch immediately |
+| `MaxDelay` | 1 ms | Collection window for a partial batch; zero sends available entries immediately |
+| `MaxConcurrency` | 4 | Concurrent batch operations per destination and operation |
+| `Capacity` | 1,024 | Waiting entries per destination and operation before callers wait for capacity |
+| `RequestTimeout` | 30 seconds | Request deadline, including SDK retries |
+
+Batches also respect the aggregate byte limit. Cancellation before dispatch removes the entry; cancellation after dispatch does not cancel another caller's request and leaves the cancelled entry's broker outcome uncertain. Disposing the client cancels pending callers and stops its batching workers. Register these clients as singletons and dispose them with the host. Tracing links each batch to its contributing operations without retaining a caller's request context in the transport worker.
+
+Queue workers briefly coalesce newly released capacity to avoid fragmented broker receives. `DistributedQueueOptions.ReceiveBatchDelay` defaults to 1 ms and can be zero. This applies to distributed transports under load; it never increases the configured number of in-flight messages or waits indefinitely for a slow handler.
+
 ### Notifications on SNS
+
+SNS subscriptions filter this node's own publications at the broker by default. The transport writes a reserved `fm-exclude-host` attribute for filtering and removes it on receive; the original headers still round-trip. The mediator also checks origin locally. If SNS rejects a subscription because its filter-policy quota is exhausted, the transport logs a warning and subscribes without the optimization.
+
+Set `aws.Notifications.FilterSelfPublications = false` when using external publishers that send no message attributes, or to avoid SNS filter-policy quotas. SNS's `exists: false` filter only matches messages that have at least one attribute; library publications always include the routing attribute when filtering is enabled. See [AWS filtering constraints](https://docs.aws.amazon.com/sns/latest/dg/subscription-filter-policy-constraints.html) and [key matching](https://docs.aws.amazon.com/sns/latest/dg/attribute-key-matching.html).
 
 One SNS topic per `ResourcePrefix` carries every distributed notification. Each process creates its own SQS subscription queue, `{QueuePrefix}-{HostId}`, subscribed with raw delivery, and deletes it on graceful shutdown when `CleanupOnDispose` is on.
 

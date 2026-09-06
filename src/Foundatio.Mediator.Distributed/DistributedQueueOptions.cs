@@ -8,6 +8,13 @@ namespace Foundatio.Mediator.Distributed;
 public class DistributedQueueOptions
 {
     /// <summary>
+    /// Maximum wall-clock delay to collect capacity released by concurrent broker acknowledgments
+    /// before receiving again. Applies only to distributed transports under load. Default is 1 ms;
+    /// zero disables coalescing. A slow handler never extends this delay.
+    /// </summary>
+    public TimeSpan ReceiveBatchDelay { get; set; } = TimeSpan.FromMilliseconds(1);
+
+    /// <summary>
     /// Serializer options for message bodies. Defaults to <see cref="JsonSerializerOptions.Default"/>.
     /// </summary>
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }

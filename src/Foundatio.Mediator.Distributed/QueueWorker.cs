@@ -34,6 +34,7 @@ public sealed class QueueWorker : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<QueueWorker> _logger;
     private readonly TimeSpan _shutdownTimeout;
+    private readonly TimeSpan _receiveBatchDelay;
     private readonly TimeSpan _stateExpiry;
     private readonly string _workerId;
 
@@ -63,6 +64,7 @@ public sealed class QueueWorker : BackgroundService
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger;
         _shutdownTimeout = distributedOptions?.ShutdownTimeout ?? TimeSpan.FromSeconds(30);
+        _receiveBatchDelay = distributedOptions?.ReceiveBatchDelay ?? TimeSpan.FromMilliseconds(1);
         _stateExpiry = distributedOptions?.JobStateExpiry ?? TimeSpan.FromHours(24);
     }
 
@@ -122,7 +124,16 @@ public sealed class QueueWorker : BackgroundService
             {
                 try { await Task.WhenAny(active).WaitAsync(stoppingToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-                continue;
+                active.RemoveAll(task => task.IsCompleted);
+            }
+
+            // Collect capacity released by related batch acknowledgments, including after an
+            // underfilled broker receive. A slow handler cannot extend this bounded window.
+            if (active.Count > 0 && _client.IsDistributed && _receiveBatchDelay > TimeSpan.Zero)
+            {
+                await Task.WhenAny(Task.WhenAll(active), Task.Delay(_receiveBatchDelay, stoppingToken)).ConfigureAwait(false);
+                if (stoppingToken.IsCancellationRequested) break;
+                active.RemoveAll(task => task.IsCompleted);
             }
 
             IReadOnlyList<QueueMessage> messages;

@@ -29,6 +29,9 @@ public sealed class SqsQueueClient : IQueueClient
     private readonly ILogger<SqsQueueClient> _logger;
     private readonly ConcurrentDictionary<string, string> _queueUrlCache = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dlqNotFound = new();
+    private readonly AwsBatchers<SendMessageBatchRequestEntry> _sends;
+    private readonly AwsBatchers<DeleteMessageBatchRequestEntry> _deletes;
+    private int _disposed;
 
     public SqsQueueClient(IAmazonSQS sqs, SqsQueueClientOptions? options = null, TimeProvider? timeProvider = null, ILogger<SqsQueueClient>? logger = null)
     {
@@ -36,59 +39,68 @@ public sealed class SqsQueueClient : IQueueClient
         _options = options ?? new SqsQueueClientOptions();
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? NullLogger<SqsQueueClient>.Instance;
+        ArgumentNullException.ThrowIfNull(_options.Batching);
+        var batching = _options.Batching.Snapshot();
+        _sends = new AwsBatchers<SendMessageBatchRequestEntry>(batching, SendBatchAsync);
+        _deletes = new AwsBatchers<DeleteMessageBatchRequestEntry>(batching, DeleteBatchAsync);
     }
 
     public async Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
         if (entries.Count == 0)
             return;
 
         var queueUrl = await GetQueueUrlAsync(queueName, cancellationToken).ConfigureAwait(false);
 
-        var batch = new List<SendMessageBatchRequestEntry>(MaxBatchEntries);
+        var batcher = _sends.Get(queueUrl);
+        var batch = new List<(SendMessageBatchRequestEntry Value, int Size)>(MaxBatchEntries);
         int batchBytes = 0;
 
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
             var body = SqsPayload.EncodeBody(entry.Body);
-            int size = SqsPayload.Validate("queue", queueName, body, entry.Headers);
+            var attributeValues = SqsPayload.ToAttributeValues(entry.Headers, _options.PackHeaders);
+            int size = SqsPayload.Validate("queue", queueName, body, entry.Headers, attributeValues);
 
             // A batch is limited to 10 entries and to the single-message byte limit in total.
             if (batch.Count == MaxBatchEntries || (batch.Count > 0 && batchBytes + size > SqsPayload.MaxMessageBytes))
             {
-                await SendBatchAsync(queueUrl, queueName, batch, cancellationToken).ConfigureAwait(false);
+                await Task.WhenAll(batch.Select(e => batcher.AddAsync(e.Value, e.Size, cancellationToken))).ConfigureAwait(false);
                 batch.Clear();
                 batchBytes = 0;
             }
 
-            batch.Add(new SendMessageBatchRequestEntry
+            batch.Add((new SendMessageBatchRequestEntry
             {
                 Id = i.ToString(CultureInfo.InvariantCulture),
                 MessageBody = body,
-                MessageAttributes = ToMessageAttributes(entry.Headers)
-            });
+                MessageAttributes = ToMessageAttributes(attributeValues)
+            }, size));
             batchBytes += size;
         }
 
         if (batch.Count > 0)
-            await SendBatchAsync(queueUrl, queueName, batch, cancellationToken).ConfigureAwait(false);
+            await Task.WhenAll(batch.Select(e => batcher.AddAsync(e.Value, e.Size, cancellationToken))).ConfigureAwait(false);
     }
 
-    private async Task SendBatchAsync(string queueUrl, string queueName, List<SendMessageBatchRequestEntry> entries, CancellationToken cancellationToken)
+    private async Task SendBatchAsync(string queueUrl, IReadOnlyList<AwsBatcher<SendMessageBatchRequestEntry>.Entry> entries, CancellationToken cancellationToken)
     {
+        var requests = new List<SendMessageBatchRequestEntry>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            entries[i].Value.Id = i.ToString(CultureInfo.InvariantCulture);
+            requests.Add(entries[i].Value);
+        }
         var response = await _sqs.SendMessageBatchAsync(new SendMessageBatchRequest
         {
             QueueUrl = queueUrl,
-            Entries = [.. entries]
+            Entries = requests
         }, cancellationToken).ConfigureAwait(false);
-
-        if (response.Failed is { Count: > 0 })
-        {
-            var first = response.Failed[0];
-            throw new InvalidOperationException(
-                $"Failed to send {response.Failed.Count} message(s) to SQS queue '{queueName}': [{first.Code}] {first.Message}");
-        }
+        AwsBatchResults.Complete(entries, (response.Successful ?? []).Select(e => e.Id),
+            (response.Failed ?? []).Select(e => (e.Id, e.Code, e.Message)), "send", queueUrl);
     }
 
     /// <summary>
@@ -169,14 +181,35 @@ public sealed class SqsQueueClient : IQueueClient
 
     public async Task CompleteAsync(QueueMessage message, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
         var queueUrl = await GetQueueUrlAsync(message.QueueName, cancellationToken).ConfigureAwait(false);
         var sqsMessage = GetNativeMessage(message);
 
-        await _sqs.DeleteMessageAsync(new DeleteMessageRequest
+        await _deletes.Get(queueUrl).AddAsync(new DeleteMessageBatchRequestEntry
         {
-            QueueUrl = queueUrl,
             ReceiptHandle = sqsMessage.ReceiptHandle
-        }, cancellationToken).ConfigureAwait(false);
+        }, 0, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task DeleteBatchAsync(string queueUrl, IReadOnlyList<AwsBatcher<DeleteMessageBatchRequestEntry>.Entry> entries, CancellationToken ct)
+    {
+        var requests = new List<DeleteMessageBatchRequestEntry>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            entries[i].Value.Id = i.ToString(CultureInfo.InvariantCulture);
+            requests.Add(entries[i].Value);
+        }
+        var response = await _sqs.DeleteMessageBatchAsync(new DeleteMessageBatchRequest { QueueUrl = queueUrl, Entries = requests }, ct).ConfigureAwait(false);
+        AwsBatchResults.Complete(entries, (response.Successful ?? []).Select(e => e.Id),
+            (response.Failed ?? []).Select(e => (e.Id, e.Code, e.Message)), "acknowledgment", queueUrl);
+    }
+
+    /// <summary>Cancels pending transport operations and releases batching workers; does not dispose the supplied SDK client.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        await Task.WhenAll(_sends.DisposeAsync().AsTask(), _deletes.DisposeAsync().AsTask()).ConfigureAwait(false);
     }
 
     public async Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken cancellationToken = default)
@@ -503,7 +536,7 @@ public sealed class SqsQueueClient : IQueueClient
         return response.QueueARN;
     }
 
-    private async Task<string> GetQueueUrlAsync(string queueName, CancellationToken cancellationToken)
+    private async ValueTask<string> GetQueueUrlAsync(string queueName, CancellationToken cancellationToken)
     {
         if (_queueUrlCache.TryGetValue(queueName, out var cached))
             return cached;
@@ -605,9 +638,8 @@ public sealed class SqsQueueClient : IQueueClient
             ? parsed
             : 0;
 
-    private static Dictionary<string, MessageAttributeValue> ToMessageAttributes(Dictionary<string, string>? headers)
+    private static Dictionary<string, MessageAttributeValue> ToMessageAttributes(Dictionary<string, string> values)
     {
-        var values = SqsPayload.ToAttributeValues(headers);
         var attributes = new Dictionary<string, MessageAttributeValue>(values.Count);
         foreach (var (key, value) in values)
             attributes[key] = new MessageAttributeValue { DataType = "String", StringValue = value };

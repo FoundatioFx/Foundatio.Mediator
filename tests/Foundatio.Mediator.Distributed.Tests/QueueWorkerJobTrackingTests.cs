@@ -205,11 +205,13 @@ public class QueueWorkerJobTrackingTests(ITestOutputHelper output) : TestWithLog
 
             await mediator.InvokeAsync(new TrackedCancellableCommand("cancel-test"), cts.Token);
 
-            // Wait a bit for the handler to start processing
-            await Task.Delay(500, cts.Token);
-
-            // Find the job and request cancellation
+            // Wait for the observable processing transition before requesting cancellation.
             var jobs = await stateStore.GetJobsByStatusAsync("TrackedCancellableCommand", QueueJobStatus.Processing, cancellationToken: cts.Token);
+            while (jobs.Count == 0)
+            {
+                await Task.Delay(10, cts.Token);
+                jobs = await stateStore.GetJobsByStatusAsync("TrackedCancellableCommand", QueueJobStatus.Processing, cancellationToken: cts.Token);
+            }
             Assert.Single(jobs);
             var jobId = jobs[0].JobId;
 

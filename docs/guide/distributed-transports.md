@@ -170,7 +170,7 @@ public interface IQueueClient : IAsyncDisposable
 }
 ```
 
-A `ReceiveAsync` implementation must honour `visibilityTimeout`: the worker renews at two thirds of it, so a transport that ignores it will redeliver long-running messages early. If the transport long-polls, override the `ReceiveDeadLettersAsync` overload that takes `waitTime` and bound the poll on the server: the default cancels client-side, and a poll the server keeps running can swallow a message an administrator just released. `QueueDefinition` carries the visibility timeout, retention, and max attempts your `EnsureQueuesAsync` should apply.
+A `ReceiveAsync` implementation must honour `visibilityTimeout`: the worker renews halfway through the lease, so a transport that ignores it will redeliver long-running messages early. If the transport long-polls, override the `ReceiveDeadLettersAsync` overload that takes `waitTime` and bound the poll on the server: the default cancels client-side, and a poll the server keeps running can swallow a message an administrator just released. `QueueDefinition` carries the visibility timeout, retention, and max attempts your `EnsureQueuesAsync` should apply.
 
 ## Startup
 

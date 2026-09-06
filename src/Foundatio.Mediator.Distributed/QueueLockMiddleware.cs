@@ -62,9 +62,20 @@ public class QueueLockMiddleware
         while (queueLock is null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            queueLock = await QueueOperation.RunAsync(
-                ct => _lockProvider.TryAcquireAsync(key, lifetime, acquireTimeout, ct),
-                acquireTimeout + TimeSpan.FromSeconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+            Task<IQueueLock?>? acquisition = null;
+            try
+            {
+                queueLock = await QueueOperation.RunAsync(
+                    ct => acquisition = _lockProvider.TryAcquireAsync(key, lifetime, acquireTimeout, ct),
+                    acquireTimeout + TimeSpan.FromSeconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Providers may ignore cancellation and acquire after our budget expires.
+                if (acquisition is not null)
+                    _ = ReleaseLateAcquisitionAsync(acquisition);
+                throw;
+            }
             if (queueLock is not null)
                 break;
             if (!reportedContention)
@@ -89,7 +100,33 @@ public class QueueLockMiddleware
         {
             await renewCts.CancelAsync().ConfigureAwait(false);
             await renewTask.ConfigureAwait(false);
+            await ReleaseAsync(queueLock).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ReleaseLateAcquisitionAsync(Task<IQueueLock?> acquisition)
+    {
+        try
+        {
+            if (await acquisition.ConfigureAwait(false) is { } queueLock)
+                await ReleaseAsync(queueLock).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Lock acquisition failed after processing stopped");
+        }
+    }
+
+    private async Task ReleaseAsync(IQueueLock queueLock)
+    {
+        try
+        {
             await queueLock.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // Keep the handler outcome; lease expiry still bounds an unsuccessful release.
+            _logger.LogWarning(exception, "Lock release failed; the remaining lease must expire");
         }
     }
 

@@ -315,13 +315,10 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
             var mediator = provider.GetRequiredService<IMediator>();
             await mediator.InvokeAsync(new PoisonMessage("test"), cts.Token);
 
-            // Handler throws every time. MaxAttempts=3 means 3 attempts
-            // then dead-lettered on the 4th receive.
-            // Wait for the handler to be called (up to 3 times) + dead-letter
+            // The final failed automatic attempt is dead-lettered immediately.
             await signal.WaitAsync(count: 3, timeout: TimeSpan.FromSeconds(10));
 
-            // Give the worker a moment to dead-letter after the 3rd failure
-            await Task.Delay(500, cts.Token);
+            await WaitForSettlementAsync(queueClient, "PoisonMessage", 1, cts.Token);
 
             Assert.Equal(3, signal.Values.Count);
 
@@ -369,8 +366,7 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
             // First attempt fails, second attempt succeeds
             await signal.WaitAsync(count: 2, timeout: TimeSpan.FromSeconds(10));
 
-            // Give the worker a moment to process
-            await Task.Delay(500, cts.Token);
+            await WaitForSettlementAsync(queueClient, "TransientMessage", 0, cts.Token);
 
             Assert.Equal(2, tracker.CallCount);
             Assert.Equal("attempt-1", signal.Values[0]);
@@ -410,11 +406,10 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
             var mediator = provider.GetRequiredService<IMediator>();
             await mediator.InvokeAsync(new NoRetryMessage("no-retry"), cts.Token);
 
-            // MaxAttempts=1 means 1 attempt only; handler is called once, then dead-lettered on 2nd receive
+            // MaxAttempts=1 dead-letters immediately after the first failure.
             await signal.WaitAsync(count: 1, timeout: TimeSpan.FromSeconds(10));
 
-            // Give the worker time to dead-letter
-            await Task.Delay(500, cts.Token);
+            await WaitForSettlementAsync(queueClient, "NoRetryMessage", 1, cts.Token);
 
             Assert.Single(signal.Values);
 
@@ -431,4 +426,16 @@ public class QueueWorkerDeadLetterTests(ITestOutputHelper output) : TestWithLogg
                 await svc.StopAsync(CancellationToken.None);
         }
     }
+
+    private static async Task WaitForSettlementAsync(InMemoryQueueClient client, string queueName, long deadLetters, CancellationToken token)
+    {
+        while (true)
+        {
+            var stats = Assert.Single(await client.GetQueueStatsAsync([queueName], token));
+            if (stats.ActiveCount == 0 && stats.DelayedCount == 0 && stats.InFlightCount == 0 && stats.DeadLetterCount == deadLetters)
+                return;
+            await Task.Delay(10, token);
+        }
+    }
+
 }

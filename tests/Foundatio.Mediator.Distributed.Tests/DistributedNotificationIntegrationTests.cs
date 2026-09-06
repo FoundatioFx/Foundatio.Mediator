@@ -139,8 +139,6 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
         try
         {
             // Give workers a moment to set up subscriptions
-            await Task.Delay(200, cts.Token);
-
             // Node A publishes
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new TestDistributedEvent("from-A"), cts.Token);
@@ -206,8 +204,6 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new TestDistributedEvent("once"), cts.Token);
 
@@ -215,8 +211,8 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
             await signalA.WaitAsync(timeout: TimeSpan.FromSeconds(5));
             await signalB.WaitAsync(timeout: TimeSpan.FromSeconds(5));
 
-            // Wait a bit more to allow any potential re-broadcast to happen
-            await Task.Delay(500, cts.Token);
+            // Both inbound callbacks have completed, including local subscription filtering.
+            await countingBus.WaitForDeliveriesAsync(2, cts.Token);
 
             // There should be exactly 1 bus publish (from Node A's outbound)
             // Node B should NOT re-publish because the reference set prevents it
@@ -267,11 +263,10 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
             await signal.WaitAsync(timeout: TimeSpan.FromSeconds(5));
             Assert.Single(signal.Values);
 
-            // Give time for any bus activity
-            await Task.Delay(500, cts.Token);
-
-            // Bus should have zero publishes — NonDistributedEvent doesn't implement IDistributedNotification
-            Assert.Equal(0, busPublishCount);
+            // A selected marker proves the outbound subscription has passed the excluded event.
+            await mediator.PublishAsync(new TestDistributedEvent("barrier"), cts.Token);
+            await countingBus.WaitForDeliveriesAsync(1, cts.Token);
+            Assert.Equal(1, busPublishCount);
         }
         finally
         {
@@ -289,9 +284,12 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
     [Fact]
     public async Task InboundLoop_SkipsSelfDelivery()
     {
+        using var sharedBus = new InMemoryPubSubClient();
+        var countingBus = new CountingPubSubClient(sharedBus, () => { });
         var signal = new HandlerSignal();
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<IPubSubClient>(countingBus);
         services.AddSingleton(signal);
         services.AddMediator(b => b.AddAssembly<TestDistributedEventHandler>())
             .AddDistributedNotifications(opts => opts.HostId = "self");
@@ -310,8 +308,8 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
             // Local handler fires once (from the initial local publish)
             await signal.WaitAsync(timeout: TimeSpan.FromSeconds(5));
 
-            // Wait to ensure no double-fire from bus loopback
-            await Task.Delay(500, cts.Token);
+            // Wait until the inbound callback has inspected and rejected the self-origin message.
+            await countingBus.WaitForDeliveriesAsync(1, cts.Token);
 
             Assert.Single(signal.Values);
             Assert.Equal("self-test", signal.Values[0]);
@@ -360,8 +358,6 @@ public class DistributedNotificationIntegrationTests(ITestOutputHelper output) :
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new TestDistributedEvent("event1"), cts.Token);
             await mediatorA.PublishAsync(new AnotherDistributedEvent(42), cts.Token);
@@ -424,8 +420,6 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new AttributeDistributedEvent("attr-test"), cts.Token);
 
@@ -489,8 +483,6 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new ExplicitIncludeEvent("explicit-test"), cts.Token);
 
@@ -554,8 +546,6 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new FilterMatchEvent("filter-test"), cts.Token);
 
@@ -619,8 +609,6 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new PlainNotificationEvent("all-test"), cts.Token);
 
@@ -711,8 +699,6 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 
         try
         {
-            await Task.Delay(200, cts.Token);
-
             var mediatorA = providerA.GetRequiredService<IMediator>();
             await mediatorA.PublishAsync(new TestDistributedEvent("compat"), cts.Token);
 
@@ -768,11 +754,10 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
             await signal.WaitAsync(timeout: TimeSpan.FromSeconds(5));
             Assert.Single(signal.Values);
 
-            // Wait for any potential bus activity
-            await Task.Delay(500, cts.Token);
-
-            // PlainNotificationEvent doesn't match the filter — no bus publish
-            Assert.Equal(0, busPublishCount);
+            // A matching marker provides an outbound and inbound completion barrier.
+            await mediator.PublishAsync(new FilterMatchEvent("barrier"), cts.Token);
+            await countingBus.WaitForDeliveriesAsync(1, cts.Token);
+            Assert.Equal(1, busPublishCount);
         }
         finally
         {
@@ -786,6 +771,14 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
 // ── Test helper: counting bus decorator ──────────────────────────────
 internal sealed class CountingPubSubClient(IPubSubClient inner, Action onPublish) : IPubSubClient
 {
+    private readonly System.Threading.Channels.Channel<bool> _deliveries = System.Threading.Channels.Channel.CreateUnbounded<bool>();
+
+    public async Task WaitForDeliveriesAsync(int count, CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < count; i++)
+            await _deliveries.Reader.ReadAsync(cancellationToken);
+    }
+
     public async Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> messages, CancellationToken cancellationToken = default)
     {
         onPublish();
@@ -793,5 +786,9 @@ internal sealed class CountingPubSubClient(IPubSubClient inner, Action onPublish
     }
 
     public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken cancellationToken = default)
-        => inner.SubscribeAsync(topic, handler, cancellationToken);
+        => inner.SubscribeAsync(topic, async (message, token) =>
+        {
+            await handler(message, token);
+            _deliveries.Writer.TryWrite(true);
+        }, cancellationToken);
 }

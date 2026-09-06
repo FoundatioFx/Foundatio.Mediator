@@ -19,7 +19,7 @@ public interface IQueueJobStateStore
     /// Updates a job's status and optional fields. Implementations should apply the change atomically
     /// relative to other status updates for the same job. Returns false for a missing job, a terminal
     /// job, an older attempt, or a repeated start of an attempt already waiting for retry.
-    /// Use SetJobStateAsync explicitly to reset a terminal job for administrative replay.
+    /// Administrative replay creates a new job identity; SetJobStateAsync is an explicit administrative replacement.
     /// </summary>
     Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
 

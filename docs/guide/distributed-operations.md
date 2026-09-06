@@ -76,4 +76,4 @@ Job state expires `JobStateExpiry` (default 24 hours) after its last write. The 
 
 ## Logs
 
-Workers log at Information when they start and stop, when a message is abandoned for redelivery during shutdown, and when a lock is held elsewhere; at Warning for retryable failures, dead letters, failed renewals and state-store writes; at Error when a message cannot be dead-lettered or the receive loop fails. Every worker log line carries the queue name and message id.
+Workers log at Information when they start and stop, when a message is abandoned for redelivery during shutdown, ; lock contention is logged at Debug; at Warning for retryable failures, dead letters, failed renewals and state-store writes; at Error when a message cannot be dead-lettered or the receive loop fails. Message-specific worker logs include the queue name and message id.

@@ -155,6 +155,45 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
         }
     }
 
+    [Fact]
+    public async Task TrackedReplay_CreatesNewJob_PreservesOriginalFailure_AndExecutes()
+    {
+        await using var transport = new InMemoryTransport();
+        var signal = new HandlerSignal();
+        await using var provider = BuildHost(transport, signal, options => options.Workers = WorkerSelection.Only("MetadataTrackedCommand"));
+        var store = provider.GetRequiredService<IQueueJobStateStore>();
+        await store.SetJobStateAsync(new QueueJobState
+        {
+            JobId = "original", QueueName = "MetadataTrackedCommand", Status = QueueJobStatus.Failed,
+            Attempt = 3, ErrorMessage = "Old failure", CreatedUtc = DateTimeOffset.UtcNow.AddHours(-1)
+        }, cancellationToken: TestCancellationToken);
+        await transport.Queues.SendAsync(QueueDefinition.DeadLetterQueueNameFor("MetadataTrackedCommand"), [new QueueEntry
+        {
+            Body = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new MetadataTrackedCommand("replayed", "tenant")),
+            Headers = new Dictionary<string, string>
+            {
+                [MessageHeaders.JobId] = "original",
+                [MessageHeaders.OriginalQueueName] = "MetadataTrackedCommand",
+                [MessageHeaders.MessageType] = typeof(MetadataTrackedCommand).FullName!,
+                [MessageHeaders.DeadLetteredAt] = DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O")
+            }
+        }], TestCancellationToken);
+        var replay = await provider.GetRequiredService<IMediator>().InvokeAsync<Result<DeadLetterReplayResult>>(
+            new ReplayDeadLetters("MetadataTrackedCommand", Max: 1), TestCancellationToken);
+        Assert.Equal(1, replay.Value.Replayed);
+        Assert.Equal(QueueJobStatus.Failed, (await store.GetJobStateAsync("original", TestCancellationToken))!.Status);
+        var newJob = Assert.Single(await store.GetJobsByStatusAsync("MetadataTrackedCommand", QueueJobStatus.Queued, cancellationToken: TestCancellationToken));
+        Assert.NotEqual("original", newJob.JobId);
+        var hosted = await provider.StartHostedServicesAsync(TestCancellationToken);
+        try
+        {
+            await transport.DrainAsync(TimeSpan.FromSeconds(5), TestCancellationToken);
+            Assert.Equal(["replayed"], signal.Values);
+            Assert.Equal(QueueJobStatus.Completed, (await store.GetJobStateAsync(newJob.JobId, TestCancellationToken))!.Status);
+        }
+        finally { await hosted.StopAllAsync(); }
+    }
+
     private static async Task WaitForDeadLettersAsync(InMemoryTransport transport, string queueName, int expected, CancellationToken ct)
     {
         var inMemory = (InMemoryQueueClient)transport.Queues.Inner;

@@ -182,7 +182,7 @@ With `AutoRenewTimeout` on (the default) the worker renews the visibility timeou
 
 ## Progress Tracking and Cancellation
 
-`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `RetryPending`, `Completed`, `Failed`, `Cancelled`, or `EnqueueUnknown`, with progress, attempt, error message, and a heartbeat on every renewal and progress report. The default store is in-memory. A distributed transport with tracked work requires a shared store and fails startup without one. Use [Redis](./distributed-transports#redis), implement a shared store, or explicitly set `AllowProcessLocalJobStateForDevelopment` for development/tests. Transport and state-store decorators must forward `IsDistributed` and `IsShared`.
+`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `RetryPending`, `Completed`, `Failed`, `Cancelled`, or `EnqueueUnknown`, with progress, attempt, error message, and periodic heartbeats isolated from transport renewal. The default store is in-memory. A distributed transport with tracked work requires a shared store and fails startup without one. Use [Redis](./distributed-transports#redis), implement a shared store, or explicitly set `AllowProcessLocalJobStateForDevelopment` for development/tests. Transport and state-store decorators must forward `IsDistributed` and `IsShared`.
 
 Use the typed receipt when the caller needs tracking. Its `JobId` is null for untracked work; `QueueName` is the physical destination. An HTTP status URL is a separate application decision:
 
@@ -214,7 +214,7 @@ If a send fails after state creation, `QueueEnqueueException.Receipt` identifies
 
 ## Single Flight with [QueueLock]
 
-Because delivery is at least once, work that must never run twice concurrently gets a distributed lock:
+Use a distributed lock to coordinate concurrent work on a shared resource while ownership is retained:
 
 ```csharp
 public record GenerateBankFile(string Bank) : IHaveLockKey

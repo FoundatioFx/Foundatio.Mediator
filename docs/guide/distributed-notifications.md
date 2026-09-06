@@ -74,7 +74,7 @@ Node A                        Bus                          Node B
 
 A receiving node deserializes a message when its type was registered at startup, or when the type can be loaded and that node's own rules would distribute it. A handler declared on an interface therefore receives concrete events published by other nodes, and no node can be made to load a type its rules do not cover.
 
-Delivery is at most once per node: a node that is down when the event is published does not receive it later. If the transport subscription fails, the node keeps publishing, logs the failure, and retries subscribing with backoff.
+Delivery is best effort: events can be lost during downtime or buffer overflow, and transports may deliver duplicates. If the transport subscription fails, the node keeps publishing, logs the failure, and retries subscribing with backoff.
 
 ## With Queue Handlers
 

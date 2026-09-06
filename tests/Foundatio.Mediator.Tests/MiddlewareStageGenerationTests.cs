@@ -12,7 +12,7 @@ public class MiddlewareStageGenerationTests(ITestOutputHelper output) : Generato
             [Middleware(Stage = MiddlewareStage.Enqueue)]
             public class ValidationMiddleware { public void Before(Ping message) { } }
             """, [new MediatorGenerator()]);
-        var handler = Assert.Single(result.GeneratedTrees.Where(tree => tree.HintName.StartsWith("PingHandler_")));
+        var handler = Assert.Single(result.GeneratedTrees, tree => tree.HintName.StartsWith("PingHandler_"));
         Assert.Contains("validationMiddleware.Before(message)", handler.Source);
         Assert.DoesNotContain("HandlerDispatchContext", handler.Source);
     }

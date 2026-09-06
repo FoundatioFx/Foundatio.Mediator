@@ -10,7 +10,7 @@ From the repository root, in PowerShell:
 
 ```powershell
 $project = 'benchmarks/Foundatio.Mediator.Distributed.Benchmarks'
-dotnet build $project -c Release
+dotnet build $project -c Release -p:GeneratePackageOnBuild=false
 $runner = "$project/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll"
 dotnet $runner self-test
 docker compose -p mediator-bench -f "$project/compose.yaml" up -d --wait
@@ -20,6 +20,8 @@ docker compose -p mediator-bench -f "$project/compose.yaml" down
 ```
 
 Set `$env:BENCHMARK_PORT = '14566'` before Compose and pass `--endpoint http://localhost:14566` when port 4566 is occupied. Compose starts a dedicated, pinned LocalStack 3.8.1 container. Do not run competing builds, tests, profilers, or sample workers during a measurement. Record other host load and the Docker image digest with shared results.
+
+The build command disables NuGet packing: this standalone benchmark build does not need the separate CodeFixes package output produced by a full solution build.
 
 `smoke` sends 100 measured messages per case and checks functionality; its timings are not performance evidence. `standard` runs all ten framework/transport/operation combinations. `sweep` also measures 4 KiB payloads, one producer, three subscribers, 250 microseconds of handler work for queues, fixed-rate publishing at 250 messages/second, and notification overload with the default 1,000-entry buffer. Every matrix case gets a fresh process and unique resource prefix. Case order is shuffled for each repetition using `--seed` (default 149).
 

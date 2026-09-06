@@ -26,7 +26,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageReference Include="Foundatio.Xunit.v3" Version="13.0.4" />
@@ -38,10 +38,10 @@
     <!-- Roslyn packages (use matching overrides to reduce conflicts).
          Pinned to 5.0.0 to match the generator/code fixes (#269) so tests exercise the
          minimum supported Roslyn. Do not bump without verifying on SDK 10.0.1xx. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0"
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0"
       PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="5.9.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="5.0.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0"
       PrivateAssets="all" />
     <!-- TestHost for E2E endpoint tests -->

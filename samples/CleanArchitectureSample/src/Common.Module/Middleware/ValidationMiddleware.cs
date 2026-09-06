@@ -10,7 +10,7 @@ namespace Common.Module.Middleware;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false)]
 public sealed class SkipValidationAttribute : Attribute { }
 
-[Middleware(OrderAfter = [typeof(ObservabilityMiddleware)])]
+[Middleware(Stage = MiddlewareStage.Both, OrderAfter = [typeof(ObservabilityMiddleware)])]
 public static class ValidationMiddleware
 {
     private static readonly ConcurrentDictionary<Type, bool> _skipValidationCache = new();

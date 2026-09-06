@@ -27,5 +27,5 @@ public record ProductStockChanged(string ProductId, int OldQuantity, int NewQuan
 
 // Published by workers so the API nodes' event feeds can show which host did the work.
 public record DemoJobCompleted(string JobId, string QueueName, string HostId, string Tenant) : IDispatchToClient;
-public record BankFileGenerated(string Bank, string FileName, string HostId) : IDispatchToClient;
-public record WebhookDelivered(string Url, int Attempts, string HostId) : IDispatchToClient;
+public record BankFileGenerated(string Bank, string FileName, string HostId, string JobId, string QueueName) : IDispatchToClient;
+public record WebhookDelivered(string Url, int Attempts, string HostId, string JobId, string QueueName) : IDispatchToClient;

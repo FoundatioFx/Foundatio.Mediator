@@ -189,6 +189,12 @@ public sealed class DistributedNotificationWorker : BackgroundService
     {
         if (_infraReady is not null)
             await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false);
+        if (!_options.ReceiveNotifications)
+        {
+            _inboundReady.TrySetResult();
+            return;
+        }
+
         int attempt = 0;
         while (!stoppingToken.IsCancellationRequested)
         {

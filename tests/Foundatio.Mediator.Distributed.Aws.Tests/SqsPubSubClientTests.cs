@@ -18,7 +18,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
 {
     private static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 
-    private SqsPubSubClient CreateClient(string? hostId = null, Action<SqsPubSubClientOptions>? configure = null)
+    private SqsPubSubClient CreateClient(string? hostId = null, Action<SqsPubSubClientOptions>? configure = null, bool receiveNotifications = true)
     {
         var options = new SqsPubSubClientOptions
         {
@@ -31,6 +31,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var notificationOptions = new DistributedNotificationOptions
         {
             HostId = hostId ?? NewId("host"),
+            ReceiveNotifications = receiveNotifications,
             Topic = NewId("test-topic")
         };
 
@@ -57,10 +58,12 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         await client.PublishAsync("no-sub-topic", [new PubSubEntry { Body = "hello"u8.ToArray() }], TestCancellationToken);
     }
 
-    [Fact]
-    public async Task SubscribeAsync_ReceivesPublishedMessage()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SubscribeAsync_ReceivesPublishedMessage(bool receiveNotifications)
     {
-        await using var client = CreateClient();
+        await using var client = CreateClient(receiveNotifications: receiveNotifications);
         var topic = NewId("test");
 
         PubSubMessage? received = null;

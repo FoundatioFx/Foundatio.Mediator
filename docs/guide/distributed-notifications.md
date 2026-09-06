@@ -138,7 +138,18 @@ options.ShouldDistribute(typeof(LocalOnlyEvent));    // false
 
 ## Delivery and startup guarantees
 
-`AddDistributedNotifications()` also works on a publisher-only node without local handlers. Host startup waits until subscriptions are ready, so an immediate first publish is observed. The outbound buffer uses `DropOldest`: when full, the oldest waiting notification is discarded. Each discard increments `notifications.dropped` and the worker’s `DroppedCount`; warnings are rate-limited. Filtering happens before buffering, and inbound messages are not rebroadcast, including after overflow or failures.
+`AddDistributedNotifications()` also works on a node without local handlers. Host startup waits until its configured subscriptions and outbound bridge are ready, so an immediate first publish is observed by the bridge. Remote recipients must have started their own subscriptions before publication.
+
+For a host that only publishes, disable inbound notifications explicitly:
+
+```csharp
+services.AddMediator()
+    .AddDistributedNotifications(o => o.ReceiveNotifications = false);
+```
+
+This preserves local notification handling and outbound distribution while skipping the host's inbound subscription. The AWS transport ensures publishing topics without creating an SQS subscription queue, heartbeat, or cleanup sweep. `ReceiveNotifications` defaults to `true`; direct calls to `IPubSubClient.SubscribeAsync` still create subscriptions on demand.
+
+The outbound buffer uses `DropOldest`: when full, the oldest waiting notification is discarded. Each discard increments `notifications.dropped` and the worker’s `DroppedCount`; warnings are rate-limited. Filtering happens before buffering, and inbound messages are not rebroadcast, including after overflow or failures.
 
 Notifications are best effort. Awaiting `PublishAsync` does not confirm remote delivery, and shutdown can discard outstanding notifications. Use `[Queue]` subscriptions for durable independent processing. The in-memory pub/sub client logs subscriber failures and exposes `DeliveryFailed` for tests; one failed subscriber does not stop others.
 

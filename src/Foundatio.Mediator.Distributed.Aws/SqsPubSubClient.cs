@@ -28,6 +28,7 @@ public sealed class SqsPubSubClient : IPubSubClient
     private readonly IAmazonSQS _sqs;
     private readonly SqsPubSubClientOptions _options;
     private readonly string _hostId;
+    private readonly bool _receiveNotifications;
     private readonly string _queuePrefix;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SqsPubSubClient> _logger;
@@ -57,6 +58,7 @@ public sealed class SqsPubSubClient : IPubSubClient
         _sqs = sqs;
         _options = options;
         _hostId = notificationOptions.HostId;
+        _receiveNotifications = notificationOptions.ReceiveNotifications;
         _queuePrefix = string.IsNullOrEmpty(notificationOptions.ResourcePrefix)
             ? options.QueuePrefix
             : $"{notificationOptions.ResourcePrefix}-{options.QueuePrefix}";
@@ -163,6 +165,13 @@ public sealed class SqsPubSubClient : IPubSubClient
             return;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        if (!_receiveNotifications)
+        {
+            await Task.WhenAll(topics.Select(t => GetOrCreateTopicArnAsync(t.Name, cancellationToken).AsTask())).ConfigureAwait(false);
+            _logger.LogInformation("EnsureTopics: {Count} publishing topic(s) ensured in {ElapsedMs}ms", topics.Count, sw.ElapsedMilliseconds);
+            return;
+        }
 
         var queueTask = EnsureSharedQueueAsync(cancellationToken);
         await Task.WhenAll(topics.Select(t => GetOrCreateTopicArnAsync(t.Name, cancellationToken).AsTask())).ConfigureAwait(false);

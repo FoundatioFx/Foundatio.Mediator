@@ -51,7 +51,13 @@ internal sealed class Driver : IAsyncDisposable
                 else
                 {
                     if (sharedBus is not null) builder.Services.AddSingleton<IPubSubClient>(new BorrowedBus(sharedBus));
-                    mediator.AddDistributedNotifications(o => { o.Topic = "events"; o.MaxCapacity = settings.Capacity; o.Include<BenchmarkEvent>(); });
+                    mediator.AddDistributedNotifications(o =>
+                    {
+                        o.Topic = "events";
+                        o.MaxCapacity = settings.Capacity;
+                        o.ReceiveNotifications = consumer;
+                        o.Include<BenchmarkEvent>();
+                    });
                 }
                 if (settings.Broker)
                 {

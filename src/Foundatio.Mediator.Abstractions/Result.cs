@@ -162,6 +162,9 @@ public sealed class Result : IResult
         Status = ResultStatus.Created
     };
 
+    /// <summary>Returns acceptance with a receipt or other immediate acknowledgment value.</summary>
+    public static Result<T> Accepted<T>(T value) => new() { Status = ResultStatus.Accepted, Value = value };
+
     /// <summary>
     /// Creates a result indicating the request has been accepted for processing.
     /// </summary>

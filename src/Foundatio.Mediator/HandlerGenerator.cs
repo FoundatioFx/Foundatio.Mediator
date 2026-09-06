@@ -13,6 +13,10 @@ internal static class HandlerGenerator
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor InvalidDispatcher = new(
+        "FMED019", "Invalid enqueue dispatcher",
+        "Handler {0}: {1}", "Generator", DiagnosticSeverity.Error, isEnabledByDefault: true);
+
     public static void Execute(SourceProductionContext context, List<HandlerInfo> handlers, List<HandlerInfo> allHandlers, GeneratorConfiguration configuration)
     {
         if (handlers.Count == 0)
@@ -22,6 +26,18 @@ internal static class HandlerGenerator
 
         foreach (var handler in handlers)
         {
+            var dispatchers = handler.Middleware.Where(middleware => middleware.IsDispatcher).ToArray();
+            string? invalid = dispatchers.Length > 1 ? "Only one enqueue dispatcher may apply to a handler."
+                : dispatchers.Any(dispatcher => dispatcher.ExecuteMethod is not { IsAsync: true }
+                    || dispatcher.BeforeMethod is not null || dispatcher.AfterMethod is not null || dispatcher.FinallyMethod is not null)
+                    ? "An enqueue dispatcher must supply only an asynchronous Execute method."
+                : handler.Middleware.Any(middleware => middleware.Stage is < 0 or > 2) ? "Middleware Stage must be Processing, Enqueue, or Both."
+                : null;
+            if (invalid is not null)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(InvalidDispatcher, Location.None, handler.FullName, invalid));
+                continue;
+            }
             try
             {
                 string wrapperClassName = GetHandlerClassName(handler);
@@ -248,7 +264,18 @@ internal static class HandlerGenerator
             if (hasCascadingHandlers)
             {
                 string strategy = GetCascadeStrategy(handler, configuration);
+                if (handler.HasDispatcher)
+                {
+                    source.AppendLine("if (Foundatio.Mediator.HandlerDispatchContext.IsProcessing(callContext))");
+                    source.AppendLine("{");
+                    source.IncrementIndent();
+                }
                 GenerateCascadingHandlerCalls(source, publishItems, allHandlers, strategy);
+                if (handler.HasDispatcher)
+                {
+                    source.DecrementIndent();
+                    source.AppendLine("}");
+                }
                 source.AppendLine();
             }
 
@@ -353,7 +380,7 @@ internal static class HandlerGenerator
     /// </summary>
     private static void EmitServiceProviderSetup(IndentedStringBuilder source, HandlerInfo handler, bool isAsyncMethod)
     {
-        if (handler.IsScopedPerInvoke)
+        if (handler.IsScopedPerInvoke && !handler.HasDispatcher)
         {
             // ScopedPerInvoke: this invocation owns a fresh DI scope. The entire pipeline
             // (middleware + handler + cascading messages) resolves from this scope, and the
@@ -372,20 +399,45 @@ internal static class HandlerGenerator
         }
     }
 
-    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false, string? callContextVar = null)
+    private static void EmitHandlerInvocationCode(IndentedStringBuilder source, HandlerInfo handler, GeneratorConfiguration configuration, string resultVar, string messageVar = "message", int targetTupleIndex = 0, bool isUntypedMethod = false, string? callContextVar = null, bool stageResolved = false, bool declareResult = true)
     {
+        if (handler.HasDispatcher && !stageResolved)
+        {
+            EmitHandlerResultVariable(source, handler, resultVar);
+            source.AppendLine($"if (!Foundatio.Mediator.HandlerDispatchContext.IsProcessing({callContextVar ?? "null"}))");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            if (targetTupleIndex > 0)
+                source.AppendLine("throw new System.InvalidOperationException(\"Enqueueing returns acceptance through the first Result tuple item; cascading values are produced only during processing.\");");
+            else
+            {
+                var enqueue = handler with { Middleware = new(handler.Middleware.Where(m => m.IsDispatcher || m.Stage is 1 or 2).ToArray()) };
+                EmitHandlerInvocationCode(source, enqueue, configuration, resultVar, messageVar, targetTupleIndex, isUntypedMethod, callContextVar, stageResolved: true, declareResult: false);
+            }
+            source.DecrementIndent();
+            source.AppendLine("}");
+            source.AppendLine("else");
+            source.AppendLine("{");
+            source.IncrementIndent();
+            var processing = handler with { Middleware = new(handler.Middleware.Where(m => !m.IsDispatcher && m.Stage is 0 or 2).ToArray()) };
+            EmitHandlerInvocationCode(source, processing, configuration, resultVar, messageVar, targetTupleIndex, isUntypedMethod, callContextVar, stageResolved: true, declareResult: false);
+            source.DecrementIndent();
+            source.AppendLine("}");
+            return;
+        }
+
         var variables = new Dictionary<string, string> { ["System.IServiceProvider"] = "serviceProvider" };
 
         // For ScopedPerInvoke, hand middleware/handler IMediator parameters the scope-bound
         // mediator directly so nested dispatches flow through the invocation's scope regardless
         // of how IMediator is registered.
-        if (handler.IsScopedPerInvoke)
+        if (handler.IsScopedPerInvoke && !handler.HasDispatcher)
             variables["Foundatio.Mediator.IMediator"] = "mediator";
 
         // Build middleware lists - separate Execute middleware from Before/After/Finally
         // The handler.Middleware array is already sorted by topological sort (respecting OrderBefore/OrderAfter + numeric Order)
         var executeMiddleware = handler.HasExecuteMiddleware
-            ? handler.Middleware.Where(m => m.ExecuteMethod != null).ToList()
+            ? handler.Middleware.Where(m => m.ExecuteMethod != null && !m.IsDispatcher).ToList()
             : [];
         var beforeMiddleware = handler.HasBeforeMiddleware
             ? handler.Middleware.Where(m => m.BeforeMethod != null).Select(m => (Method: m.BeforeMethod!.Value, Middleware: m)).ToList()
@@ -405,7 +457,8 @@ internal static class HandlerGenerator
         EmitAuthorizationCheck(source, handler, configuration, variables, resultVar);
         EmitMiddlewareInstances(source, handler);
         EmitBeforeMiddlewareResultVariables(source, beforeMiddleware, variables);
-        EmitHandlerResultVariable(source, handler, resultVar);
+        if (declareResult)
+            EmitHandlerResultVariable(source, handler, resultVar);
 
         // Check if we have Execute middleware - if so, wrap the entire pipeline
         if (executeMiddleware.Count > 0)
@@ -498,6 +551,13 @@ internal static class HandlerGenerator
                 source.AppendLine($"    {resultVar} = {handler.ReturnType.UnwrappedFullName}.FromResult(__executeResult);");
                 source.AppendLine($"else if (__executeRaw is not null)");
                 source.AppendLine($"    throw new System.InvalidOperationException($\"Execute middleware returned {{__executeRaw.GetType().Name}}, expected {handler.ReturnType.UnwrappedFullName}\");");
+            }
+            else if (handler.HasDispatcher && handler.ReturnType.IsTuple && handler.ReturnType.TupleItems[0].IsResult)
+            {
+                var first = handler.ReturnType.TupleItems[0];
+                string tuple = $"({first.TypeFullName}.FromResult((Foundatio.Mediator.IResult)__executeRaw!), {string.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(_ => "default!"))})";
+                source.AppendLine($"var __executeRaw = await {finalDelegate}();");
+                source.AppendLine($"{resultVar} = __executeRaw is Foundatio.Mediator.IResult ? {tuple} : ({handler.ReturnType.UnwrappedFullName})__executeRaw!;");
             }
             else
             {
@@ -944,37 +1004,65 @@ internal static class HandlerGenerator
         string messageVar,
         string? callContextVar = null)
     {
-        string asyncModifier = handler.ReturnType.IsTask ? "await " : "";
-        string result = handler.ReturnType.IsVoid ? "" : $"{resultVar} = ";
-        string parameters = BuildParameters(source, handler.Parameters, variables, messageVar, callContextVar);
-
-        // Determine handler accessor - must match GenerateGetOrCreateHandler logic
-        string accessor;
-        if (handler.IsStatic)
+        var dispatcher = handler.Middleware.FirstOrDefault(middleware => middleware.IsDispatcher);
+        if (dispatcher.IsDispatcher)
         {
-            accessor = handler.FullName;
-        }
-        else if (handler.HasExplicitLifetime)
-        {
-            // Scoped/Transient/Singleton: resolve from DI (requires registration)
-            source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
-            accessor = "handlerInstance";
-        }
-        else if (handler.RequiresConstructorInjection)
-        {
-            // Has constructor dependencies but no explicit DI lifetime: use ActivatorUtilities
-            // This works without explicit registration and creates a fresh instance each time
-            source.AppendLine($"var handlerInstance = ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);");
-            accessor = "handlerInstance";
+            string accessor = dispatcher.IsStatic ? dispatcher.FullName : dispatcher.Identifier.ToCamelCase();
+            const string noLocalHandler = "static () => throw new System.InvalidOperationException(\"An enqueue dispatcher cannot call the local handler.\")";
+            string parameters = BuildExecuteParameters(source, dispatcher.ExecuteMethod!.Value.Parameters, variables, messageVar, noLocalHandler, callContextVar);
+            string invocation = $"await {accessor}.{dispatcher.ExecuteMethod.Value.MethodName}({parameters}).ConfigureAwait(false)";
+            if (!handler.HasReturnValue)
+                source.AppendLine($"{invocation};");
+            else
+            {
+                source.AppendLine($"var __dispatchRaw = {invocation};");
+                if (handler.ReturnType.IsResult)
+                    source.AppendLine($"{resultVar} = __dispatchRaw is {handler.ReturnType.UnwrappedFullName} __dispatchTyped ? __dispatchTyped : {handler.ReturnType.UnwrappedFullName}.FromResult((Foundatio.Mediator.IResult)__dispatchRaw!);");
+                else if (handler.ReturnType.IsTuple && handler.ReturnType.TupleItems[0].IsResult)
+                {
+                    var first = handler.ReturnType.TupleItems[0];
+                    string accepted = $"{first.TypeFullName}.FromResult((Foundatio.Mediator.IResult)__dispatchRaw!)";
+                    string tuple = $"({accepted}, {string.Join(", ", handler.ReturnType.TupleItems.Skip(1).Select(_ => "default!"))})";
+                    source.AppendLine($"{resultVar} = __dispatchRaw is Foundatio.Mediator.IResult ? {tuple} : ({handler.ReturnType.UnwrappedFullName})__dispatchRaw!;");
+                }
+                else
+                    source.AppendLine($"{resultVar} = ({handler.ReturnType.UnwrappedFullName})__dispatchRaw!;");
+            }
         }
         else
         {
-            // No explicit DI lifetime and no constructor deps - use GetOrCreateHandler with lazy caching
-            source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
-            accessor = "handlerInstance";
-        }
+            string asyncModifier = handler.ReturnType.IsTask ? "await " : "";
+            string result = handler.ReturnType.IsVoid ? "" : $"{resultVar} = ";
+            string parameters = BuildParameters(source, handler.Parameters, variables, messageVar, callContextVar);
 
-        source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
+            // Determine handler accessor - must match GenerateGetOrCreateHandler logic
+            string accessor;
+            if (handler.IsStatic)
+            {
+                accessor = handler.FullName;
+            }
+            else if (handler.HasExplicitLifetime)
+            {
+                // Scoped/Transient/Singleton: resolve from DI (requires registration)
+                source.AppendLine($"var handlerInstance = serviceProvider.GetRequiredService<{handler.FullName}>();");
+                accessor = "handlerInstance";
+            }
+            else if (handler.RequiresConstructorInjection)
+            {
+                // Has constructor dependencies but no explicit DI lifetime: use ActivatorUtilities
+                // This works without explicit registration and creates a fresh instance each time
+                source.AppendLine($"var handlerInstance = ActivatorUtilities.CreateInstance<{handler.FullName}>(serviceProvider);");
+                accessor = "handlerInstance";
+            }
+            else
+            {
+                // No explicit DI lifetime and no constructor deps - use GetOrCreateHandler with lazy caching
+                source.AppendLine("var handlerInstance = GetOrCreateHandler(serviceProvider);");
+                accessor = "handlerInstance";
+            }
+
+            source.AppendLine($"{result}{asyncModifier}{accessor}.{handler.MethodName}({parameters});");
+        }
 
         // Update variables with handler result for after/finally middleware
         if (handler.HasReturnValue)
@@ -1114,6 +1202,8 @@ internal static class HandlerGenerator
         // For tuple returns, use PublishCascadingMessagesAsync for runtime dispatch
         if (handler.ReturnType.IsTuple)
         {
+            if (handler.HasDispatcher)
+                source.AppendLine($"if (!Foundatio.Mediator.HandlerDispatchContext.IsProcessing(callContext)) return result.{handler.ReturnType.TupleItems[0].Name};");
             source.AppendLine("return await mediator.PublishCascadingMessagesAsync(result, responseType);");
         }
         else if (handler.HasReturnValue)

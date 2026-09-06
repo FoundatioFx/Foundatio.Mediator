@@ -54,4 +54,17 @@ public sealed class MiddlewareAttribute : Attribute
     /// Default is false (middleware is applied globally based on message type).
     /// </summary>
     public bool ExplicitOnly { get; set; }
+
+    /// <summary>
+    /// Which complete lifecycle runs for dispatched handlers. Ordinary in-process handlers
+    /// retain their existing middleware behavior regardless of this setting.
+    /// </summary>
+    public MiddlewareStage Stage { get; set; } = MiddlewareStage.Processing;
+
+    /// <summary>
+    /// Identifies an extension's enqueue dispatcher. Its ExecuteAsync method replaces the handler
+    /// call during enqueueing, inside the enqueue middleware pipeline; processing bypasses it.
+    /// A dispatcher must not call its next delegate. Only one dispatcher may apply to a handler.
+    /// </summary>
+    public bool IsDispatcher { get; set; }
 }

@@ -128,8 +128,8 @@ public sealed class QueueWorker : BackgroundService
             }
 
             // Collect capacity released by related batch acknowledgments, including after an
-            // underfilled broker receive. A slow handler cannot extend this bounded window.
-            if (active.Count > 0 && _client.IsDistributed && _receiveBatchDelay > TimeSpan.Zero)
+            // underfilled broker receive. Sparse work skips this delay; a slow handler cannot extend it.
+            if (active.Count >= (_options.Concurrency + 1) / 2 && _client.IsDistributed && _receiveBatchDelay > TimeSpan.Zero)
             {
                 await Task.WhenAny(Task.WhenAll(active), Task.Delay(_receiveBatchDelay, stoppingToken)).ConfigureAwait(false);
                 if (stoppingToken.IsCancellationRequested) break;

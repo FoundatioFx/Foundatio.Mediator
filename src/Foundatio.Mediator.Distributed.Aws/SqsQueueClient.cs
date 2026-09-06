@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -29,6 +30,7 @@ public sealed class SqsQueueClient : IQueueClient
     private readonly ILogger<SqsQueueClient> _logger;
     private readonly ConcurrentDictionary<string, string> _queueUrlCache = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dlqNotFound = new();
+    private readonly ConditionalWeakTable<Message, ReceivedBatchSize> _receivedBatchSizes = new();
     private readonly AwsBatchers<SendMessageBatchRequestEntry> _sends;
     private readonly AwsBatchers<DeleteMessageBatchRequestEntry> _deletes;
     private int _disposed;
@@ -142,9 +144,11 @@ public sealed class SqsQueueClient : IQueueClient
 
         var now = _timeProvider.GetUtcNow();
         var results = new List<QueueMessage>(response.Messages.Count);
+        var receivedBatchSize = new ReceivedBatchSize(response.Messages.Count);
 
         foreach (var sqsMessage in response.Messages)
         {
+            _receivedBatchSizes.AddOrUpdate(sqsMessage, receivedBatchSize);
             var headers = new Dictionary<string, string>();
             if (sqsMessage.MessageAttributes is { Count: > 0 })
             {
@@ -189,7 +193,7 @@ public sealed class SqsQueueClient : IQueueClient
         await _deletes.Get(queueUrl).AddAsync(new DeleteMessageBatchRequestEntry
         {
             ReceiptHandle = sqsMessage.ReceiptHandle
-        }, 0, cancellationToken).ConfigureAwait(false);
+        }, 0, cancellationToken, _receivedBatchSizes.TryGetValue(sqsMessage, out var batch) ? batch.Count : int.MaxValue).ConfigureAwait(false);
     }
 
     private async Task DeleteBatchAsync(string queueUrl, IReadOnlyList<AwsBatcher<DeleteMessageBatchRequestEntry>.Entry> entries, CancellationToken ct)
@@ -648,6 +652,10 @@ public sealed class SqsQueueClient : IQueueClient
     }
 
     private static int ToSeconds(TimeSpan value) => (int)Math.Ceiling(value.TotalSeconds);
+
+    // Keep the original SDK Message as NativeMessage. Weak keys release the hint when a
+    // receipt is no longer retained, including receipts abandoned or lost without completion.
+    private sealed record ReceivedBatchSize(int Count);
 
     private static Message GetNativeMessage(QueueMessage message)
         => message.NativeMessage as Message

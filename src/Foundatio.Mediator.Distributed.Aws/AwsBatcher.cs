@@ -30,11 +30,11 @@ internal sealed class AwsBatcher<T> : IAsyncDisposable
         }
     }
 
-    public async Task AddAsync(T value, int bytes, CancellationToken ct)
+    public async Task AddAsync(T value, int bytes, CancellationToken ct, int batchSizeHint = int.MaxValue)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ct.ThrowIfCancellationRequested();
-        var entry = new Entry(value, bytes, ct);
+        var entry = new Entry(value, bytes, ct, batchSizeHint);
         try
         {
             await _channel.Writer.WriteAsync(entry, ct).ConfigureAwait(false);
@@ -61,9 +61,10 @@ internal sealed class AwsBatcher<T> : IAsyncDisposable
                 try
                 {
                     int bytes = 0;
+                    int targetSize = _options.MaxBatchSize;
                     using var fill = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                     fill.CancelAfter(_options.MaxDelay);
-                    while (batch.Count < _options.MaxBatchSize)
+                    while (batch.Count < targetSize)
                     {
                         Entry? entry = carry;
                         carry = null;
@@ -89,6 +90,7 @@ internal sealed class AwsBatcher<T> : IAsyncDisposable
                         }
                         batch.Add(entry);
                         bytes += entry.Bytes;
+                        targetSize = Math.Min(targetSize, entry.BatchSizeHint);
                     }
                     if (batch.Count == 0) _slots.Release();
                     else
@@ -155,11 +157,12 @@ internal sealed class AwsBatcher<T> : IAsyncDisposable
         _stop.Dispose();
     }
 
-    internal sealed class Entry(T value, int bytes, CancellationToken cancellationToken)
+    internal sealed class Entry(T value, int bytes, CancellationToken cancellationToken, int batchSizeHint)
     {
         public T Value { get; } = value;
         public ActivityContext ActivityContext { get; } = Activity.Current?.Context ?? default;
         public int Bytes { get; } = bytes;
+        public int BatchSizeHint { get; } = batchSizeHint;
         public CancellationToken CancellationToken { get; } = cancellationToken;
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }

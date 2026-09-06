@@ -58,3 +58,6 @@ The bounded comparison used the installed Foundatio 13.0.4 API contracts:
 | `ILockProvider` | Acquisition and ownership IDs are a useful adapter target. Renewal/release need bounded operation wrappers and explicit lost-ownership behavior. Retain the small `IQueueLockProvider` extension point; do not add a mandatory dependency for every queue consumer. |
 
 A wholesale transport replacement does not demonstrate simpler equivalent semantics here. Handler-resolution allocation changes remain deferred; measured Redis command reduction and bounded leases take priority. Transactional outbox/inbox support remains an application integration concern, documented in the queue guide.
+## Broader transport comparisons
+
+For repeated queue and pub/sub comparisons across local mediator, distributed in-memory, SQS/SNS, and MassTransit, use the [distributed benchmark suite](../Foundatio.Mediator.Distributed.Benchmarks/README.md). This smaller probe remains useful for isolating job-state and Redis command overhead.

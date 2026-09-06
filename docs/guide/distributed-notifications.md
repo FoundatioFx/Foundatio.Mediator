@@ -104,12 +104,12 @@ Commands sent from inside a notification handler are enqueued normally; only the
 {
     o.Topic = "app-events";           // default "distributed-notifications"
     o.ResourcePrefix = "myapp-prod";  // topic becomes "myapp-prod-app-events"
-    o.HostId = Environment.MachineName; // default: a new id per process
+    // HostId defaults to a unique id per process. Keep it unique among active nodes.
     o.MaxCapacity = 1000;             // outbound buffer
 });
 ```
 
-Give `HostId` a stable value when you want per-node subscription resources to be recognizable in the transport; with SQS/SNS the per-node queue is named from it.
+A stable `HostId` can make SQS/SNS resources recognizable, but every concurrently running process needs a distinct value. The default generates one.
 
 ## Detecting Bus Origin in Middleware
 
@@ -134,3 +134,9 @@ var options = new DistributedNotificationOptions().IncludeAssignableTo<IScriptTr
 options.ShouldDistribute(typeof(ScriptTriggered));   // true
 options.ShouldDistribute(typeof(LocalOnlyEvent));    // false
 ```
+
+## Delivery and startup guarantees
+
+`AddDistributedNotifications()` also works on a publisher-only node without local handlers. Host startup waits until subscriptions are ready, so an immediate first publish is observed. The outbound buffer uses `DropOldest`: when full, the oldest waiting notification is discarded. Each discard increments `notifications.dropped` and the worker’s `DroppedCount`; warnings are rate-limited. Filtering happens before buffering, and inbound messages are not rebroadcast, including after overflow or failures.
+
+Notifications are best effort. Awaiting `PublishAsync` does not confirm remote delivery, and shutdown can discard outstanding notifications. Use `[Queue]` subscriptions for durable independent processing. The in-memory pub/sub client logs subscriber failures and exposes `DeliveryFailed` for tests; one failed subscriber does not stop others.

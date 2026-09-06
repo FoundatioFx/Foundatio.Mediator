@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
+    <Project Path="samples/DistributedConsoleSample/DistributedConsoleSample.csproj" />
   </Folder>
   <Folder Name="/samples/CleanArchitecture/">
     <Project Path="samples/CleanArchitectureSample/src/Orders.Module/Orders.Module.csproj" />

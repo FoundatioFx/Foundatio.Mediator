@@ -21,7 +21,7 @@ builder.Services.AddMediator()
     .AddDistributedQueues();
 ```
 
-With no transport registered this uses an in-memory queue, which is right for development and tests. For production add a [transport provider](./distributed-transports) before `AddDistributedQueues()`.
+With no transport registered this uses an in-memory queue, which is right for development and tests. For production add a [transport provider](./distributed-transports) before or after `AddDistributedQueues()`.
 
 ## Making a Handler Queue-Based
 
@@ -40,21 +40,21 @@ public class OrderProcessingHandler
 `mediator.InvokeAsync(new ProcessOrder(...))` now:
 
 1. Serializes the message to JSON.
-2. Sends it to a queue named after the message type (`ProcessOrder`), or `QueueName` if set.
+2. Sends it to an independent subscription queue (`OrderProcessing-ProcessOrder` here), or an explicit `QueueName`.
 3. Returns `Result.Accepted("Message queued")` immediately.
 
 A worker receives the message and runs the handler through the full middleware pipeline with a fresh DI scope. Authorization runs on the enqueuing node, so the worker skips it.
 
-Queue handlers must return `void`, `Task`, `Result`, or `Result<T>`. Anything else is rejected at enqueue time.
+Queue handlers support `void`, `Task`, `ValueTask`, `Result`, `Result<T>`, and cascading tuples with a Result first (including awaited forms). Unsupported return types fail during registration. `InvokeAsync<Result<T>>` returns acceptance without the eventual `T`; processing results are not returned to the caller. Cascading events are published only after processing.
 
 ## Queue Configuration
 
 ```csharp
 [Queue(
-    QueueName = "order-processing",    // default: message type name
+    QueueName = "order-processing",    // explicit subscription identity
     Group = "orders",                  // for worker selection, see Scaling Out
     Concurrency = 5,                   // concurrent handlers per worker (default 1)
-    PrefetchCount = 10,                // messages per receive (default: Concurrency)
+    PrefetchCount = 5,                 // per-receive cap, also bounded by available Concurrency
     MaxAttempts = 3,                   // 1 attempt + 2 retries (default 3); negative = unlimited
     TimeoutSeconds = 30,               // visibility timeout (default 30; max 43200)
     RetryPolicy = QueueRetryPolicy.Exponential,
@@ -78,7 +78,8 @@ The worker decides what happens to a message from the handler's result, or its e
 | Success statuses, or a `void`/`Task` handler that returns | Complete |
 | `Error`, `Unavailable`, `RateLimited`, or an unhandled exception | Abandon; redelivered after the retry delay |
 | `Invalid`, `BadRequest`, `NotFound`, `Unauthorized`, `Forbidden`, `Conflict`, `CriticalError` | Dead-letter immediately |
-| Attempts exceed `MaxAttempts` | Dead-letter |
+| Final allowed attempt fails | Dead-letter immediately, preserving the actual error and attempt count |
+| Receive count exceeds `MaxAttempts` after a crash/redelivery | Dead-letter as a safety net |
 | Body cannot be deserialized, or names an unknown type | Dead-letter immediately, on the first attempt |
 
 Retry delay policies:
@@ -113,7 +114,9 @@ Dead letters can be inspected, replayed to their original queue, or purged throu
 
 ## Several Handlers, Interfaces, and Base Types
 
-A queue carries one message no matter how many handlers accept it. Publishing `OrderCreated` with two `[Queue]` handlers on it sends one message; the worker dispatches it to both.
+Each `[Queue]` handler/message pair has its own durable subscription by default. Publishing `OrderCreated` to an audit handler and a webhook handler sends one message to each subscription. A webhook retry does not rerun successful audit work.
+
+Names strip the `Handler`/`Consumer` suffix: `OrderHandler` handling `Order` uses `Order`; `AuditHandler` handling `Order` uses `Audit-Order`. Set `QueueName` to keep an identity stable when renaming source types. Accidental name collisions fail registration. Explicitly naming the same queue on every member opts into a shared execution and retry budget.
 
 Handlers may be declared on an interface or base type. The message header `fm-message-type` names the concrete type, and the worker deserializes to it before dispatching to every handler on the queue whose parameter type accepts it:
 
@@ -125,12 +128,14 @@ public record OrderShipped(string OrderId) : IOrderEvent;
 [Queue(Group = "audit")]
 public class OrderAuditHandler
 {
-    // One queue named "IOrderEvent"; receives OrderCreated and OrderShipped as their concrete types
+    // One subscription named "OrderAudit-IOrderEvent"; receives OrderCreated and OrderShipped as their concrete types
     public Task HandleAsync(IOrderEvent evt, IAuditLog audit, CancellationToken ct) => audit.WriteAsync(evt, ct);
 }
 ```
 
 Only types a registered handler can accept are ever deserialized; the header cannot make the worker load arbitrary types.
+
+For an explicitly shared queue, Publish selects the first ordered matching handler as the enqueue pipeline and sends once. Only that member’s enqueue validation/enrichment runs. The worker runs all matching processing pipelines in order, including `OrderBefore`/`OrderAfter` declarations. Use independent subscriptions when members need different enqueue rules.
 
 Handlers on a shared queue run in sequence. If one fails with a retryable result or an exception, the message is abandoned and every handler runs again on the next attempt, so handlers that share a queue must be idempotent, like any queued handler.
 
@@ -173,23 +178,25 @@ await ctx.CompleteAsync(ct);                             // manual lifecycle whe
 await ctx.AbandonAsync(TimeSpan.FromSeconds(30), ct);
 ```
 
-With `AutoRenewTimeout` on (the default) the worker renews the visibility timeout at two thirds of `TimeoutSeconds` for as long as the handler runs, and keeps renewing after a failed renewal. A handler may run for hours on a 30-second timeout. `TimeoutSeconds` is capped at 12 hours, the SQS maximum.
+With `AutoRenewTimeout` on (the default) the worker renews the visibility timeout halfway through the lease, retrying transient failures within the remaining lease window. Known lease or lock loss cancels cooperative handler work. State-store heartbeats cannot block transport renewal. A handler may run for hours on a 30-second timeout. `TimeoutSeconds` is capped at 12 hours, the SQS maximum.
 
 ## Progress Tracking and Cancellation
 
-`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `Completed`, `Failed`, or `Cancelled`, with progress, attempt, error message, and a heartbeat on every renewal and progress report. The default store is in-memory; use [Redis](./distributed-transports#redis) for more than one node, or implement the interface over a store you already have.
+`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `RetryPending`, `Completed`, `Failed`, `Cancelled`, or `EnqueueUnknown`, with progress, attempt, error message, and a heartbeat on every renewal and progress report. The default store is in-memory. A distributed transport with tracked work requires a shared store and fails startup without one. Use [Redis](./distributed-transports#redis), implement a shared store, or explicitly set `AllowProcessLocalJobStateForDevelopment` for development/tests. Transport and state-store decorators must forward `IsDistributed` and `IsShared`.
 
-The job id comes back in the accepted result's `Location`:
+Use the typed receipt when the caller needs tracking. Its `JobId` is null for untracked work; `QueueName` is the physical destination. An HTTP status URL is a separate application decision:
 
 ```csharp
-var result = await mediator.InvokeAsync<Result>(new GenerateReport("monthly"), ct);
-var jobId = result.Location!;
+var result = await mediator.EnqueueAsync(new GenerateReport("monthly"), ct);
+if (!result.IsSuccess)
+    return; // enqueue validation rejected the message
+var jobId = result.Value.JobId!;
 
 var state = await stateStore.GetJobStateAsync(jobId, ct);
 Console.WriteLine($"{state.Status} {state.Progress}% {state.ProgressMessage}");
 
 await stateStore.RequestCancellationAsync(jobId, ct);
-// The worker observes the request on the next progress report or its cancellation poll (every 5 s)
+// The worker checks before execution, then on progress or its cancellation poll (every 5 s)
 // and cancels the handler's CancellationToken. A cancelled job completes the message; it is not retried.
 ```
 
@@ -201,7 +208,9 @@ Attach tenant, user, or any other context to jobs so a store can index them:
     : null);
 ```
 
-The dictionary is stored as `QueueJobState.Metadata`.
+The dictionary is stored as `QueueJobState.Metadata`. Retry-pending jobs remain cancellable. Explicit completion or abandonment is authoritative even if later handler code throws. An unconfirmed acknowledgment never reports Completed.
+
+If a send fails after state creation, `QueueEnqueueException.Receipt` identifies the attempted job and its state becomes `EnqueueUnknown` when the store is reachable. The transport may have accepted it; reconcile before blindly retrying. Tracked dead-letter replay through administration creates a new job ID, keeping the original failure record.
 
 ## Single Flight with [QueueLock]
 
@@ -210,7 +219,7 @@ Because delivery is at least once, work that must never run twice concurrently g
 ```csharp
 public record GenerateBankFile(string Bank) : IHaveLockKey
 {
-    public string LockKey => $"bank-file:{Bank}";
+    public string GetLockKey() => $"bank-file:{Bank}";
 }
 
 [Queue(Group = "exports")]
@@ -221,7 +230,9 @@ public class GenerateBankFileHandler
 }
 ```
 
-The lock key is `Key` on the attribute, then the message's `IHaveLockKey.LockKey`, then queue name plus message id. The lock is renewed while the handler runs and released afterwards. When another worker already holds it, the message is **completed without running the handler**: that work is already happening. Set `AcquireTimeoutSeconds` to wait instead of giving up immediately.
+The lock key is `Key` on the attribute, then `IHaveLockKey.GetLockKey()`, then queue name plus message id. The method is not serialized. Contention waits with bounded jitter while retaining the queue lease and retry budget, so distinct messages both eventually run. `AcquireTimeoutSeconds` controls each acquisition wait. The lock is renewed while processing and released afterwards.
+
+Locks coordinate concurrent owners; they are not persistent duplicate detection. Lease-loss cancellation cannot undo side effects already performed. Handlers still need idempotency for at-least-once delivery.
 
 Register an `IQueueLockProvider` over your lock service (Redis, a database) as a singleton. The in-memory provider is used automatically only when the in-memory queue client is in use, because a process-local lock is only safe with a process-local queue.
 
@@ -240,8 +251,9 @@ public sealed class TenantHeaderProvider(IHttpContextAccessor http) : IQueueHead
 
     public void Restore(IReadOnlyDictionary<string, string> headers, CallContext callContext)
     {
-        if (headers.TryGetValue("x-tenant", out var tenant))
-            callContext.Set(new TenantContext(tenant));
+        if (!headers.TryGetValue("x-tenant", out var tenant))
+            throw new InvalidOperationException("Required tenant header is missing.");
+        callContext.Set(new TenantContext(tenant));
     }
 }
 
@@ -250,42 +262,54 @@ builder.Services.AddMediator()
     .AddQueueHeaderProvider<TenantHeaderProvider>();
 ```
 
+Providers are scoped by default, resolved from the caller’s mediator scope and from a fresh worker scope before handler construction. A restoration exception fails the message. Pass `ServiceLifetime.Singleton` to `AddQueueHeaderProvider` for a stateless singleton. In console hosts using request-scoped providers, register the mediator with `.SetMediatorLifetime(ServiceLifetime.Scoped)` and resolve it inside the caller scope.
+
 Anything placed in the `CallContext` is available as a parameter on the handler and its middleware, exactly like `QueueContext`. Every message also carries `fm-correlation-id` (the current trace id, or a new id) and W3C `traceparent`.
 
 ## Middleware Integration
 
-Queued handlers run through the same middleware pipeline as local handlers, on the worker. Middleware can tell where it is:
+General middleware defaults to `MiddlewareStage.Processing` on queued handlers. Validation or request enrichment before sending opts into `Enqueue`; use `Both` only when repeating the behavior is safe. On ordinary nonqueued handlers, the existing middleware behavior is unchanged.
 
 ```csharp
-[Middleware]
-public class ObservabilityMiddleware
+[Middleware(Stage = MiddlewareStage.Enqueue)]
+public class OrderValidationMiddleware
 {
-    public Stopwatch Before(object message, QueueContext? queue)
-    {
-        Log.Information("Handling {Type} from {Source}", message.GetType().Name, queue is null ? "local" : queue.QueueName);
-        return Stopwatch.StartNew();
-    }
-
-    public void After(object message, Stopwatch sw) => Log.Information("Handled in {Elapsed}ms", sw.ElapsedMilliseconds);
+    public HandlerResult Before(ProcessOrder message)
+        => string.IsNullOrWhiteSpace(message.OrderId)
+            ? HandlerResult.ShortCircuit(Result.Invalid("OrderId is required"))
+            : HandlerResult.Continue();
 }
 ```
 
-`QueueContext` is `null` for local invocations.
+The stage applies to the entire lifecycle: construction, Execute, Before, After, Finally, and Before state. Short circuits run applicable cleanup. `HandlerResult.ContinueWith(replacement)` from enqueue middleware changes the serialized message. Processing retry/cache middleware does not wrap enqueueing. Use Result-returning handlers when enqueue validation must return a structured rejection.
+
 
 ## Options
 
 ```csharp
 builder.Services.AddMediator()
+    .ConfigureDistributed(o =>
+    {
+        o.ResourcePrefix = "myapp-prod"; // queues, topics, subscription infrastructure, Redis state
+        o.JsonSerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    })
     .AddDistributedQueues(o =>
     {
         o.Workers = WorkerSelection.Parse(builder.Configuration["Distributed:Workers"]); // which workers run here
-        o.ResourcePrefix = "myapp-prod";              // prefixes every queue name
         o.ShutdownTimeout = TimeSpan.FromSeconds(60); // drain window for in-flight handlers on stop
         o.EnqueueReadyTimeout = TimeSpan.FromSeconds(30);
         o.JobStateExpiry = TimeSpan.FromHours(24);
         o.QueueDepthPollInterval = TimeSpan.FromSeconds(30); // queue.depth.* metrics; Zero disables
-        o.JsonSerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        o.QueueOverrides["order-processing"] = queue => queue.Concurrency = 8;
     });
 ```
 
 If workers are disabled or filtered and no transport is registered, startup fails: messages sent to an in-memory queue with no worker in the same process would be lost. Set `AllowInMemoryWithoutWorkers` in tests that want exactly that.
+
+Shared defaults are configured before queue/notification registration; explicit feature/provider overrides win. Worker selectors use logical subscription or group names without prefixes. Supported text is `all`, `none`, or comma-separated names with `!name` exclusions; malformed expressions and unmatched names fail registration with available-name diagnostics.
+
+## Database and enqueue consistency
+
+A database commit followed by an enqueue is two operations. A process crash or ambiguous send failure can leave one committed without the other. Applications needing atomic business changes plus eventual delivery should write an outbox record in the database transaction and relay it with a stable operation ID. Make consumers idempotent against that ID. This library provides at-least-once transport processing, not a generic transactional outbox or exactly-once side effects.
+
+Start with the executable [DistributedConsoleSample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/DistributedConsoleSample), which starts a real host and deterministically waits for completion without Docker.

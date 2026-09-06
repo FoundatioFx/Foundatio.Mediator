@@ -8,7 +8,7 @@ nav:
 
 # Transport Providers
 
-Queues and notifications sit on pluggable transports. In development the in-memory transports work out of the box; in production you register a provider before `AddDistributedQueues()` and `AddDistributedNotifications()`.
+Queues and notifications sit on pluggable transports. In development the in-memory transports work out of the box; in production you register a provider before or after `AddDistributedQueues()` and `AddDistributedNotifications()`.
 
 ## In-Memory (Default)
 
@@ -61,7 +61,7 @@ builder.Services.AddMediator()
 
 ### Queues on SQS
 
-Each queue is an SQS standard queue named from `ResourcePrefix` plus the message type or `QueueName`, with a dead-letter queue `{queue}-dead-letter`. The `[Queue]` settings become queue attributes: `TimeoutSeconds` is the SQS visibility timeout (also requested on every receive, so the transport lock and the worker's renewal cadence always agree), `MaxAttempts` sets a redrive policy whose receive count sits above it so the library's own dead-lettering runs first, and dead-letter queues keep messages for `DeadLetterRetention`.
+Each queue is an SQS standard queue named from `ResourcePrefix` plus the logical handler/message subscription name or explicit `QueueName`, with a dead-letter queue `{queue}-dead-letter`. The `[Queue]` settings become queue attributes: `TimeoutSeconds` is the SQS visibility timeout (also requested on every receive, so the transport lock and the worker's renewal cadence always agree), `MaxAttempts` sets a redrive policy whose receive count sits above it so the library's own dead-lettering runs first, and dead-letter queues keep messages for `DeadLetterRetention`.
 
 Bodies travel as UTF-8 JSON text; headers are message attributes, or one `fm-headers` JSON attribute once there are more than the ten SQS allows. A message over 256 KB fails at enqueue naming the queue, the size, and the message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
 

@@ -39,6 +39,8 @@ internal readonly record struct MiddlewareInfo
     /// When true, the middleware is not automatically applied based on message type matching.
     /// </summary>
     public bool ExplicitOnly { get; init; }
+    public int Stage { get; init; }
+    public bool IsDispatcher { get; init; }
 
     /// <summary>
     /// The DI lifetime for this middleware when explicitly set via [Middleware(Lifetime = ...)] attribute.

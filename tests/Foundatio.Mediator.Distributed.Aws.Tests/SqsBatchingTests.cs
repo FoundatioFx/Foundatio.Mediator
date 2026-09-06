@@ -245,6 +245,43 @@ public class SqsBatchingTests
         Assert.Equal(new[] { firstContext, secondContext }, sdk.BatchActivity.Links.Select(link => link.Context));
     }
 
+    [Fact]
+    public async Task CompletingAReceivedBatch_FlushesImmediatelyEvenWhenItContainsFewerThanTen()
+    {
+        using var sdk = new ControlledSqs
+        {
+            ReceivedMessages = Enumerable.Range(0, 8).Select(i => new Message { MessageId = i.ToString(), Body = "{}", ReceiptHandle = i.ToString() }).ToList()
+        };
+        await using var client = CreateClient(sdk); // A partial batch would otherwise wait ten seconds.
+        var received = await client.ReceiveAsync("queue", 8, CT);
+        var completions = received.Select(message => client.CompleteAsync(message, CT)).ToArray();
+        var request = await sdk.Deletes.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT);
+        Assert.Equal(8, request.Entries.Count);
+        Assert.All(completions, completion => Assert.False(completion.IsCompleted));
+        sdk.DeleteResponse.SetResult(new DeleteMessageBatchResponse { Successful = request.Entries.Select(e => new DeleteMessageBatchResultEntry { Id = e.Id }).ToList() });
+        await Task.WhenAll(completions).WaitAsync(CT);
+    }
+
+    [Fact]
+    public async Task ReceivedBatch_WithUnfinishedPeer_FlushesReadyAcknowledgmentsAtTheDeadline()
+    {
+        using var sdk = new ControlledSqs
+        {
+            ReceivedMessages = Enumerable.Range(0, 8).Select(i => new Message { MessageId = i.ToString(), Body = "{}", ReceiptHandle = i.ToString() }).ToList()
+        };
+        await using var client = new SqsQueueClient(sdk, new SqsQueueClientOptions
+        {
+            Provisioning = SqsProvisioningMode.None,
+            Batching = new AwsBatchOptions { MaxDelay = TimeSpan.FromMilliseconds(10) }
+        });
+        var received = await client.ReceiveAsync("queue", 8, CT);
+        var completions = received.Take(7).Select(message => client.CompleteAsync(message, CT)).ToArray();
+        var request = await sdk.Deletes.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT);
+        Assert.Equal(7, request.Entries.Count);
+        sdk.DeleteResponse.SetResult(new DeleteMessageBatchResponse { Successful = request.Entries.Select(e => new DeleteMessageBatchResultEntry { Id = e.Id }).ToList() });
+        await Task.WhenAll(completions).WaitAsync(CT);
+    }
+
     private static SqsQueueClient CreateClient(ControlledSqs sdk) => new(sdk, new SqsQueueClientOptions
     {
         Provisioning = SqsProvisioningMode.None,
@@ -262,6 +299,9 @@ public class SqsBatchingTests
         public string? CapturedContext { get; private set; }
         public bool AutoComplete { get; init; }
         public Activity? BatchActivity { get; private set; }
+        public List<Message> ReceivedMessages { get; init; } = [];
+        public override Task<ReceiveMessageResponse> ReceiveMessageAsync(ReceiveMessageRequest request, CancellationToken cancellationToken = default)
+            => Task.FromResult(new ReceiveMessageResponse { Messages = ReceivedMessages });
         public override Task<GetQueueUrlResponse> GetQueueUrlAsync(GetQueueUrlRequest request, CancellationToken cancellationToken = default)
             => Task.FromResult(new GetQueueUrlResponse { QueueUrl = "http://localhost:1/" + request.QueueName });
         public override Task<SendMessageBatchResponse> SendMessageBatchAsync(SendMessageBatchRequest request, CancellationToken cancellationToken = default)

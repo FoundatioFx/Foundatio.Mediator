@@ -747,6 +747,15 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
     // ── Counters ───────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task IncrementCounter_ConcurrentUpdates_PreserveExactTotal()
+    {
+        var store = CreateStore();
+        await Task.WhenAll(Enumerable.Range(0, 1000).Select(_ => store.IncrementCounterAsync("Concurrent", "processed", 1, CT)));
+        var stats = await store.GetCounterStatsAsync("Concurrent", TimeSpan.FromHours(1), CT);
+        Assert.Equal(1000, stats.Totals["processed"]);
+    }
+
+    [Fact]
     public async Task IncrementCounter_CreatesAndIncrements()
     {
         var store = CreateStore();

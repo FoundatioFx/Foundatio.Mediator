@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Foundatio.Mediator.Benchmarks/Foundatio.Mediator.Benchmarks.csproj" />
+    <Project Path="benchmarks/Foundatio.Mediator.Distributed.Load/Foundatio.Mediator.Distributed.Load.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />

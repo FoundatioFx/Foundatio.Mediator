@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Running;
+using BenchmarkDotNet.Configs;
 using RhoMicro.BdnLogging;
 
 namespace Foundatio.Mediator.Benchmarks;
@@ -9,12 +10,14 @@ class Program
     {
         var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "all";
 
+        IConfig config = Console.IsOutputRedirected ? DefaultConfig.Instance : SpotlightConfig.Instance;
+
         switch (mode)
         {
             case "foundatio":
             case "f":
                 Console.WriteLine("Running Foundatio.Mediator-only benchmarks (for performance iteration)...");
-                BenchmarkRunner.Run<FoundatioBenchmarks>(SpotlightConfig.Instance, args: args.Length > 1 ? args[1..] : []);
+                BenchmarkRunner.Run<FoundatioBenchmarks>(config, args: args.Length > 1 ? args[1..] : []);
                 break;
 
             case "endpoints":
@@ -27,7 +30,7 @@ class Program
             case "compare":
             default:
                 Console.WriteLine("Running Foundatio.Mediator comparison benchmarks...");
-                BenchmarkRunner.Run<CoreBenchmarks>(SpotlightConfig.Instance, args: args.Length > 1 ? args[1..] : []);
+                BenchmarkRunner.Run<CoreBenchmarks>(config, args: args.Length > 1 ? args[1..] : []);
                 break;
         }
     }

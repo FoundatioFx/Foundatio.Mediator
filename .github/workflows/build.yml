@@ -61,7 +61,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build and verify benchmark accounting
         run: |
-          dotnet build benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release
+          dotnet build benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release -p:GeneratePackageOnBuild=false
           dotnet benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll self-test
       - name: Start isolated SQS and SNS
         run: docker compose -p mediator-bench -f benchmarks/Foundatio.Mediator.Distributed.Benchmarks/compose.yaml up -d --wait

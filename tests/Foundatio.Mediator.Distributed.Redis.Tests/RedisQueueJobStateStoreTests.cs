@@ -49,6 +49,45 @@ public class RedisQueueJobStateStoreTests(RedisFixture fixture) : IClassFixture<
         };
     }
 
+    [Fact]
+    public async Task MixedRetention_PreservesOldLiveHashInIndexes()
+    {
+        var store = CreateStore(out var prefix);
+        await store.SetJobStateAsync(CreateJobState("long-lived", "Q", QueueJobStatus.Completed, DateTimeOffset.UtcNow.AddDays(-90)),
+            expiry: TimeSpan.FromDays(365), cancellationToken: CT);
+        await store.SetJobStateAsync(CreateJobState("short-lived", "Q", QueueJobStatus.Completed),
+            expiry: TimeSpan.FromMinutes(1), cancellationToken: CT);
+
+        Assert.True(await Db.KeyExistsAsync(JobKey(prefix, "long-lived")));
+        var jobs = await store.GetJobsByStatusAsync("Q", QueueJobStatus.Completed, cancellationToken: CT);
+        Assert.Equal(2, jobs.Count);
+        Assert.Contains(jobs, job => job.JobId == "long-lived");
+        Assert.Equal(2, await store.GetJobCountByStatusAsync("Q", QueueJobStatus.Completed, CT));
+        Assert.True(await Db.KeyTimeToLiveAsync(StatusSetKey(prefix, "Q", QueueJobStatus.Completed)) > TimeSpan.FromDays(364));
+    }
+
+    [Fact]
+    public async Task ConcurrentMixedRetention_NeverShortensIndexBelowLiveMembers()
+    {
+        var store = CreateStore(out var prefix);
+        await Task.WhenAll(Enumerable.Range(0, 100).Select(i => store.SetJobStateAsync(CreateJobState($"job-{i}", "Q", QueueJobStatus.Completed),
+            expiry: i % 2 == 0 ? TimeSpan.FromDays(30) : TimeSpan.FromMinutes(1), cancellationToken: CT)));
+        Assert.Equal(100, await store.GetJobCountByStatusAsync("Q", QueueJobStatus.Completed, CT));
+        Assert.True(await Db.KeyTimeToLiveAsync(StatusSetKey(prefix, "Q", QueueJobStatus.Completed)) > TimeSpan.FromDays(29));
+    }
+
+    [Fact]
+    public async Task Heartbeat_RefreshesBothQueueAndStatusIndexRetention()
+    {
+        var store = CreateStore(out var prefix);
+        await store.SetJobStateAsync(CreateJobState("live", "Q", QueueJobStatus.Processing), cancellationToken: CT);
+        await Db.KeyExpireAsync($"{prefix}:queues:Q", TimeSpan.FromSeconds(1));
+        await Db.KeyExpireAsync(StatusSetKey(prefix, "Q", QueueJobStatus.Processing), TimeSpan.FromSeconds(1));
+        await store.HeartbeatAsync("live", CT);
+        Assert.True(await Db.KeyTimeToLiveAsync($"{prefix}:queues:Q") > TimeSpan.FromDays(6));
+        Assert.True(await Db.KeyTimeToLiveAsync(StatusSetKey(prefix, "Q", QueueJobStatus.Processing)) > TimeSpan.FromDays(6));
+    }
+
     // ── Set / Get ──────────────────────────────────────────────────────────
 
     [Fact]

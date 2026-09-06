@@ -20,6 +20,9 @@ public sealed class QueueStats
     /// </summary>
     public long ActiveCount { get; init; }
 
+    /// <summary>Approximate number of messages scheduled for later delivery.</summary>
+    public long DelayedCount { get; init; }
+
     /// <summary>
     /// Approximate number of messages in the dead-letter queue.
     /// </summary>

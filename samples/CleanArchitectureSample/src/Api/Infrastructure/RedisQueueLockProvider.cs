@@ -44,7 +44,7 @@ public sealed class RedisQueueLockProvider(IConnectionMultiplexer redis) : IQueu
         {
             var renewed = (int)await db.ScriptEvaluateAsync(RenewScript, [redisKey], [owner, (long)lifetime.TotalMilliseconds]).ConfigureAwait(false);
             if (renewed == 0)
-                throw new InvalidOperationException($"Lock '{key}' is no longer held by this owner.");
+                throw new QueueLeaseLostException("The resource lock is no longer held by this owner.");
         }
 
         public async ValueTask DisposeAsync()

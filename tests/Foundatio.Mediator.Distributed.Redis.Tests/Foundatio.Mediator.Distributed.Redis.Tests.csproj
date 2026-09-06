@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\src\Foundatio.Mediator.Distributed.Redis\Foundatio.Mediator.Distributed.Redis.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../Foundatio.Mediator.Distributed.Tests/QueueJobStateStoreContractTests.cs" Link="QueueJobStateStoreContractTests.cs" />
+  </ItemGroup>
+
 </Project>

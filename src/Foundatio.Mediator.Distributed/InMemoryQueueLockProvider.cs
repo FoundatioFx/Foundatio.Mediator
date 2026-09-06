@@ -48,15 +48,22 @@ public sealed class InMemoryQueueLockProvider(TimeProvider? timeProvider = null)
 
         public Task RenewAsync(TimeSpan lifetime, CancellationToken cancellationToken = default)
         {
-            var renewed = _entry with { ExpiresAt = provider._timeProvider.GetUtcNow() + lifetime };
-            if (provider._locks.TryUpdate(key, renewed, _entry))
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (this)
+            {
+                var now = provider._timeProvider.GetUtcNow();
+                var renewed = _entry with { ExpiresAt = now + lifetime };
+                if (_entry.ExpiresAt <= now || !provider._locks.TryUpdate(key, renewed, _entry))
+                    throw new QueueLeaseLostException("The resource lock is no longer owned by this worker.");
                 _entry = renewed;
+            }
             return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync()
         {
-            provider._locks.TryRemove(new KeyValuePair<string, Entry>(key, _entry));
+            lock (this)
+                provider._locks.TryRemove(new KeyValuePair<string, Entry>(key, _entry));
             return default;
         }
     }

@@ -8,7 +8,7 @@ namespace Common.Module.Handlers;
 
 /// <summary>
 /// Money movement must never run twice at once. <c>[QueueLock]</c> takes a distributed lock on the message's
-/// <see cref="GenerateBankFile.LockKey"/> before the handler runs; a second message for the same bank that
+/// <see cref="GenerateBankFile.GetLockKey"/> before the handler runs; a second message for the same bank that
 /// arrives while the lock is held is completed without running, on this worker or any other.
 /// </summary>
 [Queue(Group = "exports", Concurrency = 2, TimeoutSeconds = 60, Description = "Bank file generation; [QueueLock] allows one run per bank at a time")]

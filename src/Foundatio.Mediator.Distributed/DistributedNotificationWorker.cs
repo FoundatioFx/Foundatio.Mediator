@@ -1,4 +1,5 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,17 +14,9 @@ namespace Foundatio.Mediator.Distributed;
 /// to the local mediator.
 /// </summary>
 /// <remarks>
-/// <para><b>Outbound loop</b>: uses <c>mediator.SubscribeAsync&lt;MessageContext&lt;object&gt;&gt;()</c>
-/// to tap into all locally published notifications, filters to types that should be distributed
-/// (via <see cref="DistributedNotificationOptions.ShouldDistribute"/>), then serializes and publishes
-/// them to the pub/sub client. Messages that arrived from the bus (tracked by reference identity
-/// in <see cref="_inboundMessages"/>) are skipped to prevent re-broadcast loops.</para>
-///
-/// <para><b>Inbound loop</b>: subscribes to the bus topic and, for each received message,
-/// checks the <see cref="MessageHeaders.OriginHostId"/> header. If it matches this host's ID the
-/// message is skipped (self-delivery). Otherwise the message is deserialized, added to the
-/// <see cref="_inboundMessages"/> set, and published locally via <c>mediator.PublishAsync()</c>.
-/// The reference set entry is removed in a finally block.</para>
+/// Publications are buffered with DropOldest and are best effort. StartAsync waits until the
+/// local subscription and transport subscription are established. Inbound identities are weakly
+/// tracked for their lifetime so an overflow or handler failure cannot create a rebroadcast loop.
 /// </remarks>
 public sealed class DistributedNotificationWorker : BackgroundService
 {
@@ -34,18 +27,15 @@ public sealed class DistributedNotificationWorker : BackgroundService
     private readonly ILogger<DistributedNotificationWorker> _logger;
     private readonly MessageTypeResolver? _typeResolver;
 
-    /// <summary>
-    /// Tracks notification objects that arrived from the bus and are currently being
-    /// re-published locally. The outbound loop checks this set by reference identity
-    /// and skips any match, preventing infinite re-broadcast.
-    /// </summary>
-    private readonly ConcurrentDictionary<object, byte> _inboundMessages = new(ReferenceEqualityComparer.Instance);
+    private readonly ConditionalWeakTable<object, InboundMarker> _inboundMessages = new();
+    private sealed class InboundMarker;
+    private readonly TaskCompletionSource _outboundReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _inboundReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private long _droppedCount;
+    private long _lastDropWarningTicks;
 
-    /// <summary>
-    /// Safety cap for <see cref="_inboundMessages"/>. Under normal operation the outbound
-    /// loop removes entries quickly, but if it stalls this prevents unbounded memory growth.
-    /// </summary>
-    private const int MaxInboundTrackingEntries = 10_000;
+    /// <summary>Number of outbound notifications evicted from this worker's bounded buffer.</summary>
+    public long DroppedCount => Interlocked.Read(ref _droppedCount);
 
     private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
@@ -69,107 +59,106 @@ public sealed class DistributedNotificationWorker : BackgroundService
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        // Wait for topics to be created before subscribing
-        if (_infraReady is not null)
-        {
-            try { await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
-        }
-
-        _logger.LogInformation(
-            "Distributed notification worker starting (HostId={HostId}, Topic={Topic}, Types={TypeCount}): {Types}",
-            _options.HostId, _options.EffectiveTopic, _options.ResolvedTypes.Count, _options.ResolvedTypes.Select(t => t.Name));
-
-        var outboundTask = RunOutboundLoopAsync(stoppingToken);
-        var inboundTask = RunInboundLoopAsync(stoppingToken);
-
-        await Task.WhenAll(outboundTask, inboundTask).ConfigureAwait(false);
-
-        _logger.LogInformation("Distributed notification worker stopped");
+        await base.StartAsync(cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(_outboundReady.Task, _inboundReady.Task).WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Reads from the local mediator subscription stream and publishes to the bus.
-    /// </summary>
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.WhenAll(RunOutboundLoopAsync(stoppingToken), RunInboundLoopAsync(stoppingToken)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _outboundReady.TrySetException(ex);
+            _inboundReady.TrySetException(ex);
+            throw;
+        }
+        finally
+        {
+            _outboundReady.TrySetCanceled(stoppingToken);
+            _inboundReady.TrySetCanceled(stoppingToken);
+        }
+    }
+
     private async Task RunOutboundLoopAsync(CancellationToken stoppingToken)
     {
         try
         {
-            // Create a long-lived scope for the outbound subscription stream
             await using var scope = _scopeFactory.CreateAsyncScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-
-            var subscriberOptions = new SubscriberOptions
+            var options = new SubscriberOptions
             {
                 MaxCapacity = _options.MaxCapacity,
-                FullMode = _options.FullMode
+                FullMode = BoundedChannelFullMode.DropOldest,
+                Filter = message => _options.ShouldDistribute(message.GetType()) && !_inboundMessages.TryGetValue(message, out _),
+                OnDropped = OnDropped
             };
-
-            await foreach (var envelope in mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, subscriberOptions).ConfigureAwait(false))
+            if (_infraReady is not null)
+                await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false);
+            await using var subscription = mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, options).GetAsyncEnumerator(stoppingToken);
+            var pending = subscription.MoveNextAsync();
+            _outboundReady.TrySetResult();
+            while (await pending.ConfigureAwait(false))
             {
-                var notification = envelope.Message;
-
-                // Filter to only types that should be distributed
-                if (!_options.ShouldDistribute(notification.GetType()))
-                    continue;
-
-                // Skip messages that arrived from the bus. TryRemove atomically checks and cleans
-                // up the tracking entry, avoiding the race where a finally block removed the entry
-                // before this loop had a chance to read from the channel.
-                if (_inboundMessages.TryRemove(notification, out _))
-                    continue;
-
-                try
-                {
-                    var messageType = notification.GetType();
-                    var body = JsonSerializer.SerializeToUtf8Bytes(notification, messageType, _jsonOptions);
-
-                    var headers = new Dictionary<string, string>
-                    {
-                        [MessageHeaders.MessageType] = messageType.FullName!,
-                        [MessageHeaders.OriginHostId] = _options.HostId,
-                        [MessageHeaders.PublishedAt] = _timeProvider.GetUtcNow().ToString("O")
-                    };
-
-                    // Start a producer activity parented to the original publisher's trace
-                    // (e.g. the HTTP request handler) so the SNS.Publish span is in the same trace.
-                    using var activity = MediatorActivitySource.Instance.StartActivity(
-                        $"Publish {messageType.Name}",
-                        ActivityKind.Producer,
-                        envelope.ActivityContext);
-
-                    // Propagate W3C trace context so downstream consumers appear in the same trace
-                    var activeActivity = Activity.Current;
-                    if (activeActivity is not null)
-                    {
-                        headers[MessageHeaders.TraceParent] = activeActivity.Id!;
-                        if (activeActivity.TraceStateString is { Length: > 0 } traceState)
-                            headers[MessageHeaders.TraceState] = traceState;
-                    }
-
-                    activity?.SetTag("messaging.operation.type", "publish");
-                    activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
-                    activity?.SetTag("messaging.message.type", messageType.FullName);
-
-                    await _bus.PublishAsync(_options.EffectiveTopic, [new PubSubEntry { Body = body, Headers = headers }], stoppingToken).ConfigureAwait(false);
-                    DistributedMetrics.NotificationsPublished.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to publish distributed notification {MessageType} to bus",
-                        notification.GetType().Name);
-                }
+                await PublishOutboundAsync(subscription.Current, stoppingToken).ConfigureAwait(false);
+                pending = subscription.MoveNextAsync();
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        catch (Exception ex)
         {
-            // Normal shutdown
+            _outboundReady.TrySetException(ex);
+            throw;
+        }
+    }
+
+    private void OnDropped(object item)
+    {
+        Interlocked.Increment(ref _droppedCount);
+        var notification = ((MessageContext<object>)item).Message;
+        DistributedMetrics.NotificationsDropped.Add(1, new KeyValuePair<string, object?>("message_type", notification.GetType().Name));
+        var now = _timeProvider.GetUtcNow().UtcTicks;
+        var previous = Interlocked.Read(ref _lastDropWarningTicks);
+        if ((previous == 0 || now - previous >= TimeSpan.TicksPerMinute)
+            && Interlocked.CompareExchange(ref _lastDropWarningTicks, now, previous) == previous)
+            _logger.LogWarning("Distributed notification buffer is full; oldest notifications are being dropped. Total dropped: {DroppedCount}. Use a queue subscription when delivery must be durable.", DroppedCount);
+    }
+
+    private async Task PublishOutboundAsync(MessageContext<object> envelope, CancellationToken stoppingToken)
+    {
+        var notification = envelope.Message;
+        try
+        {
+            var messageType = notification.GetType();
+            var body = JsonSerializer.SerializeToUtf8Bytes(notification, messageType, _jsonOptions);
+            var headers = new Dictionary<string, string>
+            {
+                [MessageHeaders.MessageType] = messageType.FullName!,
+                [MessageHeaders.OriginHostId] = _options.HostId,
+                [MessageHeaders.PublishedAt] = _timeProvider.GetUtcNow().ToString("O")
+            };
+            using var activity = MediatorActivitySource.Instance.StartActivity($"Publish {messageType.Name}", ActivityKind.Producer, envelope.ActivityContext);
+            if (Activity.Current is { } active)
+            {
+                headers[MessageHeaders.TraceParent] = active.Id!;
+                if (active.TraceStateString is { Length: > 0 } traceState)
+                    headers[MessageHeaders.TraceState] = traceState;
+            }
+            activity?.SetTag("messaging.operation.type", "publish");
+            activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
+            activity?.SetTag("messaging.message.type", messageType.FullName);
+            await _bus.PublishAsync(_options.EffectiveTopic, [new PubSubEntry { Body = body, Headers = headers }], stoppingToken)
+                .WaitAsync(stoppingToken).ConfigureAwait(false);
+            DistributedMetrics.NotificationsPublished.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish distributed notification {MessageType} to bus", notification.GetType().Name);
         }
     }
 
@@ -178,6 +167,8 @@ public sealed class DistributedNotificationWorker : BackgroundService
     /// </summary>
     private async Task RunInboundLoopAsync(CancellationToken stoppingToken)
     {
+        if (_infraReady is not null)
+            await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false);
         int attempt = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -189,6 +180,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
                     await ProcessInboundMessageAsync(message, ct).ConfigureAwait(false);
                 }, stoppingToken).ConfigureAwait(false);
 
+                _inboundReady.TrySetResult();
                 attempt = 0;
                 _logger.LogInformation("Subscribed to notification topic {Topic}", _options.EffectiveTopic);
 
@@ -238,7 +230,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         if (messageType is null && _typeResolver?.TryResolve(typeName, typeof(object)) is { } candidate && _options.ShouldDistribute(candidate))
             messageType = candidate;
 
-        if (messageType is null)
+        if (messageType is null || !_options.ShouldDistribute(messageType))
         {
             _logger.LogWarning("Cannot resolve type '{TypeName}' from bus message — not registered and not selected by the distribution rules, skipping", typeName);
             return;
@@ -261,59 +253,36 @@ public sealed class DistributedNotificationWorker : BackgroundService
             return;
         }
 
-        // Mark by reference so the outbound loop skips this message.
-        // Removal happens in the outbound loop (TryRemove) to avoid a race where this
-        // finally block runs before the outbound loop reads from the channel.
-        if (_inboundMessages.Count >= MaxInboundTrackingEntries)
+        // A weak marker survives a buffer drop or a partially failed local publish without retaining the message.
+        _inboundMessages.Add(notification, new InboundMarker());
+        // Restore trace context from the publishing node so this processing
+        // appears as a child span of the original operation
+        ActivityContext parentContext = default;
+        if (message.Headers.TryGetValue(MessageHeaders.TraceParent, out var traceParent)
+            && ActivityContext.TryParse(traceParent, message.Headers.GetValueOrDefault(MessageHeaders.TraceState), out var parsed))
         {
-            _logger.LogWarning(
-                "Inbound message tracking dictionary exceeded {MaxEntries} entries — clearing to prevent unbounded growth. " +
-                "This may briefly allow a re-broadcast of an in-flight notification.",
-                MaxInboundTrackingEntries);
-            _inboundMessages.Clear();
+            parentContext = parsed;
         }
 
-        _inboundMessages.TryAdd(notification, 0);
-        bool published = false;
-        try
-        {
-            // Restore trace context from the publishing node so this processing
-            // appears as a child span of the original operation
-            ActivityContext parentContext = default;
-            if (message.Headers.TryGetValue(MessageHeaders.TraceParent, out var traceParent)
-                && ActivityContext.TryParse(traceParent, message.Headers.GetValueOrDefault(MessageHeaders.TraceState), out var parsed))
-            {
-                parentContext = parsed;
-            }
+        using var activity = MediatorActivitySource.Instance.StartActivity(
+            $"Process {messageType.Name}",
+            ActivityKind.Consumer,
+            parentContext);
+        activity?.SetTag("messaging.operation.type", "process");
+        activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
+        activity?.SetTag("messaging.message.type", messageType.FullName);
 
-            using var activity = MediatorActivitySource.Instance.StartActivity(
-                $"Process {messageType.Name}",
-                ActivityKind.Consumer,
-                parentContext);
-            activity?.SetTag("messaging.operation.type", "process");
-            activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
-            activity?.SetTag("messaging.message.type", messageType.FullName);
+        DistributedMetrics.NotificationsReceived.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
 
-            DistributedMetrics.NotificationsReceived.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
+        // The originating node already enqueued any [Queue] handlers for this notification;
+        // QueueMiddleware checks this scope so they are not enqueued again here.
+        using var distributedScope = DistributedContext.BeginNotificationScope(notification);
 
-            // The originating node already enqueued any [Queue] handlers for this notification;
-            // QueueMiddleware checks this scope so they are not enqueued again here.
-            using var distributedScope = DistributedContext.BeginNotificationScope(notification);
+        // Create a scope per inbound message for proper scoped service lifetime
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            // Create a scope per inbound message for proper scoped service lifetime
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-
-            // Publish skips auth automatically via the publish delegate path
-            await mediator.PublishAsync(notification, cancellationToken).ConfigureAwait(false);
-            published = true;
-        }
-        finally
-        {
-            // Only clean up here if publish failed — the outbound loop will never see the
-            // message, so we must remove the tracking entry ourselves.
-            if (!published)
-                _inboundMessages.TryRemove(notification, out _);
-        }
+        // Publish skips auth automatically via the publish delegate path
+        await mediator.PublishAsync(notification, cancellationToken).ConfigureAwait(false);
     }
 }

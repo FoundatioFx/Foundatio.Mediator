@@ -557,15 +557,25 @@ public sealed class HandlerRegistry : IDisposable
             throw new ObjectDisposedException(nameof(HandlerRegistry));
 
         var maxCapacity = options?.MaxCapacity ?? 100;
+        var onDropped = options?.OnDropped;
         var channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maxCapacity)
         {
             FullMode = options?.FullMode ?? BoundedChannelFullMode.DropOldest,
             SingleWriter = false,
             SingleReader = true
-        });
+        }, onDropped is null ? null : item => onDropped(item!));
 
         // Detect if T is MessageContext<TInner> — if so, subscribe to TInner but wrap into the context.
         var (subscriptionType, entry) = CreateSubscriptionEntry(channel.Writer);
+        if (options?.Filter is { } filter)
+        {
+            var unfiltered = entry;
+            entry = new SubscriptionEntry((message, context) =>
+            {
+                if (filter(message))
+                    unfiltered.Write(message, context);
+            }, unfiltered.Complete);
+        }
 
         AddSubscription(subscriptionType, entry);
         try

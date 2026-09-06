@@ -258,6 +258,7 @@ public static class DistributedServiceExtensions
 
         var options = new DistributedNotificationOptions();
         configure?.Invoke(options);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxCapacity, 1);
 
         services.AddSingleton(options);
 
@@ -291,9 +292,6 @@ public static class DistributedServiceExtensions
             }
         }
 
-        if (distributedTypes.Count == 0 && !options.HasDynamicRules)
-            return builder;
-
         options.ResolvedTypes = distributedTypes.OrderBy(t => t.FullName, StringComparer.Ordinal).ToList();
 
         services.AddSingleton<IHostedService>(sp => new DistributedNotificationWorker(
@@ -321,8 +319,8 @@ public static class DistributedServiceExtensions
         services.AddSingleton(ready);
 
         services.AddSingleton<IHostedService>(sp => new DistributedInfrastructureInitializer(
-            sp.GetService<IQueueClient>(),
-            sp.GetService<IPubSubClient>(),
+            infraOptions.QueueNames.Count > 0 ? sp.GetService<IQueueClient>() : null,
+            infraOptions.TopicNames.Count > 0 ? sp.GetService<IPubSubClient>() : null,
             sp.GetRequiredService<DistributedInfrastructureOptions>(),
             sp.GetRequiredService<DistributedInfrastructureReady>(),
             sp.GetRequiredService<ILogger<DistributedInfrastructureInitializer>>()));

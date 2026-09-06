@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
-using System.Threading.Channels;
 
 namespace Foundatio.Mediator.Distributed;
 
@@ -23,11 +22,10 @@ public class DistributedNotificationOptions
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
-    /// Capacity of the outbound buffer between local publishes and the bus.
+    /// Capacity of the outbound buffer between local publishes and the bus. A full buffer
+    /// evicts the oldest notification and records a drop; publishing never waits for remote delivery.
     /// </summary>
     public int MaxCapacity { get; set; } = 1000;
-
-    public BoundedChannelFullMode FullMode { get; set; } = BoundedChannelFullMode.Wait;
 
     /// <summary>
     /// Prefix applied to the topic name.

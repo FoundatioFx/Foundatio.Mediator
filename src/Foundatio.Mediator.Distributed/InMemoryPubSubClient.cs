@@ -1,125 +1,123 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Foundatio.Mediator.Distributed;
 
-/// <summary>
-/// In-process pub/sub client backed by <see cref="Channel{T}"/>.
-/// Useful for testing and single-process scenarios where distributed fan-out
-/// collapses to local delivery.
-/// </summary>
-public sealed class InMemoryPubSubClient : IPubSubClient, IDisposable
+/// <summary>In-process, best-effort pub/sub for development and tests.</summary>
+public sealed class InMemoryPubSubClient(ILogger<InMemoryPubSubClient>? logger = null) : IPubSubClient, IDisposable
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, SubscriptionEntry>> _subscriptions = new();
-    private readonly ConcurrentBag<CancellationTokenSource> _activeCts = [];
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Subscription>> _subscriptions = new();
+    private readonly ILogger _logger = logger ?? NullLogger<InMemoryPubSubClient>.Instance;
+    private int _disposed;
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Reports subscriber exceptions without terminating other subscribers. Invoked on the consumer
+    /// task, so observers must be thread safe. Message bodies are never included in diagnostics.
+    /// </summary>
+    public event Action<Exception>? DeliveryFailed;
+
     public Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> entries, CancellationToken cancellationToken = default)
     {
-        if (!_subscriptions.TryGetValue(topic, out var subs))
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_subscriptions.TryGetValue(topic, out var subscribers))
             return Task.CompletedTask;
-
         foreach (var entry in entries)
         {
             var message = new PubSubMessage
             {
                 Body = entry.Body,
-                Headers = entry.Headers is not null
-                    ? new Dictionary<string, string>(entry.Headers)
-                    : new Dictionary<string, string>()
+                Headers = entry.Headers is not null ? new Dictionary<string, string>(entry.Headers) : new Dictionary<string, string>()
             };
-
-            foreach (var sub in subs.Values)
-                sub.Writer.TryWrite(message);
+            foreach (var subscriber in subscribers.Values)
+                subscriber.Writer.TryWrite(message);
         }
-
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc />
     public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken cancellationToken = default)
     {
-        var entries = _subscriptions.GetOrAdd(topic, _ => new ConcurrentDictionary<Guid, SubscriptionEntry>());
-
-        var channel = Channel.CreateUnbounded<PubSubMessage>(new UnboundedChannelOptions
-        {
-            SingleWriter = false,
-            SingleReader = true
-        });
-
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        var subscribers = _subscriptions.GetOrAdd(topic, _ => new());
         var id = Guid.NewGuid();
-        var entry = new SubscriptionEntry(channel.Writer);
-        entries.TryAdd(id, entry);
-
-        // Start consumer task that reads from the channel and invokes the handler
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _activeCts.Add(cts);
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await foreach (var msg in channel.Reader.ReadAllAsync(cts.Token).ConfigureAwait(false))
-                {
-                    try
-                    {
-                        await handler(msg, cts.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
-                    {
-                        return;
-                    }
-                    catch
-                    {
-                        // Swallow handler exceptions to keep the subscription alive.
-                        // In-memory client is for dev/testing; production transports log errors.
-                    }
-                }
-            }
-            catch (OperationCanceledException) { }
-        }, cts.Token);
-
-        IAsyncDisposable subscription = new Subscription(() =>
-        {
-            entries.TryRemove(id, out _);
-            channel.Writer.TryComplete();
-            cts.Cancel();
-            cts.Dispose();
-            return ValueTask.CompletedTask;
-        });
-
-        return Task.FromResult(subscription);
+        var subscription = new Subscription(this, topic, handler, cancellationToken, () => subscribers.TryRemove(id, out _));
+        subscribers.TryAdd(id, subscription);
+        subscription.Start();
+        if (Volatile.Read(ref _disposed) != 0)
+            subscription.Stop();
+        return Task.FromResult<IAsyncDisposable>(subscription);
     }
 
-    public void Dispose()
+    private void ReportFailure(string topic, Exception exception)
     {
-        // Cancel all active subscription consumer tasks
-        foreach (var cts in _activeCts)
-        {
-            try { cts.Cancel(); cts.Dispose(); } catch { }
-        }
+        _logger.LogError(exception, "In-memory pub/sub subscriber failed on {Topic}", topic);
+        try { DeliveryFailed?.Invoke(exception); }
+        catch (Exception observerError) { _logger.LogWarning(observerError, "Pub/sub diagnostic observer failed"); }
+    }
 
-        foreach (var topicEntries in _subscriptions.Values)
-        {
-            foreach (var entry in topicEntries.Values)
-                entry.Writer.TryComplete();
-            topicEntries.Clear();
-        }
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        var subscriptions = _subscriptions.Values.SelectMany(subscribers => subscribers.Values).ToArray();
+        await Task.WhenAll(subscriptions.Select(subscription => subscription.DisposeAsync().AsTask())).ConfigureAwait(false);
         _subscriptions.Clear();
     }
 
-    public ValueTask DisposeAsync()
+    private sealed class Subscription(InMemoryPubSubClient owner, string topic,
+        Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken token, Action remove) : IAsyncDisposable
     {
-        Dispose();
-        return default;
-    }
+        private readonly Channel<PubSubMessage> _channel = Channel.CreateUnbounded<PubSubMessage>(new UnboundedChannelOptions { SingleReader = true });
+        private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        private Task _consumer = Task.CompletedTask;
+        private int _stopped;
+        public ChannelWriter<PubSubMessage> Writer => _channel.Writer;
+        public void Start() => _consumer = Task.Run(ConsumeAsync);
 
-    private sealed class SubscriptionEntry(ChannelWriter<PubSubMessage> writer)
-    {
-        public ChannelWriter<PubSubMessage> Writer => writer;
-    }
+        private async Task ConsumeAsync()
+        {
+            var cancellationToken = _stop.Token;
+            try
+            {
+                await foreach (var message in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    try { await handler(message, cancellationToken).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+                    catch (Exception exception) { owner.ReportFailure(topic, exception); }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            finally { remove(); }
+        }
 
-    private sealed class Subscription(Func<ValueTask> onDispose) : IAsyncDisposable
-    {
-        public ValueTask DisposeAsync() => onDispose();
+        public void Stop()
+        {
+            if (Interlocked.Exchange(ref _stopped, 1) != 0)
+                return;
+            remove();
+            Writer.TryComplete();
+            _stop.Cancel();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Stop();
+            try
+            {
+                await _consumer.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                _stop.Dispose();
+            }
+            catch (TimeoutException exception)
+            {
+                owner.ReportFailure(topic, exception);
+                _ = _consumer.ContinueWith(_ => _stop.Dispose(), CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
+        }
     }
 }

@@ -25,6 +25,7 @@ public static class DistributedMetrics
     internal static readonly Counter<long> Abandoned = Meter.CreateCounter<long>("queue.messages.abandoned", "{message}", "Messages returned to the queue without processing, for example during shutdown.");
     internal static readonly Histogram<double> HandlerDuration = Meter.CreateHistogram<double>("queue.handler.duration", "ms", "Handler execution time per message.");
     internal static readonly UpDownCounter<long> InFlight = Meter.CreateUpDownCounter<long>("queue.messages.in_flight", "{message}", "Messages currently being processed by this process.");
+    internal static readonly Counter<long> NotificationsDropped = Meter.CreateCounter<long>("notifications.dropped", "{message}", "Best-effort notifications evicted from the outbound buffer.");
     internal static readonly Counter<long> NotificationsPublished = Meter.CreateCounter<long>("notifications.published", "{message}", "Notifications published to the bus.");
     internal static readonly Counter<long> NotificationsReceived = Meter.CreateCounter<long>("notifications.received", "{message}", "Notifications received from the bus and re-published locally.");
 

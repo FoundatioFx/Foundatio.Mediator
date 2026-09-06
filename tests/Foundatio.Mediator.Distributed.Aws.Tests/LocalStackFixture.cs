@@ -33,7 +33,11 @@ public class LocalStackFixture : IAsyncLifetime
     {
         SkipReason = await ProbeContainerRuntimeAsync();
         if (SkipReason is not null)
+        {
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+                throw new InvalidOperationException($"AWS integration tests require a reachable container runtime in CI: {SkipReason}");
             return;
+        }
 
         var builder = DistributedApplicationTestingBuilder.Create();
 

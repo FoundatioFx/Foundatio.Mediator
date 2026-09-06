@@ -1,7 +1,8 @@
 <Project>
 
-  <!-- Distributed packages version with the repository through MinVer so every branch build publishes a new preview. -->
+  <!-- Distributed packages version with the repository through MinVer so distributed prerelease policy does not change core package versions. -->
   <PropertyGroup>
+    <MinVerDefaultPreReleaseIdentifiers>beta.0</MinVerDefaultPreReleaseIdentifiers>
     <PackageTags>$(PackageTags);Distributed</PackageTags>
   </PropertyGroup>
 

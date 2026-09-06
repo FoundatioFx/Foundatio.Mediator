@@ -1,8 +1,31 @@
 name: Build
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
 
 jobs:
+  integration-coverage:
+    name: Required integration suites
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify AWS and Redis remain in the tested solution
+        shell: python
+        run: |
+          import pathlib
+          import xml.etree.ElementTree as ET
+          projects = {p.attrib['Path'] for p in ET.parse('Foundatio.Mediator.slnx').iter('Project')}
+          for provider in ('Aws', 'Redis'):
+              path = f'tests/Foundatio.Mediator.Distributed.{provider}.Tests/Foundatio.Mediator.Distributed.{provider}.Tests.csproj'
+              assert path in projects and pathlib.Path(path).is_file(), f'Required integration suite missing: {path}'
+              assert 'integration.testconfig.json' in pathlib.Path(path).read_text(), f'Skip-failure configuration missing: {path}'
+              print(f'Required: {provider} integration suite, skipped tests fail CI')
   build:
+    needs: integration-coverage
     uses: FoundatioFx/Foundatio/.github/workflows/build-workflow.yml@main
     secrets: inherit
     with:

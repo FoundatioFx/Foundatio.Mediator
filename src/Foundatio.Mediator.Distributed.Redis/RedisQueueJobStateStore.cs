@@ -52,7 +52,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         return entries.Length == 0 ? null : ParseJobState(entries);
     }
 
-    public Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    public Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, string? workerId = null)
     {
         var updates = new List<HashEntry> { new("Status", FormatStatus(status)) };
         if (startedUtc.HasValue) updates.Add(new("StartedUtc", FormatTimestamp(startedUtc.Value)));
@@ -60,6 +60,13 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
         if (errorMessage is not null) updates.Add(new("ErrorMessage", errorMessage));
         if (progress.HasValue) updates.Add(new("Progress", FormatInt(progress.Value)));
         if (attempt.HasValue) updates.Add(new("Attempt", FormatInt(attempt.Value)));
+        if (workerId is not null) updates.Add(new("WorkerId", workerId));
+        if (status == QueueJobStatus.Processing)
+        {
+            updates.Add(new("Progress", FormatInt(progress ?? 0)));
+            updates.Add(new("ProgressMessage", string.Empty));
+            updates.Add(new("LastHeartbeatUtc", FormatTimestamp(startedUtc ?? _timeProvider.GetUtcNow())));
+        }
         return MutateAsync("status", jobId, ResolveTtl(expiry, status), updates, cancellationToken);
     }
 
@@ -251,6 +258,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             new("CompletedUtc", state.CompletedUtc is { } completed ? FormatTimestamp(completed) : string.Empty),
             new("ErrorMessage", state.ErrorMessage ?? string.Empty),
             new("Attempt", FormatInt(state.Attempt)),
+            new("WorkerId", state.WorkerId ?? string.Empty),
             new("LastUpdatedUtc", FormatTimestamp(state.LastUpdatedUtc)),
             new("LastHeartbeatUtc", state.LastHeartbeatUtc is { } heartbeat ? FormatTimestamp(heartbeat) : string.Empty)
         };
@@ -304,6 +312,7 @@ public sealed class RedisQueueJobStateStore : IQueueJobStateStore
             CompletedUtc = ParseNullableDateTimeOffset(dict.GetValueOrDefault("CompletedUtc")),
             ErrorMessage = NullIfEmpty(dict.GetValueOrDefault("ErrorMessage")),
             Attempt = int.TryParse(dict.GetValueOrDefault("Attempt"), out var a) ? a : 0,
+            WorkerId = string.IsNullOrEmpty(dict.GetValueOrDefault("WorkerId")) ? null : dict["WorkerId"],
             LastUpdatedUtc = ParseDateTimeOffset(dict.GetValueOrDefault("LastUpdatedUtc")),
             LastHeartbeatUtc = ParseNullableDateTimeOffset(dict.GetValueOrDefault("LastHeartbeatUtc")),
             Metadata = metadata

@@ -51,7 +51,12 @@ public sealed record QueueOverview
     /// <summary><c>null</c> when no worker runs here.</summary>
     public bool? IsRunning { get; init; }
 
+    /// <summary>Whether transport statistics were available; counts must not be interpreted as zero when false.</summary>
+    public bool StatisticsAvailable { get; init; }
+
     public long ActiveCount { get; init; }
+    /// <summary>Messages scheduled for later delivery or waiting for retry.</summary>
+    public long DelayedCount { get; init; }
     public long InFlightCount { get; init; }
     public long DeadLetterCount { get; init; }
 
@@ -75,11 +80,19 @@ public sealed record DeadLetterView
     public string? JobId { get; init; }
     public string? CorrelationId { get; init; }
 
-    /// <summary>The message body as text, truncated to 4 KB.</summary>
+    /// <summary>The message body as text, truncated to 4,096 characters.</summary>
     public required string Body { get; init; }
+    /// <summary>Whether the body exceeds the preview limit.</summary>
+    public bool BodyTruncated { get; init; }
+    /// <summary>Message headers, including correlation, tenant context, and replay lineage.</summary>
+    public IReadOnlyDictionary<string, string> Headers { get; init; } = new Dictionary<string, string>();
 }
 
-public sealed record DeadLetterReplayResult(string QueueName, int Replayed, int Skipped);
+public sealed record DeadLetterReplayResult(string QueueName, int Replayed, int Skipped)
+{
+    /// <summary>Accepted replays, including fresh job identities for tracked messages.</summary>
+    public IReadOnlyList<QueueReceipt> Receipts { get; init; } = [];
+}
 public sealed record DeadLetterPurgeResult(string QueueName, int Purged);
 public sealed record QueueJobCancellation(string JobId, bool CancellationRequested);
 
@@ -187,8 +200,7 @@ public class QueueAdministrationHandler(
         {
             foreach (var message in received)
             {
-                try { await client.AbandonAsync(message, TimeSpan.Zero, ct).ConfigureAwait(false); }
-                catch (Exception ex) { logger.LogWarning(ex, "Failed to release peeked dead letter {MessageId}", message.Id); }
+                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
             }
         }
 
@@ -201,6 +213,7 @@ public class QueueAdministrationHandler(
             return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
 
         int replayed = 0, skipped = 0;
+        var receipts = new List<QueueReceipt>();
         var max = Math.Clamp(command.Max, 1, 10_000);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var startedAt = _timeProvider.GetUtcNow();
@@ -212,71 +225,85 @@ public class QueueAdministrationHandler(
                 break;
 
             bool progressed = false;
-            foreach (var message in batch)
+            var pending = new HashSet<QueueMessage>(batch);
+            try
             {
-                // A replayed message that fails again lands back here with a newer timestamp; leave those
-                // for the next operator decision instead of looping on them.
-                bool deadLetteredDuringReplay = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetteredAt), out var deadLetteredAt)
-                    && deadLetteredAt >= startedAt;
-
-                if (!seen.Add(message.Id) || deadLetteredDuringReplay)
+                foreach (var message in batch)
                 {
-                    await client.AbandonAsync(message, TimeSpan.Zero, ct).ConfigureAwait(false);
-                    continue;
-                }
+                    // A replayed message that fails again lands back here with a newer timestamp; leave those
+                    // for the next operator decision instead of looping on them.
+                    bool deadLetteredDuringReplay = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetteredAt), out var deadLetteredAt)
+                        && deadLetteredAt >= startedAt;
 
-                progressed = true;
-                if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
-                {
-                    skipped++;
-                    await client.AbandonAsync(message, TimeSpan.Zero, ct).ConfigureAwait(false);
-                    continue;
-                }
-
-                string? newJobId = null;
-                if (message.Headers.TryGetValue(MessageHeaders.JobId, out var originalJobId))
-                {
-                    if (stateStore is null)
-                        throw new InvalidOperationException("Replaying tracked work requires an IQueueJobStateStore.");
-                    var original = await stateStore.GetJobStateAsync(originalJobId, ct).ConfigureAwait(false);
-                    var now = _timeProvider.GetUtcNow();
-                    newJobId = Guid.NewGuid().ToString("N");
-                    await stateStore.SetJobStateAsync(new QueueJobState
+                    if (!seen.Add(message.Id) || deadLetteredDuringReplay)
                     {
-                        JobId = newJobId, QueueName = command.QueueName,
-                        MessageType = original?.MessageType ?? message.Headers.GetValueOrDefault(MessageHeaders.MessageType) ?? "",
-                        CreatedUtc = now, LastUpdatedUtc = now, Metadata = original?.Metadata
-                    }, cancellationToken: ct).ConfigureAwait(false);
-                }
-                try
-                {
-                    await client.ReplayAsync(message, ct, newJobId).ConfigureAwait(false);
-                }
-                catch (Exception exception)
-                {
-                    if (newJobId is not null)
-                    {
-                        try
-                        {
-                            await QueueOperation.RunAsync(token => stateStore!.UpdateJobStatusAsync(newJobId, QueueJobStatus.EnqueueUnknown,
-                                errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
-                        }
-                        catch { /* Preserve the original replay failure. */ }
+                        await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
+                        pending.Remove(message);
+                        continue;
                     }
-                    throw;
-                }
-                replayed++;
-                logger.LogInformation("Replayed dead letter {MessageId} to {QueueName}", message.Id, command.QueueName);
 
-                if (command.MessageId is not null)
-                    return new DeadLetterReplayResult(command.QueueName, replayed, skipped);
+                    progressed = true;
+                    if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
+                    {
+                        skipped++;
+                        await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
+                        pending.Remove(message);
+                        continue;
+                    }
+
+                    string? newJobId = null;
+                    if (message.Headers.TryGetValue(MessageHeaders.JobId, out var originalJobId))
+                    {
+                        if (stateStore is null)
+                            throw new InvalidOperationException("Replaying tracked work requires an IQueueJobStateStore.");
+                        var original = await stateStore.GetJobStateAsync(originalJobId, ct).ConfigureAwait(false);
+                        var now = _timeProvider.GetUtcNow();
+                        newJobId = Guid.NewGuid().ToString("N");
+                        await stateStore.SetJobStateAsync(new QueueJobState
+                        {
+                            JobId = newJobId, QueueName = command.QueueName,
+                            MessageType = original?.MessageType ?? message.Headers.GetValueOrDefault(MessageHeaders.MessageType) ?? "",
+                            CreatedUtc = now, LastUpdatedUtc = now, Metadata = original?.Metadata
+                        }, cancellationToken: ct).ConfigureAwait(false);
+                    }
+                    try
+                    {
+                        await client.ReplayAsync(message, ct, newJobId).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        if (newJobId is not null)
+                        {
+                            try
+                            {
+                                await QueueOperation.RunAsync(token => stateStore!.UpdateJobStatusAsync(newJobId, QueueJobStatus.EnqueueUnknown,
+                                    errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+                            }
+                            catch { /* Preserve the original replay failure. */ }
+                        }
+                        throw;
+                    }
+                    pending.Remove(message);
+                    receipts.Add(new QueueReceipt(command.QueueName, newJobId));
+                    replayed++;
+                    logger.LogInformation("Replayed dead letter {MessageId} to {QueueName}", message.Id, command.QueueName);
+
+                    if (command.MessageId is not null)
+                        return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
+                }
+            }
+            finally
+            {
+                // A targeted replay or a failed request must release the rest of the received batch.
+                foreach (var message in pending)
+                    await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
             }
 
             if (!progressed)
                 break;
         }
 
-        return new DeadLetterReplayResult(command.QueueName, replayed, skipped);
+        return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
     }
 
     public async Task<Result<DeadLetterPurgeResult>> HandleAsync(PurgeDeadLetters command, CancellationToken ct)
@@ -292,15 +319,38 @@ public class QueueAdministrationHandler(
             if (batch.Count == 0)
                 break;
 
-            foreach (var message in batch)
+            var pending = new HashSet<QueueMessage>(batch);
+            try
             {
-                await client.CompleteAsync(message, ct).ConfigureAwait(false);
-                purged++;
+                foreach (var message in batch)
+                {
+                    await client.CompleteAsync(message, ct).ConfigureAwait(false);
+                    pending.Remove(message);
+                    purged++;
+                }
+            }
+            finally
+            {
+                foreach (var message in pending)
+                    await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
             }
         }
 
         logger.LogWarning("Purged {Count} dead letter(s) from {QueueName}", purged, command.QueueName);
         return new DeadLetterPurgeResult(command.QueueName, purged);
+    }
+
+    private async Task ReleaseDeadLetterAsync(QueueMessage message)
+    {
+        try
+        {
+            await QueueOperation.RunAsync(token => client.AbandonAsync(message, TimeSpan.Zero, token),
+                TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to release inspected dead letter {MessageId}", message.Id);
+        }
     }
 
     private Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersWithTimeoutAsync(string queueName, int maxCount, CancellationToken ct)
@@ -344,7 +394,9 @@ public class QueueAdministrationHandler(
             TrackProgress = registration.Settings.TrackProgress,
             WorkerRunsHere = registration.WorkerRunsHere,
             IsRunning = worker is { Stats.WorkerRegistered: true } ? worker.Stats.IsRunning : null,
+            StatisticsAvailable = stats is not null,
             ActiveCount = stats?.ActiveCount ?? 0,
+            DelayedCount = stats?.DelayedCount ?? 0,
             InFlightCount = stats?.InFlightCount ?? 0,
             DeadLetterCount = stats?.DeadLetterCount ?? 0,
             Processed = counters?.Totals.GetValueOrDefault("processed") ?? worker?.Stats.MessagesProcessed ?? 0,
@@ -357,7 +409,8 @@ public class QueueAdministrationHandler(
     private static DeadLetterView ToView(QueueMessage message)
     {
         var body = Encoding.UTF8.GetString(message.Body.Span);
-        if (body.Length > MaxBodyPreview)
+        bool truncated = body.Length > MaxBodyPreview;
+        if (truncated)
             body = body[..MaxBodyPreview];
 
         return new DeadLetterView
@@ -371,6 +424,8 @@ public class QueueAdministrationHandler(
             Attempts = int.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetterDequeueCount), out var attempts) ? attempts : null,
             JobId = message.Headers.GetValueOrDefault(MessageHeaders.JobId),
             CorrelationId = message.Headers.GetValueOrDefault(MessageHeaders.CorrelationId),
+            Headers = new Dictionary<string, string>(message.Headers),
+            BodyTruncated = truncated,
             Body = body
         };
     }

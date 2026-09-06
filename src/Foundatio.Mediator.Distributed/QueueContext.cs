@@ -99,6 +99,9 @@ public class QueueContext
     /// </summary>
     public string? JobId { get; init; }
 
+    /// <summary>Message headers, including correlation, propagated context, and replay lineage.</summary>
+    public IReadOnlyDictionary<string, string> Headers { get; init; } = new Dictionary<string, string>();
+
     /// <summary>
     /// Delegate invoked by <see cref="ReportProgressAsync(CancellationToken)"/> to signal that the handler
     /// is still actively working. This acts as a heartbeat keep-alive that extends the

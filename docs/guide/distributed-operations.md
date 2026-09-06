@@ -16,12 +16,12 @@ Running queues in production means answering "what is stuck, and why?" and actin
 
 | Message | Returns | What it does |
 | --- | --- | --- |
-| `GetQueueOverview` | `Result<IReadOnlyList<QueueOverview>>` | Every queue: depth, in-flight, dead letters, handlers, group, whether a worker runs in this process, 24-hour counters |
+| `GetQueueOverview` | `Result<IReadOnlyList<QueueOverview>>` | Every queue: ready, delayed, in-flight, dead letters, handlers, group, whether a worker runs in this process, 24-hour counters |
 | `GetQueueDetail(queueName)` | `Result<QueueOverview>` | One queue |
 | `ListQueueJobs(queueName, status, skip, take)` | `Result<IReadOnlyList<QueueJobState>>` | Tracked jobs by status, newest first |
-| `GetQueueJob(jobId)` | `Result<QueueJobState>` | One tracked job, with metadata and last heartbeat |
+| `GetQueueJob(jobId)` | `Result<QueueJobState>` | One tracked job, with worker identity, metadata, and last heartbeat |
 | `CancelQueueJob(jobId)` | `Result<QueueJobCancellation>` | Requests cancellation; the worker honours it on its next progress report or poll |
-| `ListDeadLetters(queueName, take)` | `Result<IReadOnlyList<DeadLetterView>>` | Peeks at dead letters: reason, attempts, timestamps, correlation id, body preview |
+| `ListDeadLetters(queueName, take)` | `Result<IReadOnlyList<DeadLetterView>>` | Peeks at dead letters: reason, attempts, timestamps, correlation ID, headers, body preview, and truncation indicator |
 | `ReplayDeadLetters(queueName, max, messageId?)` | `Result<DeadLetterReplayResult>` | Sends dead letters back to their original queue; messages dead-lettered after the replay started are left alone |
 | `PurgeDeadLetters(queueName, max)` | `Result<DeadLetterPurgeResult>` | Deletes dead letters permanently |
 
@@ -37,6 +37,10 @@ public class QueueAdminEndpoints
         => mediator.InvokeAsync<Result<DeadLetterReplayResult>>(new ReplayDeadLetters(r.QueueName, r.Max), ct).AsTask();
 }
 ```
+
+`DeadLetterReplayResult.Receipts` contains one `QueueReceipt` per replay. Tracked replays get a new job ID, leaving the original Failed job intact and recording `fm-original-job-id` on the message. Link the new receipt to your job detail view. Replaying does not fix the original cause of failure.
+
+Purge deletes available dead-letter messages up to its limit; it preserves job history. Confirm the queue and limit in an operator UI, and refresh afterward: leased messages and new failures may remain. `QueueOverview.StatisticsAvailable` distinguishes unavailable transport statistics from zero counts.
 
 Peeking and replaying receive from the dead-letter queue, so they lock the messages briefly; with SQS a peek returns them with a zero visibility timeout and polls for at most a second, so an empty listing answers in about a second.
 
@@ -70,10 +74,14 @@ Both run on the `Foundatio.Mediator` activity source.
 
 ## Job State
 
-With `TrackProgress`, a job's `QueueJobState` records status, progress, attempt, error, metadata, `LastUpdatedUtc`, and `LastHeartbeatUtc`. A `Processing` job whose heartbeat is older than a few visibility timeouts has almost certainly lost its worker; the message itself is redelivered by the transport, and the new attempt updates the same job.
+With `TrackProgress`, `QueueJobState` records status, progress, attempt, `WorkerId`, error, metadata, `LastUpdatedUtc`, and `LastHeartbeatUtc`. Configure `DistributedQueueOptions.WorkerId` to identify the process or replica; it defaults to machine name plus process ID. Each new attempt records its worker and resets progress. Worker identity is retained after completion for diagnosis.
 
-Job state expires `JobStateExpiry` (default 24 hours) after its last write. The Redis store keeps `Queued` and `Processing` jobs for at least `NonTerminalExpiry` (default 7 days) so a live job never disappears from tracking.
+A stale heartbeat warrants investigation; it can reflect worker loss or a state-store outage. It does not prove the handler stopped. Transport lease renewal is independent of state-store heartbeats, and a redelivered message updates the same job on its new attempt. Display cancellation-requested separately from Cancelled: use `IsCancellationRequestedAsync` for a pending request, and wait for worker-confirmed state before reporting completion.
+
+Job state expires `JobStateExpiry` (default 24 hours) after its last write. The Redis store keeps nonterminal jobs for at least `NonTerminalExpiry` (default 7 days) so a live job never disappears from tracking.
 
 ## Logs
 
-Workers log at Information when they start and stop, when a message is abandoned for redelivery during shutdown, ; lock contention is logged at Debug; at Warning for retryable failures, dead letters, failed renewals and state-store writes; at Error when a message cannot be dead-lettered or the receive loop fails. Message-specific worker logs include the queue name and message id.
+Workers log at Information when they start and stop, when a message is abandoned for redelivery during shutdown; lock contention is logged at Debug; at Warning for retryable failures, dead letters, failed renewals and state-store writes; at Error when a message cannot be dead-lettered or the receive loop fails. Message-specific worker logs include the queue name and message id.
+
+The [Clean Architecture sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) includes a complete operations UI with status filters, job detail links, cancellation, dead-letter inspection, replay receipts, confirmed flush, and a live event feed across API and worker replicas.

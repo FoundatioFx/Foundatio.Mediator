@@ -19,9 +19,10 @@ public interface IQueueJobStateStore
     /// Updates a job's status and optional fields. Implementations should apply the change atomically
     /// relative to other status updates for the same job. Returns false for a missing job, a terminal
     /// job, an older attempt, or a repeated start of an attempt already waiting for retry.
+    /// Starting an attempt resets progress and its message, initializes the heartbeat, and records workerId when supplied.
     /// Administrative replay creates a new job identity; SetJobStateAsync is an explicit administrative replacement.
     /// </summary>
-    Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default);
+    Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, string? workerId = null);
 
     Task UpdateJobProgressAsync(string jobId, int progress, string? progressMessage = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, int? expectedAttempt = null)
         => Task.CompletedTask;

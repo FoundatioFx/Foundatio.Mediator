@@ -62,7 +62,7 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
         }
     }
 
-    public Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    public Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, string? workerId = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
@@ -80,7 +80,10 @@ public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
                 StartedUtc = startedUtc ?? entry.State.StartedUtc,
                 CompletedUtc = IsTerminal(status) ? completedUtc ?? now : null,
                 ErrorMessage = errorMessage ?? (status == QueueJobStatus.Processing ? null : entry.State.ErrorMessage),
-                Progress = progress ?? entry.State.Progress,
+                Progress = progress ?? (status == QueueJobStatus.Processing ? 0 : entry.State.Progress),
+                ProgressMessage = status == QueueJobStatus.Processing ? null : entry.State.ProgressMessage,
+                LastHeartbeatUtc = status == QueueJobStatus.Processing ? startedUtc ?? now : entry.State.LastHeartbeatUtc,
+                WorkerId = workerId ?? entry.State.WorkerId,
                 Attempt = attempt ?? entry.State.Attempt,
                 LastUpdatedUtc = now
             };

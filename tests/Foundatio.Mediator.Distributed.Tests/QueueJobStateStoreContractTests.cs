@@ -9,6 +9,38 @@ public abstract class QueueJobStateStoreContractTests
     private static CancellationToken CT => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task NewAttempt_ResetsProgressAndIdentifiesWorker_WithoutAcceptingStaleUpdates()
+    {
+        var store = CreateStore();
+        await store.SetJobStateAsync(new QueueJobState
+        {
+            JobId = "worker-job", QueueName = "work", WorkerId = "original"
+        }, cancellationToken: CT);
+        Assert.Equal("original", (await store.GetJobStateAsync("worker-job", CT))!.WorkerId);
+        Assert.True(await store.UpdateJobStatusAsync("worker-job", QueueJobStatus.Processing,
+            attempt: 1, cancellationToken: CT, workerId: "worker-1"));
+        await store.UpdateJobProgressAsync("worker-job", 80, "Almost done", cancellationToken: CT, expectedAttempt: 1);
+        Assert.True(await store.UpdateJobStatusAsync("worker-job", QueueJobStatus.RetryPending,
+            attempt: 1, cancellationToken: CT));
+
+        var started = DateTimeOffset.UtcNow;
+        Assert.True(await store.UpdateJobStatusAsync("worker-job", QueueJobStatus.Processing,
+            startedUtc: started, attempt: 2, cancellationToken: CT, workerId: "worker-2"));
+        Assert.False(await store.UpdateJobStatusAsync("worker-job", QueueJobStatus.Processing,
+            attempt: 1, cancellationToken: CT, workerId: "worker-1"));
+        var state = await store.GetJobStateAsync("worker-job", CT);
+        Assert.NotNull(state);
+        Assert.Equal("worker-2", state.WorkerId);
+        Assert.Equal(2, state.Attempt);
+        Assert.Equal(0, state.Progress);
+        Assert.Null(state.ProgressMessage);
+        Assert.Equal(started.ToUnixTimeMilliseconds(), state.LastHeartbeatUtc!.Value.ToUnixTimeMilliseconds());
+        Assert.True(await store.UpdateJobStatusAsync("worker-job", QueueJobStatus.Completed,
+            attempt: 2, cancellationToken: CT));
+        Assert.Equal("worker-2", (await store.GetJobStateAsync("worker-job", CT))!.WorkerId);
+    }
+
+    [Fact]
     public async Task OlderAttempt_CannotOverwriteNewerOrTerminalState()
     {
         var store = CreateStore();

@@ -309,10 +309,10 @@ public class QueueWorkerReliabilityTests
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task SetJobStateAsync(QueueJobState state, TimeSpan? expiry = null, CancellationToken cancellationToken = default) => _inner.SetJobStateAsync(state, expiry, cancellationToken);
         public Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default) => _inner.GetJobStateAsync(jobId, cancellationToken);
-        public async Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+        public async Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default, string? workerId = null)
         {
             if (status == QueueJobStatus.Processing) { Started.TrySetResult(); await Release.Task; }
-            return await _inner.UpdateJobStatusAsync(jobId, status, startedUtc, completedUtc, errorMessage, progress, attempt, expiry, cancellationToken);
+            return await _inner.UpdateJobStatusAsync(jobId, status, startedUtc, completedUtc, errorMessage, progress, attempt, expiry, cancellationToken, workerId);
         }
         public Task<bool> RequestCancellationAsync(string jobId, CancellationToken cancellationToken = default) => _inner.RequestCancellationAsync(jobId, cancellationToken);
         public Task<bool> IsCancellationRequestedAsync(string jobId, CancellationToken cancellationToken = default) => _inner.IsCancellationRequestedAsync(jobId, cancellationToken);

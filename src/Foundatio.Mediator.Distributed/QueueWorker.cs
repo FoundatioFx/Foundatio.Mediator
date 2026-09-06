@@ -35,6 +35,7 @@ public sealed class QueueWorker : BackgroundService
     private readonly ILogger<QueueWorker> _logger;
     private readonly TimeSpan _shutdownTimeout;
     private readonly TimeSpan _stateExpiry;
+    private readonly string _workerId;
 
     public QueueWorker(
         IQueueClient client,
@@ -49,6 +50,7 @@ public sealed class QueueWorker : BackgroundService
         MessageTypeResolver? typeResolver = null,
         IEnumerable<IQueueHeaderProvider>? headerProviders = null)
     {
+        _workerId = distributedOptions?.WorkerId ?? $"{Environment.MachineName}:{Environment.ProcessId}";
         _client = client;
         _scopeFactory = scopeFactory;
         _options = options;
@@ -303,7 +305,7 @@ public sealed class QueueWorker : BackgroundService
             if (jobId is not null)
             {
                 bool accepted = await QueueOperation.RunAsync(ct => _stateStore!.UpdateJobStatusAsync(jobId, QueueJobStatus.Processing,
-                    startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: ct),
+                    startedUtc: _timeProvider.GetUtcNow(), attempt: message.DequeueCount, expiry: _stateExpiry, cancellationToken: ct, workerId: _workerId),
                     s_ackTimeout, _timeProvider, handlerToken).ConfigureAwait(false);
                 if (!accepted)
                 {
@@ -326,6 +328,7 @@ public sealed class QueueWorker : BackgroundService
                 MaxAttempts = _options.MaxAttempts,
                 EnqueuedAt = message.EnqueuedAt,
                 JobId = jobId,
+                Headers = message.Headers,
                 OnSettled = lease.StopRenewing,
                 OnCancelProcessing = lease.Cancel,
                 OnRenewTimeout = lease.RenewAsync,

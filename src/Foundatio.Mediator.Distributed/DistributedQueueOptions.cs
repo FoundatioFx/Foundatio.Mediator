@@ -24,6 +24,9 @@ public class DistributedQueueOptions
     /// </summary>
     public string? ResourcePrefix { get; set; }
 
+    /// <summary>Process identity recorded on tracked attempts. Defaults to machine name and process id.</summary>
+    public string WorkerId { get; set; } = $"{Environment.MachineName}:{Environment.ProcessId}";
+
     /// <summary>
     /// How long in-flight handlers may keep running after the host begins stopping before they are
     /// cancelled and their messages abandoned. Keep this below the host's shutdown timeout.

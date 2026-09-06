@@ -182,7 +182,7 @@ With `AutoRenewTimeout` on (the default) the worker renews the visibility timeou
 
 ## Progress Tracking and Cancellation
 
-`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `RetryPending`, `Completed`, `Failed`, `Cancelled`, or `EnqueueUnknown`, with progress, attempt, error message, and periodic heartbeats isolated from transport renewal. The default store is in-memory. A distributed transport with tracked work requires a shared store and fails startup without one. Use [Redis](./distributed-transports#redis), implement a shared store, or explicitly set `AllowProcessLocalJobStateForDevelopment` for development/tests. Transport and state-store decorators must forward `IsDistributed` and `IsShared`.
+`TrackProgress = true` records job state in an `IQueueJobStateStore`: `Queued` at enqueue, `Processing`, `RetryPending`, `Completed`, `Failed`, `Cancelled`, or `EnqueueUnknown`, with progress, attempt, worker identity (`WorkerId`), error message, and periodic heartbeats isolated from transport renewal. The default store is in-memory. A distributed transport with tracked work requires a shared store and fails startup without one. Use [Redis](./distributed-transports#redis), implement a shared store, or explicitly set `AllowProcessLocalJobStateForDevelopment` for development/tests. Transport and state-store decorators must forward `IsDistributed` and `IsShared`.
 
 Use the typed receipt when the caller needs tracking. Its `JobId` is null for untracked work; `QueueName` is the physical destination. An HTTP status URL is a separate application decision:
 
@@ -208,7 +208,7 @@ Attach tenant, user, or any other context to jobs so a store can index them:
     : null);
 ```
 
-The dictionary is stored as `QueueJobState.Metadata`. Retry-pending jobs remain cancellable. Explicit completion or abandonment is authoritative even if later handler code throws. An unconfirmed acknowledgment never reports Completed.
+The dictionary is stored as `QueueJobState.Metadata`. Configure `DistributedQueueOptions.WorkerId` to name the process that handles each attempt; it defaults to machine name plus process ID. Received message headers are available as `QueueContext.Headers`. Retry-pending jobs remain cancellable. Explicit completion or abandonment is authoritative even if later handler code throws. An unconfirmed acknowledgment never reports Completed.
 
 If a send fails after state creation, `QueueEnqueueException.Receipt` identifies the attempted job and its state becomes `EnqueueUnknown` when the store is reachable. The transport may have accepted it; reconcile before blindly retrying. Tracked dead-letter replay through administration creates a new job ID, keeping the original failure record.
 

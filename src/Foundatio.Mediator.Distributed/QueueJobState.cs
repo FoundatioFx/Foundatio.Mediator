@@ -15,6 +15,8 @@ public sealed record QueueJobState
     public DateTimeOffset? StartedUtc { get; init; }
     public DateTimeOffset? CompletedUtc { get; init; }
     public int Attempt { get; init; }
+    /// <summary>Identity of the worker process that started the current or most recent attempt.</summary>
+    public string? WorkerId { get; init; }
     public string? ErrorMessage { get; init; }
     public DateTimeOffset LastUpdatedUtc { get; init; }
 

@@ -2,6 +2,7 @@ using System.Text;
 using Foundatio.Mediator.Distributed.Testing;
 using Foundatio.Xunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Foundatio.Mediator.Distributed.Tests;
 
@@ -62,6 +63,8 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
             Assert.Equal("PoisonBodyMessage", view.OriginalQueueName);
             Assert.Equal("corr-1", view.CorrelationId);
             Assert.Equal("not json at all", view.Body);
+            Assert.False(view.BodyTruncated);
+            Assert.Equal("corr-1", view.Headers[MessageHeaders.CorrelationId]);
             Assert.Equal(1, view.Attempts);
             Assert.Equal(1, transport.Queues.Inner is InMemoryQueueClient q1 ? q1.GetDeadLetterCount("PoisonBodyMessage") : -1);
 
@@ -184,6 +187,7 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
         Assert.Equal(QueueJobStatus.Failed, (await store.GetJobStateAsync("original", TestCancellationToken))!.Status);
         var newJob = Assert.Single(await store.GetJobsByStatusAsync("MetadataTrackedCommand", QueueJobStatus.Queued, cancellationToken: TestCancellationToken));
         Assert.NotEqual("original", newJob.JobId);
+        Assert.Equal(new QueueReceipt("MetadataTrackedCommand", newJob.JobId), Assert.Single(replay.Value.Receipts));
         var hosted = await provider.StartHostedServicesAsync(TestCancellationToken);
         try
         {
@@ -192,6 +196,114 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
             Assert.Equal(QueueJobStatus.Completed, (await store.GetJobStateAsync(newJob.JobId, TestCancellationToken))!.Status);
         }
         finally { await hosted.StopAllAsync(); }
+    }
+
+    [Fact]
+    public async Task TargetedReplay_ReleasesOtherMessagesInReceivedBatch()
+    {
+        await using var transport = new InMemoryTransport();
+        await using var provider = BuildHost(transport, new HandlerSignal());
+        var mediator = provider.GetRequiredService<IMediator>();
+        const string queue = "PoisonBodyMessage";
+        await transport.Queues.SendAsync(QueueDefinition.DeadLetterQueueNameFor(queue), Enumerable.Range(1, 3)
+            .Select(i => new QueueEntry
+            {
+                Body = Encoding.UTF8.GetBytes(new string('x', 5000)),
+                Headers = new Dictionary<string, string> { [MessageHeaders.OriginalQueueName] = queue }
+            }).ToArray(), TestCancellationToken);
+        var peek = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queue, 3), TestCancellationToken);
+        Assert.All(peek.Value, view => { Assert.True(view.BodyTruncated); Assert.Equal(4096, view.Body.Length); });
+        var target = peek.Value[0].MessageId;
+
+        var replay = await mediator.InvokeAsync<Result<DeadLetterReplayResult>>(
+            new ReplayDeadLetters(queue, MessageId: target), TestCancellationToken);
+
+        Assert.Equal(1, replay.Value.Replayed);
+        Assert.Equal(new QueueReceipt(queue, null), Assert.Single(replay.Value.Receipts));
+        var remaining = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queue, 2), TestCancellationToken);
+        Assert.Equal(2, remaining.Value.Count);
+        Assert.DoesNotContain(remaining.Value, message => message.MessageId == target);
+    }
+
+    [Fact]
+    public async Task Overview_TransportFailure_ReportsStatisticsUnavailable()
+    {
+        await using var transport = new InMemoryTransport();
+        await using var provider = BuildHost(transport, new HandlerSignal());
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestCancellationToken);
+        var handler = new QueueAdministrationHandler(provider.GetRequiredService<QueueTopology>(),
+            provider.GetRequiredService<IQueueWorkerRegistry>(), new CancelAfterReceiveClient(cancellation),
+            NullLogger<QueueAdministrationHandler>.Instance);
+        var result = await handler.HandleAsync(new GetQueueOverview(), TestCancellationToken);
+        Assert.True(result.IsSuccess);
+        Assert.NotEmpty(result.Value);
+        Assert.All(result.Value, queue => Assert.False(queue.StatisticsAvailable));
+    }
+
+    [Theory]
+    [InlineData("peek")]
+    [InlineData("replay")]
+    [InlineData("purge")]
+    public async Task CancelledAdministration_ReleasesReceivedDeadLetters(string operation)
+    {
+        await using var transport = new InMemoryTransport();
+        await using var provider = BuildHost(transport, new HandlerSignal());
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestCancellationToken);
+        var client = new CancelAfterReceiveClient(cancellation);
+        var handler = new QueueAdministrationHandler(provider.GetRequiredService<QueueTopology>(),
+            provider.GetRequiredService<IQueueWorkerRegistry>(), client, NullLogger<QueueAdministrationHandler>.Instance);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            switch (operation)
+            {
+                case "peek": await handler.HandleAsync(new ListDeadLetters("PoisonBodyMessage", 3), cancellation.Token); break;
+                case "replay": await handler.HandleAsync(new ReplayDeadLetters("PoisonBodyMessage"), cancellation.Token); break;
+                case "purge": await handler.HandleAsync(new PurgeDeadLetters("PoisonBodyMessage"), cancellation.Token); break;
+            }
+        });
+        Assert.Equal(["one", "two"], client.Released.Order());
+    }
+
+    private sealed class CancelAfterReceiveClient(CancellationTokenSource cancellation) : IQueueClient
+    {
+        public List<string> Released { get; } = [];
+        public Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct = default)
+            => throw new IOException("Transport unavailable");
+
+        public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            cancellation.Cancel();
+            return Task.FromResult<IReadOnlyList<QueueMessage>>([Create("one"), Create("two")]);
+        }
+
+        private static QueueMessage Create(string id) => new()
+        {
+            Id = id, QueueName = "PoisonBodyMessage-dead-letter", Body = Encoding.UTF8.GetBytes("{}"),
+            Headers = new Dictionary<string, string> { [MessageHeaders.OriginalQueueName] = "PoisonBodyMessage" }
+        };
+
+        public Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+        public Task CompleteAsync(QueueMessage message, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+        public Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            Released.Add(message.Id);
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private static async Task WaitForDeadLettersAsync(InMemoryTransport transport, string queueName, int expected, CancellationToken ct)

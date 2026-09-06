@@ -19,6 +19,12 @@ public class DistributedNotificationOptions
     /// </summary>
     public string Topic { get; set; } = "distributed-notifications";
 
+    /// <summary>
+    /// Receives remote notifications on this host. Default is true. Set to false for a publisher-only
+    /// host to skip its inbound subscription while continuing to publish distributed notifications.
+    /// </summary>
+    public bool ReceiveNotifications { get; set; } = true;
+
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>

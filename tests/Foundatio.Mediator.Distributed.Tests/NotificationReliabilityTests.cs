@@ -13,6 +13,22 @@ public class NotificationReliabilityTests
     private static CancellationToken CT => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task ReceiveNotificationsDisabled_StartsAndPublishesWithoutSubscribing()
+    {
+        var bus = new ControlledBus();
+        await using var provider = CreateProvider(bus, configure: o => o.ReceiveNotifications = false);
+        var hosted = await provider.StartHostedServicesAsync(CT);
+        try
+        {
+            Assert.Equal(0, bus.SubscriptionCount);
+            await provider.GetRequiredService<IMediator>().PublishAsync(new PublisherOnlyEvent(1), CT);
+            Assert.Equal(1, await bus.Published.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT));
+            Assert.Equal(0, bus.SubscriptionCount);
+        }
+        finally { await hosted.StopAllAsync(); }
+    }
+
+    [Fact]
     public async Task PublisherOnly_StartEstablishesSubscriptionBeforeFirstPublish()
     {
         var bus = new ControlledBus();
@@ -84,7 +100,7 @@ public class NotificationReliabilityTests
     {
         await using var bus = new InMemoryPubSubClient();
         var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var sender = CreateProvider(bus);
+        await using var sender = CreateProvider(bus, configure: o => o.ReceiveNotifications = false);
         await using var receiver = CreateProvider(bus, onReceived: _ => received.TrySetResult());
         var hostedSender = await sender.StartHostedServicesAsync(CT);
         var hostedReceiver = await receiver.StartHostedServicesAsync(CT);
@@ -211,6 +227,7 @@ public class NotificationReliabilityTests
 
     private sealed class ControlledBus : IPubSubClient
     {
+        public int SubscriptionCount { get; private set; }
         public Channel<int> Published { get; } = Channel.CreateUnbounded<int>();
         public TaskCompletionSource FirstEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -250,6 +267,7 @@ public class NotificationReliabilityTests
 
         public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken ct = default)
         {
+            SubscriptionCount++;
             _handler = handler;
             return Task.FromResult<IAsyncDisposable>(new EmptySubscription());
         }

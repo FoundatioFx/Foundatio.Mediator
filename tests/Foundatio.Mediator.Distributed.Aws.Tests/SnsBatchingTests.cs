@@ -10,6 +10,20 @@ namespace Foundatio.Mediator.Distributed.Aws.Tests;
 public class SnsBatchingTests
 {
     [Fact]
+    public async Task EnsureTopics_PublisherOnly_DoesNotAccessSubscriptionInfrastructure()
+    {
+        // Neither client can reach a server: a provisioned topic must need no subscription API calls.
+        using var sns = new ControlledSns();
+        using var sqs = new AmazonSQSClient(new BasicAWSCredentials("test", "test"), new AmazonSQSConfig { ServiceURL = "http://localhost:1" });
+        await using var client = new SqsPubSubClient(sns, sqs, new SqsPubSubClientOptions
+        {
+            TopicArn = "arn:aws:sns:us-east-1:000000000000:test"
+        }, new DistributedNotificationOptions { ReceiveNotifications = false }, NullLogger<SqsPubSubClient>.Instance);
+
+        await client.EnsureTopicsAsync([new TopicDefinition { Name = "topic" }], TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task ConcurrentPublications_PreserveIndividualBrokerResults()
     {
         var ct = TestContext.Current.CancellationToken;

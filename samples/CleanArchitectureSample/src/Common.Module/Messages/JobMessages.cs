@@ -1,9 +1,14 @@
 using Foundatio.Mediator.Distributed;
+using System.ComponentModel.DataAnnotations;
 
 namespace Common.Module.Messages;
 
 /// <summary>Simulated export: <paramref name="Steps"/> progress reports roughly <paramref name="StepDelayMs"/> apart.</summary>
-public record DemoExportJob(int Steps = 20, int StepDelayMs = 1500);
+public record DemoExportJob(
+    [property: Range(1, 100)] int Steps = 20,
+    [property: Range(50, 5000)] int StepDelayMs = 1500,
+    [property: Range(0, 10)] int FailTimes = 0,
+    bool CriticalFailure = false);
 
 /// <summary>Simulated catalog import on the "imports" worker group.</summary>
 public record ImportProductCatalog(int Rows = 200, int RowDelayMs = 50);

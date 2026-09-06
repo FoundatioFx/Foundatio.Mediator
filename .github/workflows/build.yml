@@ -24,6 +24,24 @@ jobs:
               assert path in projects and pathlib.Path(path).is_file(), f'Required integration suite missing: {path}'
               assert 'integration.testconfig.json' in pathlib.Path(path).read_text(), f'Skip-failure configuration missing: {path}'
               print(f'Required: {provider} integration suite, skipped tests fail CI')
+  sample-web:
+    name: Sample frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: samples/CleanArchitectureSample/src/Web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: samples/CleanArchitectureSample/src/Web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
   build:
     needs: integration-coverage
     uses: FoundatioFx/Foundatio/.github/workflows/build-workflow.yml@main

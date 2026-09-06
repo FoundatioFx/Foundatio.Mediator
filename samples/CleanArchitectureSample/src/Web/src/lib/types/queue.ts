@@ -5,6 +5,10 @@ export interface QueueSummary {
   group: string | null;
   description: string | null;
   concurrency: number;
+  prefetchCount: number;
+  autoComplete: boolean;
+  autoRenewTimeout: boolean;
+  retryDelays: string | null;
   maxAttempts: number;
   retryPolicy: string;
   visibilityTimeoutSeconds: number;
@@ -15,13 +19,22 @@ export interface QueueSummary {
   messagesProcessed: number;
   messagesFailed: number;
   messagesDeadLettered: number;
+  statisticsAvailable: boolean;
   activeCount: number;
+  delayedCount: number;
   inFlightCount: number;
   deadLetterCount: number;
   counterStats: CounterStats | null;
 }
 
-export type JobStatus = 'Queued' | 'Processing' | 'Completed' | 'Failed' | 'Cancelled';
+export type JobStatus =
+  | 'Queued'
+  | 'Processing'
+  | 'Completed'
+  | 'Failed'
+  | 'Cancelled'
+  | 'RetryPending'
+  | 'EnqueueUnknown';
 
 export interface JobSummary {
   jobId: string;
@@ -31,6 +44,9 @@ export interface JobSummary {
   progress: number;
   progressMessage: string | null;
   attempt: number;
+  workerId: string | null;
+  cancellationRequested: boolean;
+  lastUpdatedUtc: string;
   createdUtc: string;
   startedUtc: string | null;
   completedUtc: string | null;
@@ -41,10 +57,12 @@ export interface JobSummary {
 }
 
 export interface JobDashboardView {
-  queuedCount: number;
-  activeJobs: JobSummary[];
-  recentJobs: JobSummary[];
-  counterStats: CounterStats | null;
+  counts: Record<JobStatus, number>;
+  jobs: JobSummary[];
+  total: number;
+  skip: number;
+  take: number;
+  updatedUtc: string;
 }
 
 export interface CounterStats {
@@ -73,11 +91,14 @@ export interface DeadLetterView {
   jobId: string | null;
   correlationId: string | null;
   body: string;
+  bodyTruncated: boolean;
+  headers: Record<string, string>;
 }
 
 export interface DeadLetterReplayResult {
   queueName: string;
   replayed: number;
+  receipts: { queueName: string; jobId: string | null }[];
   skipped: number;
 }
 
@@ -102,5 +123,43 @@ export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
   Processing: 'bg-blue-100 text-blue-800',
   Completed: 'bg-green-100 text-green-800',
   Failed: 'bg-red-100 text-red-800',
-  Cancelled: 'bg-yellow-100 text-yellow-800'
+  Cancelled: 'bg-yellow-100 text-yellow-800',
+  RetryPending: 'bg-orange-100 text-orange-800',
+  EnqueueUnknown: 'bg-purple-100 text-purple-800'
 };
+
+export const JOB_STATUSES: JobStatus[] = [
+  'Queued',
+  'Processing',
+  'RetryPending',
+  'EnqueueUnknown',
+  'Completed',
+  'Failed',
+  'Cancelled'
+];
+export const statusLabel = (status: string) =>
+  status === 'RetryPending'
+    ? 'Waiting for retry'
+    : status === 'EnqueueUnknown'
+      ? 'Acceptance unknown'
+      : status;
+export const isTerminal = (status: JobStatus) =>
+  ['Completed', 'Failed', 'Cancelled'].includes(status);
+export const formatTime = (value: string | null) =>
+  value ? new Date(value).toLocaleString() : '—';
+export function elapsed(
+  start: string | null,
+  end: string | null = null,
+  now = Date.now()
+): string {
+  if (!start) return '—';
+  const seconds = Math.max(
+    0,
+    Math.floor(
+      ((end ? new Date(end).getTime() : now) - new Date(start).getTime()) / 1000
+    )
+  );
+  return seconds < 60
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}

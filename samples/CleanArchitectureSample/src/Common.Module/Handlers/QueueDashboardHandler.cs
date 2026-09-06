@@ -2,7 +2,6 @@ using Common.Module.Messages;
 using Common.Module.Middleware;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
-using Microsoft.Extensions.Logging;
 
 namespace Common.Module.Handlers;
 
@@ -17,7 +16,6 @@ public class QueueDashboardHandler(
     QueueTopology topology,
     DistributedQueueOptions queueOptions,
     HostInfo host,
-    ILogger<QueueDashboardHandler> logger,
     IQueueJobStateStore? stateStore = null,
     DistributedInfrastructureReady? infraReady = null)
 {
@@ -51,36 +49,35 @@ public class QueueDashboardHandler(
     {
         if (stateStore is null)
             return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
+        if (topology.GetByQueueName(query.QueueName) is not { Settings.TrackProgress: true })
+            return Result.NotFound("This queue is not registered for job tracking.");
+        if (query.Skip is < 0 or > 1000 || query.Take is < 1 or > 50)
+            return Result.Invalid("Choose a page size from 1 to 50 and an offset from 0 to 1000.");
 
-        var queuedCount = await stateStore.GetJobCountByStatusAsync(query.QueueName, QueueJobStatus.Queued, ct).ConfigureAwait(false);
-        var activeJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Processing, 0, 200, ct).ConfigureAwait(false);
+        var allStatuses = Enum.GetValues<QueueJobStatus>();
+        QueueJobStatus[] statuses;
+        if (query.Status == "active")
+            statuses = [QueueJobStatus.Queued, QueueJobStatus.Processing, QueueJobStatus.RetryPending, QueueJobStatus.EnqueueUnknown];
+        else if (query.Status == "all")
+            statuses = allStatuses;
+        else if (Enum.TryParse<QueueJobStatus>(query.Status, out var status) && Enum.IsDefined(status))
+            statuses = [status];
+        else
+            return Result.Invalid("Choose active, all, or a supported job status.");
 
-        var recentTerminalCount = query.RecentTerminalCount ?? 20;
-        var completedJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Completed, 0, recentTerminalCount, ct).ConfigureAwait(false);
-        var failedJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Failed, 0, recentTerminalCount, ct).ConfigureAwait(false);
-        var cancelledJobs = await stateStore.GetJobsByStatusAsync(query.QueueName, QueueJobStatus.Cancelled, 0, recentTerminalCount, ct).ConfigureAwait(false);
-
-        var recentJobs = completedJobs.Concat(failedJobs).Concat(cancelledJobs)
-            .OrderByDescending(j => j.CompletedUtc ?? j.LastUpdatedUtc)
-            .Take(recentTerminalCount)
-            .ToList();
-
-        CounterStatsView? counterStats = null;
-        try
-        {
-            counterStats = ToCounterStats(await stateStore.GetCounterStatsAsync(query.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Failed to read counters for {QueueName}", query.QueueName);
-        }
-
+        var counts = await Task.WhenAll(allStatuses.Select(async status => new KeyValuePair<string, long>(status.ToString(),
+            await stateStore.GetJobCountByStatusAsync(query.QueueName, status, ct).ConfigureAwait(false)))).ConfigureAwait(false);
+        // Each status index is newest first. Fetch only enough to merge the requested bounded page.
+        var pages = await Task.WhenAll(statuses.Select(status => stateStore.GetJobsByStatusAsync(query.QueueName, status,
+            0, query.Skip + query.Take, ct))).ConfigureAwait(false);
+        var jobs = pages.SelectMany(page => page).DistinctBy(job => job.JobId)
+            .OrderByDescending(job => job.CreatedUtc).ThenBy(job => job.JobId).Skip(query.Skip).Take(query.Take).ToArray();
         return new JobDashboardView
         {
-            QueuedCount = queuedCount,
-            ActiveJobs = activeJobs.Select(ToJobSummary).ToList(),
-            RecentJobs = recentJobs.Select(ToJobSummary).ToList(),
-            CounterStats = counterStats
+            Counts = counts.ToDictionary(),
+            Jobs = await Task.WhenAll(jobs.Select(job => ToJobSummaryAsync(job, ct))).ConfigureAwait(false),
+            Total = counts.Where(count => statuses.Any(status => status.ToString() == count.Key)).Sum(count => count.Value),
+            Skip = query.Skip, Take = query.Take, UpdatedUtc = DateTimeOffset.UtcNow
         };
     }
 
@@ -88,7 +85,7 @@ public class QueueDashboardHandler(
     public async Task<Result<JobSummary>> HandleAsync(GetQueueJobDetail query, IMediator mediator, CancellationToken ct)
     {
         var job = await mediator.InvokeAsync<Result<QueueJobState>>(new GetQueueJob(query.JobId), ct);
-        return job.IsSuccess ? ToJobSummary(job.Value!) : Result<JobSummary>.FromResult(job);
+        return job.IsSuccess ? await ToJobSummaryAsync(job.Value!, ct).ConfigureAwait(false) : Result<JobSummary>.FromResult(job);
     }
 
     [HandlerAllowAnonymous]
@@ -126,7 +123,9 @@ public class QueueDashboardHandler(
     [HandlerAuthorize(Roles = ["Admin"])]
     [HandlerEndpoint(HandlerMethod.Post, "enqueue/exports")]
     public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueDemoJob command, IMediator mediator, CancellationToken ct)
-        => EnqueueAsync<DemoExportJob>(mediator, Math.Clamp(command.Count, 1, 100), _ => new DemoExportJob(command.Steps, command.StepDelayMs), ct);
+        => command.Count is < 1 or > 100
+            ? Task.FromResult<Result<EnqueueReceipt>>(Result.Invalid("Choose between 1 and 100 exports."))
+            : EnqueueAsync<DemoExportJob>(mediator, command.Count, _ => new DemoExportJob(command.Steps, command.StepDelayMs, command.FailTimes, command.CriticalFailure), ct);
 
     [HandlerAuthorize(Roles = ["Admin"])]
     [HandlerEndpoint(HandlerMethod.Post, "enqueue/imports")]
@@ -170,7 +169,7 @@ public class QueueDashboardHandler(
     private Task WaitForInfrastructureAsync(CancellationToken ct)
         => infraReady?.WaitAsync(ct) ?? Task.CompletedTask;
 
-    private static QueueSummary ToSummary(QueueOverview q) => new()
+    private QueueSummary ToSummary(QueueOverview q) => new()
     {
         QueueName = q.QueueName,
         MessageType = q.MessageType,
@@ -178,6 +177,10 @@ public class QueueDashboardHandler(
         Group = q.Group,
         Description = q.Description,
         Concurrency = q.Concurrency,
+        PrefetchCount = topology.GetByQueueName(q.QueueName)!.Settings.PrefetchCount > 0 ? topology.GetByQueueName(q.QueueName)!.Settings.PrefetchCount : q.Concurrency,
+        AutoComplete = topology.GetByQueueName(q.QueueName)!.Settings.AutoComplete,
+        AutoRenewTimeout = topology.GetByQueueName(q.QueueName)!.Settings.AutoRenewTimeout,
+        RetryDelays = topology.GetByQueueName(q.QueueName)!.Settings.RetryDelays,
         MaxAttempts = q.MaxAttempts,
         RetryPolicy = q.RetryPolicy,
         VisibilityTimeoutSeconds = (int)q.VisibilityTimeout.TotalSeconds,
@@ -187,7 +190,9 @@ public class QueueDashboardHandler(
         MessagesProcessed = q.Processed,
         MessagesFailed = q.Failed,
         MessagesDeadLettered = q.DeadLettered,
+        StatisticsAvailable = q.StatisticsAvailable,
         ActiveCount = q.ActiveCount,
+        DelayedCount = q.DelayedCount,
         InFlightCount = q.InFlightCount,
         DeadLetterCount = q.DeadLetterCount,
         CounterStats = q.Counters is null ? null : ToCounterStats(q.Counters)
@@ -199,7 +204,7 @@ public class QueueDashboardHandler(
         Buckets = stats.Buckets.Select(b => new CounterBucketView { Hour = b.Hour, Counters = b.Counters }).ToList()
     };
 
-    private static JobSummary ToJobSummary(QueueJobState s) => new()
+    private async Task<JobSummary> ToJobSummaryAsync(QueueJobState s, CancellationToken ct) => new()
     {
         JobId = s.JobId,
         QueueName = s.QueueName,
@@ -208,6 +213,10 @@ public class QueueDashboardHandler(
         Progress = s.Progress,
         ProgressMessage = s.ProgressMessage,
         Attempt = s.Attempt,
+        WorkerId = s.WorkerId,
+        LastUpdatedUtc = s.LastUpdatedUtc,
+        CancellationRequested = stateStore is not null && s.Status is not (QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled)
+            && await stateStore.IsCancellationRequestedAsync(s.JobId, ct).ConfigureAwait(false),
         CreatedUtc = s.CreatedUtc,
         StartedUtc = s.StartedUtc,
         CompletedUtc = s.CompletedUtc,

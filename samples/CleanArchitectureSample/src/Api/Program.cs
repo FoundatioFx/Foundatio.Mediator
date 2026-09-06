@@ -32,10 +32,12 @@ builder.Services.AddSingleton<IQueueLockProvider, RedisQueueLockProvider>();
 
 // ── Foundatio.Mediator ──
 builder.Services.AddMediator()
+    .ConfigureDistributed(opts => opts.ResourcePrefix = builder.Configuration["Distributed:ResourcePrefix"] ?? "sample")
     .AddDistributedQueues(opts =>
     {
         // One setting decides which workers this process runs: "all", "none" (API node), or a list of
         // groups/queues such as "exports,imports". Comes from --workers, then Distributed:Workers config.
+        opts.WorkerId = new HostInfo().HostId;
         opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]);
 
         // Tracked jobs remember who asked for them; the dashboard shows tenant and user per job.

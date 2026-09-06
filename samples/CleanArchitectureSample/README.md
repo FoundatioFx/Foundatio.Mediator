@@ -1,6 +1,6 @@
 # Modular Monolith Sample
 
-A working modular monolith that shows Foundatio.Mediator in a realistic multi-module application, and proves the distributed-queue scenarios a real monolith needs when it moves its background work onto SQS/SNS: one build that runs as an API node or as any set of workers, tracked long-running jobs, retries and dead letters you can inspect and replay, single-flight locks for money movement, tenant propagation, and per-host visibility across replicas.
+A working modular monolith that shows Foundatio.Mediator in a realistic multi-module application, and proves the distributed-queue scenarios a real monolith needs when it moves its background work onto SQS/SNS: one build that runs as an API node or as any set of workers, tracked long-running jobs, retries and dead letters you can inspect and replay, resource locks that preserve distinct jobs, tenant propagation, and per-host visibility across replicas.
 
 Four modules communicate only through the mediator. No module references another's handlers or data layer.
 
@@ -15,10 +15,10 @@ Four modules communicate only through the mediator. No module references another
 | **Interface-typed handler** — one queue for every `IOrderEvent` | `OrderAuditHandler.HandleAsync(IOrderEvent)`, `order-events` queue |
 | **Shared queue, several handlers, one message** | `OrderConfirmationHandler` + `OrderFulfillmentHandler` on `QueueName = "order-created"` |
 | **Distributed notifications with an explicit rule set** | `Program.cs`: `IncludeNotificationsFromAssemblyOf<IOrderEvent>()`, `Exclude<ProductStockChanged>()`; product events keep `IDistributedNotification` |
-| **`[QueueLock]` single-flight** | `GenerateBankFileHandler`, `Api/Infrastructure/RedisQueueLockProvider.cs`, "Bank file" control |
+| **`[QueueLock]` single-flight** | `GenerateBankFileHandler`, `Api/Infrastructure/RedisQueueLockProvider.cs`, "Enqueue 2 bank files" control |
 | **Retry schedule, dead letters, replay, purge** | `FlakyWebhookHandler` (`MaxAttempts = 3, RetryDelays = "1s,3s"`), Queues page → Dead letters tab |
 | **Header provider + job metadata** — tenant follows the message | `Api/Infrastructure/TenantHeaderProvider.cs`, `TenantContext`, header tenant selector |
-| **Observability and scale-out** | `ServiceDefaults` registers `DistributedMetrics.MeterName`; `DemoJobCompleted(JobId, QueueName, HostId, Tenant)` feeds "Completions by host" |
+| **Observability and scale-out** | `ServiceDefaults` registers `DistributedMetrics.MeterName`; `DemoJobCompleted(JobId, QueueName, HostId, Tenant)` feeds "Live worker activity" |
 | **Queue administration through the mediator** | `QueueDashboardHandler` delegates to `GetQueueOverview`, `ListDeadLetters`, `ReplayDeadLetters`, `PurgeDeadLetters`, `CancelQueueJob` |
 
 ### Core mediator features
@@ -112,7 +112,7 @@ Every resource runs the same `Api` project. `AppOptions` turns `--mode`/`--worke
     opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]))
 ```
 
-`WorkerSelection` accepts `all`, `none`, or a comma-separated list of group or queue names with `!` for exclusions (`exports,imports`, `!events`). Names match `[Queue(Group = ...)]` or the queue name. Moving a group out of process is therefore only configuration: an API node sets `Distributed__Workers=none` (or `--mode api`), and the process that should run the group sets `Distributed__Workers=exports`. Nothing in the modules changes, and the API node still enqueues to every queue because the topology is registered on every node. An API node's row on the Queues page shows no "worker here" badge; a worker node's row does.
+`WorkerSelection` accepts `all`, `none`, or a comma-separated list of group or queue names with `!` for exclusions (`exports,imports`, `!events`). Names match `[Queue(Group = ...)]` or the queue name. Moving a group out of process is therefore only configuration: an API node sets `Distributed__Workers=none` (or `--mode api`), and the process that should run the group sets `Distributed__Workers=exports`. Nothing in the modules changes, and the API node still enqueues to every queue because the topology is registered on every node. The selected queue's Settings tab distinguishes the answering API from a separate worker process. Job details identify the worker that owns the latest attempt.
 
 Running without a real transport is refused on purpose: with `Workers` other than `all` and no `IQueueClient` registered, `AddDistributedQueues` throws, because messages enqueued to an in-memory queue with no worker in the process would be lost.
 
@@ -131,7 +131,7 @@ public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> l
         for (int i = 1; i <= steps; i++)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(jitter, ct);
+            await Task.Delay(message.StepDelayMs, ct);
             await queueContext.ReportProgressAsync(percent, $"Step {i} of {steps} on {host.HostId}", ct);
         }
 
@@ -142,10 +142,14 @@ public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> l
 ```
 
 - `TrackProgress = true` gives every message a job id and a `QueueJobState` in the store — Redis here via `UseRedisJobState()`, so any node can read it.
-- `QueueContext.ReportProgressAsync(percent, message)` writes progress, heartbeats the message's visibility timeout, and throws `OperationCanceledException` if cancellation was requested from the dashboard. The worker also auto-renews the timeout at two thirds of `TimeoutSeconds` while the handler runs, so a 60-second timeout is not a 60-second limit.
+- `QueueContext.ReportProgressAsync(percent, message)` writes progress, heartbeats the message's visibility timeout, and throws `OperationCanceledException` if cancellation was requested from the dashboard. The worker also auto-renews the timeout halfway through the visibility lease while the handler runs, so a 60-second timeout is not a 60-second limit.
 - Invoking a `[Queue]` handler enqueues instead of running it. The result confirms acceptance. `QueueDashboardHandler` uses `mediator.EnqueueAsync` and reads the job ID from the typed receipt. The handler’s own generated endpoint answers `202 Accepted`; an application status URL is separate from the job identifier.
-- Returning `Result.Error(...)` (or throwing) abandons the message for retry; `Result.CriticalError(...)`, `Result.Invalid(...)`, and other non-transient statuses dead-letter it at once. The export simulates both at a low rate.
-- **UI:** "Tracked export jobs → Enqueue 1". The Jobs tab shows the progress bar, the step message with the host that is running it, `tenant=`/`user=` metadata chips, and a Cancel button. Cancellation is cooperative: the worker notices on its next progress report or poll (5 s) and marks the job Cancelled without retrying it.
+- Returning `Result.Error(...)` (or throwing) abandons the message for retry; `Result.CriticalError(...)`, `Result.Invalid(...)`, and other non-transient statuses dead-letter it at once. The export Outcome selector deterministically chooses success, one transient failure, or an immediate dead letter.
+- **UI:** choose **Jobs**, **Seconds / attempt**, and **Outcome**, then **Enqueue export**. The returned receipt links to a job inspector with full ID, status, progress, current worker, attempt, timestamps, heartbeat age, last failure, and tenant/user metadata. Copy the page URL to open the same job after a reload or from another browser.
+- **Active work** includes Queued, Processing, Waiting for retry, and Enqueue unknown. Individual status filters and **All jobs** page through history in groups of 25. **Find a job by its full ID** opens any retained tracked job, including older entries outside the bounded browse window.
+- **Cancel** works for queued, running, and retry-pending work. **Cancellation requested** means the shared store recorded the request; **Cancelled** means a worker observed it and settled the delivery. Cancellation is cooperative and does not undo side effects. A delayed message may remain retry-pending until it is received again.
+- Choose **Fail once, then recover** to watch Waiting for retry before attempt 2 starts with reset progress. Choose **Fail immediately to dead letter** to bypass retries. Set the duration to zero to see enqueue-stage validation reject the message without creating a job.
+- **Enqueue 3 imports** builds a backlog on the single import worker; the same inspector, status filters, and cancellation controls apply.
 
 ### 2. Interface-typed handler: one queue for every order event
 
@@ -161,7 +165,7 @@ public class OrderAuditHandler(IAuditService auditService, HostInfo host, ...)
 }
 ```
 
-Publishing any `IOrderEvent` enqueues one message to `order-events`, tagged with the concrete type. The worker deserializes it as that type (the library resolves the name against the declared interface, so no type registration is needed) and dispatches to every handler whose parameter type is assignable. **UI:** create an order; the Live Events page shows `OrderCreated` and, a couple of seconds later, `OrderShipped` (see the next scenario) — both audited by the same handler. The `order-events` row shows one handler and two message types passing through it.
+Publishing any `IOrderEvent` enqueues one message to `order-events`, tagged with the concrete type. The worker deserializes it as that type (the library resolves the name against the declared interface, so no type registration is needed) and dispatches to every handler whose parameter type is assignable. **UI:** create an order; the Live Events page shows `OrderCreated` and, a couple of seconds later, `OrderShipped` (see the next scenario) — both audited by the same handler. Select the `sample-order-events` queue and open Settings to see its interface subscription. Transport counters cover both event types.
 
 ### 3. Shared queue: one message, several handlers
 
@@ -210,9 +214,9 @@ public record GenerateBankFile(string Bank, string BatchId) : IHaveLockKey
 public class GenerateBankFileHandler(...) { ... }
 ```
 
-`QueueLockMiddleware` acquires the lock before the handler runs, renews it while the handler runs, and releases it afterwards. When the lock is held by another delivery, the worker keeps its queue lease and retries acquisition with jitter. Both distinct messages eventually execute, sharing no deduplication shortcut. `AcquireTimeoutSeconds` controls each acquisition wait. The library only ships a process-local provider (auto-registered for in-memory queues); a real transport needs a shared one. `Api/Infrastructure/RedisQueueLockProvider.cs` is 60 lines: `SET NX PX` to acquire, a Lua compare-and-delete to release, a Lua compare-and-`PEXPIRE` to renew, registered as a singleton.
+`QueueLockMiddleware` acquires the lock before the handler runs, renews it while the handler runs, and releases it afterwards. When the lock is held by another delivery, the worker keeps its queue lease and retries acquisition with jitter. Both distinct messages eventually execute, sharing no deduplication shortcut. `AcquireTimeoutSeconds` controls each acquisition wait. The library only ships a process-local provider (auto-registered for in-memory queues); a real transport needs a shared one. `Api/Infrastructure/RedisQueueLockProvider.cs` uses `SET NX PX` to acquire, a Lua compare-and-delete to release, a Lua compare-and-`PEXPIRE` to renew, registered as a singleton.
 
-**UI:** "Bank file → Enqueue 2" puts two `GenerateBankFile` messages for the same bank on the queue together. Exactly one `BankFileGenerated` appears on Live Events, the queue's processed count goes up by two, and the worker log has `Lock 'bank-file:first-national' is held by another worker; completing message ... without running`.
+**UI:** choose a **Shared bank key**, then **Enqueue 2 bank files**. Both receipts become Completed, and two `BankFileGenerated` events appear in Live worker activity. Their protected sections execute sequentially while the lock is owned, even when different worker replicas receive them. Contention preserves the waiting job; it does not complete or discard it. A lock alone is not an exactly-once guarantee: real side effects still need idempotency.
 
 ### 6. Retry schedule, dead letters, replay, purge
 
@@ -225,20 +229,24 @@ public class FlakyWebhookHandler(...)
         if (!Uri.TryCreate(message.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
             return Result.Invalid($"'{message.Url}' is not an absolute http(s) URL");   // dead-lettered at once
 
-        if (queueContext.DequeueCount <= message.FailTimes)
+        if (!queueContext.Headers.ContainsKey(MessageHeaders.OriginalJobId) && queueContext.DequeueCount <= message.FailTimes)
             return Result.Error($"{uri.Host} returned 503 on attempt {queueContext.DequeueCount}");   // retried
 
-        await mediator.PublishAsync(new WebhookDelivered(message.Url, queueContext.DequeueCount, host.HostId), ct);
+        await mediator.PublishAsync(new WebhookDelivered(message.Url, queueContext.DequeueCount, host.HostId, queueContext.JobId!, queueContext.QueueName), ct);
         return Result.Ok();
     }
 }
 ```
 
-`RetryDelays` selects the schedule policy: attempt 1 fails → wait 1 s → attempt 2 fails → wait 3 s → attempt 3 fails → the next receive exceeds `MaxAttempts` and the message moves to `DeliverWebhook-dead-letter` with the reason, attempt count, original queue, correlation id (the enqueuing request's trace id), and job id as headers. `QueueContext.DequeueCount` is the attempt number; `MaxAttempts` is also on the context.
+`RetryDelays` selects the schedule: attempt 1 fails → wait 1 s → attempt 2 fails → wait 3 s → attempt 3 fails → dead letter. The message carries the reason, attempt count, original queue, correlation ID, and tracked job ID. `QueueContext.DequeueCount` is the attempt number; `MaxAttempts` and received `Headers` are also available on the context.
 
-Which results retry: `Result.Error`, `Result.Unavailable`, and `Result.RateLimited` (and thrown exceptions) abandon with backoff. Everything else that is not success — `Invalid`, `CriticalError`, `NotFound`, ... — is a content error and dead-letters immediately.
+`Result.Error`, `Result.Unavailable`, `Result.RateLimited`, and thrown exceptions retry with backoff. Non-transient failures such as `Invalid` and `CriticalError` dead-letter immediately.
 
-**UI:** "Flaky webhook" with `FailTimes = 5` dead-letters in about seven seconds; `FailTimes = 1` recovers on the second attempt and `WebhookDelivered` shows `attempts: 2`; `not-a-url` dead-letters at once with reason `Invalid: ...`. The red dead-letter count opens the **Dead letters** tab: message type, reason, attempts, when, correlation id, body preview, **Replay** per message, **Replay all**, and **Purge**. Replay sends the body back to the original queue from attempt 1 — a message that fails for the same reason lands in the dead-letter queue again, which is the point: replay is for failures whose cause has been fixed. Messages that dead-letter during a replay run are left for the next decision rather than looped.
+**UI:** choose **3 · move to dead letters**, then **Enqueue webhook**. After its retries, select **Dead letters** (or the red queue count). **Inspect DeliverWebhook** expands the payload preview and all headers; **Original job** opens the retained failure. **Retry message** replays one message; **Retry available** replays up to the selected batch limit. Both return new receipt links. In this simulated webhook handler, replay models the operator fixing the remote service: the replay marker lets the new job succeed. No external HTTP request is made. The original job remains Failed. Replaying the deliberately unrecoverable export continues to fail, demonstrating that replay alone does not repair a payload.
+
+**Flush dead letters** opens a confirmation identifying the queue and batch limit. **Keep messages** closes it without changing the queue; **Delete dead letters** permanently deletes available messages up to that limit. Failed job history is preserved. Messages leased elsewhere or newly dead-lettered may remain, so refresh to verify. Inspection is explicit rather than polled because it briefly leases and then releases messages; it returns up to 100 available entries, not a durable paginated snapshot.
+
+Replay preserves the original failure, creates new tracked job identities, and records `fm-original-job-id`. Failures arriving during the replay run are left for another decision. Replay is at-least-once: a partial transport failure may leave an Enqueue unknown job; reconcile before retrying the operation.
 
 The dashboard does none of this itself. The library ships mediator messages with no HTTP surface — `GetQueueOverview`, `GetQueueDetail`, `ListQueueJobs`, `GetQueueJob`, `CancelQueueJob`, `ListDeadLetters`, `ReplayDeadLetters`, `PurgeDeadLetters` — and `QueueDashboardHandler` exposes them under `/api/queues` with the host's authorization:
 
@@ -252,8 +260,8 @@ public async Task<Result<DeadLetterReplayResult>> HandleAsync(ReplayQueueDeadLet
 | Endpoint | Delegates to | Auth |
 | -------- | ------------ | ---- |
 | `GET /api/queues/queues`, `GET /api/queues/queue?queueName=` | `GetQueueOverview`, `GetQueueDetail` | anonymous |
-| `GET /api/queues/job-dashboard?queueName=`, `GET /api/queues/queue-job/{jobId}` | job state store, `GetQueueJob` | anonymous |
-| `GET /api/queues/dead-letters?queueName=` | `ListDeadLetters` | anonymous |
+| `GET /api/queues/job-dashboard?queueName=...&status=active&skip=0&take=25`, `GET /api/queues/queue-job/{jobId}` | job state store, `GetQueueJob` | anonymous |
+| `GET /api/queues/dead-letters?queueName=...&take=100` | `ListDeadLetters` | anonymous |
 | `GET /api/queues/host` | which process answered, and its `Workers` | anonymous |
 | `POST /api/queues/job/{jobId}/cancel-job` | `CancelQueueJob` | Admin |
 | `POST /api/queues/dead-letters/replay`, `POST /api/queues/dead-letters/purge` | `ReplayDeadLetters`, `PurgeDeadLetters` | Admin |
@@ -282,13 +290,29 @@ public sealed class TenantHeaderProvider(IHttpContextAccessor httpContextAccesso
 
 Registered with `.AddQueueHeaderProvider<TenantHeaderProvider>()`. Every provider's `Enrich` runs on enqueue and `Restore` runs on the worker before the handler. Handlers declare a `TenantContext tenant` parameter: on the worker it comes from the `CallContext`; inline, DI resolves it from the current request (`Program.cs` registers a scoped factory). When a worker-side handler publishes or enqueues — `OrderFulfillmentHandler` publishing `OrderShipped` — the ambient `TenantContext.Current` is what `Enrich` picks up, so the tenant survives a chain of queues.
 
-`DistributedQueueOptions.JobMetadataProvider` records the same two values on every tracked job at enqueue time; the Jobs tab shows them as `tenant=` and `user=` chips. **UI:** change the tenant selector in the header (sent as `X-Tenant`), enqueue an export, and read the worker log line `Starting export job ... for globex/admin on worker-exports:...`.
+`DistributedQueueOptions.JobMetadataProvider` records the same two values on every tracked job at enqueue time; the Jobs tab shows the tenant and the inspector shows both values. **UI:** change the tenant selector in the header (sent as `X-Tenant`), enqueue an export, and read the worker log line `Starting export job ... for globex/admin on worker-exports:...`.
 
 ### 8. Observability and scale-out
 
-`ServiceDefaults` adds `.AddMeter(DistributedMetrics.MeterName)`, so the Aspire dashboard's Metrics view shows `queue.messages.enqueued`, `queue.messages.processed`, `queue.messages.failed`, `queue.messages.dead_lettered`, `queue.messages.in_flight`, `queue.handler.duration`, the sampled `queue.depth.*` gauges, and `notifications.published`/`received`, tagged by queue, message type, and group. Enqueue and process spans are linked (not parented), so an hour-long job does not stretch the request's trace.
+`ServiceDefaults` adds `.AddMeter(DistributedMetrics.MeterName)`, so the Aspire dashboard's Metrics view shows `queue.messages.enqueued`, `queue.messages.processed`, `queue.messages.failed`, `queue.messages.dead_lettered`, `queue.messages.in_flight`, `queue.handler.duration`, the sampled `queue.depth.*` gauges, and `notifications.published`/`received`/`dropped`, tagged by queue, message type, and group. Enqueue and process spans are linked (not parented), so an hour-long job does not stretch the request's trace.
 
-**UI:** "Tracked export jobs → Enqueue 20". With two `worker-exports` replicas at concurrency 2, four jobs run at a time. Each completion publishes `DemoJobCompleted(JobId, QueueName, HostId, Tenant)`; the "Completions by host" panel tallies them per `worker-exports:<pid>`, the Live Events page shows the host badge on every event, and the header of the Queues page names the API replica that answered each poll.
+**UI:** set **Jobs** to 20, then **Enqueue export**. With two export replicas at concurrency 2, four jobs run at a time. The inspector identifies each attempt with `WorkerId`; completion notifications populate **Live worker activity** with host badges. Open the full event feed for order, product, webhook, and bank-file events. The last responding API and its worker selection appear below the dashboard.
+
+The summary distinguishes ready, in-flight (including lock waits), delayed, and dead-letter counts. These are approximate transport counts, while tracked job state is shared in Redis. Missing transport statistics display as unknown, and failed refreshes preserve previous data with a stale-data warning. **Pause updates** stops the 2.5-second monitoring poll; **Refresh now** still works. Live events are a separate best-effort authenticated subscription and are not the source of job status.
+
+`ConfigureDistributed(o => o.ResourcePrefix = "sample")` applies one prefix to queues, topics, and shared Redis state. Override `Distributed__ResourcePrefix` consistently on every API and worker when running another deployment. `DistributedQueueOptions.WorkerId` uses `HostInfo.HostId` in this sample; the library default is machine name plus process ID. The value identifies the latest attempt, not a global worker-health registry.
+
+### Browser regression checks
+
+Start a fresh local sample using either topology, then run from `src/Web`:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+For an Aspire CLI run with isolated ports, set `SAMPLE_BASE_URL` to the frontend URL shown by Aspire. The suite checks anonymous monitoring and authorization, running/queued cancellation, deep links, validation, retries, single/bulk replay, confirmed flush with retained history, both locked jobs, worker events, pagination, stale refresh errors, and mobile overflow. It creates and flushes demo work, so it deliberately refuses non-local URLs. Browser tests use real SQS/SNS in LocalStack and shared Redis; an already running local sample is required.
 
 ## Mediator Feature Walkthrough
 
@@ -329,7 +353,7 @@ RetryMiddleware (Execute, Order=0)
                       └─ Handler
 ```
 
-On a worker the same pipeline runs: `QueueMiddleware` (Order −100) sees the `QueueContext` and lets the message through, `QueueLockMiddleware` (Order −90) takes the lock, then the rest.
+`MiddlewareStage.Processing` is the default for queued handlers. `ValidationMiddleware` explicitly uses `Stage = MiddlewareStage.Both`, so invalid work is rejected before acceptance and checked again on processing. `QueueMiddleware` dispatches the enqueue branch; the worker runs the processing branch in a fresh scope, including `QueueLockMiddleware` and the handler middleware. Use `Stage = MiddlewareStage.Enqueue` for request-side-only work.
 
 ### Caching
 
@@ -369,7 +393,7 @@ public class EventHandler(IMediator mediator)
 
 ### Result pattern
 
-Handlers return `Result`/`Result<T>`; `Result.NotFound()`, `Result.Invalid()`, `Result.Error()` map to 404/422/500 on HTTP and to dead-letter-or-retry on a queue.
+Handlers return `Result`/`Result<T>`; `Result.NotFound()`, `Result.Invalid()`, `Result.Error()` map to 404/400/500 on HTTP and to dead-letter-or-retry on a queue.
 
 ## Module Dependencies
 

@@ -61,8 +61,8 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter(DistributedMetri
 | `queue.messages.abandoned` | counter | `outcome` = `shutdown` or `worker-error` |
 | `queue.messages.in_flight` | up-down counter | handlers running in this process |
 | `queue.handler.duration` | histogram (ms) | `outcome` = `processed` or `failed` |
-| `queue.depth.visible`, `queue.depth.in_flight`, `queue.depth.dead_letter` | gauges | `queue`; sampled from the transport every `QueueDepthPollInterval` |
-| `notifications.published`, `notifications.received` | counters | `message_type` |
+| `queue.depth.visible`, `queue.depth.delayed`, `queue.depth.in_flight`, `queue.depth.dead_letter` | gauges | `queue`; sampled from the transport every `QueueDepthPollInterval` |
+| `notifications.published`, `notifications.received`, `notifications.dropped` | counters | `message_type`; dropped counts outbound buffer evictions |
 
 Depth gauges are the autoscaling signal when the transport does not publish its own; with SQS prefer the CloudWatch queue metrics, which do not depend on a process being alive.
 

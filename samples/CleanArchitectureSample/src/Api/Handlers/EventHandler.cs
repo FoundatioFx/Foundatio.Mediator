@@ -23,8 +23,12 @@ public class EventHandler(IMediator mediator)
     [HandlerEndpoint(Streaming = EndpointStreaming.ServerSentEvents)]
     public async IAsyncEnumerable<ClientEvent> Handle(
         GetEventStream message,
+        HttpResponse response,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        // Flush an SSE comment so proxies forward an idle connection before the first domain event.
+        await response.WriteAsync(": connected\n\n", cancellationToken).ConfigureAwait(false);
+        await response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
         await foreach (var evt in mediator.SubscribeAsync<IDispatchToClient>(cancellationToken))
         {
             yield return new ClientEvent(evt.GetType().Name, evt);

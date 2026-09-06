@@ -116,6 +116,7 @@ public sealed class QueueWorker : BackgroundService
     private async Task RunReceiveLoopAsync(List<Task> active, CancellationToken stoppingToken, CancellationToken drainToken)
     {
         int consecutiveErrors = 0;
+        int largestReceivedBatch = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -128,10 +129,14 @@ public sealed class QueueWorker : BackgroundService
             }
 
             // Collect capacity released by related batch acknowledgments, including after an
-            // underfilled broker receive. Sparse work skips this delay; a slow handler cannot extend it.
-            if (active.Count >= (_options.Concurrency + 1) / 2 && _client.IsDistributed && _receiveBatchDelay > TimeSpan.Zero)
+            // underfilled broker receive. Sparse work and capacity for an observed full batch skip
+            // this delay; a slow handler cannot extend it. Learn the transport's batch size without
+            // assuming every distributed provider has SQS's ten-message receive limit.
+            if (active.Count >= (_options.Concurrency + 1) / 2
+                && _options.Concurrency - active.Count < largestReceivedBatch
+                && _client.IsDistributed && _receiveBatchDelay > TimeSpan.Zero)
             {
-                await Task.WhenAny(Task.WhenAll(active), Task.Delay(_receiveBatchDelay, stoppingToken)).ConfigureAwait(false);
+                await Task.WhenAny(Task.WhenAll(active), Task.Delay(_receiveBatchDelay, _timeProvider, stoppingToken)).ConfigureAwait(false);
                 if (stoppingToken.IsCancellationRequested) break;
                 active.RemoveAll(task => task.IsCompleted);
             }
@@ -151,6 +156,7 @@ public sealed class QueueWorker : BackgroundService
                     break;
                 }
                 consecutiveErrors = 0;
+                largestReceivedBatch = Math.Max(largestReceivedBatch, messages.Count);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

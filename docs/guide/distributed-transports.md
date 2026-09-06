@@ -108,7 +108,7 @@ Concurrent queue sends and completions automatically share SQS batch requests. C
 
 Acknowledgments use the received batch size as a flush hint: a ready eight-entry acknowledgment batch does not wait for a tenth entry. If a peer is slow or fails, the partial-batch window still flushes the completed entries. Batches also respect the aggregate byte limit. Cancellation before dispatch removes the entry; cancellation after dispatch does not cancel another caller's request and leaves the cancelled entry's broker outcome uncertain. Disposing the client cancels pending callers and stops its batching workers. Register these clients as singletons and dispose them with the host. Tracing links each batch to its contributing operations without retaining a caller's request context in the transport worker.
 
-Queue workers briefly coalesce newly released capacity to avoid fragmented broker receives. `DistributedQueueOptions.ReceiveBatchDelay` defaults to 1 ms and can be zero. This applies to distributed transports under load; it never increases the configured number of in-flight messages or waits indefinitely for a slow handler.
+Queue workers briefly coalesce newly released capacity to avoid fragmented broker receives. `DistributedQueueOptions.ReceiveBatchDelay` defaults to 1 ms and can be zero. This applies to distributed transports under load when there is too little free capacity for the largest batch observed from that transport. Workers with room for a full batch receive immediately. The delay never increases the configured number of in-flight messages or waits indefinitely for a slow handler.
 
 ### Notifications on SNS
 

@@ -103,9 +103,9 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
         });
         var mediator = provider.GetRequiredService<IMediator>();
 
-        var accepted = await mediator.InvokeAsync<Result>(new MetadataTrackedCommand("tracked", "acme"), TestCancellationToken);
+        var accepted = await mediator.EnqueueAsync(new MetadataTrackedCommand("tracked", "acme"), TestCancellationToken);
         Assert.Equal(ResultStatus.Accepted, accepted.Status);
-        var jobId = accepted.Location!;
+        var jobId = accepted.Value.JobId!;
 
         var queued = await mediator.InvokeAsync<Result<IReadOnlyList<QueueJobState>>>(new ListQueueJobs("MetadataTrackedCommand", QueueJobStatus.Queued), TestCancellationToken);
         Assert.Equal(jobId, Assert.Single(queued.Value!).JobId);

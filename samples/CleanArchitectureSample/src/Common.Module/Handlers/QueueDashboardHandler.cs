@@ -121,7 +121,7 @@ public class QueueDashboardHandler(
 
     /// <summary>
     /// Invoking a <c>[Queue]</c> handler enqueues instead of running; the job id of a tracked job comes back in
-    /// <see cref="Result.Location"/>.
+    /// the typed <see cref="QueueReceipt"/>.
     /// </summary>
     [HandlerAuthorize(Roles = ["Admin"])]
     [HandlerEndpoint(HandlerMethod.Post, "enqueue/exports")]
@@ -138,7 +138,7 @@ public class QueueDashboardHandler(
     public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueFlakyWebhook command, IMediator mediator, CancellationToken ct)
         => EnqueueAsync<DeliverWebhook>(mediator, 1, _ => new DeliverWebhook(command.Url, Math.Max(0, command.FailTimes)), ct);
 
-    /// <summary>Two files for one bank land on the queue together; <c>[QueueLock]</c> lets exactly one of them run.</summary>
+    /// <summary>Two files for one bank land on the queue together; <c>[QueueLock]</c> runs both sequentially while the resource lock is held.</summary>
     [HandlerAuthorize(Roles = ["Admin"])]
     [HandlerEndpoint(HandlerMethod.Post, "enqueue/bank-files")]
     public Task<Result<EnqueueReceipt>> HandleAsync(EnqueueBankFiles command, IMediator mediator, CancellationToken ct)
@@ -153,12 +153,12 @@ public class QueueDashboardHandler(
         var jobIds = new List<string>(count);
         for (int i = 0; i < count; i++)
         {
-            var result = await mediator.InvokeAsync<Result>(create(i), ct);
+            var result = await mediator.EnqueueAsync(create(i), ct);
             if (!result.IsSuccess)
                 return Result<EnqueueReceipt>.FromResult(result);
 
-            if (!string.IsNullOrEmpty(result.Location))
-                jobIds.Add(result.Location);
+            if (!string.IsNullOrEmpty(result.Value.JobId))
+                jobIds.Add(result.Value.JobId);
         }
 
         return new EnqueueReceipt(QueueNameFor<TMessage>(), count, jobIds);

@@ -28,15 +28,19 @@ public static class RedisBuilderExtensions
         Action<RedisJobStateStoreOptions>? configure = null)
     {
         var services = builder.Services;
+        var defaults = builder.GetDistributedOptions();
         var options = new RedisJobStateStoreOptions();
         configure?.Invoke(options);
 
         services.AddSingleton(options);
         services.AddSingleton<IQueueJobStateStore>(sp =>
-            new RedisQueueJobStateStore(
+        {
+            options.ResourcePrefix ??= defaults.ResourcePrefix;
+            return new RedisQueueJobStateStore(
                 sp.GetRequiredService<IConnectionMultiplexer>(),
                 sp.GetService<RedisJobStateStoreOptions>(),
-                sp.GetService<TimeProvider>()));
+                sp.GetService<TimeProvider>());
+        });
 
         return builder;
     }

@@ -139,7 +139,7 @@ public class DistributedNotificationOptions
             if (self.MessageFilter is not null)
                 return self.MessageFilter(type);
 
-            return self.IncludeAllNotifications;
+            return self.IncludeAllNotifications && typeof(INotification).IsAssignableFrom(type);
         }, this);
     }
 

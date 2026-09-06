@@ -50,6 +50,7 @@ public class QueuedCommandHandler(HandlerSignal signal)
 }
 
 [Queue]
+[FoundatioIgnore]
 public class QueuedQueryHandler(HandlerSignal signal)
 {
     public string Handle(QueuedQuery message)

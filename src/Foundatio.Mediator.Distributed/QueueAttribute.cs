@@ -12,8 +12,9 @@ namespace Foundatio.Mediator.Distributed;
 public sealed class QueueAttribute : Attribute
 {
     /// <summary>
-    /// Queue name. Defaults to the message type name. Handlers sharing a name share one queue and one
-    /// worker and must declare identical settings.
+    /// Explicitly shares a queue and retry budget with other handlers naming the same queue.
+    /// By default each handler/message pair has its own queue: OrderHandler handling Order uses
+    /// "Order"; AuditHandler handling Order uses "Audit-Order". Explicit groups must share settings.
     /// </summary>
     public string? QueueName { get; set; }
 
@@ -24,7 +25,7 @@ public sealed class QueueAttribute : Attribute
     public int MaxAttempts { get; set; } = 3;
 
     /// <summary>
-    /// Visibility timeout in seconds. Renewed automatically at two thirds while the handler runs when
+    /// Visibility timeout in seconds. Renewed automatically halfway through the lease while the handler runs when
     /// <see cref="AutoRenewTimeout"/> is on.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 30;

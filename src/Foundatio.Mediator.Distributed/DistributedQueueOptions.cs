@@ -51,6 +51,14 @@ public class DistributedQueueOptions
     /// </summary>
     public bool AllowInMemoryWithoutWorkers { get; set; }
 
+    /// <summary>Explicit development/test escape hatch for tracked distributed transports with a process-local state store.</summary>
+    public bool AllowProcessLocalJobStateForDevelopment { get; set; }
+
+    /// <summary>Operational overrides keyed by logical subscription name, before ResourcePrefix is applied.</summary>
+    public IDictionary<string, Action<QueueAttribute>> QueueOverrides { get; } = new Dictionary<string, Action<QueueAttribute>>(StringComparer.OrdinalIgnoreCase);
+
+    internal string RemovePrefix(string name) => string.IsNullOrEmpty(ResourcePrefix) ? name : name[(ResourcePrefix.Length + 1)..];
+
     /// <summary>
     /// Produces <see cref="QueueJobState.Metadata"/> for tracked jobs from the message being enqueued,
     /// for example a tenant or requesting-user id that a job state store can index on.

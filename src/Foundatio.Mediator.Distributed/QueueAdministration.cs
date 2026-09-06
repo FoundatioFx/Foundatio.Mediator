@@ -233,7 +233,38 @@ public class QueueAdministrationHandler(
                     continue;
                 }
 
-                await client.ReplayAsync(message, ct).ConfigureAwait(false);
+                string? newJobId = null;
+                if (message.Headers.TryGetValue(MessageHeaders.JobId, out var originalJobId))
+                {
+                    if (stateStore is null)
+                        throw new InvalidOperationException("Replaying tracked work requires an IQueueJobStateStore.");
+                    var original = await stateStore.GetJobStateAsync(originalJobId, ct).ConfigureAwait(false);
+                    var now = _timeProvider.GetUtcNow();
+                    newJobId = Guid.NewGuid().ToString("N");
+                    await stateStore.SetJobStateAsync(new QueueJobState
+                    {
+                        JobId = newJobId, QueueName = command.QueueName,
+                        MessageType = original?.MessageType ?? message.Headers.GetValueOrDefault(MessageHeaders.MessageType) ?? "",
+                        CreatedUtc = now, LastUpdatedUtc = now, Metadata = original?.Metadata
+                    }, cancellationToken: ct).ConfigureAwait(false);
+                }
+                try
+                {
+                    await client.ReplayAsync(message, ct, newJobId).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    if (newJobId is not null)
+                    {
+                        try
+                        {
+                            await QueueOperation.RunAsync(token => stateStore!.UpdateJobStatusAsync(newJobId, QueueJobStatus.EnqueueUnknown,
+                                errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+                        }
+                        catch { /* Preserve the original replay failure. */ }
+                    }
+                    throw;
+                }
                 replayed++;
                 logger.LogInformation("Replayed dead letter {MessageId} to {QueueName}", message.Id, command.QueueName);
 

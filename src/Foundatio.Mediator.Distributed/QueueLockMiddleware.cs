@@ -24,7 +24,7 @@ public class QueueLockMiddleware
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         // A process-local lock is only safe when the queue is process-local too.
-        _lockProvider = lockProvider ?? (queueClient is InMemoryQueueClient ? new InMemoryQueueLockProvider(_timeProvider) : null);
+        _lockProvider = lockProvider ?? (!queueClient.IsDistributed ? new InMemoryQueueLockProvider(_timeProvider) : null);
     }
 
     public async ValueTask<object?> ExecuteAsync(

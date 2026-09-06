@@ -75,6 +75,7 @@ public class DrainableCommandHandler(HandlerGate gate, HandlerSignal signal)
 /// </summary>
 internal sealed class FlakyRenewQueueClient : IQueueClient
 {
+    public bool IsDistributed => false;
     private readonly Queue<QueueMessage> _pending = new();
     private int _renewCalls;
     private int _completes;

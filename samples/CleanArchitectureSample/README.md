@@ -143,7 +143,7 @@ public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> l
 
 - `TrackProgress = true` gives every message a job id and a `QueueJobState` in the store — Redis here via `UseRedisJobState()`, so any node can read it.
 - `QueueContext.ReportProgressAsync(percent, message)` writes progress, heartbeats the message's visibility timeout, and throws `OperationCanceledException` if cancellation was requested from the dashboard. The worker also auto-renews the timeout at two thirds of `TimeoutSeconds` while the handler runs, so a 60-second timeout is not a 60-second limit.
-- Invoking a `[Queue]` handler enqueues instead of running it. The result is `Result.Accepted("Message queued", jobId)`: **the job id is `Result.Location`**, not `Message`. `QueueDashboardHandler.EnqueueAsync` reads it from there. The handler's own endpoint, `POST /api/export-jobs/demo`, answers `202 Accepted` with the job id in the `Location` header.
+- Invoking a `[Queue]` handler enqueues instead of running it. The result confirms acceptance. `QueueDashboardHandler` uses `mediator.EnqueueAsync` and reads the job ID from the typed receipt. The handler’s own generated endpoint answers `202 Accepted`; an application status URL is separate from the job identifier.
 - Returning `Result.Error(...)` (or throwing) abandons the message for retry; `Result.CriticalError(...)`, `Result.Invalid(...)`, and other non-transient statuses dead-letter it at once. The export simulates both at a low rate.
 - **UI:** "Tracked export jobs → Enqueue 1". The Jobs tab shows the progress bar, the step message with the host that is running it, `tenant=`/`user=` metadata chips, and a Cancel button. Cancellation is cooperative: the worker notices on its next progress report or poll (5 s) and marks the job Cancelled without retrying it.
 
@@ -175,7 +175,7 @@ public class OrderConfirmationHandler(...) { public async Task HandleAsync(Order
 public class OrderFulfillmentHandler(IOrderRepository repository, ...) { public async Task HandleAsync(OrderCreated evt, IMediator mediator, TenantContext tenant, CancellationToken ct) { ... } }
 ```
 
-Two handlers in two modules declare the same `QueueName` with identical settings (the library validates that at startup and refuses mismatches). When `OrderCreated` is published, the queue middleware runs for both handlers but only the designated one sends, so the queue receives **one** message; the worker then runs both handlers from it. The `order-created` row on the Queues page lists both handlers. Fulfillment publishes `OrderShipped` from the worker, which takes the same path as any API-side publish: enqueued for `OrderAuditHandler`, and distributed to the API nodes' event feeds.
+Two handlers in two modules declare the same `QueueName` with identical settings (the library validates that at startup and refuses mismatches). When `OrderCreated` is published, the registry selects the first ordered matching enqueue pipeline, so the queue receives **one** message; the worker then runs both handlers from it. The `order-created` row on the Queues page lists both handlers. Fulfillment publishes `OrderShipped` from the worker, which takes the same path as any API-side publish: enqueued for `OrderAuditHandler`, and distributed to the API nodes' event feeds.
 
 The default queue name is the message type name, so `AuditEventHandler.HandleAsync(ProductCreated)` and `NotificationEventHandler.HandleAsync(ProductCreated)` already share a `ProductCreated` queue the same way; the explicit name just makes it visible.
 
@@ -202,7 +202,7 @@ A receiving node deserializes a bus message either because the type was register
 ```csharp
 public record GenerateBankFile(string Bank, string BatchId) : IHaveLockKey
 {
-    [JsonIgnore] public string LockKey => $"bank-file:{Bank}";
+    public string GetLockKey() => $"bank-file:{Bank}";
 }
 
 [Queue(Group = "exports", Concurrency = 2, TimeoutSeconds = 60)]
@@ -210,7 +210,7 @@ public record GenerateBankFile(string Bank, string BatchId) : IHaveLockKey
 public class GenerateBankFileHandler(...) { ... }
 ```
 
-`QueueLockMiddleware` acquires the lock before the handler runs, renews it while the handler runs, and releases it afterwards. When the lock is already held — by this worker or another replica — the message is **completed without running**, because that work is already in progress; with `AcquireTimeoutSeconds` set it would wait instead. The library only ships a process-local provider (auto-registered for in-memory queues); a real transport needs a shared one. `Api/Infrastructure/RedisQueueLockProvider.cs` is 60 lines: `SET NX PX` to acquire, a Lua compare-and-delete to release, a Lua compare-and-`PEXPIRE` to renew, registered as a singleton.
+`QueueLockMiddleware` acquires the lock before the handler runs, renews it while the handler runs, and releases it afterwards. When the lock is held by another delivery, the worker keeps its queue lease and retries acquisition with jitter. Both distinct messages eventually execute, sharing no deduplication shortcut. `AcquireTimeoutSeconds` controls each acquisition wait. The library only ships a process-local provider (auto-registered for in-memory queues); a real transport needs a shared one. `Api/Infrastructure/RedisQueueLockProvider.cs` is 60 lines: `SET NX PX` to acquire, a Lua compare-and-delete to release, a Lua compare-and-`PEXPIRE` to renew, registered as a singleton.
 
 **UI:** "Bank file → Enqueue 2" puts two `GenerateBankFile` messages for the same bank on the queue together. Exactly one `BankFileGenerated` appears on Live Events, the queue's processed count goes up by two, and the worker log has `Lock 'bank-file:first-national' is held by another worker; completing message ... without running`.
 

@@ -45,11 +45,11 @@ Start the hosted services as usual, then wait for the queues to drain instead of
 
 ```csharp
 await mediator.InvokeAsync(new ImportFile("a.csv"), ct);
-await queue.DrainAsync(TimeSpan.FromSeconds(10), ct);   // no pending or in-flight messages remain
+await queue.DrainAsync(TimeSpan.FromSeconds(10), ct);   // no pending, delayed, in-flight, or finishing worker deliveries remain
 Assert.Equal(1, repository.ImportedFiles.Count);
 ```
 
-`DrainAsync` throws with a per-queue summary if messages are still pending when the timeout passes. Dead-letter queues are not drained, so a test can assert on them afterwards.
+Start the host before enqueueing or draining. `DrainAsync` includes delayed retries and worker state updates after acknowledgment; it is intended for tests after producers have finished sending. `DrainAsync` throws with a per-queue summary if messages are still pending when the timeout passes. Dead-letter queues are not drained, so a test can assert on them afterwards.
 
 ## Two Nodes in One Process
 

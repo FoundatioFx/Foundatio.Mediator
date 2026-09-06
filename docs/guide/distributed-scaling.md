@@ -58,7 +58,7 @@ Each process registers every queue's metadata even when it runs no worker for it
 
 ## Autoscaling on Queue Depth
 
-With SQS, CloudWatch already publishes `ApproximateNumberOfMessagesVisible` and `ApproximateAgeOfOldestMessage` per queue. Queue names are stable functions of `ResourcePrefix` plus the message type or `QueueName`, so alarms and scaling policies can be written once.
+With SQS, CloudWatch already publishes `ApproximateNumberOfMessagesVisible` and `ApproximateAgeOfOldestMessage` per queue. Queue names are stable functions of `ResourcePrefix` plus the logical handler/message subscription name or explicit `QueueName`, so alarms and scaling policies can be written once.
 
 ECS Service Auto Scaling target tracking on a customized metric works well: divide visible messages by running task count (backlog per task) and scale to keep it near the number of messages one task processes in a minute. Set a minimum of one task for queues that must always drain, and use scale-in protection while `queue.messages.in_flight` for the process is above zero.
 

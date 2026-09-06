@@ -102,29 +102,31 @@ public sealed class DistributedNotificationWorker : BackgroundService
             await using var subscription = mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, options).GetAsyncEnumerator(stoppingToken);
             var pending = subscription.MoveNextAsync();
             _outboundReady.TrySetResult();
-            if (_options.MaxConcurrentPublishes == 1)
+            var active = new List<Task>(_options.MaxConcurrentPublishes);
+            try
             {
                 while (await pending.ConfigureAwait(false))
                 {
-                    await PublishOutboundAsync(subscription.Current, stoppingToken).ConfigureAwait(false);
+                    var envelope = subscription.Current;
+                    var publication = PublishOutboundAsync(envelope, stoppingToken);
+                    // In-memory transports usually finish synchronously. Keep that path free of
+                    // parallel-enumerator locks and task scheduling, while filling broker batches.
+                    if (!publication.IsCompletedSuccessfully)
+                        active.Add(publication);
+                    if (active.Count >= _options.MaxConcurrentPublishes)
+                    {
+                        await Task.WhenAny(active).ConfigureAwait(false);
+                        for (int i = active.Count - 1; i >= 0; i--)
+                            if (active[i].IsCompleted)
+                            {
+                                await active[i].ConfigureAwait(false);
+                                active.RemoveAt(i);
+                            }
+                    }
                     pending = subscription.MoveNextAsync();
                 }
             }
-            else
-                await Parallel.ForEachAsync(ReadAsync(), new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = _options.MaxConcurrentPublishes,
-                    CancellationToken = stoppingToken
-                }, (envelope, ct) => new ValueTask(PublishOutboundAsync(envelope, ct))).ConfigureAwait(false);
-
-            async IAsyncEnumerable<MessageContext<object>> ReadAsync()
-            {
-                while (await pending.ConfigureAwait(false))
-                {
-                    yield return subscription.Current;
-                    pending = subscription.MoveNextAsync();
-                }
-            }
+            finally { await Task.WhenAll(active).ConfigureAwait(false); }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         catch (Exception ex)

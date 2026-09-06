@@ -48,3 +48,30 @@ jobs:
     secrets: inherit
     with:
       new-test-runner: true
+  distributed-benchmark-smoke:
+    name: Distributed benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and verify benchmark accounting
+        run: |
+          dotnet build benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release
+          dotnet benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll self-test
+      - name: Start isolated SQS and SNS
+        run: docker compose -p mediator-bench -f benchmarks/Foundatio.Mediator.Distributed.Benchmarks/compose.yaml up -d --wait
+      - name: Verify all framework and transport paths
+        run: dotnet benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll matrix --suite smoke --repetitions 1 --timeout 60 --output BenchmarkDotNet.Artifacts/distributed/smoke
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: distributed-benchmark-smoke
+          path: BenchmarkDotNet.Artifacts/distributed/smoke
+      - name: Stop benchmark infrastructure
+        if: always()
+        run: docker compose -p mediator-bench -f benchmarks/Foundatio.Mediator.Distributed.Benchmarks/compose.yaml down

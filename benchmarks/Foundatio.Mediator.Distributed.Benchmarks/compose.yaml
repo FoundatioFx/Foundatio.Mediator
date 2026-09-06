@@ -1,0 +1,14 @@
+services:
+  localstack:
+    image: localstack/localstack:3.8.1
+    ports:
+      - "127.0.0.1:${BENCHMARK_PORT:-4566}:4566"
+    environment:
+      SERVICES: sqs,sns
+      SQS_ENDPOINT_STRATEGY: dynamic
+      GATEWAY_LISTEN: 0.0.0.0:4566
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 60

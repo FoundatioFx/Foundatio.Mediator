@@ -6,12 +6,12 @@ namespace Foundatio.Mediator.Distributed.Aws;
 /// <summary>
 /// Body encoding and size rules shared by the SQS queue and SNS pub/sub clients.
 /// Bodies travel as UTF-8 JSON text; headers travel as message attributes, packed into one JSON attribute
-/// when there are more than SQS allows (a traced, tracked, dead-lettered message already exceeds ten).
+/// to reduce native attribute overhead and fit within AWS attribute limits.
 /// </summary>
 internal static class SqsPayload
 {
     /// <summary>
-    /// SQS and SNS reject messages over 256 KiB (body plus attributes).
+    /// Conservative shared SQS/SNS body-plus-attribute limit. SNS supports at most 256 KiB.
     /// </summary>
     public const int MaxMessageBytes = 262_144;
 
@@ -25,15 +25,15 @@ internal static class SqsPayload
     public static byte[] DecodeBody(string? body) => string.IsNullOrEmpty(body) ? [] : Encoding.UTF8.GetBytes(body);
 
     /// <summary>
-    /// The attribute values to send for <paramref name="headers"/>: one per header while they fit, otherwise a
-    /// single <see cref="MessageHeaders.PackedHeaders"/> attribute holding all of them.
+    /// The attribute values to send for <paramref name="headers"/>, packing multiple headers by default.
+    /// Packing is mandatory when the native attribute count would exceed AWS's limit.
     /// </summary>
-    public static Dictionary<string, string> ToAttributeValues(IReadOnlyDictionary<string, string>? headers)
+    public static Dictionary<string, string> ToAttributeValues(IReadOnlyDictionary<string, string>? headers, bool pack = true)
     {
         if (headers is null || headers.Count == 0)
             return [];
 
-        if (headers.Count <= MaxMessageAttributes)
+        if (headers.Count <= MaxMessageAttributes && (!pack || headers.Count == 1))
             return new Dictionary<string, string>(headers);
 
         return new Dictionary<string, string> { [MessageHeaders.PackedHeaders] = JsonSerializer.Serialize(headers) };
@@ -58,11 +58,11 @@ internal static class SqsPayload
     /// <summary>
     /// Returns the approximate wire size of the message and throws when it cannot be sent.
     /// </summary>
-    public static int Validate(string destinationKind, string destination, string body, IReadOnlyDictionary<string, string>? headers)
+    public static int Validate(string destinationKind, string destination, string body, IReadOnlyDictionary<string, string>? headers, IReadOnlyDictionary<string, string>? attributeValues = null)
     {
         int size = Encoding.UTF8.GetByteCount(body);
-        foreach (var (key, value) in ToAttributeValues(headers))
-            size += Encoding.UTF8.GetByteCount(key) + Encoding.UTF8.GetByteCount(value ?? string.Empty);
+        foreach (var (key, value) in attributeValues ?? ToAttributeValues(headers))
+            size += Encoding.UTF8.GetByteCount(key) + Encoding.UTF8.GetByteCount(value ?? string.Empty) + 6; // AWS counts the String data type too.
 
         if (size > MaxMessageBytes)
         {

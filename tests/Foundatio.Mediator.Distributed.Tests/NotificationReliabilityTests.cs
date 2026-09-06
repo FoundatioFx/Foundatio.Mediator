@@ -148,6 +148,44 @@ public class NotificationReliabilityTests
         finally { await hosted.StopAllAsync(); }
     }
 
+    [Fact]
+    public async Task ConcurrentPublications_RespectLimit_AndStopWhileTransportIsStalled()
+    {
+        var bus = new ControlledBus { HoldAll = true };
+        await using var provider = CreateProvider(bus, configure: o => { o.MaxConcurrentPublishes = 4; o.MaxCapacity = 20; });
+        var hosted = await provider.StartHostedServicesAsync(CT);
+        try
+        {
+            var mediator = provider.GetRequiredService<IMediator>();
+            for (int i = 0; i < 9; i++) await mediator.PublishAsync(new PublisherOnlyEvent(i), CT);
+            for (int i = 0; i < 4; i++) await bus.Entered.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT);
+            Assert.Equal(4, bus.Active);
+            Assert.False(bus.Entered.Reader.TryRead(out _));
+            await hosted.StopAllAsync().WaitAsync(TimeSpan.FromSeconds(5), CT);
+            Assert.Equal(0, bus.Active);
+        }
+        finally { bus.Release.TrySetResult(); await hosted.StopAllAsync(); }
+    }
+
+    [Fact]
+    public async Task ConcurrentPublicationFailure_DoesNotStopOtherPublications()
+    {
+        var bus = new ControlledBus { FailNumber = 2 };
+        await using var provider = CreateProvider(bus, configure: o => { o.MaxConcurrentPublishes = 4; o.MaxCapacity = 20; });
+        var hosted = await provider.StartHostedServicesAsync(CT);
+        try
+        {
+            var mediator = provider.GetRequiredService<IMediator>();
+            for (int i = 0; i < 10; i++) await mediator.PublishAsync(new PublisherOnlyEvent(i), CT);
+            var received = new List<int>();
+            for (int i = 0; i < 9; i++) received.Add(await bus.Published.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT));
+            Assert.Equal(Enumerable.Range(0, 10).Where(i => i != 2), received.Order());
+            await mediator.PublishAsync(new PublisherOnlyEvent(10), CT);
+            Assert.Equal(10, await bus.Published.Reader.ReadAsync(CT).AsTask().WaitAsync(TimeSpan.FromSeconds(5), CT));
+        }
+        finally { await hosted.StopAllAsync(); }
+    }
+
     private static ServiceProvider CreateProvider(IPubSubClient bus, Action<object>? onReceived = null, Action<DistributedNotificationOptions>? configure = null)
     {
         var services = new ServiceCollection();
@@ -166,7 +204,8 @@ public class NotificationReliabilityTests
             services.RemoveAll<HandlerRegistry>();
             services.AddSingleton(registry);
         }
-        builder.AddDistributedNotifications(options => { options.MaxCapacity = 2; configure?.Invoke(options); });
+        // These tests assert single-publication ordering and exact capacity independently of concurrency.
+        builder.AddDistributedNotifications(options => { options.MaxCapacity = 2; options.MaxConcurrentPublishes = 1; configure?.Invoke(options); });
         return services.BuildServiceProvider();
     }
 
@@ -176,6 +215,11 @@ public class NotificationReliabilityTests
         public TaskCompletionSource FirstEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool HoldFirst { get; init; }
+        public bool HoldAll { get; init; }
+        public int? FailNumber { get; init; }
+        public Channel<int> Entered { get; } = Channel.CreateUnbounded<int>();
+        private int _active;
+        public int Active => Volatile.Read(ref _active);
         private Func<PubSubMessage, CancellationToken, Task>? _handler;
         public Task InjectAsync(PublisherOnlyEvent message, CancellationToken ct)
             => _handler!(new PubSubMessage
@@ -185,14 +229,25 @@ public class NotificationReliabilityTests
             }, ct);
         public async Task PublishAsync(string topic, IReadOnlyList<PubSubEntry> entries, CancellationToken ct = default)
         {
-            if (HoldFirst && !FirstEntered.Task.IsCompleted)
+            Interlocked.Increment(ref _active);
+            try
             {
-                FirstEntered.TrySetResult();
-                await Release.Task.WaitAsync(ct);
+                Entered.Writer.TryWrite(0);
+                if (HoldAll || (HoldFirst && !FirstEntered.Task.IsCompleted))
+                {
+                    FirstEntered.TrySetResult();
+                    await Release.Task.WaitAsync(ct);
+                }
+                foreach (var entry in entries)
+                {
+                    int number = JsonSerializer.Deserialize<PublisherOnlyEvent>(entry.Body.Span)!.Number;
+                    if (number == FailNumber) throw new InvalidOperationException("test publication failure");
+                    Published.Writer.TryWrite(number);
+                }
             }
-            foreach (var entry in entries)
-                Published.Writer.TryWrite(JsonSerializer.Deserialize<PublisherOnlyEvent>(entry.Body.Span)!.Number);
+            finally { Interlocked.Decrement(ref _active); }
         }
+
         public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken ct = default)
         {
             _handler = handler;

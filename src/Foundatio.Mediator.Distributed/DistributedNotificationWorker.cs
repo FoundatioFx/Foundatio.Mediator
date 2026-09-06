@@ -102,10 +102,28 @@ public sealed class DistributedNotificationWorker : BackgroundService
             await using var subscription = mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, options).GetAsyncEnumerator(stoppingToken);
             var pending = subscription.MoveNextAsync();
             _outboundReady.TrySetResult();
-            while (await pending.ConfigureAwait(false))
+            if (_options.MaxConcurrentPublishes == 1)
             {
-                await PublishOutboundAsync(subscription.Current, stoppingToken).ConfigureAwait(false);
-                pending = subscription.MoveNextAsync();
+                while (await pending.ConfigureAwait(false))
+                {
+                    await PublishOutboundAsync(subscription.Current, stoppingToken).ConfigureAwait(false);
+                    pending = subscription.MoveNextAsync();
+                }
+            }
+            else
+                await Parallel.ForEachAsync(ReadAsync(), new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = _options.MaxConcurrentPublishes,
+                    CancellationToken = stoppingToken
+                }, (envelope, ct) => new ValueTask(PublishOutboundAsync(envelope, ct))).ConfigureAwait(false);
+
+            async IAsyncEnumerable<MessageContext<object>> ReadAsync()
+            {
+                while (await pending.ConfigureAwait(false))
+                {
+                    yield return subscription.Current;
+                    pending = subscription.MoveNextAsync();
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }

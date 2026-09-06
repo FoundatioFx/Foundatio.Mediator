@@ -19,6 +19,23 @@ namespace Foundatio.Mediator.Distributed.Aws;
 public class SqsPubSubClientOptions
 {
     /// <summary>
+    /// Packs multiple headers into one JSON message attribute to reduce transport overhead. Default is true.
+    /// Set false when external consumers or SNS filters need individual attributes; headers still pack
+    /// when they exceed AWS's attribute count limit. Receivers accept either representation.
+    /// </summary>
+    public bool PackHeaders { get; set; } = true;
+
+    /// <summary>
+    /// Filters notifications whose origin host is this node in SNS, avoiding an unnecessary SQS delivery.
+    /// Default is true. Disable when interoperating with publishers that send no message attributes or
+    /// when SNS subscription filter-policy quotas are unsuitable. The mediator still prevents self-delivery.
+    /// </summary>
+    public bool FilterSelfPublications { get; set; } = true;
+
+    /// <summary>Coalescing limits for concurrent, broker-confirmed SNS publications.</summary>
+    public AwsBatchOptions Batching { get; set; } = new();
+
+    /// <summary>
     /// When set, the topic ARN is used directly instead of creating/looking up the topic by name.
     /// </summary>
     public string? TopicArn { get; set; }

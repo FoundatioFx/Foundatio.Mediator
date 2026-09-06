@@ -105,7 +105,8 @@ Commands sent from inside a notification handler are enqueued normally; only the
     o.Topic = "app-events";           // default "distributed-notifications"
     o.ResourcePrefix = "myapp-prod";  // topic becomes "myapp-prod-app-events"
     // HostId defaults to a unique id per process. Keep it unique among active nodes.
-    o.MaxCapacity = 1000;             // outbound buffer
+    o.MaxCapacity = 1000;             // waiting outbound notifications
+    o.MaxConcurrentPublishes = 40;    // bounded transport publications in flight
 });
 ```
 
@@ -140,3 +141,5 @@ options.ShouldDistribute(typeof(LocalOnlyEvent));    // false
 `AddDistributedNotifications()` also works on a publisher-only node without local handlers. Host startup waits until subscriptions are ready, so an immediate first publish is observed. The outbound buffer uses `DropOldest`: when full, the oldest waiting notification is discarded. Each discard increments `notifications.dropped` and the worker’s `DroppedCount`; warnings are rate-limited. Filtering happens before buffering, and inbound messages are not rebroadcast, including after overflow or failures.
 
 Notifications are best effort. Awaiting `PublishAsync` does not confirm remote delivery, and shutdown can discard outstanding notifications. Use `[Queue]` subscriptions for durable independent processing. The in-memory pub/sub client logs subscriber failures and exposes `DeliveryFailed` for tests; one failed subscriber does not stop others.
+
+The outbound worker allows up to 40 transport publications concurrently by default so broker transports can send multiple full batches. `MaxCapacity` bounds waiting notifications in addition to these in-flight publications. Set `MaxConcurrentPublishes = 1` for sequential transport publication. Concurrent publication does not preserve outbound order; SQS standard queues also provide no ordering guarantee. A publication failure is logged without stopping unrelated publications.

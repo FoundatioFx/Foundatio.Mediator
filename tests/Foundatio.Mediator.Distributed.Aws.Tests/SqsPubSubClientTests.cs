@@ -196,6 +196,64 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         Assert.Empty(received.Headers);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OriginFiltering_PreservesRemoteAndPackedHeaders(bool filterSelf)
+    {
+        string hostId = NewId("origin");
+        string topic = NewId("origin-topic");
+        await using var sender = CreateClient(hostId, o => o.FilterSelfPublications = filterSelf);
+        await using var receiver = CreateClient();
+        var own = System.Threading.Channels.Channel.CreateUnbounded<PubSubMessage>();
+        var remote = new TaskCompletionSource<PubSubMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var selfSubscription = await sender.SubscribeAsync(topic, (m, _) => { own.Writer.TryWrite(m); return Task.CompletedTask; }, TestCancellationToken);
+        await using var remoteSubscription = await receiver.SubscribeAsync(topic, (m, _) => { remote.TrySetResult(m); return Task.CompletedTask; }, TestCancellationToken);
+        var headers = Enumerable.Range(0, 12).ToDictionary(i => "custom-" + i, i => "value-" + i);
+        headers[MessageHeaders.OriginHostId] = hostId;
+        headers["quoted"] = "quotes \" and slash \\";
+        await sender.PublishAsync(topic, [new PubSubEntry { Body = "event"u8.ToArray(), Headers = headers }], TestCancellationToken);
+        var received = await remote.Task.WaitAsync(TimeSpan.FromSeconds(10), TestCancellationToken);
+        Assert.Equal(headers.OrderBy(h => h.Key), received.Headers.OrderBy(h => h.Key));
+        if (filterSelf)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => own.Reader.ReadAsync(timeout.Token).AsTask());
+        }
+        else
+            Assert.Equal(headers.OrderBy(h => h.Key), (await own.Reader.ReadAsync(TestCancellationToken)).Headers.OrderBy(h => h.Key));
+    }
+
+    [Fact]
+    public async Task FilterQuotaExceeded_SubscriptionFallsBackToUnfilteredDelivery()
+    {
+        using var sns = new QuotaLimitedSns(fixture.ServiceUrl);
+        using var sqs = fixture.CreateSqsClient();
+        await using var client = new SqsPubSubClient(sns, sqs, new SqsPubSubClientOptions { WaitTimeSeconds = 1 },
+            new DistributedNotificationOptions(), Log.CreateLogger<SqsPubSubClient>());
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string topic = NewId("quota");
+        await using var subscription = await client.SubscribeAsync(topic, (_, _) => { delivered.TrySetResult(); return Task.CompletedTask; }, TestCancellationToken);
+        await client.PublishAsync(topic, [new PubSubEntry { Body = "{}"u8.ToArray() }], TestCancellationToken);
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestCancellationToken);
+        Assert.Equal(1, sns.FilterAttempts);
+    }
+
+    private sealed class QuotaLimitedSns(string endpoint) : Amazon.SimpleNotificationService.AmazonSimpleNotificationServiceClient(
+        new Amazon.Runtime.BasicAWSCredentials("test", "test"), new Amazon.SimpleNotificationService.AmazonSimpleNotificationServiceConfig { ServiceURL = endpoint })
+    {
+        public int FilterAttempts { get; private set; }
+        public override Task<Amazon.SimpleNotificationService.Model.SubscribeResponse> SubscribeAsync(Amazon.SimpleNotificationService.Model.SubscribeRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.Attributes.ContainsKey("FilterPolicy"))
+            {
+                FilterAttempts++;
+                throw new Amazon.SimpleNotificationService.Model.FilterPolicyLimitExceededException("test quota");
+            }
+            return base.SubscribeAsync(request, cancellationToken);
+        }
+    }
+
     // ── Fan-out, policy, heartbeat, payload ──────────────────────────────
 
     [Fact]
@@ -253,7 +311,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         Array.Fill(big, (byte)'a');
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync(topic, [new PubSubEntry { Body = big }], TestCancellationToken));
         Assert.Contains(topic, ex.Message);
-        Assert.Contains(big.Length.ToString("N0"), ex.Message);
+        Assert.Contains((big.Length + Encoding.UTF8.GetByteCount("fm-exclude-host") + Encoding.UTF8.GetByteCount("none") + Encoding.UTF8.GetByteCount("String")).ToString("N0"), ex.Message);
     }
 
     [Fact]

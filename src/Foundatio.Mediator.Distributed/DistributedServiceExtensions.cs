@@ -32,6 +32,8 @@ public static class DistributedServiceExtensions
         var defaults = builder.GetDistributedOptions();
         var options = new DistributedQueueOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
         configure?.Invoke(options);
+        if (options.ReceiveBatchDelay < TimeSpan.Zero || options.ReceiveBatchDelay > TimeSpan.FromSeconds(1))
+            throw new ArgumentOutOfRangeException(nameof(options.ReceiveBatchDelay), "Receive batch delay must be between zero and one second.");
         services.AddSingleton(options);
 
         var topology = new QueueTopology();
@@ -311,6 +313,7 @@ public static class DistributedServiceExtensions
         var options = new DistributedNotificationOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
         configure?.Invoke(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxCapacity, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxConcurrentPublishes, 1);
 
         services.AddSingleton(options);
 

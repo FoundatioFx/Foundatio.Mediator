@@ -28,6 +28,12 @@ public class DistributedNotificationOptions
     public int MaxCapacity { get; set; } = 1000;
 
     /// <summary>
+    /// Maximum transport publications in flight. Default is 40, allowing transports to coalesce concurrent full batches.
+    /// Set to 1 for sequential publication. The outbound buffer remains bounded by <see cref="MaxCapacity"/>.
+    /// </summary>
+    public int MaxConcurrentPublishes { get; set; } = 40;
+
+    /// <summary>
     /// Prefix applied to the topic name.
     /// </summary>
     public string? ResourcePrefix { get; set; }

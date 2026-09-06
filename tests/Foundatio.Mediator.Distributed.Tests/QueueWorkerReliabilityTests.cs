@@ -47,6 +47,38 @@ public class QueueWorkerReliabilityTests
         }
     }
 
+    [Fact]
+    public async Task ReceiveCoalescing_DoesNotWaitForASlowPeerOrExceedConcurrency()
+    {
+        await using var client = new ObservedQueueClient();
+        var slowEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int fast = 0;
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, async (_, message, _, ct, _, _) =>
+        {
+            if ((string)message == "message-0")
+            {
+                slowEntered.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            else if (Interlocked.Increment(ref fast) == 4) completed.TrySetResult();
+            return null;
+        }, prefetch: 2, concurrency: 2);
+        await SendAsync(client, 5);
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            await slowEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.False(release.Task.IsCompleted);
+            Assert.Equal(2, client.ReceiveBatchSizes.First());
+            Assert.All(client.ReceiveBatchSizes.Skip(1), size => Assert.Equal(1, size));
+        }
+        finally { release.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -328,13 +360,14 @@ public class QueueWorkerReliabilityTests
     }
 
     private static QueueWorker CreateWorker(ServiceProvider provider, IQueueClient client, HandleAsyncDelegate handler,
-        IQueueJobStateStore? store = null, TimeProvider? time = null, int prefetch = 1, bool autoComplete = true, int maxAttempts = 3)
+        IQueueJobStateStore? store = null, TimeProvider? time = null, int prefetch = 1, bool autoComplete = true, int maxAttempts = 3, int concurrency = 1)
         => new(client, provider.GetRequiredService<IServiceScopeFactory>(), new QueueWorkerOptions
         {
             QueueName = "work",
             MessageType = typeof(string),
             Registrations = [new HandlerRegistration(typeof(string).AssemblyQualifiedName!, "test", handler, null, true)],
             PrefetchCount = prefetch,
+            Concurrency = concurrency,
             TrackProgress = store is not null,
             AutoComplete = autoComplete,
             MaxAttempts = maxAttempts

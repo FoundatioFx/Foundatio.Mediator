@@ -17,6 +17,16 @@ namespace Foundatio.Mediator.Distributed.Aws;
 public class SqsQueueClientOptions
 {
     /// <summary>
+    /// Packs multiple headers into one JSON message attribute to reduce transport overhead. Default is true.
+    /// Set false when external consumers or SNS filters need individual attributes; headers still pack
+    /// when they exceed AWS's attribute count limit. Receivers accept either representation.
+    /// </summary>
+    public bool PackHeaders { get; set; } = true;
+
+    /// <summary>Coalescing limits for broker-confirmed sends and acknowledgments.</summary>
+    public AwsBatchOptions Batching { get; set; } = new();
+
+    /// <summary>
     /// How declared queues are provisioned at startup. Default is <see cref="SqsProvisioningMode.Create"/>,
     /// which is convenient for dev/test. Use <see cref="SqsProvisioningMode.Validate"/> or
     /// <see cref="SqsProvisioningMode.None"/> in production where queues are provisioned via IaC or

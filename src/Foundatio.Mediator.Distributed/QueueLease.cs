@@ -76,7 +76,11 @@ internal sealed class QueueLease : IAsyncDisposable
                 var delay = !autoRenew ? remaining : retry
                     ? TimeSpan.FromTicks(Math.Min(TimeSpan.TicksPerSecond, remaining.Ticks / 4))
                     : remaining / 2;
-                await Task.Delay(delay, _time, token).ConfigureAwait(false);
+                // Normal settlement cancels this delay for every message. Observe cancellation
+                // without throwing an exception on the successful processing path.
+                await Task.Delay(delay, _time, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (token.IsCancellationRequested)
+                    return;
                 if (!autoRenew || Remaining <= TimeSpan.Zero)
                     break;
 

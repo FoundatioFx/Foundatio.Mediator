@@ -7,7 +7,8 @@ namespace Foundatio.Mediator.Distributed;
 /// <summary>
 /// Hosted service that pre-creates all queues and topics in the background.
 /// Workers and publishers await <see cref="DistributedInfrastructureReady.WaitAsync"/>
-/// before using infrastructure, so the app can start accepting requests immediately.
+/// before using infrastructure. Queue-only hosts may accept requests during provisioning;
+/// notification hosts await subscription readiness during startup.
 /// </summary>
 internal sealed class DistributedInfrastructureInitializer(
     IQueueClient? queueClient,
@@ -75,6 +76,10 @@ internal sealed class DistributedInfrastructureInitializer(
             logger.LogInformation("Distributed infrastructure ready in {ElapsedMs}ms", sw.ElapsedMilliseconds);
             ready.SetReady();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            ready.SetCancelled(cancellationToken);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to initialize distributed infrastructure");
@@ -129,6 +134,8 @@ public sealed class DistributedInfrastructureReady
     internal void SetReady() => _tcs.TrySetResult();
 
     internal void SetFailed(Exception ex) => _tcs.TrySetException(ex);
+
+    internal void SetCancelled(CancellationToken cancellationToken) => _tcs.TrySetCanceled(cancellationToken);
 }
 
 /// <summary>

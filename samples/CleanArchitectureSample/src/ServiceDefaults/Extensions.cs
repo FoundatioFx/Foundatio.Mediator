@@ -59,7 +59,7 @@ public static class Extensions
                     {
                         // Filter out SQS long-polling (ReceiveMessage) to reduce trace noise
                         o.FilterHttpRequestMessage = req =>
-                            req.Headers.TryGetValues("X-Amz-Target", out var values) != true
+                            !req.Headers.TryGetValues("X-Amz-Target", out var values)
                             || !values.Any(v => v.Contains("ReceiveMessage", StringComparison.OrdinalIgnoreCase));
                     })
                     .AddAWSInstrumentation(o =>

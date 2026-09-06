@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 
 namespace Foundatio.Mediator.Distributed;
 
@@ -14,6 +15,7 @@ public sealed class MessageTypeResolver
 {
     private readonly ConcurrentDictionary<string, Type> _allowedTypes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Type> _resolvedTypes = new(StringComparer.Ordinal);
+    private readonly object _cacheGate = new();
 
     /// <summary>
     /// Registers a type as allowed for deserialization.
@@ -34,7 +36,7 @@ public sealed class MessageTypeResolver
         => _allowedTypes.TryGetValue(typeName, out var type) ? type : null;
 
     /// <summary>
-    /// Resolves a type by name when it is registered or when it can be loaded and is assignable to
+    /// Resolves a type by name when it is registered or when it is already loaded and is assignable to
     /// <paramref name="assignableTo"/>. Returns <c>null</c> otherwise.
     /// </summary>
     public Type? TryResolve(string typeName, Type assignableTo)
@@ -44,27 +46,31 @@ public sealed class MessageTypeResolver
         var type = TryResolve(typeName) ?? (_resolvedTypes.TryGetValue(typeName, out var cached) ? cached : ResolveLoadedType(typeName));
         if (type is null || !assignableTo.IsAssignableFrom(type))
             return null;
-        if (_resolvedTypes.Count < 1024)
-            _resolvedTypes.TryAdd(typeName, type);
+        if (!_resolvedTypes.ContainsKey(typeName))
+        {
+            lock (_cacheGate)
+                if (_resolvedTypes.Count < 1024)
+                    _resolvedTypes.TryAdd(typeName, type);
+        }
         return type;
     }
 
     private static Type? ResolveLoadedType(string typeName)
     {
-        var type = Type.GetType(typeName, throwOnError: false);
-        if (type is not null)
-            return type;
-
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        // Header values may select loaded application types, but must never trigger assembly loading.
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic).ToArray();
+        try
         {
-            if (assembly.IsDynamic)
-                continue;
-
-            type = assembly.GetType(typeName, throwOnError: false);
-            if (type is not null)
-                return type;
+            return Type.GetType(typeName,
+                name => assemblies.FirstOrDefault(a => AssemblyName.ReferenceMatchesDefinition(a.GetName(), name)),
+                (assembly, name, ignoreCase) => assembly is not null
+                    ? assembly.GetType(name, throwOnError: false, ignoreCase)
+                    : assemblies.Select(a => a.GetType(name, throwOnError: false, ignoreCase)).FirstOrDefault(t => t is not null),
+                throwOnError: false);
         }
-
-        return null;
+        catch (Exception exception) when (exception is ArgumentException or TypeLoadException or System.IO.FileLoadException or BadImageFormatException)
+        {
+            return null;
+        }
     }
 }

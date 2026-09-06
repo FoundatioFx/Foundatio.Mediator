@@ -11,6 +11,7 @@ public sealed class InMemoryPubSubClient(ILogger<InMemoryPubSubClient>? logger =
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Subscription>> _subscriptions = new();
     private readonly ILogger _logger = logger ?? NullLogger<InMemoryPubSubClient>.Instance;
     private int _disposed;
+    private readonly object _subscriptionGate = new();
 
     /// <summary>
     /// Reports subscriber exceptions without terminating other subscribers. Invoked on the consumer
@@ -39,16 +40,17 @@ public sealed class InMemoryPubSubClient(ILogger<InMemoryPubSubClient>? logger =
 
     public Task<IAsyncDisposable> SubscribeAsync(string topic, Func<PubSubMessage, CancellationToken, Task> handler, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        cancellationToken.ThrowIfCancellationRequested();
-        var subscribers = _subscriptions.GetOrAdd(topic, _ => new());
-        var id = Guid.NewGuid();
-        var subscription = new Subscription(this, topic, handler, cancellationToken, () => subscribers.TryRemove(id, out _));
-        subscribers.TryAdd(id, subscription);
-        subscription.Start();
-        if (Volatile.Read(ref _disposed) != 0)
-            subscription.Stop();
-        return Task.FromResult<IAsyncDisposable>(subscription);
+        lock (_subscriptionGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            cancellationToken.ThrowIfCancellationRequested();
+            var subscribers = _subscriptions.GetOrAdd(topic, _ => new());
+            var id = Guid.NewGuid();
+            var subscription = new Subscription(this, topic, handler, cancellationToken, () => subscribers.TryRemove(id, out _));
+            subscribers.TryAdd(id, subscription);
+            subscription.Start();
+            return Task.FromResult<IAsyncDisposable>(subscription);
+        }
     }
 
     private void ReportFailure(string topic, Exception exception)
@@ -62,9 +64,13 @@ public sealed class InMemoryPubSubClient(ILogger<InMemoryPubSubClient>? logger =
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-        var subscriptions = _subscriptions.Values.SelectMany(subscribers => subscribers.Values).ToArray();
+        Subscription[] subscriptions;
+        lock (_subscriptionGate)
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+            subscriptions = _subscriptions.Values.SelectMany(subscribers => subscribers.Values).ToArray();
+        }
         await Task.WhenAll(subscriptions.Select(subscription => subscription.DisposeAsync().AsTask())).ConfigureAwait(false);
         _subscriptions.Clear();
     }

@@ -14,7 +14,7 @@ public class QueueDefinition
 
     /// <summary>
     /// How long a received message stays invisible to other consumers before the transport
-    /// redelivers it. Workers renew at two thirds of this value while a handler is running.
+    /// redelivers it. Workers renew halfway through this interval while a handler is running.
     /// </summary>
     public TimeSpan VisibilityTimeout { get; init; } = TimeSpan.FromSeconds(30);
 

@@ -34,7 +34,7 @@ public class QueueWorkerOptions
     public int PrefetchCount { get; init; } = 1;
 
     /// <summary>
-    /// Visibility timeout requested on receive and renewed at two thirds while a handler runs.
+    /// Visibility timeout requested on receive and renewed halfway through the lease while a handler runs.
     /// </summary>
     public TimeSpan VisibilityTimeout { get; init; } = TimeSpan.FromSeconds(30);
 

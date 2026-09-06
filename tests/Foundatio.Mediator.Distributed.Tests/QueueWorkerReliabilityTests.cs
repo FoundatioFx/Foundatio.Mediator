@@ -148,7 +148,7 @@ public class QueueWorkerReliabilityTests
     {
         await using var client = new ObservedQueueClient();
         var store = new InMemoryQueueJobStateStore();
-        await store.SetJobStateAsync(new QueueJobState { JobId = "job", QueueName = "work" });
+        await store.SetJobStateAsync(new QueueJobState { JobId = "job", QueueName = "work" }, cancellationToken: TestContext.Current.CancellationToken);
         await using var provider = CreateProvider();
         using var worker = CreateWorker(provider, client, async (_, _, context, ct, _, _) =>
         {
@@ -251,6 +251,74 @@ public class QueueWorkerReliabilityTests
         finally { release.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
     }
 
+    [Fact]
+    public async Task StalledStateStore_DoesNotBlockLeaseRenewal()
+    {
+        var time = new FakeTimeProvider();
+        await using var client = new ObservedQueueClient(time);
+        var store = new StalledStartStore();
+        await store.SetJobStateAsync(new QueueJobState { JobId = "job", QueueName = "work" }, cancellationToken: TestContext.Current.CancellationToken);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, (_, _, _, _, _, _) => { entered.TrySetResult(); return new((object?)null); }, store, time);
+        await SendAsync(client, jobId: "job");
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await store.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(16));
+            await client.Renewed.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.False(entered.Task.IsCompleted);
+            Assert.Equal(1, client.Inner.GetInFlightCount("work"));
+            store.Release.TrySetResult();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally { store.Release.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task AcknowledgmentIgnoringCancellation_IsBoundedAndDoesNotClaimCompletion()
+    {
+        var time = new FakeTimeProvider();
+        await using var client = new ObservedQueueClient(time) { DelayCompletion = true };
+        var store = new InMemoryQueueJobStateStore();
+        await store.SetJobStateAsync(new QueueJobState { JobId = "job", QueueName = "work" }, cancellationToken: TestContext.Current.CancellationToken);
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, (_, _, _, _, _, _) => new((object?)null), store, time);
+        await SendAsync(client, jobId: "job");
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await client.CompletionEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(16));
+            await client.Renewed.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(16));
+            await WaitForStateAsync(store, QueueJobStatus.RetryPending);
+            Assert.False(client.CompletionFinished.Task.IsCompleted);
+            client.ReleaseCompletion.TrySetResult();
+            await client.CompletionFinished.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(QueueJobStatus.RetryPending, (await store.GetJobStateAsync("job", TestContext.Current.CancellationToken))!.Status);
+        }
+        finally { client.ReleaseCompletion.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
+    }
+
+    private sealed class StalledStartStore : IQueueJobStateStore
+    {
+        private readonly InMemoryQueueJobStateStore _inner = new();
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task SetJobStateAsync(QueueJobState state, TimeSpan? expiry = null, CancellationToken cancellationToken = default) => _inner.SetJobStateAsync(state, expiry, cancellationToken);
+        public Task<QueueJobState?> GetJobStateAsync(string jobId, CancellationToken cancellationToken = default) => _inner.GetJobStateAsync(jobId, cancellationToken);
+        public async Task<bool> UpdateJobStatusAsync(string jobId, QueueJobStatus status, DateTimeOffset? startedUtc = null, DateTimeOffset? completedUtc = null, string? errorMessage = null, int? progress = null, int? attempt = null, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+        {
+            if (status == QueueJobStatus.Processing) { Started.TrySetResult(); await Release.Task; }
+            return await _inner.UpdateJobStatusAsync(jobId, status, startedUtc, completedUtc, errorMessage, progress, attempt, expiry, cancellationToken);
+        }
+        public Task<bool> RequestCancellationAsync(string jobId, CancellationToken cancellationToken = default) => _inner.RequestCancellationAsync(jobId, cancellationToken);
+        public Task<bool> IsCancellationRequestedAsync(string jobId, CancellationToken cancellationToken = default) => _inner.IsCancellationRequestedAsync(jobId, cancellationToken);
+        public Task RemoveJobStateAsync(string jobId, CancellationToken cancellationToken = default) => _inner.RemoveJobStateAsync(jobId, cancellationToken);
+    }
+
     private static ServiceProvider CreateProvider()
     {
         var services = new ServiceCollection();
@@ -297,6 +365,10 @@ public class QueueWorkerReliabilityTests
         public Channel<bool> Renewed { get; } = Channel.CreateUnbounded<bool>();
         public List<int> ReceiveBatchSizes { get; } = [];
         public bool FailCompletion { get; init; }
+        public bool DelayCompletion { get; init; }
+        public TaskCompletionSource CompletionEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseCompletion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CompletionFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool LoseLeaseOnRenew { get; init; }
         public bool DelayReceive { get; init; }
         public TaskCompletionSource ReceiveEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -310,8 +382,14 @@ public class QueueWorkerReliabilityTests
             if (DelayReceive) await ReleaseReceive.Task;
             return await Inner.ReceiveAsync(name, maxCount, visibility, DelayReceive ? CancellationToken.None : ct);
         }
-        public Task CompleteAsync(QueueMessage message, CancellationToken ct = default)
-            => FailCompletion ? Task.FromException(new IOException("transport unavailable")) : Inner.CompleteAsync(message, ct);
+        public async Task CompleteAsync(QueueMessage message, CancellationToken ct = default)
+        {
+            if (FailCompletion) throw new IOException("transport unavailable");
+            CompletionEntered.TrySetResult();
+            if (DelayCompletion) await ReleaseCompletion.Task;
+            await Inner.CompleteAsync(message, DelayCompletion ? CancellationToken.None : ct);
+            CompletionFinished.TrySetResult();
+        }
         public async Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default)
         {
             await Inner.AbandonAsync(message, delay, ct);

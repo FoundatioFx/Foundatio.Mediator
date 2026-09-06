@@ -54,7 +54,7 @@ Each process registers every queue's metadata even when it runs no worker for it
 
 `Concurrency` on the attribute is per process. Throughput for a queue is `Concurrency × replicas`. Keep `Concurrency` at what one instance can handle and scale replicas; that is the lever an autoscaler can move.
 
-`PrefetchCount` defaults to `Concurrency`, so every receive fills the consumer pipeline in one round trip and messages distribute evenly across replicas. Raising it trades fairness for fewer receive calls.
+`PrefetchCount` defaults to `Concurrency` and caps each receive. Workers request no more than their currently available concurrency, so raising prefetch above concurrency does not hold additional leased messages while they wait to execute. A transport may impose a smaller batch limit.
 
 ## Autoscaling on Queue Depth
 

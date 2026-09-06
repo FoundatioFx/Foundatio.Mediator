@@ -10,7 +10,6 @@ nav:
 
 Run the [small console sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/DistributedConsoleSample) for a complete started-host flow with validation, a typed receipt, and deterministic completion. No Docker is required.
 
-
 You built your app with Foundatio Mediator. Messages flow through handlers, events trigger side effects, middleware handles cross-cutting concerns. Then the question comes: **how do we scale this out?**
 
 The usual answer is to rip out in-process messaging and replace it with a different system: new SDKs, new serialization, new retry logic, new monitoring. Foundatio Mediator takes a different approach: **the same handlers, the same middleware, now running wherever you decide.**
@@ -35,7 +34,7 @@ public class ReportExportHandler
 }
 ```
 
-Calling `mediator.InvokeAsync(new ExportReport(...))` serializes the message, sends it to the `ExportReport` queue, and returns `Result.Accepted` to confirm transport acceptance. A worker, in this process or another, runs the handler through the normal middleware pipeline.
+Calling `mediator.InvokeAsync(new ExportReport(...))` serializes the message, sends it to the `ReportExport-ExportReport` subscription, and returns `Result.Accepted` to confirm transport acceptance. A worker, in this process or another, runs the handler through the normal middleware pipeline.
 
 ## One Build, Any Topology
 
@@ -78,9 +77,9 @@ The two compose. A distributed event can have a `[Queue]` handler: the publishin
 
 ## Delivery Guarantees
 
-Queues are **at least once**. A message is redelivered when a worker dies, when its handler fails with a retryable result, or when a visibility timeout lapses without renewal. Make queued handlers idempotent, or serialize them on a key with [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock).
+Queues are **at least once**. A message is redelivered when a worker dies, when its handler fails with a retryable result, or when a visibility timeout lapses without renewal. Make queued handlers idempotent. To coordinate concurrent work on a shared resource, use [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock).
 
-Notifications are **at most once** per node. A node that is down while an event is published does not receive it later.
+Notifications are **best effort**. Buffer overflow, downtime, and shutdown can lose events; transports can also redeliver them. Use durable queue subscriptions for work that must survive those boundaries.
 
 ## Where to Go Next
 

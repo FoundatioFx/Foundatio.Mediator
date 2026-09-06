@@ -13,7 +13,7 @@ namespace Foundatio.Mediator.Distributed;
 public sealed class MessageTypeResolver
 {
     private readonly ConcurrentDictionary<string, Type> _allowedTypes = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Type?> _resolvedTypes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Type> _resolvedTypes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Registers a type as allowed for deserialization.
@@ -39,8 +39,14 @@ public sealed class MessageTypeResolver
     /// </summary>
     public Type? TryResolve(string typeName, Type assignableTo)
     {
-        var type = TryResolve(typeName) ?? _resolvedTypes.GetOrAdd(typeName, ResolveLoadedType);
-        return type is not null && assignableTo.IsAssignableFrom(type) ? type : null;
+        if (string.IsNullOrEmpty(typeName) || typeName.Length > 2048)
+            return null;
+        var type = TryResolve(typeName) ?? (_resolvedTypes.TryGetValue(typeName, out var cached) ? cached : ResolveLoadedType(typeName));
+        if (type is null || !assignableTo.IsAssignableFrom(type))
+            return null;
+        if (_resolvedTypes.Count < 1024)
+            _resolvedTypes.TryAdd(typeName, type);
+        return type;
     }
 
     private static Type? ResolveLoadedType(string typeName)

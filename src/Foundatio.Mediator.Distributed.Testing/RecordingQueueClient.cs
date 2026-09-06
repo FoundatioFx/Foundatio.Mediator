@@ -17,8 +17,12 @@ namespace Foundatio.Mediator.Distributed.Testing;
 /// await queue.DrainAsync();               // workers have processed everything
 /// </code>
 /// </example>
-public sealed class RecordingQueueClient : IQueueClient
+public sealed class RecordingQueueClient : IQueueClient, IQueueProcessingObserver
 {
+    /// <inheritdoc />
+    public bool IsDistributed => _inner.IsDistributed;
+
+    private readonly ConcurrentDictionary<QueueMessage, byte> _processing = new();
     private readonly IQueueClient _inner;
     private readonly InMemoryQueueClient? _inMemory;
     private readonly JsonSerializerOptions _jsonOptions;
@@ -97,7 +101,7 @@ public sealed class RecordingQueueClient : IQueueClient
                 return;
 
             if (_timeProvider.GetUtcNow() >= deadline)
-                throw new TimeoutException($"Queues were not drained within {timeout ?? TimeSpan.FromSeconds(30)}: {string.Join(", ", await PendingSummaryAsync(cancellationToken).ConfigureAwait(false))}");
+                throw new TimeoutException($"Queues were not drained within {timeout ?? TimeSpan.FromSeconds(30)} ({_processing.Count} worker deliveries still finishing): {string.Join(", ", await PendingSummaryAsync(cancellationToken).ConfigureAwait(false))}");
 
             await Task.Delay(TimeSpan.FromMilliseconds(25), _timeProvider, cancellationToken).ConfigureAwait(false);
         }
@@ -109,11 +113,8 @@ public sealed class RecordingQueueClient : IQueueClient
         if (queues.Count == 0)
             return true;
 
-        if (_inMemory is not null)
-            return queues.All(q => _inMemory.GetPendingCount(q) == 0 && _inMemory.GetInFlightCount(q) == 0 && _inMemory.GetDelayedCount(q) == 0);
-
         var stats = await _inner.GetQueueStatsAsync(queues, cancellationToken).ConfigureAwait(false);
-        return stats.All(s => s.ActiveCount == 0 && s.InFlightCount == 0 && s.DelayedCount == 0);
+        return stats.Count == queues.Count && stats.All(s => s.ActiveCount == 0 && s.InFlightCount == 0 && s.DelayedCount == 0) && _processing.IsEmpty;
     }
 
     private async Task<IEnumerable<string>> PendingSummaryAsync(CancellationToken cancellationToken)
@@ -142,11 +143,17 @@ public sealed class RecordingQueueClient : IQueueClient
         return _inner.SendAsync(queueName, entries, cancellationToken);
     }
 
-    public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken cancellationToken = default)
     {
         _queueNames.TryAdd(queueName, 0);
-        return _inner.ReceiveAsync(queueName, maxCount, visibilityTimeout, cancellationToken);
+        var messages = await _inner.ReceiveAsync(queueName, maxCount, visibilityTimeout, cancellationToken).ConfigureAwait(false);
+        foreach (var message in messages)
+            _processing.TryAdd(message, 0);
+        return messages;
     }
+
+    /// <inheritdoc />
+    public void ProcessingFinished(QueueMessage message) => _processing.TryRemove(message, out _);
 
     public Task CompleteAsync(QueueMessage message, CancellationToken cancellationToken = default) => _inner.CompleteAsync(message, cancellationToken);
     public Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken cancellationToken = default) => _inner.AbandonAsync(message, delay, cancellationToken);
@@ -156,7 +163,7 @@ public sealed class RecordingQueueClient : IQueueClient
     public Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken cancellationToken = default) => _inner.GetQueueStatsAsync(queueNames, cancellationToken);
     public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, CancellationToken cancellationToken = default) => _inner.ReceiveDeadLettersAsync(queueName, maxCount, cancellationToken);
     public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken cancellationToken = default) => _inner.ReceiveDeadLettersAsync(queueName, maxCount, waitTime, cancellationToken);
-    public Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default) => _inner.ReplayAsync(deadLetter, cancellationToken);
+    public Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default, string? newJobId = null) => _inner.ReplayAsync(deadLetter, cancellationToken, newJobId);
     public ValueTask DisposeAsync() => _inner.DisposeAsync();
 }
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Foundatio.Mediator.Distributed.Testing;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,7 +59,7 @@ public class QueueWorkerReliabilityTests
         using var worker = CreateWorker(provider, client, async (_, _, context, _, _, _) =>
         {
             if (explicitlyAbandon)
-                {
+            {
                 Assert.True(context!.TryGet<QueueContext>(out var queueContext));
                 await queueContext!.AbandonAsync(TimeSpan.FromHours(1), TestContext.Current.CancellationToken);
             }
@@ -142,6 +143,114 @@ public class QueueWorkerReliabilityTests
         finally { await worker.StopAsync(CancellationToken.None); }
     }
 
+    [Fact]
+    public async Task ManualCompleteThenThrow_RemainsCompleted()
+    {
+        await using var client = new ObservedQueueClient();
+        var store = new InMemoryQueueJobStateStore();
+        await store.SetJobStateAsync(new QueueJobState { JobId = "job", QueueName = "work" });
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, async (_, _, context, ct, _, _) =>
+        {
+            context!.TryGet<QueueContext>(out var queue);
+            await queue!.CompleteAsync(ct);
+            throw new InvalidOperationException("Failure after explicit settlement");
+        }, store);
+        await SendAsync(client, jobId: "job");
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForStateAsync(store, QueueJobStatus.Completed);
+            Assert.Equal(0, client.Inner.GetInFlightCount("work"));
+            Assert.Equal(0, client.Inner.GetDeadLetterCount("work"));
+        }
+        finally { await worker.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task KnownLeaseLoss_CancelsCooperativeHandler()
+    {
+        var time = new FakeTimeProvider();
+        await using var client = new ObservedQueueClient(time) { LoseLeaseOnRenew = true };
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, async (_, _, _, ct, _, _) =>
+        {
+            entered.TrySetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, ct); }
+            finally { if (ct.IsCancellationRequested) cancelled.TrySetResult(); }
+            return null;
+        }, time: time);
+        await SendAsync(client);
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            time.Advance(TimeSpan.FromSeconds(16));
+            await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally { await worker.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task Shutdown_ReceiveIgnoresCancellation_ReturnsAndAbandonsLateDelivery()
+    {
+        await using var client = new ObservedQueueClient { DelayReceive = true };
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, (_, _, _, _, _, _) => throw new InvalidOperationException("Must not execute late delivery"));
+        await SendAsync(client);
+        await worker.StartAsync(CancellationToken.None);
+        await client.ReceiveEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        client.ReleaseReceive.TrySetResult();
+        await client.Abandoned.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(1, client.Inner.GetPendingCount("work"));
+        Assert.Equal(0, client.Inner.GetInFlightCount("work"));
+    }
+
+    [Fact]
+    public async Task Drain_WaitsForDelayedRetryAndWorkAfterManualAcknowledgment()
+    {
+        var time = new FakeTimeProvider();
+        await using var client = new RecordingQueueClient(new InMemoryQueueClient(time));
+        var abandoned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var acknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var provider = CreateProvider();
+        using var worker = CreateWorker(provider, client, async (_, _, context, ct, _, _) =>
+        {
+            context!.TryGet<QueueContext>(out var queue);
+            if (queue!.DequeueCount == 1)
+            {
+                await queue.AbandonAsync(TimeSpan.FromHours(1), ct);
+                abandoned.TrySetResult();
+            }
+            else
+            {
+                await queue.CompleteAsync(ct);
+                acknowledged.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+            return null;
+        }, time: time);
+        await SendAsync(client);
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await abandoned.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var delayedDrain = client.DrainAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.False(delayedDrain.IsCompleted);
+            time.Advance(TimeSpan.FromHours(1));
+            await acknowledged.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var settledDrain = client.DrainAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.False(settledDrain.IsCompleted);
+            release.TrySetResult();
+            await Task.WhenAll(delayedDrain, settledDrain).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally { release.TrySetResult(); await worker.StopAsync(CancellationToken.None); }
+    }
+
     private static ServiceProvider CreateProvider()
     {
         var services = new ServiceCollection();
@@ -188,17 +297,29 @@ public class QueueWorkerReliabilityTests
         public Channel<bool> Renewed { get; } = Channel.CreateUnbounded<bool>();
         public List<int> ReceiveBatchSizes { get; } = [];
         public bool FailCompletion { get; init; }
+        public bool LoseLeaseOnRenew { get; init; }
+        public bool DelayReceive { get; init; }
+        public TaskCompletionSource ReceiveEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseReceive { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Abandoned { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task SendAsync(string name, IReadOnlyList<QueueEntry> entries, CancellationToken ct = default) => Inner.SendAsync(name, entries, ct);
-        public Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string name, int maxCount, TimeSpan? visibility, CancellationToken ct = default)
+        public async Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string name, int maxCount, TimeSpan? visibility, CancellationToken ct = default)
         {
             ReceiveBatchSizes.Add(maxCount);
-            return Inner.ReceiveAsync(name, maxCount, visibility, ct);
+            ReceiveEntered.TrySetResult();
+            if (DelayReceive) await ReleaseReceive.Task;
+            return await Inner.ReceiveAsync(name, maxCount, visibility, DelayReceive ? CancellationToken.None : ct);
         }
         public Task CompleteAsync(QueueMessage message, CancellationToken ct = default)
             => FailCompletion ? Task.FromException(new IOException("transport unavailable")) : Inner.CompleteAsync(message, ct);
-        public Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default) => Inner.AbandonAsync(message, delay, ct);
+        public async Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default)
+        {
+            await Inner.AbandonAsync(message, delay, ct);
+            Abandoned.TrySetResult();
+        }
         public async Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken ct = default)
         {
+            if (LoseLeaseOnRenew) throw new QueueLeaseLostException("Lease revoked by transport");
             await Inner.RenewTimeoutAsync(message, extension, ct);
             Renewed.Writer.TryWrite(true);
         }

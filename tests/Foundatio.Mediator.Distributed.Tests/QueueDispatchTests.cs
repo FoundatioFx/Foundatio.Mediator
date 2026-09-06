@@ -56,7 +56,7 @@ public class SharedQueueNotifyHandler(HandlerSignal signal)
     public void Handle(SharedQueueEvent message) => signal.Record($"notify:{message.Value}");
 }
 
-[Queue]
+[Queue(QueueName = nameof(ITriggerEvent))]
 public class TriggerEventHandler(HandlerSignal signal)
 {
     public void Handle(ITriggerEvent message, QueueContext queueContext)
@@ -122,6 +122,7 @@ public sealed class TenantHeaderProvider : IQueueHeaderProvider
 
 internal sealed class CountingQueueClient(IQueueClient inner) : IQueueClient
 {
+    public bool IsDistributed => inner.IsDistributed;
     private int _sends;
     public int Sends => _sends;
 
@@ -145,8 +146,12 @@ internal static class HostedServiceExtensions
     public static async Task<List<IHostedService>> StartHostedServicesAsync(this IServiceProvider provider, CancellationToken ct)
     {
         var services = provider.GetServices<IHostedService>().ToList();
+        foreach (var lifecycle in services.OfType<IHostedLifecycleService>())
+            await lifecycle.StartingAsync(ct);
         foreach (var svc in services)
             await svc.StartAsync(ct);
+        foreach (var lifecycle in services.OfType<IHostedLifecycleService>())
+            await lifecycle.StartedAsync(ct);
         return services;
     }
 
@@ -405,18 +410,18 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
                 : null);
 
         await using var provider = services.BuildServiceProvider();
-        var result = await provider.GetRequiredService<IMediator>().InvokeAsync<Result>(new MetadataTrackedCommand("job", "acme"), TestCancellationToken);
+        var result = await provider.GetRequiredService<IMediator>().EnqueueAsync(new MetadataTrackedCommand("job", "acme"), TestCancellationToken);
 
         Assert.Equal(ResultStatus.Accepted, result.Status);
-        Assert.False(string.IsNullOrEmpty(result.Location));
+        Assert.False(string.IsNullOrEmpty(result.Value.JobId));
 
-        var state = await provider.GetRequiredService<IQueueJobStateStore>().GetJobStateAsync(result.Location!, TestCancellationToken);
+        var state = await provider.GetRequiredService<IQueueJobStateStore>().GetJobStateAsync(result.Value.JobId!, TestCancellationToken);
         Assert.NotNull(state);
         Assert.NotNull(state.Metadata);
         Assert.Equal("acme", state.Metadata["tenant"]);
 
         var messages = await queueClient.ReceiveAsync("MetadataTrackedCommand", 1, TestCancellationToken);
-        Assert.Equal(result.Location, messages[0].Headers[MessageHeaders.JobId]);
+        Assert.Equal(result.Value.JobId, messages[0].Headers[MessageHeaders.JobId]);
         Assert.True(messages[0].Headers.ContainsKey(MessageHeaders.CorrelationId));
     }
 
@@ -512,7 +517,7 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
         filtered.AddSingleton(new HandlerSignal());
         filtered.AddSingleton<IQueueClient>(new InMemoryQueueClient());
         filtered.AddMediator(b => b.AddAssembly<QueuedCommandHandler>())
-            .AddDistributedQueues(o => o.Workers = WorkerSelection.Only("exports"));
+            .AddDistributedQueues(o => o.Workers = WorkerSelection.Only("QueuedCommand"));
     }
 
     [Fact]
@@ -564,7 +569,7 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
     }
 
     [Fact]
-    public void Topology_ExposesQueuesAndDesignatedEnqueuer()
+    public void Topology_ExposesExplicitSharedGroups()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -579,9 +584,7 @@ public class QueueDispatchTests(ITestOutputHelper output) : TestWithLoggingBase(
         Assert.NotNull(shared);
         Assert.True(shared.WorkerRunsHere);
 
-        var designated = shared.DesignatedEnqueuerFor(typeof(SharedQueueEvent));
-        Assert.NotNull(designated);
-        Assert.Equal(designated, shared.Handlers.Select(h => h.DescriptorId).Order(StringComparer.Ordinal).First());
+        Assert.Equal(2, shared.Handlers.Count);
         Assert.Same(shared, topology.GetByDescriptorId(shared.Handlers[1].DescriptorId));
 
         var trigger = topology.GetByQueueName("test-ITriggerEvent");

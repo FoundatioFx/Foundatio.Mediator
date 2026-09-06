@@ -9,6 +9,9 @@ namespace Foundatio.Mediator.Distributed;
 /// </summary>
 public sealed class InMemoryQueueJobStateStore : IQueueJobStateStore
 {
+    /// <inheritdoc />
+    public bool IsShared => false;
+
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<string, JobEntry> _jobs = new();
     private readonly ConcurrentDictionary<string, bool> _cancellations = new();

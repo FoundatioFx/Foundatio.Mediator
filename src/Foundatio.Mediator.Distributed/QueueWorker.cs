@@ -127,7 +127,16 @@ public sealed class QueueWorker : BackgroundService
             try
             {
                 int capacity = Math.Min(_options.PrefetchCount, _options.Concurrency - active.Count);
-                messages = await _client.ReceiveAsync(_options.QueueName, capacity, _options.VisibilityTimeout, stoppingToken).ConfigureAwait(false);
+                var receive = _client.ReceiveAsync(_options.QueueName, capacity, _options.VisibilityTimeout, stoppingToken);
+                try
+                {
+                    messages = await receive.WaitAsync(stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    _ = AbandonLateReceiveAsync(receive);
+                    break;
+                }
                 consecutiveErrors = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -147,10 +156,29 @@ public sealed class QueueWorker : BackgroundService
             foreach (var message in messages)
             {
                 if (stoppingToken.IsCancellationRequested)
+                {
                     await AbandonForRedeliveryAsync(message, "shutdown").ConfigureAwait(false);
+                    (_client as IQueueProcessingObserver)?.ProcessingFinished(message);
+                }
                 else
                     active.Add(ProcessMessageAsync(message, drainToken));
             }
+        }
+    }
+
+    private async Task AbandonLateReceiveAsync(Task<IReadOnlyList<QueueMessage>> receive)
+    {
+        try
+        {
+            foreach (var message in await receive.ConfigureAwait(false))
+            {
+                await AbandonForRedeliveryAsync(message, "late-shutdown-receive").ConfigureAwait(false);
+                (_client as IQueueProcessingObserver)?.ProcessingFinished(message);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Receive completed after shutdown for {QueueName}", _options.QueueName);
         }
     }
 
@@ -169,6 +197,10 @@ public sealed class QueueWorker : BackgroundService
             _logger.LogError(ex, "Unexpected error processing {MessageId} on {QueueName}", message.Id, _options.QueueName);
             if (!lease.IsLost)
                 await AbandonForRedeliveryAsync(message, "worker-error").ConfigureAwait(false);
+        }
+        finally
+        {
+            (_client as IQueueProcessingObserver)?.ProcessingFinished(message);
         }
     }
 
@@ -306,9 +338,11 @@ public sealed class QueueWorker : BackgroundService
             };
 
             await using var scope = _scopeFactory.CreateAsyncScope();
-            using var callContext = CallContext.Rent().Set(queueContext);
+            using var callContext = CallContext.Rent().Set(queueContext).Set(HandlerDispatchContext.Processing);
             RestoreHeaders(message, callContext, scope.ServiceProvider);
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            if (mediator is Mediator)
+                mediator = Mediator.FromServiceProvider(scope.ServiceProvider);
 
             IResult? failure = null;
             foreach (var handler in handlers)

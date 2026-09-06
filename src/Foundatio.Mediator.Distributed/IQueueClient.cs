@@ -10,6 +10,9 @@ namespace Foundatio.Mediator.Distributed;
 /// </remarks>
 public interface IQueueClient : IAsyncDisposable
 {
+    /// <summary>Whether work may run in another process. Decorators must forward the underlying client's capability.</summary>
+    bool IsDistributed => true;
+
     /// <summary>
     /// Sends one or more messages to the queue.
     /// </summary>
@@ -87,14 +90,22 @@ public interface IQueueClient : IAsyncDisposable
 
     /// <summary>
     /// Sends a dead-lettered message back to its original queue (from <see cref="MessageHeaders.OriginalQueueName"/>)
-    /// without the dead-letter headers, then completes the dead-letter copy.
+    /// without the dead-letter headers, then completes the dead-letter copy. For tracked work, first
+    /// create a new job and supply its id, or use the ReplayDeadLetters mediator administration command.
     /// </summary>
-    async Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default)
+    async Task ReplayAsync(QueueMessage deadLetter, CancellationToken cancellationToken = default, string? newJobId = null)
     {
         if (!deadLetter.Headers.TryGetValue(MessageHeaders.OriginalQueueName, out var originalQueue) || string.IsNullOrEmpty(originalQueue))
             throw new InvalidOperationException($"Message {deadLetter.Id} has no {MessageHeaders.OriginalQueueName} header and cannot be replayed.");
 
         var headers = new Dictionary<string, string>(deadLetter.Headers);
+        if (headers.TryGetValue(MessageHeaders.JobId, out var originalJobId))
+        {
+            if (string.IsNullOrWhiteSpace(newJobId) || newJobId == originalJobId)
+                throw new InvalidOperationException("Tracked replay requires a new job identity. Use the ReplayDeadLetters mediator command to create and track it.");
+            headers[MessageHeaders.OriginalJobId] = originalJobId;
+            headers[MessageHeaders.JobId] = newJobId;
+        }
         headers.Remove(MessageHeaders.DeadLetterReason);
         headers.Remove(MessageHeaders.DeadLetteredAt);
         headers.Remove(MessageHeaders.OriginalQueueName);

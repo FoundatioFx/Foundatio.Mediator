@@ -29,7 +29,8 @@ public static class DistributedServiceExtensions
         var registry = services.GetHandlerRegistry()
             ?? throw new InvalidOperationException("AddDistributedQueues requires AddMediator to be called first.");
 
-        var options = new DistributedQueueOptions();
+        var defaults = builder.GetDistributedOptions();
+        var options = new DistributedQueueOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
         configure?.Invoke(options);
         services.AddSingleton(options);
 
@@ -38,7 +39,10 @@ public static class DistributedServiceExtensions
 
         var queueHandlers = registry.GetHandlersWithAttribute<QueueAttribute>();
         if (queueHandlers.Count == 0)
+        {
+            options.Workers.Validate([]);
             return builder;
+        }
 
         // Transports register IQueueClient with AddSingleton and DI resolves the last registration, so this
         // default only wins when nothing else is added, regardless of whether UseAws() comes before or after.
@@ -69,12 +73,18 @@ public static class DistributedServiceExtensions
 
         foreach (var handler in queueHandlers)
         {
+            ValidateReturnType(handler);
             var messageType = handler.MessageType;
             if (messageType is null)
                 continue;
 
             var settings = handler.GetPreferredAttribute<QueueAttribute>()?.Attribute as QueueAttribute ?? new QueueAttribute();
-            var queueName = options.ApplyPrefix(!string.IsNullOrWhiteSpace(settings.QueueName) ? settings.QueueName! : messageType.Name);
+            var logicalName = !string.IsNullOrWhiteSpace(settings.QueueName) ? settings.QueueName! : GetDefaultQueueName(handler, messageType);
+            if (options.QueueOverrides.TryGetValue(logicalName, out var configureQueue))
+                configureQueue(settings);
+            if (!string.IsNullOrWhiteSpace(settings.QueueName) && settings.QueueName != logicalName)
+                throw new InvalidOperationException($"Queue override '{logicalName}' cannot change QueueName. Configure subscription identity on the handler.");
+            var queueName = options.ApplyPrefix(logicalName);
 
             typeResolver.Register(messageType);
 
@@ -85,9 +95,15 @@ public static class DistributedServiceExtensions
                 queueOrder.Add(queueName);
             }
 
+            if (list.Count > 0 && (string.IsNullOrWhiteSpace(settings.QueueName) || list.Any(member => string.IsNullOrWhiteSpace(member.Settings.QueueName))))
+                throw new InvalidOperationException($"Independent subscriptions collide at '{queueName}'. Set distinct QueueName values, or explicitly name the same queue on every handler to share execution and retries.");
             list.Add((handler, settings));
         }
 
+        options.Workers.Validate(queues.SelectMany(queue => new[] { options.RemovePrefix(queue.Key), queue.Value[0].Settings.Group }).OfType<string>());
+        var unknownOverrides = options.QueueOverrides.Keys.Except(queues.Keys.Select(options.RemovePrefix), StringComparer.OrdinalIgnoreCase).ToArray();
+        if (unknownOverrides.Length > 0)
+            throw new InvalidOperationException($"Unknown queue overrides: {string.Join(", ", unknownOverrides)}. Available subscriptions: {string.Join(", ", queues.Keys.Select(options.RemovePrefix))}.");
         bool anyTrackProgress = false;
 
         foreach (var queueName in queueOrder)
@@ -96,7 +112,7 @@ public static class DistributedServiceExtensions
             var settings = members[0].Settings;
             ValidateQueueSettings(queueName, members);
 
-            var handlers = members.Select(m => m.Handler).ToList();
+            var handlers = HandlerRegistry.OrderRegistrations(members.Select(m => m.Handler));
             var messageType = members[0].Handler.MessageType!;
 
             var retrySchedule = !string.IsNullOrWhiteSpace(settings.RetryDelays) ? QueueRetryDelay.ParseSchedule(settings.RetryDelays!) : null;
@@ -110,6 +126,7 @@ public static class DistributedServiceExtensions
                 Handlers = handlers
             };
             topology.Add(registration);
+            registry.SetPublishGroup($"queue:{queueName}", handlers);
 
             var visibilityTimeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
 
@@ -161,7 +178,7 @@ public static class DistributedServiceExtensions
             };
             workerRegistry.Register(workerInfo);
 
-            if (!options.Workers.Includes(queueName, settings.Group))
+            if (!options.Workers.Includes(options.RemovePrefix(queueName), settings.Group))
                 continue;
 
             registration.WorkerRunsHere = true;
@@ -177,13 +194,13 @@ public static class DistributedServiceExtensions
                 sp.GetService<IQueueJobStateStore>(),
                 sp.GetService<DistributedInfrastructureReady>(),
                 sp.GetService<TimeProvider>(),
-                sp.GetService<MessageTypeResolver>(),
-                sp.GetServices<IQueueHeaderProvider>()));
+                sp.GetService<MessageTypeResolver>()));
         }
 
         if (anyTrackProgress && !services.Any(sd => sd.ServiceType == typeof(IQueueJobStateStore)))
             services.AddSingleton<IQueueJobStateStore, InMemoryQueueJobStateStore>();
 
+        services.AddSingleton<IHostedService, DistributedConfigurationValidator>();
         services.AddSingleton<IHostedService>(sp => new QueueDepthMetricsService(
             sp.GetRequiredService<IQueueClient>(),
             sp.GetRequiredService<QueueTopology>(),
@@ -198,17 +215,51 @@ public static class DistributedServiceExtensions
     /// <summary>
     /// Registers a header provider that enriches queued messages on enqueue and restores context on the worker.
     /// </summary>
-    public static IMediatorBuilder AddQueueHeaderProvider<TProvider>(this IMediatorBuilder builder)
+    public static IMediatorBuilder AddQueueHeaderProvider<TProvider>(this IMediatorBuilder builder, ServiceLifetime lifetime = ServiceLifetime.Scoped)
         where TProvider : class, IQueueHeaderProvider
     {
-        builder.Services.AddSingleton<IQueueHeaderProvider, TProvider>();
+        builder.Services.Add(new ServiceDescriptor(typeof(IQueueHeaderProvider), typeof(TProvider), lifetime));
         return builder;
+    }
+
+    private static void ValidateReturnType(HandlerRegistration handler)
+    {
+        var type = handler.HandlerMethod?.ReturnType
+            ?? throw new InvalidOperationException($"Cannot resolve the return type for queue handler '{handler.DescriptorId}'. Rebuild with source-handler metadata enabled.");
+        if (type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(Task<>) || type.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+            type = type.GetGenericArguments()[0];
+        if (type == typeof(void) || type == typeof(Task) || type == typeof(ValueTask))
+            return;
+        if (type.IsGenericType && type.FullName!.StartsWith("System.ValueTuple`", StringComparison.Ordinal))
+            type = type.GetGenericArguments()[0];
+        if (type == typeof(Result) || type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Result<>))
+            return;
+        throw new InvalidOperationException($"Queue handler '{handler.SourceHandlerName}.{handler.MethodName}' returns '{handler.HandlerMethod!.ReturnType}'. Queue handlers must return void, Task, ValueTask, Result, Result<T>, or a cascading tuple with Result/Result<T> first (optionally awaited). Enqueueing returns acceptance; the worker produces the eventual result.");
+    }
+
+    private static string GetDefaultQueueName(HandlerRegistration handler, Type messageType)
+    {
+        var name = handler.SourceHandlerName ?? handler.SourceHandlerType?.Name
+            ?? throw new InvalidOperationException($"Queue handler '{handler.DescriptorId}' needs source-handler metadata or an explicit QueueName.");
+        foreach (var suffix in new[] { "Handler", "Consumer" })
+        {
+            if (name.EndsWith(suffix, StringComparison.Ordinal) && name.Length > suffix.Length)
+            {
+                name = name[..^suffix.Length];
+                break;
+            }
+        }
+        return name == messageType.Name ? name : $"{name}-{messageType.Name}";
     }
 
     private static void ValidateQueueSettings(string queueName, List<(HandlerRegistration Handler, QueueAttribute Settings)> members)
     {
         var first = members[0].Settings;
 
+        if (first.Concurrency < 1 || first.PrefetchCount < 0 || first.RetryDelaySeconds < 0)
+            throw new InvalidOperationException($"Queue '{queueName}': Concurrency must be positive; PrefetchCount and RetryDelaySeconds cannot be negative.");
+        if (!Enum.IsDefined(first.RetryPolicy))
+            throw new InvalidOperationException($"Queue '{queueName}': invalid RetryPolicy.");
         if (first.MaxAttempts == 0)
             throw new InvalidOperationException($"Queue '{queueName}': MaxAttempts must be at least 1 (or negative for unlimited).");
 
@@ -256,7 +307,8 @@ public static class DistributedServiceExtensions
         if (services.Any(sd => sd.ServiceType == typeof(DistributedNotificationOptions)))
             return builder;
 
-        var options = new DistributedNotificationOptions();
+        var defaults = builder.GetDistributedOptions();
+        var options = new DistributedNotificationOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
         configure?.Invoke(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxCapacity, 1);
 

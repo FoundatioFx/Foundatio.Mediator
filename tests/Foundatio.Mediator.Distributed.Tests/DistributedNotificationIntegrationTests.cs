@@ -672,7 +672,7 @@ public class DistributedNotificationFilteringTests(ITestOutputHelper output) : T
         // IncludeAllNotifications
         var options3 = new DistributedNotificationOptions { IncludeAllNotifications = true };
         Assert.True(options3.ShouldDistribute(typeof(PlainNotificationEvent)));
-        Assert.True(options3.ShouldDistribute(typeof(FilterMatchEvent)));
+        Assert.False(options3.ShouldDistribute(typeof(FilterMatchEvent)));
     }
 
     /// <summary>

@@ -11,6 +11,9 @@ namespace Foundatio.Mediator.Distributed;
 /// </summary>
 public sealed class InMemoryQueueClient : IQueueClient
 {
+    /// <inheritdoc />
+    public bool IsDistributed => false;
+
     private readonly ConcurrentDictionary<string, InMemoryQueue> _queues = new(StringComparer.OrdinalIgnoreCase);
     private readonly TimeProvider _timeProvider;
 
@@ -55,21 +58,16 @@ public sealed class InMemoryQueueClient : IQueueClient
         var queue = GetQueue(queueName);
         var results = new List<QueueMessage>(Math.Max(1, maxCount));
 
-        InMemoryEntry first;
+        var timeout = visibilityTimeout ?? DefaultVisibilityTimeout;
         try
         {
-            first = await queue.Ready.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            while (results.Count == 0 && await queue.Ready.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                while (results.Count < maxCount && queue.TryLease(timeout, _timeProvider) is { } message)
+                    results.Add(message);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            return results;
-        }
-
-        var timeout = visibilityTimeout ?? DefaultVisibilityTimeout;
-        results.Add(queue.Lease(first, timeout, _timeProvider));
-
-        while (results.Count < maxCount && queue.Ready.Reader.TryRead(out var entry))
-            results.Add(queue.Lease(entry, timeout, _timeProvider));
+        catch (OperationCanceledException) { }
 
         return results;
     }
@@ -108,7 +106,7 @@ public sealed class InMemoryQueueClient : IQueueClient
             [MessageHeaders.DeadLetterDequeueCount] = message.DequeueCount.ToString()
         };
 
-        return SendAsync(QueueDefinition.DeadLetterQueueNameFor(message.QueueName), [new QueueEntry { Body = message.Body, Headers = headers }], cancellationToken);
+        return SendAsync(QueueDefinition.DeadLetterQueueNameFor(message.QueueName), [new QueueEntry { Body = message.Body, Headers = headers }], CancellationToken.None);
     }
 
     /// <inheritdoc />
@@ -117,14 +115,7 @@ public sealed class InMemoryQueueClient : IQueueClient
         var results = new List<QueueStats>(queueNames.Count);
         foreach (var queueName in queueNames)
         {
-            results.Add(new QueueStats
-            {
-                QueueName = queueName,
-                ActiveCount = GetPendingCount(queueName),
-                DelayedCount = GetDelayedCount(queueName),
-                InFlightCount = GetInFlightCount(queueName),
-                DeadLetterCount = GetDeadLetterCount(queueName)
-            });
+            results.Add(GetQueue(queueName).Snapshot(GetDeadLetterCount(queueName)));
         }
 
         return Task.FromResult<IReadOnlyList<QueueStats>>(results);
@@ -192,7 +183,20 @@ public sealed class InMemoryQueueClient : IQueueClient
         public int InFlightCount { get { lock (_gate) return _inFlight.Count; } }
         public int DelayedCount { get { lock (_gate) return _scheduled.Count; } }
 
-        public void Enqueue(InMemoryEntry entry) => Ready.Writer.TryWrite(entry);
+        public void Enqueue(InMemoryEntry entry) { lock (_gate) Ready.Writer.TryWrite(entry); }
+
+        public QueueStats Snapshot(int deadLetters)
+        {
+            lock (_gate)
+                return new QueueStats { QueueName = name, ActiveCount = Ready.Reader.Count,
+                    InFlightCount = _inFlight.Count, DelayedCount = _scheduled.Count, DeadLetterCount = deadLetters };
+        }
+
+        public QueueMessage? TryLease(TimeSpan timeout, TimeProvider timeProvider)
+        {
+            lock (_gate)
+                return Ready.Reader.TryRead(out var entry) ? Lease(entry, timeout, timeProvider) : null;
+        }
 
         public QueueMessage Lease(InMemoryEntry entry, TimeSpan visibilityTimeout, TimeProvider timeProvider)
         {

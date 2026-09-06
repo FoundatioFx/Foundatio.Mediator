@@ -5,6 +5,9 @@ namespace Foundatio.Mediator.Distributed;
 /// </summary>
 public interface IQueueJobStateStore
 {
+    /// <summary>Whether jobs and cancellation requests are shared across processes. Decorators must forward this capability.</summary>
+    bool IsShared => true;
+
     /// <summary>
     /// Creates or replaces a job's state. Called once at enqueue time with <see cref="QueueJobStatus.Queued"/>.
     /// </summary>

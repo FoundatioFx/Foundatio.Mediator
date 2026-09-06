@@ -18,6 +18,7 @@ public static class MessageHeaders
     public const string OriginalQueueName = "fm-original-queue-name";
     public const string DeadLetterDequeueCount = "fm-dead-letter-dequeue-count";
     public const string ReplayedAt = "fm-replayed-at";
+    public const string OriginalJobId = "fm-original-job-id";
     public const string JobId = "fm-job-id";
 
     /// <summary>

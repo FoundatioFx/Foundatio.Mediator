@@ -82,19 +82,4 @@ public sealed class QueueRegistration
         return result;
     }
 
-    /// <summary>
-    /// The one handler whose middleware enqueues a message of <paramref name="messageType"/> when several
-    /// handlers share this queue; the others return without sending so the queue receives one message.
-    /// </summary>
-    public string? DesignatedEnqueuerFor(Type messageType)
-    {
-        string? designated = null;
-        foreach (var handler in HandlersFor(messageType))
-        {
-            if (designated is null || string.CompareOrdinal(handler.DescriptorId, designated) < 0)
-                designated = handler.DescriptorId;
-        }
-
-        return designated;
-    }
 }

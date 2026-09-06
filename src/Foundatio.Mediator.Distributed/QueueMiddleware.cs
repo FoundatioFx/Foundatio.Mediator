@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Distributed;
 
@@ -9,26 +10,19 @@ namespace Foundatio.Mediator.Distributed;
 /// On the worker side, where a <see cref="QueueContext"/> is present, it runs the handler.
 /// </summary>
 /// <remarks>
-/// <para>When several handlers share a queue, only one of them (the designated enqueuer, chosen
-/// deterministically) sends the message; the worker then dispatches the single message to every
-/// handler that accepts it.</para>
+/// <para>When handlers explicitly share a queue, the registry selects one matching enqueue pipeline
+/// per publication. The worker processes all matching handlers in that group.</para>
 /// <para>A notification re-published from the distributed bus is not enqueued again: the node that
 /// published it already did.</para>
 /// </remarks>
-[Middleware(Order = -100, ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton)]
+[Middleware(ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton, IsDispatcher = true)]
 public class QueueMiddleware
 {
-    private static readonly HashSet<string> s_voidReturnTypes = new(StringComparer.Ordinal)
-    {
-        "void", "Task", "ValueTask", "System.Threading.Tasks.Task", "System.Threading.Tasks.ValueTask"
-    };
-
     private readonly IQueueClient _client;
     private readonly QueueTopology _topology;
     private readonly DistributedQueueOptions _options;
     private readonly IQueueJobStateStore? _stateStore;
     private readonly DistributedInfrastructureReady? _infraReady;
-    private readonly IQueueHeaderProvider[] _headerProviders;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
 
@@ -38,7 +32,6 @@ public class QueueMiddleware
         DistributedQueueOptions? options = null,
         IQueueJobStateStore? stateStore = null,
         DistributedInfrastructureReady? infraReady = null,
-        IEnumerable<IQueueHeaderProvider>? headerProviders = null,
         TimeProvider? timeProvider = null)
     {
         _client = client;
@@ -46,7 +39,6 @@ public class QueueMiddleware
         _options = options ?? new DistributedQueueOptions();
         _stateStore = stateStore;
         _infraReady = infraReady;
-        _headerProviders = headerProviders?.ToArray() ?? [];
         _jsonOptions = _options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -56,12 +48,9 @@ public class QueueMiddleware
         HandlerExecutionDelegate next,
         HandlerExecutionInfo handlerInfo,
         CallContext? callContext,
+        IServiceProvider services,
         CancellationToken cancellationToken)
     {
-        // Worker side: the queue already owns this message, run the handler.
-        if (callContext?.TryGet<QueueContext>(out _) == true)
-            return await next().ConfigureAwait(false);
-
         // The originating node enqueued this notification before publishing it to the bus.
         if (DistributedContext.IsInboundNotification(message))
             return Result.Accepted("Message queued by the originating node");
@@ -71,12 +60,6 @@ public class QueueMiddleware
                 $"Handler '{handlerInfo.DescriptorId}' is marked [Queue] but has no queue registration. Call AddDistributedQueues() after AddMediator().");
 
         var messageType = message.GetType();
-
-        var designated = registration.DesignatedEnqueuerFor(messageType);
-        if (designated is not null && !string.Equals(designated, handlerInfo.DescriptorId, StringComparison.Ordinal))
-            return Result.Accepted("Message queued");
-
-        ValidateReturnType(registration, handlerInfo.DescriptorId);
 
         await WaitForInfrastructureAsync(registration.QueueName, messageType, cancellationToken).ConfigureAwait(false);
 
@@ -103,7 +86,7 @@ public class QueueMiddleware
                 headers[MessageHeaders.TraceState] = traceState;
         }
 
-        foreach (var provider in _headerProviders)
+        foreach (var provider in services.GetServices<IQueueHeaderProvider>())
             provider.Enrich(message, headers);
 
         string? jobId = null;
@@ -127,13 +110,31 @@ public class QueueMiddleware
             activity?.SetTag("messaging.job.id", jobId);
         }
 
-        await _client.SendAsync(registration.QueueName, [new QueueEntry { Body = body, Headers = headers }], cancellationToken).ConfigureAwait(false);
+        var receipt = new QueueReceipt(registration.QueueName, jobId);
+        try
+        {
+            await _client.SendAsync(registration.QueueName, [new QueueEntry { Body = body, Headers = headers }], cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            if (jobId is not null && _stateStore is not null)
+            {
+                try
+                {
+                    await QueueOperation.RunAsync(ct => _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.EnqueueUnknown,
+                        errorMessage: exception.Message, expiry: _options.JobStateExpiry, cancellationToken: ct),
+                        TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+                }
+                catch { /* Preserve the transport failure and receipt even when state is unavailable. */ }
+            }
+            throw new QueueEnqueueException(receipt, exception);
+        }
+        if (callContext?.Get(typeof(QueueReceiptCapture)) is QueueReceiptCapture capture)
+            capture.Receipt = receipt;
 
         DistributedMetrics.Enqueued.Add(1, DistributedMetrics.Tags(registration.QueueName, messageType.Name, registration.Settings.Group));
 
-        return jobId is not null
-            ? Result.Accepted("Message queued", jobId)
-            : Result.Accepted("Message queued");
+        return Result.Accepted("Message queued");
     }
 
     private async Task WaitForInfrastructureAsync(string queueName, Type messageType, CancellationToken cancellationToken)
@@ -156,27 +157,4 @@ public class QueueMiddleware
         }
     }
 
-    private static void ValidateReturnType(QueueRegistration registration, string descriptorId)
-    {
-        HandlerRegistration? handler = null;
-        foreach (var candidate in registration.Handlers)
-        {
-            if (string.Equals(candidate.DescriptorId, descriptorId, StringComparison.Ordinal))
-            {
-                handler = candidate;
-                break;
-            }
-        }
-
-        var returnTypeName = handler?.ReturnTypeName;
-        if (string.IsNullOrEmpty(returnTypeName) || s_voidReturnTypes.Contains(returnTypeName!))
-            return;
-
-        if (!returnTypeName!.StartsWith("Foundatio.Mediator.Result", StringComparison.Ordinal) && !returnTypeName.StartsWith("Result", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Queue handler '{descriptorId}' returns '{returnTypeName}' which is incompatible with queue processing. " +
-                "Queue handlers must return void, Task, Result, or Result<T>.");
-        }
-    }
 }

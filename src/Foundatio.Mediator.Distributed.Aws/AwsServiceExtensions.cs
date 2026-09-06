@@ -119,7 +119,7 @@ public static class AwsBuilderExtensions
             sp.GetRequiredService<IAmazonSimpleNotificationService>(),
             sp.GetRequiredService<IAmazonSQS>(),
             options,
-            sp.GetService<DistributedNotificationOptions>() ?? new DistributedNotificationOptions(),
+            sp.GetService<DistributedNotificationOptions>() ?? new DistributedNotificationOptions { ResourcePrefix = sp.GetService<DistributedOptions>()?.ResourcePrefix },
             sp.GetRequiredService<ILogger<SqsPubSubClient>>(),
             sp.GetService<TimeProvider>()));
     }

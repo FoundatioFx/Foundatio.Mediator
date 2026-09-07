@@ -44,6 +44,12 @@ public class CachingMiddleware
 
                     foreach (var prop in typeInfo.Properties)
                     {
+                        // Result<T>.Value throws for failures. Cache the underlying value so
+                        // NotFound and other result statuses survive serialization unchanged.
+                        if (typeof(IResult).IsAssignableFrom(typeInfo.Type) &&
+                            prop.AttributeProvider is PropertyInfo { Name: nameof(Result<object>.Value) })
+                            prop.Get = static obj => ((IResult)obj).GetValue();
+
                         if (prop.Set is null && prop.AttributeProvider is PropertyInfo pi)
                         {
                             var setter = pi.GetSetMethod(nonPublic: true);

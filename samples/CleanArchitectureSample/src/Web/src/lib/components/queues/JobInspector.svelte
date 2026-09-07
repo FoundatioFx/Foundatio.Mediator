@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Spinner, Alert } from '$lib/components/ui';
+  import { queueUrl } from './utils';
   import {
     JOB_STATUS_COLORS,
     statusLabel,
@@ -98,7 +99,13 @@
       <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <div>
           <dt class="text-gray-500">Queue</dt>
-          <dd class="break-all font-medium">{job.queueName}</dd>
+          <dd class="break-all font-medium">
+            <a
+              class="text-blue-700 underline"
+              href={queueUrl(job.queueName, 'jobs', job.jobId)}
+              >{job.queueName}</a
+            >
+          </dd>
         </div>
         <div>
           <dt class="text-gray-500">Worker / latest attempt</dt>
@@ -170,7 +177,9 @@
                 class="flex gap-3"
               >
                 <dt class="text-gray-500 min-w-20">{key}</dt>
-                <dd class="font-mono text-xs break-all">{value}</dd>
+                <dd class="font-mono text-xs break-all">
+                  {value}
+                </dd>
               </div>{/each}
           </dl>
         </div>{/if}

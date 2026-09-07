@@ -8,6 +8,7 @@
     type JobDashboardView
   } from '$lib/types/queue';
   import { queueUrl } from './utils';
+  import QueueActivityChart from './QueueActivityChart.svelte';
 
   let {
     queue,
@@ -127,34 +128,7 @@
     <section aria-labelledby="hourly-title" class="space-y-3">
       <h2 id="hourly-title" class="font-semibold">Hourly statistics</h2>
       {#if buckets.length}
-        <div class="overflow-x-auto rounded-lg border">
-          <table class="w-full text-sm">
-            <caption class="sr-only"
-              >Hourly processing counters for {queue.queueName}</caption
-            >
-            <thead class="bg-gray-50 text-xs text-gray-500"
-              ><tr
-                ><th scope="col" class="p-3 text-left">Hour (local time)</th
-                >{#each keys as key}<th
-                    scope="col"
-                    class="p-3 text-right whitespace-nowrap"
-                    >{labels[key] ?? key.replaceAll('_', ' ')}</th
-                  >{/each}</tr
-              ></thead
-            >
-            <tbody class="divide-y">
-              {#each buckets.toReversed() as bucket}<tr
-                  ><th
-                    scope="row"
-                    class="p-3 text-left font-normal whitespace-nowrap"
-                    >{formatTime(bucket.hour)}</th
-                  >{#each keys as key}<td class="p-3 text-right tabular-nums"
-                      >{(bucket.counters[key] ?? 0).toLocaleString()}</td
-                    >{/each}</tr
-                >{/each}
-            </tbody>
-          </table>
-        </div>
+        <QueueActivityChart queueName={queue.queueName} {buckets} />
       {:else}<p class="text-sm text-gray-500">
           No hourly activity has been recorded in this window.
         </p>{/if}

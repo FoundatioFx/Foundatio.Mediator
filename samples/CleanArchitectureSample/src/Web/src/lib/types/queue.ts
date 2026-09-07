@@ -1,5 +1,6 @@
 export interface QueueSummary {
   queueName: string;
+  displayName: string | null;
   messageType: string;
   handlers: string[];
   group: string | null;

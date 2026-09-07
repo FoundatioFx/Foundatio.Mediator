@@ -52,6 +52,7 @@ Queue handlers support `void`, `Task`, `ValueTask`, `Result`, `Result<T>`, and c
 ```csharp
 [Queue(
     QueueName = "order-processing",    // explicit subscription identity
+    DisplayName = "Order processing",  // optional label for dashboards
     Group = "orders",                  // for worker selection, see Scaling Out
     Concurrency = 5,                   // concurrent handlers per worker (default 1)
     PrefetchCount = 5,                 // per-receive cap, also bounded by available Concurrency
@@ -68,6 +69,21 @@ public class OrderProcessingHandler { ... }
 ```
 
 Handlers that share a `QueueName` share one queue and one worker, and must declare identical settings. Mismatches fail at startup naming both handlers.
+
+`DisplayName` is presentation metadata. It does not change the physical queue name, routing, worker selection, retry grouping, or job history. Dashboard clients can read it from `QueueOverview`, `QueueTopology`, and `IQueueWorkerRegistry`, falling back to `QueueName` when the label is absent. Labels are trimmed; blank values are treated as absent. Independent queues can have the same label without sharing processing. For a shared queue, a label can be specified on one handler; any other explicit labels must match.
+
+You can also override the label at startup without editing a handler. The key is the logical subscription name, before `ResourcePrefix` is applied:
+
+```csharp
+builder.Services.AddMediator()
+    .AddDistributedQueues(options =>
+    {
+        options.QueueOverrides["order-processing"] = queue =>
+            queue.DisplayName = "Customer orders";
+    });
+```
+
+The CleanArchitectureSample uses these labels in queue links, page headings, and settings. It also displays the physical name and searches both values. URLs and administration requests continue to use the physical name.
 
 ## Retries
 

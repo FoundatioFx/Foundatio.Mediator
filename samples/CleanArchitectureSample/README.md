@@ -310,6 +310,8 @@ Transport counts are approximate, while tracked job state is shared in Redis. Mi
 
 `ConfigureDistributed(o => o.ResourcePrefix = "sample")` applies one prefix to queues, topics, and shared Redis state. Override `Distributed__ResourcePrefix` consistently on every API and worker when running another deployment. `DistributedQueueOptions.WorkerId` uses `HostInfo.HostId` in this sample; the library default is machine name plus process ID. The value identifies the latest attempt, not a global worker-health registry.
 
+Queue labels are separate from routing identities. For example, setting `DisplayName = "Bank file generation"` on the bank handler's `[Queue]` attribute labels `sample-GenerateBankFile` without renaming it. The API's `QueueOverrides` label individual audit and notification subscriptions by their existing logical names. The dashboard shows both names and searches either; queue details use the display name in their heading and show both values in Settings. Unnamed queues retain their physical name as the label. Changing a label preserves URLs, messages, dead letters, worker selection, and job history.
+
 ### Browser regression checks
 
 Start a fresh local sample using either topology, then run from `src/Web`:

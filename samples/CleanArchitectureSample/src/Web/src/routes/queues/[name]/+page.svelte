@@ -5,10 +5,6 @@
   const queueName = $derived($page.params.name!);
 </script>
 
-<svelte:head>
-  <title>{queueName} - Queue details - Clean Architecture Sample</title>
-</svelte:head>
-
 {#key queueName}
   <QueueDetails {queueName} />
 {/key}

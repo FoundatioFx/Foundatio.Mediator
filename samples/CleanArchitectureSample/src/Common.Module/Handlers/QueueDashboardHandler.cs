@@ -172,6 +172,7 @@ public class QueueDashboardHandler(
     private QueueSummary ToSummary(QueueOverview q) => new()
     {
         QueueName = q.QueueName,
+        DisplayName = q.DisplayName,
         MessageType = q.MessageType,
         Handlers = q.Handlers,
         Group = q.Group,

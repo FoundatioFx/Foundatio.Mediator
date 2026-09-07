@@ -113,6 +113,11 @@ public static class DistributedServiceExtensions
             var members = queues[queueName];
             var settings = members[0].Settings;
             ValidateQueueSettings(queueName, members);
+            var displayNames = members.Select(m => m.Settings.DisplayName?.Trim())
+                .Where(name => !string.IsNullOrEmpty(name)).Distinct(StringComparer.Ordinal).ToArray();
+            if (displayNames.Length > 1)
+                throw new InvalidOperationException($"Queue '{queueName}' has conflicting DisplayName values. Set the same label on its handlers or use QueueOverrides to configure it once.");
+            var displayName = displayNames.FirstOrDefault();
 
             var handlers = HandlerRegistry.OrderRegistrations(members.Select(m => m.Handler));
             var messageType = members[0].Handler.MessageType!;
@@ -123,6 +128,7 @@ public static class DistributedServiceExtensions
             var registration = new QueueRegistration
             {
                 QueueName = queueName,
+                DisplayName = displayName,
                 Settings = settings,
                 MessageType = messageType,
                 Handlers = handlers
@@ -168,6 +174,7 @@ public static class DistributedServiceExtensions
             var workerInfo = new QueueWorkerInfo
             {
                 QueueName = queueName,
+                DisplayName = displayName,
                 MessageTypeName = messageType.FullName ?? messageType.Name,
                 Concurrency = workerOptions.Concurrency,
                 PrefetchCount = workerOptions.PrefetchCount,

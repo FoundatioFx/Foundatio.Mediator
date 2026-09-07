@@ -17,6 +17,7 @@
   import {
     data,
     describeError,
+    queueLabel,
     queueUrl,
     QUEUE_VIEWS,
     type QueueView
@@ -265,6 +266,13 @@
   });
 </script>
 
+<svelte:head>
+  <title
+    >{queue ? queueLabel(queue) : queueName} - Queue details - Clean Architecture
+    Sample</title
+  >
+</svelte:head>
+
 <div class="space-y-5 pb-6 min-w-0">
   <a href="/queues" class="text-sm text-blue-700 underline">← Back to queues</a>
   <div class="flex flex-wrap items-start justify-between gap-4">
@@ -273,8 +281,13 @@
         Queue details
       </p>
       <h1 class="text-2xl font-bold text-gray-900 break-all">
-        {queueName}
+        {queue ? queueLabel(queue) : queueName}
       </h1>
+      {#if queue && queueLabel(queue) !== queueName}
+        <p class="mt-1 text-xs font-mono text-gray-500 break-all">
+          {queueName}
+        </p>
+      {/if}
       {#if queue}<p class="mt-2 text-sm text-gray-500">
           {queue.description ?? queue.messageType.split('.').pop()}
         </p>

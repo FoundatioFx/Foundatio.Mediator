@@ -10,7 +10,7 @@ namespace Common.Module.Handlers;
 /// A tracked job on its own worker group. Concurrency stays at 1, so several imports queue up behind each
 /// other on a single imports worker and the dashboard shows the backlog.
 /// </summary>
-[Queue(Group = "imports", TrackProgress = true, TimeoutSeconds = 60, Description = "Simulated catalog import; one file at a time per worker")]
+[Queue(DisplayName = "Product catalog imports", Group = "imports", TrackProgress = true, TimeoutSeconds = 60, Description = "Simulated catalog import; one file at a time per worker")]
 public class ImportProductCatalogHandler(HostInfo host, ILogger<ImportProductCatalogHandler> logger)
 {
     [HandlerEndpoint(Exclude = true)]

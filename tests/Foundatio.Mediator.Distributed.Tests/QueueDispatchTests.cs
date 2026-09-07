@@ -44,7 +44,7 @@ public sealed class TenantContext(string tenant)
 
 // ── Handlers ─────────────────────────────────────────────────────────
 
-[Queue(QueueName = "shared-queue-events")]
+[Queue(QueueName = "shared-queue-events", DisplayName = "Shared events")]
 public class SharedQueueAuditHandler(HandlerSignal signal)
 {
     public void Handle(SharedQueueEvent message) => signal.Record($"audit:{message.Value}");
@@ -81,7 +81,7 @@ public class TenantScopedCommandHandler(HandlerSignal signal)
     public void Handle(TenantScopedCommand message, TenantContext tenant) => signal.Record($"{tenant.Tenant}:{message.Value}");
 }
 
-[Queue(TrackProgress = true)]
+[Queue(DisplayName = "Tracked work", TrackProgress = true)]
 public class MetadataTrackedCommandHandler(HandlerSignal signal)
 {
     public Result Handle(MetadataTrackedCommand message)

@@ -35,6 +35,7 @@ public record EnqueueBankFiles(string Bank = "first-national", int Count = 2);
 public record QueueSummary
 {
     public required string QueueName { get; init; }
+    public string? DisplayName { get; init; }
     public required string MessageType { get; init; }
     public required IReadOnlyList<string> Handlers { get; init; }
     public string? Group { get; init; }

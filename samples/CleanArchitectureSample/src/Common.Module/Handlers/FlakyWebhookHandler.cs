@@ -10,7 +10,7 @@ namespace Common.Module.Handlers;
 /// Retry schedule and dead-lettering made deterministic: the delivery fails until the attempt number passes
 /// <see cref="DeliverWebhook.FailTimes"/>. Three attempts with 1s and 3s between them, then the dead-letter queue.
 /// </summary>
-[Queue(Group = "events", TrackProgress = true, MaxAttempts = 3, RetryDelays = "1s,3s", Description = "Webhook delivery on a fixed retry schedule; dead-letters after three attempts")]
+[Queue(DisplayName = "Webhook delivery", Group = "events", TrackProgress = true, MaxAttempts = 3, RetryDelays = "1s,3s", Description = "Webhook delivery on a fixed retry schedule; dead-letters after three attempts")]
 public class FlakyWebhookHandler(HostInfo host, ILogger<FlakyWebhookHandler> logger)
 {
     [HandlerEndpoint(Exclude = true)]

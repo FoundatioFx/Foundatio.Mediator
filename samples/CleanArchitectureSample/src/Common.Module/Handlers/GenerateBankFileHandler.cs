@@ -11,7 +11,7 @@ namespace Common.Module.Handlers;
 /// <see cref="GenerateBankFile.GetLockKey"/> before the handler runs; a second message for the same bank that
 /// arrives while the lock is held waits and then runs; both files are preserved.
 /// </summary>
-[Queue(Group = "exports", TrackProgress = true, Concurrency = 2, TimeoutSeconds = 60, Description = "Bank file generation; [QueueLock] allows one run per bank at a time")]
+[Queue(DisplayName = "Bank file generation", Group = "exports", TrackProgress = true, Concurrency = 2, TimeoutSeconds = 60, Description = "Bank file generation; [QueueLock] allows one run per bank at a time")]
 [QueueLock]
 public class GenerateBankFileHandler(HostInfo host, ILogger<GenerateBankFileHandler> logger)
 {

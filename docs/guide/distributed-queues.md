@@ -72,7 +72,9 @@ Handlers that share a `QueueName` share one queue and one worker, and must decla
 
 `DisplayName` is presentation metadata. It does not change the physical queue name, routing, worker selection, retry grouping, or job history. Dashboard clients can read it from `QueueOverview`, `QueueTopology`, and `IQueueWorkerRegistry`, falling back to `QueueName` when the label is absent. Labels are trimmed; blank values are treated as absent. Independent queues can have the same label without sharing processing. For a shared queue, a label can be specified on one handler; any other explicit labels must match.
 
-You can also override the label at startup without editing a handler. The key is the logical subscription name, before `ResourcePrefix` is applied:
+Define labels on `[Queue]` attributes alongside the handler. The attribute can be placed on a class or an individual handler method; method attributes let a class handling several message types give each subscription its own label. A method-level `[Queue]` replaces the class-level queue settings, so include its worker group and any other required settings. The sample's [audit handler](https://github.com/FoundatioFx/Foundatio.Mediator/blob/main/samples/CleanArchitectureSample/src/Common.Module/Handlers/AuditEventHandler.cs) demonstrates per-method labels.
+
+Use `QueueOverrides` for deployment-specific changes or handlers you cannot edit. The key is the logical subscription name, before `ResourcePrefix` is applied:
 
 ```csharp
 builder.Services.AddMediator()

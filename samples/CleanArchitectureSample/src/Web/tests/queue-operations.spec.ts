@@ -377,7 +377,7 @@ test('flush asks for confirmation and preserves failed job history', async ({
   await finished(request, receipt.jobIds, 'Failed');
 });
 
-test('individual flush removes only the selected record and individual retry preserves the original failure', async ({
+test('individual purge removes only the selected record and individual retry preserves the original failure', async ({
   page
 }) => {
   const request = page.request;
@@ -395,9 +395,9 @@ test('individual flush removes only the selected record and individual retry pre
   const other = page.locator(`[data-message-id="${otherId}"]`);
   await page.setViewportSize({ width: 390, height: 844 });
   await target
-    .getByRole('button', { name: 'Flush message', exact: true })
+    .getByRole('button', { name: 'Purge message', exact: true })
     .click();
-  const dialog = page.getByRole('dialog', { name: 'Flush this message?' });
+  const dialog = page.getByRole('dialog', { name: 'Purge this message?' });
   await expect(dialog).toContainText(targetId);
   await expect(dialog).toContainText(second.queueName);
   await expect(dialog).toContainText('Other dead letters will remain');
@@ -424,7 +424,7 @@ test('individual flush removes only the selected record and individual retry pre
     .getByRole('button', { name: 'Keep messages', exact: true })
     .click();
   await target
-    .getByRole('button', { name: 'Flush message', exact: true })
+    .getByRole('button', { name: 'Purge message', exact: true })
     .click();
   const deleted = page.waitForResponse((r) =>
     r.url().endsWith('/dead-letters/purge')
@@ -586,6 +586,20 @@ test('queue details isolate statistics, preserve navigation, and return to dead 
   ).json();
   const queue = queues.find((q) => !q.trackProgress)!;
   expect(queue).toBeTruthy();
+  await page.route('**/api/queues/dead-letters?**', (route) =>
+    route.fulfill({
+      json: [
+        {
+          messageId: 'access-test-message',
+          messageType: queue.messageType,
+          attempts: 1,
+          reason: 'Test failure',
+          body: '{}',
+          headers: {}
+        }
+      ]
+    })
+  );
   let listReads = 0;
   let detailReads = 0;
   let deadLetterReads = 0;
@@ -700,11 +714,29 @@ test('queue details isolate statistics, preserve navigation, and return to dead 
   await expect(
     page.getByRole('button', { name: 'Retry available', exact: true })
   ).toHaveCount(0);
+  const letter = page.locator('[data-message-id="access-test-message"]');
+  const retry = letter.getByRole('button', {
+    name: 'Retry message',
+    exact: true
+  });
+  const purge = letter.getByRole('button', {
+    name: 'Purge message',
+    exact: true
+  });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeDisabled();
+  await expect(purge).toBeVisible();
+  await expect(purge).toBeDisabled();
+  await expect(
+    page.getByText(/Administrator access is required to retry or purge/)
+  ).toBeVisible();
   const inspections = deadLetterReads;
   const reads = detailReads;
   await expect.poll(() => detailReads).toBeGreaterThan(reads + 1);
   expect(deadLetterReads).toBe(inspections);
-  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await page
+    .getByRole('link', { name: 'Sign in to manage dead letters', exact: true })
+    .click();
   await page
     .getByRole('textbox', { name: 'Username', exact: true })
     .fill('admin');
@@ -718,6 +750,44 @@ test('queue details isolate statistics, preserve navigation, and return to dead 
   await expect(
     page.getByRole('button', { name: 'Retry available', exact: true })
   ).toBeVisible();
+  await expect(retry).toBeEnabled();
+  await expect(purge).toBeEnabled();
+  await expect(
+    page.getByText(/Administrator access is required to retry or purge/)
+  ).toHaveCount(0);
+
+  // Signing out on this view must immediately disable its actions.
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(retry).toBeDisabled();
+  await expect(purge).toBeDisabled();
+  await page
+    .getByRole('link', { name: 'Sign in to manage dead letters', exact: true })
+    .click();
+  await page
+    .getByRole('textbox', { name: 'Username', exact: true })
+    .fill('user');
+  await page.getByLabel('Password', { exact: true }).fill('user');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(
+    page.getByText(/Your current account has read-only access/)
+  ).toBeVisible();
+  await expect(retry).toBeDisabled();
+  await expect(purge).toBeDisabled();
+  await expect(
+    page.getByRole('link', {
+      name: 'Sign in to manage dead letters',
+      exact: true
+    })
+  ).toHaveCount(0);
+  for (const action of ['replay', 'purge']) {
+    const denied = await page.request.post(
+      `/api/queues/dead-letters/${action}`,
+      {
+        data: { queueName: queue.queueName, messageId: 'access-test-message' }
+      }
+    );
+    expect(denied.status()).toBe(403);
+  }
 });
 
 test('legacy queue links redirect and unavailable statistics are distinct from zero and missing queues', async ({

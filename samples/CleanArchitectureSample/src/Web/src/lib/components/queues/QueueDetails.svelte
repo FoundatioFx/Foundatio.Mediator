@@ -420,6 +420,22 @@
             transport statistics and processing counters.
           </p>{/if}
       {:else if letters !== null || !detailError}
+        {#if !auth.loading && !isAdmin}
+          <div class="px-5 pt-5">
+            <p class="rounded-lg border bg-gray-50 p-4 text-sm text-gray-600">
+              Administrator access is required to retry or purge dead letters.
+              {#if auth.isAuthenticated}
+                Your current account has read-only access.
+              {:else}
+                <a
+                  class="font-medium text-blue-700 underline"
+                  href={`/login?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`}
+                  >Sign in to manage dead letters</a
+                >.
+              {/if}
+            </p>
+          </div>
+        {/if}
         <DeadLetters
           {queueName}
           {letters}

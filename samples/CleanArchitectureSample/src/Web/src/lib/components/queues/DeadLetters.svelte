@@ -46,9 +46,8 @@
 <div class="p-5 space-y-4">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <p class="text-xs text-gray-500 max-w-lg">
-      Inspect up to 100 available messages. Refresh explicitly; inspection
-      briefly leases and then releases them. Retry keeps the original failed job
-      and returns a new job identity.
+      Showing up to 100 available messages. Refresh to check for new dead
+      letters. Retrying creates a new job and preserves the original failure.
     </p>
     <div class="flex flex-wrap gap-2 items-center">
       <Button size="sm" variant="outline" disabled={busy} onclick={refresh}
@@ -109,19 +108,19 @@
                   size="sm"
                   variant="ghost"
                   onclick={() => openJob(letter.jobId!)}>Original job</Button
-                >{/if}{#if isAdmin}<Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onclick={() => retry(letter.messageId, 10000)}
-                  >Retry message</Button
-                ><Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={busy}
-                  onclick={() => confirmFlush(letter.messageId)}
-                  >Flush message</Button
-                >{/if}
+                >{/if}<Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !isAdmin}
+                onclick={() => retry(letter.messageId, 10000)}
+                >Retry message</Button
+              ><Button
+                size="sm"
+                variant="destructive"
+                disabled={busy || !isAdmin}
+                onclick={() => confirmFlush(letter.messageId)}
+                >Purge message</Button
+              >
             </div>
           </div>
           <p class="text-sm text-red-700 whitespace-pre-wrap break-words">
@@ -168,7 +167,7 @@
   aria-labelledby="flush-title"
 >
   <h2 id="flush-title" class="text-lg font-semibold">
-    {flushTarget !== null ? 'Flush this message?' : 'Flush dead letters?'}
+    {flushTarget !== null ? 'Purge this message?' : 'Flush dead letters?'}
   </h2>
   <p class="text-sm text-gray-600 mt-3">
     {#if flushTarget !== null}
@@ -194,7 +193,7 @@
       >{flushTarget !== null ? 'Keep message' : 'Keep messages'}</Button
     ><Button
       variant="destructive"
-      disabled={busy}
+      disabled={busy || !isAdmin}
       onclick={() => {
         flushDialog.close();
         flush(flushTarget !== null ? 10000 : limit, flushTarget ?? undefined);

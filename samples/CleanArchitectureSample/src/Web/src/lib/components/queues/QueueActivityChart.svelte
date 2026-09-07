@@ -124,7 +124,7 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <p class="text-xs text-gray-500">Count per hour · local time</p>
     <div class="flex flex-wrap gap-x-5 gap-y-2" aria-label="Chart legend">
-      {#each series as item}
+      {#each series as item (item.key)}
         <span class="inline-flex items-center gap-2 text-xs text-gray-600">
           <svg width="24" height="8" aria-hidden="true"
             ><line
@@ -182,7 +182,7 @@
           fill="#f1f5f9"
         />
       {/if}
-      {#each series as item}
+      {#each series as item (item.key)}
         <path
           d={`${line(item.key)} L ${x(buckets.length)} ${bottom} L ${left} ${bottom} Z`}
           fill={item.color}
@@ -211,7 +211,7 @@
           font-size="11">{time(buckets[index].hour)}</text
         >
       {/each}
-      {#each buckets as bucket, index}
+      {#each buckets as bucket, index (bucket.hour)}
         <g
           role="button"
           tabindex={selectedIndex === index ? 0 : -1}
@@ -232,7 +232,7 @@
             fill="transparent"
           />
           {#if selectedIndex === index}
-            {#each series as item}
+            {#each series as item (item.key)}
               <circle
                 cx={x(index) + binWidth / 2}
                 cy={y(bucket.counters[item.key] ?? 0)}
@@ -256,7 +256,7 @@
     >
       <span class="text-gray-500">{date(selected.hour)}</span>
       <dl class="flex flex-wrap gap-x-5 gap-y-2">
-        {#each series as item}
+        {#each series as item (item.key)}
           <div class="flex items-center gap-2">
             <dt class="text-gray-500">{item.label}</dt>
             <dd class="font-semibold tabular-nums" style:color={item.color}>

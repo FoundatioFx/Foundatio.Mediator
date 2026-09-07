@@ -68,7 +68,7 @@
       </p>
     </div>
     <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-      {#each keys as key}
+      {#each keys as key (key)}
         <div class="border rounded-lg p-4 min-w-0">
           <h3 class="text-xs text-gray-500">
             {labels[key] ?? key.replaceAll('_', ' ')}
@@ -99,7 +99,7 @@
         24-hour counters.
       </p>
       <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-        {#each JOB_STATUSES as status}
+        {#each JOB_STATUSES as status (status)}
           <a
             href={`${queueUrl(queue.queueName, 'jobs')}&status=${status}`}
             class="rounded-lg border p-3 hover:bg-blue-50 focus-visible:outline-blue-600"

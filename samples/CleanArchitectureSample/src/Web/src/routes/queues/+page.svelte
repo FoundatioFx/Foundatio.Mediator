@@ -4,6 +4,8 @@
   import { queuesApi } from '$lib/api';
   import { Button, Spinner, Alert, Sparkline } from '$lib/components/ui';
   import JobInspector from '$lib/components/queues/JobInspector.svelte';
+  import RefreshControls from '$lib/components/queues/RefreshControls.svelte';
+  import { QueueRefresh } from '$lib/components/queues/refresh.svelte';
   import {
     data,
     describeError,
@@ -24,7 +26,6 @@
   let job = $state<JobSummary | null>(null);
   let jobLookup = $state('');
   let loading = $state(true);
-  let refreshing = $state(false);
   let busy = $state<string | null>(null);
   let error = $state<string | null>(null);
   let jobError = $state<string | null>(null);
@@ -33,7 +34,6 @@
   let polling = $state(true);
   let filter = $state('');
   let queueView = $state('all');
-  let refreshInFlight: Promise<void> | null = null;
   let stopped = false;
   const isAdmin = $derived(auth.user?.role === 'Admin');
   const visibleQueues = $derived(
@@ -92,42 +92,31 @@
       if (selectedJobId === id && !stopped) jobError = describeError(e);
     }
   }
-  async function refresh() {
-    if (busy || stopped) return;
-    if (refreshInFlight) {
-      await refreshInFlight;
-      return refresh();
-    }
-    refreshing = true;
-    refreshInFlight = (async () => {
-      await Promise.all([
-        (async () => {
-          try {
-            const next = await Promise.all([
-              queuesApi.list(),
-              queuesApi.host()
-            ]);
-            if (!stopped) {
-              queues = data(next[0]);
-              host = data(next[1]);
-              error = null;
-              lastUpdated = Date.now();
-            }
-          } catch (e) {
-            if (!stopped) error = describeError(e);
+  const updates = new QueueRefresh(async () => {
+    await Promise.all([
+      (async () => {
+        try {
+          const next = await Promise.all([queuesApi.list(), queuesApi.host()]);
+          if (!stopped) {
+            queues = data(next[0]);
+            host = data(next[1]);
+            error = null;
+            lastUpdated = Date.now();
           }
-        })(),
-        loadJob()
-      ]);
-    })();
-    try {
-      await refreshInFlight;
-    } finally {
-      refreshInFlight = null;
-      refreshing = false;
+        } catch (e) {
+          if (!stopped) error = describeError(e);
+        }
+      })(),
+      loadJob()
+    ]);
+    if (!stopped) {
       loading = false;
       now = Date.now();
     }
+  });
+  function refresh(manual = false) {
+    if (busy || stopped) return Promise.resolve();
+    return updates.request({ manual });
   }
   function openJob(id: string) {
     selectedJobId = id.trim();
@@ -151,7 +140,7 @@
   ) {
     if (busy) return;
     busy = name;
-    if (refreshInFlight) await refreshInFlight;
+    await updates.wait();
     try {
       done(data(await action()));
     } catch (e) {
@@ -193,10 +182,11 @@
     void refresh();
     const timer = setInterval(() => {
       now = Date.now();
-      if (polling && !refreshing) void refresh();
+      if (polling && !updates.pending) void refresh();
     }, 2500);
     return () => {
       stopped = true;
+      updates.stop();
       clearInterval(timer);
     };
   });
@@ -214,22 +204,13 @@
         Backlog, processing activity, and failures across all queues.
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-gray-500" role="status"
-        >{refreshing
-          ? 'Refreshing…'
-          : lastUpdated
-            ? `Updated ${new Date(lastUpdated).toLocaleTimeString()}`
-            : 'Connecting…'}</span
-      ><Button size="sm" variant="outline" onclick={() => (polling = !polling)}
-        >{polling ? 'Pause updates' : 'Resume updates'}</Button
-      ><Button
-        size="sm"
-        variant="outline"
-        disabled={refreshing || !!busy}
-        onclick={() => refresh()}>Refresh now</Button
-      >
-    </div>
+    <RefreshControls
+      bind:polling
+      {lastUpdated}
+      manual={updates.manual}
+      busy={!!busy}
+      refresh={() => refresh(true)}
+    />
   </div>
   {#if error}<Alert
       type="error"
@@ -240,7 +221,7 @@
     role="group"
     aria-label="Queue transport totals"
   >
-    {#each [{ label: 'Ready to run', value: totals.ready, hint: 'Available transport messages', color: 'text-gray-900' }, { label: 'In flight', value: totals.running, hint: 'Leased by workers, including lock waits', color: 'text-blue-700' }, { label: 'Delayed', value: totals.delayed, hint: 'Scheduled or waiting for retry', color: 'text-orange-700' }, { label: 'Dead letters', value: totals.dead, hint: 'Failures awaiting operator action', color: 'text-red-700' }] as metric}
+    {#each [{ label: 'Ready to run', value: totals.ready, hint: 'Available transport messages', color: 'text-gray-900' }, { label: 'In flight', value: totals.running, hint: 'Leased by workers, including lock waits', color: 'text-blue-700' }, { label: 'Delayed', value: totals.delayed, hint: 'Scheduled or waiting for retry', color: 'text-orange-700' }, { label: 'Dead letters', value: totals.dead, hint: 'Failures awaiting operator action', color: 'text-red-700' }] as metric (metric.label)}
       <div class="rounded-lg border bg-white p-4">
         <div class="text-xs text-gray-500">{metric.label}</div>
         <div class="text-3xl font-semibold tabular-nums my-2 {metric.color}">

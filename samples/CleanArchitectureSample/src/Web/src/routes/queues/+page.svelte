@@ -3,7 +3,6 @@
   import { goto, replaceState } from '$app/navigation';
   import { queuesApi } from '$lib/api';
   import { Button, Spinner, Alert, Sparkline } from '$lib/components/ui';
-  import WorkerActivity from '$lib/components/queues/WorkerActivity.svelte';
   import JobInspector from '$lib/components/queues/JobInspector.svelte';
   import { data, describeError, queueUrl } from '$lib/components/queues/utils';
   import {
@@ -409,7 +408,6 @@
     Transport counts are approximate. Activity counters cover the last 24 hours
     across workers; — means unavailable.
   </p>
-  <WorkerActivity />
   {#if host}<p class="text-xs text-gray-400">
       Last responding API: {host.hostId}. Worker selection on that node: {host.workers}.
       Separate worker processes are identified on tracked attempts.

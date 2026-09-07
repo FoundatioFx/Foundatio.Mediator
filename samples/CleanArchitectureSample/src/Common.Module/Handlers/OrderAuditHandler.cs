@@ -9,7 +9,7 @@ namespace Common.Module.Handlers;
 /// One handler, one queue, every order event. The method is declared on <see cref="IOrderEvent"/>; the worker
 /// deserializes each message to its concrete type and dispatches it here because the interface is assignable.
 /// </summary>
-[Queue(QueueName = "order-events", Group = "events", Description = "Audit trail for every order event, received through the IOrderEvent interface")]
+[Queue(QueueName = "order-events", DisplayName = "Order audit", Group = "events", Description = "Audit trail for every order event, received through the IOrderEvent interface")]
 public class OrderAuditHandler(IAuditService auditService, HostInfo host, ILogger<OrderAuditHandler> logger)
 {
     public async Task HandleAsync(IOrderEvent evt, TenantContext tenant, CancellationToken ct)

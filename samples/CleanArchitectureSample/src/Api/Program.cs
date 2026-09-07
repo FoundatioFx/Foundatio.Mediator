@@ -42,6 +42,16 @@ builder.Services.AddMediator()
 
         // Tracked jobs remember who asked for them; the dashboard shows tenant and user per job.
         opts.JobMetadataProvider = _ => TenantHeaderProvider.JobMetadata(httpContextAccessor.HttpContext);
+
+        // Labels for independent subscriptions can be customized without changing their routing identities.
+        opts.QueueOverrides["AuditEvent-ProductCreated"] = queue => queue.DisplayName = "Product created audit";
+        opts.QueueOverrides["AuditEvent-ProductUpdated"] = queue => queue.DisplayName = "Product updated audit";
+        opts.QueueOverrides["AuditEvent-ProductDeleted"] = queue => queue.DisplayName = "Product deleted audit";
+        opts.QueueOverrides["AuditEvent-ProductStockChanged"] = queue => queue.DisplayName = "Stock change audit";
+        opts.QueueOverrides["NotificationEvent-OrderUpdated"] = queue => queue.DisplayName = "Order update notifications";
+        opts.QueueOverrides["NotificationEvent-ProductCreated"] = queue => queue.DisplayName = "New product notifications";
+        opts.QueueOverrides["NotificationEvent-ProductStockChanged"] = queue => queue.DisplayName = "Low stock alerts";
+        opts.QueueOverrides["order-created"] = queue => queue.DisplayName = "Order confirmation and fulfillment";
     })
     .AddQueueHeaderProvider<TenantHeaderProvider>()
     .AddDistributedNotifications(notifications => notifications

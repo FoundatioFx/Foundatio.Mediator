@@ -38,6 +38,8 @@ public record PurgeDeadLetters(string QueueName, int Max = 1000, string? Message
 public sealed record QueueOverview
 {
     public required string QueueName { get; init; }
+    /// <summary>The configured display label, or <c>null</c> to display <see cref="QueueName"/>.</summary>
+    public string? DisplayName { get; init; }
     public required string MessageType { get; init; }
     public required IReadOnlyList<string> Handlers { get; init; }
     public string? Group { get; init; }
@@ -409,6 +411,7 @@ public class QueueAdministrationHandler(
         return new QueueOverview
         {
             QueueName = registration.QueueName,
+            DisplayName = registration.DisplayName,
             MessageType = registration.MessageType.FullName ?? registration.MessageType.Name,
             Handlers = registration.Handlers.Select(h => h.SourceHandlerName ?? h.DescriptorId).ToList(),
             Group = registration.Settings.Group,

@@ -63,8 +63,16 @@ async function viewQueue(
   await expect(page).toHaveURL(
     new RegExp(`/queues/${encodeURIComponent(receipt.queueName)}`)
   );
+  const queue: QueueSummary = await (
+    await page.request.get(
+      `/api/queues/queue?queueName=${encodeURIComponent(receipt.queueName)}`
+    )
+  ).json();
   await expect(
-    page.getByRole('heading', { name: receipt.queueName, exact: true })
+    page.getByRole('heading', {
+      name: queue.displayName ?? receipt.queueName,
+      exact: true
+    })
   ).toBeVisible();
   if (view === 'dead-letters')
     await page
@@ -578,6 +586,99 @@ test('pagination, queue filtering, stale-data errors, and mobile layout remain u
   expect(errors).toEqual([]);
 });
 
+test('display labels support search and navigation while queue identities stay unchanged', async ({
+  page
+}) => {
+  const existing: QueueSummary[] = await (
+    await page.request.get('/api/queues/queues')
+  ).json();
+  const queues = existing.slice(0, 3).map((queue, index) => ({
+    ...queue,
+    displayName: index < 2 ? 'Customer activity' : null
+  }));
+  await page.route('**/api/queues/queues', (route) =>
+    route.fulfill({ json: queues })
+  );
+  await page.route('**/api/queues/queue?**', (route) => {
+    expect(new URL(route.request().url()).searchParams.get('queueName')).toBe(
+      queues[0].queueName
+    );
+    return route.fulfill({ json: queues[0] });
+  });
+  await page.goto('/queues');
+  const table = page.getByRole('table', { name: 'Queue subscriptions' });
+  await expect(
+    table.getByRole('link', { name: 'Customer activity', exact: true })
+  ).toHaveCount(2);
+  await expect(
+    table.getByRole('link', { name: queues[2].queueName, exact: true })
+  ).toBeVisible();
+  const search = page.getByLabel('Filter queues', { exact: true });
+  await search.fill('CUSTOMER ACTIVITY');
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await search.fill(queues[0].queueName);
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(
+    table.getByText(queues[0].queueName, { exact: true })
+  ).toBeVisible();
+  const link = table.getByRole('link', {
+    name: 'Customer activity',
+    exact: true
+  });
+  await expect(link).toHaveAttribute(
+    'href',
+    `/queues/${encodeURIComponent(queues[0].queueName)}`
+  );
+  await expect(
+    table.getByRole('link', {
+      name: 'View dead letters for Customer activity',
+      exact: true
+    })
+  ).toHaveAttribute(
+    'href',
+    `/queues/${encodeURIComponent(queues[0].queueName)}?view=dead-letters`
+  );
+  await link.click();
+  await expect(page).toHaveURL(
+    new RegExp(`/queues/${encodeURIComponent(queues[0].queueName)}$`)
+  );
+  await expect(
+    page.getByRole('heading', { name: 'Customer activity', exact: true })
+  ).toBeVisible();
+  await expect(page).toHaveTitle(
+    'Customer activity - Queue details - Clean Architecture Sample'
+  );
+  await expect(
+    page.getByText(queues[0].queueName, { exact: true })
+  ).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Queue views' })
+    .getByRole('link', { name: 'Settings', exact: true })
+    .click();
+  const settings = page.getByRole('region', {
+    name: 'Queue settings',
+    exact: true
+  });
+  await expect(
+    settings.getByText('Customer activity', { exact: true })
+  ).toBeVisible();
+  await expect(
+    settings.getByText(queues[0].queueName, { exact: true })
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Customer activity', exact: true })
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    )
+    .toBeTruthy();
+});
+
 test('queue details isolate statistics, preserve navigation, and return to dead letters after sign-in', async ({
   page
 }) => {
@@ -646,12 +747,20 @@ test('queue details isolate statistics, preserve navigation, and return to dead 
     });
   });
   await page.goto('/queues');
-  await page.getByRole('link', { name: queue.queueName, exact: true }).click();
+  await page
+    .getByRole('link', {
+      name: queue.displayName ?? queue.queueName,
+      exact: true
+    })
+    .click();
   await expect(page).toHaveURL(
     new RegExp(`/queues/${encodeURIComponent(queue.queueName)}$`)
   );
   await expect(
-    page.getByRole('heading', { name: queue.queueName, exact: true })
+    page.getByRole('heading', {
+      name: queue.displayName ?? queue.queueName,
+      exact: true
+    })
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Subscriptions', exact: true })
@@ -896,12 +1005,15 @@ test('dashboard filters operational issues and keeps sample work on Try it', asy
     await view.selectOption(value);
     await expect(table.locator('tbody tr')).toHaveCount(1);
     await expect(
-      table.getByRole('link', { name: queues[index].queueName, exact: true })
+      table.getByRole('link', {
+        name: queues[index].displayName ?? queues[index].queueName,
+        exact: true
+      })
     ).toBeVisible();
   }
   await expect(
     table.getByRole('link', {
-      name: `View dead letters for ${queues[2].queueName}`,
+      name: `View dead letters for ${queues[2].displayName ?? queues[2].queueName}`,
       exact: true
     })
   ).toHaveAttribute(
@@ -910,7 +1022,10 @@ test('dashboard filters operational issues and keeps sample work on Try it', asy
   );
   await view.selectOption('all');
   const unknown = table.getByRole('row').filter({
-    has: page.getByRole('link', { name: queues[1].queueName, exact: true })
+    has: page.getByRole('link', {
+      name: queues[1].displayName ?? queues[1].queueName,
+      exact: true
+    })
   });
   await expect(unknown.getByText('—', { exact: true })).toHaveCount(6);
   await page

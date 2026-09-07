@@ -93,6 +93,53 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
         }
     }
 
+    [Theory]
+    [InlineData(null, "Tracked work")]
+    [InlineData("  Customer exports  ", "Customer exports")]
+    [InlineData("   ", null)]
+    public async Task DisplayName_ExposesMetadata_WithoutChangingQueueIdentity(string? configuredLabel, string? expectedLabel)
+    {
+        await using var transport = new InMemoryTransport();
+        await using var provider = BuildHost(transport, new HandlerSignal(), options =>
+        {
+            options.ResourcePrefix = "display-test";
+            options.Workers = WorkerSelection.Only("MetadataTrackedCommand");
+            // Equal labels must not combine independent subscriptions.
+            options.QueueOverrides["QueuedCommand"] = settings => settings.DisplayName = configuredLabel ?? "Tracked work";
+            if (configuredLabel is not null)
+                options.QueueOverrides["MetadataTrackedCommand"] = settings => settings.DisplayName = configuredLabel;
+        });
+        const string queueName = "display-test-MetadataTrackedCommand";
+        var topology = provider.GetRequiredService<QueueTopology>();
+        var registration = topology.GetByQueueName(queueName)!;
+        Assert.True(registration.WorkerRunsHere);
+        Assert.Equal(expectedLabel, registration.DisplayName);
+        Assert.Single(registration.Handlers);
+        Assert.Single(topology.GetByQueueName("display-test-QueuedCommand")!.Handlers);
+        // A shared queue can declare its label on one member without repeating it on every handler.
+        Assert.Equal("Shared events", topology.GetByQueueName("display-test-shared-queue-events")!.DisplayName);
+        Assert.Equal(expectedLabel, provider.GetRequiredService<IQueueWorkerRegistry>().GetWorker(queueName)!.DisplayName);
+
+        var mediator = provider.GetRequiredService<IMediator>();
+        var overview = await mediator.InvokeAsync<Result<IReadOnlyList<QueueOverview>>>(new GetQueueOverview(), TestCancellationToken);
+        Assert.True(overview.IsSuccess);
+        Assert.Equal(expectedLabel, Assert.Single(overview.Value!, queue => queue.QueueName == queueName).DisplayName);
+        var detail = await mediator.InvokeAsync<Result<QueueOverview>>(new GetQueueDetail(queueName), TestCancellationToken);
+        Assert.Equal(expectedLabel, detail.Value!.DisplayName);
+        Assert.Equal(queueName, detail.Value.QueueName);
+        if (expectedLabel is not null)
+        {
+            var byLabel = await mediator.InvokeAsync<Result<QueueOverview>>(new GetQueueDetail(expectedLabel), TestCancellationToken);
+            Assert.Equal(ResultStatus.NotFound, byLabel.Status);
+        }
+
+        var accepted = await mediator.EnqueueAsync(new MetadataTrackedCommand("export", "tenant"), TestCancellationToken);
+        Assert.Equal(queueName, accepted.Value.QueueName);
+        Assert.Equal(queueName, Assert.Single(transport.Queues.SentMessages).QueueName);
+        var job = await provider.GetRequiredService<IQueueJobStateStore>().GetJobStateAsync(accepted.Value.JobId!, TestCancellationToken);
+        Assert.Equal(queueName, job!.QueueName);
+    }
+
     [Fact]
     public async Task Jobs_ListGetAndCancelThroughTheStore()
     {

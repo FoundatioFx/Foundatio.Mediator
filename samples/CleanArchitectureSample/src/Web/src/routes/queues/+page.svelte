@@ -4,7 +4,12 @@
   import { queuesApi } from '$lib/api';
   import { Button, Spinner, Alert, Sparkline } from '$lib/components/ui';
   import JobInspector from '$lib/components/queues/JobInspector.svelte';
-  import { data, describeError, queueUrl } from '$lib/components/queues/utils';
+  import {
+    data,
+    describeError,
+    queueLabel,
+    queueUrl
+  } from '$lib/components/queues/utils';
   import {
     type QueueSummary,
     type JobSummary,
@@ -34,7 +39,7 @@
   const visibleQueues = $derived(
     queues.filter(
       (q) =>
-        `${q.queueName} ${q.group ?? ''}`
+        `${queueLabel(q)} ${q.queueName} ${q.group ?? ''}`
           .toLowerCase()
           .includes(filter.toLowerCase()) &&
         (queueView === 'all' ||
@@ -292,7 +297,7 @@
           <input
             aria-label="Filter queues"
             bind:value={filter}
-            placeholder="Queue or group"
+            placeholder="Display name, queue name, or group"
             class="mt-1 block w-full border rounded px-2 py-1.5 text-sm"
           />
         </label>
@@ -340,8 +345,13 @@
                 ><td class="p-4"
                   ><a
                     class="text-blue-700 font-medium text-left underline decoration-dotted"
-                    href={queueUrl(queue.queueName)}>{queue.queueName}</a
+                    href={queueUrl(queue.queueName)}>{queueLabel(queue)}</a
                   >
+                  {#if queueLabel(queue) !== queue.queueName}
+                    <div class="text-xs font-mono text-gray-500 mt-1 break-all">
+                      {queue.queueName}
+                    </div>
+                  {/if}
                   <div class="text-xs text-gray-500 mt-1">
                     {queue.group ?? 'No group'} · {queue.trackProgress
                       ? 'Tracked jobs'
@@ -391,7 +401,7 @@
                 ><td class="p-4 text-right"
                   ><a
                     class="text-red-700 underline"
-                    aria-label={`View dead letters for ${queue.queueName}`}
+                    aria-label={`View dead letters for ${queueLabel(queue)}`}
                     href={queueUrl(queue.queueName, 'dead-letters')}
                     >{queue.statisticsAvailable
                       ? queue.deadLetterCount

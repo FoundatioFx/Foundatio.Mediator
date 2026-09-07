@@ -77,6 +77,19 @@ public class QueueConfigurationTests
         => Assert.Throws<ArgumentException>(() => WorkerSelection.Parse(selection));
 
     [Fact]
+    public void SharedQueue_ConflictingDisplayNames_FailsWithConfigurationHint()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMediator(options => options.AddAssembly<SharedQueueAuditHandler>());
+        int member = 0;
+        var error = Assert.Throws<InvalidOperationException>(() => builder.AddDistributedQueues(options =>
+            options.QueueOverrides["shared-queue-events"] = settings => settings.DisplayName = $"Label {++member}"));
+        Assert.Contains("shared-queue-events", error.Message);
+        Assert.Contains("DisplayName", error.Message);
+        Assert.Contains("QueueOverrides", error.Message);
+    }
+
+    [Fact]
     public void WorkerSelection_RejectsUnmatchedNamesWithAvailableSubscriptions()
     {
         var services = new ServiceCollection();

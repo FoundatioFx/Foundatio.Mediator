@@ -19,6 +19,12 @@ public sealed class QueueAttribute : Attribute
     public string? QueueName { get; set; }
 
     /// <summary>
+    /// Optional label for dashboards and administration. Does not affect queue identity, routing,
+    /// worker selection, or retry grouping. When omitted, tools can display the queue name.
+    /// </summary>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
     /// Total attempts before dead-lettering: one initial attempt plus retries. Must be at least 1;
     /// a negative value retries without limit.
     /// </summary>

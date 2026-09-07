@@ -1,3 +1,9 @@
+import type { QueueSummary } from '$lib/types/queue';
+
+export function queueLabel(queue: QueueSummary): string {
+  return queue.displayName?.trim() || queue.queueName;
+}
+
 export function describeError(e: unknown): string {
   const r = e as {
     problem?: {

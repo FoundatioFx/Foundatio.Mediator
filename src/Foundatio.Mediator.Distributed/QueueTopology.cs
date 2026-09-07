@@ -46,6 +46,9 @@ public sealed class QueueRegistration
     /// </summary>
     public required string QueueName { get; init; }
 
+    /// <summary>The configured display label, or <c>null</c> to display <see cref="QueueName"/>.</summary>
+    public string? DisplayName { get; init; }
+
     /// <summary>
     /// The effective settings shared by every handler on the queue.
     /// </summary>

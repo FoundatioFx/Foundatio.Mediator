@@ -10,7 +10,7 @@ namespace Common.Module.Handlers;
 /// A long-running tracked job: reports progress (which also heartbeats the message), observes cancellation
 /// requested from the dashboard, and tells the event feed which host ran it.
 /// </summary>
-[Queue(Group = "exports", TrackProgress = true, MaxAttempts = 3, RetryDelays = "3s,6s", TimeoutSeconds = 60, Concurrency = 2, Description = "Simulated export with progress, heartbeat, and cancellation")]
+[Queue(DisplayName = "Export jobs", Group = "exports", TrackProgress = true, MaxAttempts = 3, RetryDelays = "3s,6s", TimeoutSeconds = 60, Concurrency = 2, Description = "Simulated export with progress, heartbeat, and cancellation")]
 public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> logger)
 {
     public async Task<Result> HandleAsync(DemoExportJob message, QueueContext queueContext, TenantContext tenant, IMediator mediator, CancellationToken ct)

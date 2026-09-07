@@ -12,6 +12,9 @@ public sealed class QueueWorkerInfo
     /// </summary>
     public required string QueueName { get; init; }
 
+    /// <summary>The configured display label, or <c>null</c> to display <see cref="QueueName"/>.</summary>
+    public string? DisplayName { get; init; }
+
     /// <summary>
     /// The full name of the message type.
     /// </summary>

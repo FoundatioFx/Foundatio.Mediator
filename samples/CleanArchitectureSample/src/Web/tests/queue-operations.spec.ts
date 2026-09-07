@@ -7,7 +7,8 @@ import {
 import type {
   EnqueueReceipt,
   JobSummary,
-  DeadLetterReplayResult
+  DeadLetterReplayResult,
+  QueueSummary
 } from '../src/lib/types/queue';
 
 async function signIn(page: Page) {
@@ -51,6 +52,25 @@ async function enqueue(
     })
   ).toBeVisible();
   return receipt;
+}
+
+async function viewQueue(
+  page: Page,
+  receipt: EnqueueReceipt,
+  view: 'jobs' | 'dead-letters' = 'jobs'
+) {
+  await page.getByRole('link', { name: 'View queue', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/queues/${encodeURIComponent(receipt.queueName)}`)
+  );
+  await expect(
+    page.getByRole('heading', { name: receipt.queueName, exact: true })
+  ).toBeVisible();
+  if (view === 'dead-letters')
+    await page
+      .getByRole('navigation', { name: 'Queue views' })
+      .getByRole('link', { name: 'Dead letters', exact: true })
+      .click();
 }
 
 async function openJob(page: Page, id: string) {
@@ -102,7 +122,9 @@ test('anonymous monitoring is usable and mutations require an administrator', as
   ).toBeTruthy();
   expect(
     (
-      await request.post('/api/queues/enqueue/exports', { data: { count: 1 } })
+      await request.post('/api/queues/enqueue/exports', {
+        data: { count: 1 }
+      })
     ).status()
   ).toBe(401);
 });
@@ -114,6 +136,7 @@ test('running and queued jobs can be inspected, linked, and cooperatively cancel
   await signIn(page);
   await page.getByLabel('Export job count', { exact: true }).fill('8');
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
+  await viewQueue(page, receipt);
   try {
     let running: JobSummary | undefined;
     let queued: JobSummary | undefined;
@@ -154,7 +177,9 @@ test('running and queued jobs can be inspected, linked, and cooperatively cancel
       .toBeTruthy();
   } finally {
     for (const id of receipt.jobIds)
-      await request.post(`/api/queues/job/${id}/cancel-job`, { data: {} });
+      await request.post(`/api/queues/job/${id}/cancel-job`, {
+        data: {}
+      });
   }
   await finished(request, receipt.jobIds, 'Cancelled');
 });
@@ -187,6 +212,7 @@ test('retry-pending work remains visible and recovers on its next attempt', asyn
     .getByLabel('Export outcome', { exact: true })
     .selectOption('retry');
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
+  await viewQueue(page, receipt);
   await expect
     .poll(async () => (await job(request, receipt.jobIds[0])).status)
     .toBe('RetryPending');
@@ -209,10 +235,13 @@ test('dead letters expose payload and original failure, then single and bulk rep
   const first = await enqueue(page, 'Enqueue webhook', 'flaky-webhook');
   const second = await enqueue(page, 'Enqueue webhook', 'flaky-webhook');
   await finished(request, [...first.jobIds, ...second.jobIds], 'Failed');
-  await page.getByRole('button', { name: 'Dead letters', exact: true }).click();
+  await viewQueue(page, second, 'dead-letters');
   await expect(
     page
-      .getByRole('button', { name: 'Inspect DeliverWebhook', exact: true })
+      .getByRole('button', {
+        name: 'Inspect DeliverWebhook',
+        exact: true
+      })
       .first()
   ).toBeVisible();
   await page
@@ -258,7 +287,10 @@ test('dead letters expose payload and original failure, then single and bulk rep
     ).toBeTruthy();
     await finished(request, ids);
     await expect(
-      page.getByRole('button', { name: 'Refresh dead letters', exact: true })
+      page.getByRole('button', {
+        name: 'Refresh dead letters',
+        exact: true
+      })
     ).toBeEnabled();
   }
   await finished(request, [...first.jobIds, ...second.jobIds], 'Failed');
@@ -277,7 +309,7 @@ test('flush asks for confirmation and preserves failed job history', async ({
     .selectOption('dead-letter');
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
   await finished(request, receipt.jobIds, 'Failed');
-  await page.getByRole('button', { name: 'Dead letters', exact: true }).click();
+  await viewQueue(page, receipt, 'dead-letters');
   await page
     .getByRole('button', { name: 'Flush dead letters', exact: true })
     .click();
@@ -332,6 +364,7 @@ test('pagination, queue filtering, stale-data errors, and mobile layout remain u
   await page.getByLabel('Export duration', { exact: true }).fill('1');
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
   await finished(request, receipt.jobIds);
+  await viewQueue(page, receipt);
   await page.getByRole('button', { name: 'All jobs', exact: true }).click();
   await expect(page.locator('[data-job-id]')).toHaveCount(25);
   const firstPage = await page
@@ -347,20 +380,23 @@ test('pagination, queue filtering, stale-data errors, and mobile layout remain u
     .locator('[data-job-id]')
     .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-job-id')));
   expect(secondPage.some((id) => firstPage.includes(id))).toBeFalsy();
-  await page.getByLabel('Filter queues', { exact: true }).fill('exports');
-  await expect(
-    page
-      .getByRole('table')
-      .getByRole('button', { name: /ImportProductCatalog/ })
-  ).toHaveCount(0);
+  await page.reload();
+  await expect(page).toHaveURL(/status=all.*skip=25/);
+  await expect(page.locator('[data-job-id]').first()).toHaveAttribute(
+    'data-job-id',
+    secondPage[0]!
+  );
   await page
     .getByRole('button', { name: 'Pause updates', exact: true })
     .click();
-  await page.route('**/api/queues/queues', (route) =>
+  await page.route('**/api/queues/queue?**', (route) =>
     route.fulfill({
       status: 503,
       contentType: 'application/problem+json',
-      body: JSON.stringify({ title: 'Test monitoring outage', status: 503 })
+      body: JSON.stringify({
+        title: 'Test monitoring outage',
+        status: 503
+      })
     })
   );
   await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
@@ -370,7 +406,7 @@ test('pagination, queue filtering, stale-data errors, and mobile layout remain u
     )
   ).toBeVisible();
   await expect(page.locator('[data-job-id]')).toHaveCount(secondPage.length);
-  await page.unroute('**/api/queues/queues');
+  await page.unroute('**/api/queues/queue?**');
   await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
   await expect(page.getByText(/Monitoring unavailable:/)).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -383,5 +419,207 @@ test('pagination, queue filtering, stale-data errors, and mobile layout remain u
     path: 'test-results/queue-operations-mobile.png',
     fullPage: true
   });
+  await page
+    .getByRole('link', { name: '← Back to queues', exact: true })
+    .click();
+  await page.getByLabel('Filter queues', { exact: true }).fill('exports');
+  await expect(
+    page.getByRole('table').getByRole('link', { name: /ImportProductCatalog/ })
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('queue details isolate statistics, preserve navigation, and return to dead letters after sign-in', async ({
+  page
+}) => {
+  const queues: QueueSummary[] = await (
+    await page.request.get('/api/queues/queues')
+  ).json();
+  const queue = queues.find((q) => !q.trackProgress)!;
+  expect(queue).toBeTruthy();
+  let listReads = 0;
+  let detailReads = 0;
+  let deadLetterReads = 0;
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/queues/queues') listReads++;
+    if (url.pathname === '/api/queues/queue') detailReads++;
+    if (url.pathname === '/api/queues/dead-letters') deadLetterReads++;
+  });
+  await page.route('**/api/queues/queue?**', (route) => {
+    expect(new URL(route.request().url()).searchParams.get('queueName')).toBe(
+      queue.queueName
+    );
+    return route.fulfill({
+      json: {
+        ...queue,
+        activeCount: 17,
+        inFlightCount: 8,
+        delayedCount: 9,
+        deadLetterCount: 2,
+        messagesProcessed: 123,
+        messagesFailed: 5,
+        messagesDeadLettered: 2,
+        counterStats: {
+          totals: {
+            processed: 123,
+            failed: 5,
+            dead_lettered: 2,
+            custom_total: 19
+          },
+          buckets: [
+            {
+              hour: new Date().toISOString(),
+              counters: {
+                processed: 123,
+                failed: 5,
+                dead_lettered: 2,
+                custom_total: 19
+              }
+            }
+          ]
+        }
+      }
+    });
+  });
+  await page.goto('/queues');
+  await page.getByRole('link', { name: queue.queueName, exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/queues/${encodeURIComponent(queue.queueName)}$`)
+  );
+  await expect(
+    page.getByRole('heading', { name: queue.queueName, exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Subscriptions', exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Enqueue export', exact: true })
+  ).toHaveCount(0);
+  const transport = page.locator('[aria-label="Queue transport statistics"]');
+  for (const number of ['17', '8', '9', '2'])
+    await expect(transport.getByText(number, { exact: true })).toBeVisible();
+  const activity = page.getByRole('region', {
+    name: 'Activity in the last 24 hours'
+  });
+  await expect(activity.getByText('123', { exact: true })).toBeVisible();
+  await expect(
+    activity.getByText('custom total', { exact: true })
+  ).toBeVisible();
+  await expect(activity.getByText('19', { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('table', {
+        name: `Hourly processing counters for ${queue.queueName}`
+      })
+      .getByRole('cell', { name: '123', exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Job tracking is not enabled for this queue/)
+  ).toBeVisible();
+  const dashboardReads = listReads;
+  const views = page.getByRole('navigation', { name: 'Queue views' });
+  await views.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Queue settings' })
+  ).toBeVisible();
+  await expect(
+    page.getByText(queue.messageType, { exact: true })
+  ).toBeVisible();
+  for (const handler of queue.handlers)
+    await expect(page.getByText(handler, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(
+    views.getByRole('link', { name: 'Settings', exact: true })
+  ).toHaveAttribute('aria-current', 'page');
+  await views.getByRole('link', { name: 'Overview', exact: true }).click();
+  await expect(
+    views.getByRole('link', { name: 'Overview', exact: true })
+  ).toHaveAttribute('aria-current', 'page');
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: 'Queue settings' })
+  ).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole('region', { name: 'Activity in the last 24 hours' })
+  ).toBeVisible();
+  expect(listReads).toBe(dashboardReads);
+
+  await views.getByRole('link', { name: 'Dead letters', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Refresh dead letters', exact: true })
+  ).toBeEnabled();
+  await expect(
+    page.getByRole('button', { name: 'Retry available', exact: true })
+  ).toHaveCount(0);
+  const inspections = deadLetterReads;
+  const reads = detailReads;
+  await expect.poll(() => detailReads).toBeGreaterThan(reads + 1);
+  expect(deadLetterReads).toBe(inspections);
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: 'Username', exact: true })
+    .fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('admin');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/queues/${encodeURIComponent(queue.queueName)}\\?view=dead-letters$`
+    )
+  );
+  await expect(
+    page.getByRole('button', { name: 'Retry available', exact: true })
+  ).toBeVisible();
+});
+
+test('legacy queue links redirect and unavailable statistics are distinct from zero and missing queues', async ({
+  page
+}) => {
+  await page.goto('/queues/not-a-registered-queue');
+  await expect(
+    page.getByText('Queue not found. It may have been removed or renamed.', {
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Queue views' })
+  ).toHaveCount(0);
+  // The sample caches queue details; cached NotFound results must remain 404s.
+  for (let i = 0; i < 2; i++) {
+    const response = await page.request.get(
+      '/api/queues/queue?queueName=not-a-registered-queue'
+    );
+    expect(response.status()).toBe(404);
+  }
+  await page
+    .getByRole('link', { name: '← Back to queues', exact: true })
+    .click();
+  const queues: QueueSummary[] = await (
+    await page.request.get('/api/queues/queues')
+  ).json();
+  const queue = queues.find((q) => !q.trackProgress)!;
+  await page.route('**/api/queues/queue?**', (route) =>
+    route.fulfill({
+      json: { ...queue, statisticsAvailable: false, counterStats: null }
+    })
+  );
+  await page.goto(`/queues?queue=${encodeURIComponent(queue.queueName)}`);
+  await expect(page).toHaveURL(
+    new RegExp(`/queues/${encodeURIComponent(queue.queueName)}$`)
+  );
+  await expect(
+    page
+      .locator('[aria-label="Queue transport statistics"]')
+      .getByText('—', { exact: true })
+  ).toHaveCount(4);
+  await expect(
+    page.getByText(/Transport statistics are unavailable/)
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Worker counters' })
+  ).toContainText('Shared counter history is unavailable');
+  await expect(
+    page.getByRole('table', { name: /Hourly processing counters/ })
+  ).toHaveCount(0);
 });

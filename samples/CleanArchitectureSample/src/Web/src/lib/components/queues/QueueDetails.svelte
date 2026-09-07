@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { queuesApi } from '$lib/api';
   import { Button, Spinner, Alert } from '$lib/components/ui';
@@ -27,37 +27,53 @@
   import QueueStatistics from './QueueStatistics.svelte';
   import DeadLetters from './DeadLetters.svelte';
   import JobInspector from './JobInspector.svelte';
+  import RefreshControls from './RefreshControls.svelte';
+  import ReplayResult from './ReplayResult.svelte';
+  import { QueueRefresh } from './refresh.svelte';
 
   let { queueName }: { queueName: string } = $props();
   let queue = $state<QueueSummary | null>(null);
-  let tab = $state<QueueView>('overview');
-  let status = $state('active');
-  let skip = $state(0);
+  const tab = $derived.by(() => {
+    const view = page.url.searchParams.get('view');
+    return QUEUE_VIEWS.includes(view as QueueView)
+      ? (view as QueueView)
+      : 'overview';
+  });
+  const status = $derived.by(() => {
+    const value = page.url.searchParams.get('status') ?? 'active';
+    return ['active', 'all', ...JOB_STATUSES].includes(value)
+      ? value
+      : 'active';
+  });
+  const skip = $derived.by(() => {
+    const value = Number(page.url.searchParams.get('skip'));
+    return Number.isInteger(value) && value >= 0 && value <= 1000 ? value : 0;
+  });
   const pageSize = 25;
   let dashboard = $state<JobDashboardView | null>(null);
   let counts = $state<JobDashboardView['counts'] | null>(null);
   let countsUpdated = $state<string | null>(null);
   let letters = $state<DeadLetterView[] | null>(null);
   let receipt = $state<EnqueueReceipt | null>(null);
-  let selectedJobId = $state<string | null>(null);
+  const selectedJobId = $derived(page.url.searchParams.get('job'));
+  let loadedJobId: string | null = null;
+  let loadedDetailKey = $state<string | null>(null);
   let job = $state<JobSummary | null>(null);
   let jobError = $state<string | null>(null);
   let error = $state<string | null>(null);
   let detailError = $state<string | null>(null);
   let notFound = $state(false);
   let loading = $state(true);
-  let refreshing = $state(false);
   let busy = $state(false);
   let polling = $state(true);
   let lastUpdated = $state<number | null>(null);
   let now = $state(Date.now());
   let stopped = false;
-  let refreshInFlight: Promise<void> | null = null;
   const isAdmin = $derived(auth.user?.role === 'Admin');
   const detailKey = () => `${tab}:${status}:${skip}`;
 
   function navigate(changes: Record<string, string | null>) {
-    const url = new URL($page.url);
+    const url = new URL(page.url);
     for (const [name, value] of Object.entries(changes)) {
       if (value === null) url.searchParams.delete(name);
       else url.searchParams.set(name, value);
@@ -97,7 +113,10 @@
         if (!stopped && key === detailKey()) {
           counts = next.counts;
           countsUpdated = next.updatedUtc;
-          if (tab === 'jobs') dashboard = next;
+          if (tab === 'jobs') {
+            dashboard = next;
+            loadedDetailKey = key;
+          }
         }
       } else if (tab === 'dead-letters') {
         // Inspection leases messages: only enter or explicitly refresh this view, never poll it.
@@ -110,48 +129,42 @@
       if (!stopped && key === detailKey()) detailError = describeError(e);
     }
   }
-  async function refresh(includeDeadLetters = false): Promise<void> {
-    if (stopped || busy) return;
-    if (refreshInFlight) {
-      await refreshInFlight;
-      return refresh(includeDeadLetters);
-    }
-    refreshing = true;
-    refreshInFlight = (async () => {
-      await Promise.all([
-        (async () => {
-          try {
-            const next = data(await queuesApi.get(queueName));
-            if (stopped) return;
-            queue = next;
-            notFound = false;
-            error = null;
-            lastUpdated = Date.now();
-            await loadDetail(includeDeadLetters);
-          } catch (e) {
-            if (stopped) return;
-            error = describeError(e);
-            notFound = (e as { status?: number }).status === 404;
-            if (notFound) {
-              queue = null;
-              dashboard = null;
-              letters = null;
-            }
+  const updates = new QueueRefresh(async (includeDeadLetters) => {
+    await Promise.all([
+      (async () => {
+        try {
+          const next = data(await queuesApi.get(queueName));
+          if (stopped) return;
+          queue = next;
+          notFound = false;
+          error = null;
+          lastUpdated = Date.now();
+          await loadDetail(includeDeadLetters);
+        } catch (e) {
+          if (stopped) return;
+          error = describeError(e);
+          notFound = (e as { status?: number }).status === 404;
+          if (notFound) {
+            queue = null;
+            dashboard = null;
+            letters = null;
           }
-        })(),
-        loadJob()
-      ]);
-    })();
-    try {
-      await refreshInFlight;
-    } finally {
-      refreshInFlight = null;
-      if (!stopped) {
-        refreshing = false;
-        loading = false;
-        now = Date.now();
-      }
+        }
+      })(),
+      loadJob()
+    ]);
+    if (!stopped) {
+      loading = false;
+      now = Date.now();
     }
+  });
+  function refresh(
+    includeDeadLetters = false,
+    manual = false,
+    changed = false
+  ) {
+    if (stopped || busy) return Promise.resolve();
+    return updates.request({ inspect: includeDeadLetters, manual, changed });
   }
   async function run<T>(
     action: () => Promise<{ status: number; data?: T | null }>,
@@ -160,7 +173,7 @@
     if (busy || stopped) return;
     busy = true;
     // Inspection must release its leases before retry or flush can select these messages.
-    if (refreshInFlight) await refreshInFlight;
+    await updates.wait();
     try {
       if (stopped) return;
       const result = data(await action());
@@ -195,13 +208,16 @@
           );
           return;
         }
+        if (messageId)
+          letters =
+            letters?.filter((letter) => letter.messageId !== messageId) ?? null;
         receipt = {
           queueName: result.queueName,
           count: result.replayed,
           jobIds: result.receipts.flatMap((r) => (r.jobId ? [r.jobId] : []))
         };
         toast.success(
-          `${result.replayed} message${result.replayed === 1 ? '' : 's'} replayed with new job identities.`
+          `${result.replayed} message${result.replayed === 1 ? '' : 's'} returned to the normal queue.`
         );
       }
     );
@@ -216,6 +232,9 @@
           );
           return;
         }
+        if (messageId)
+          letters =
+            letters?.filter((letter) => letter.messageId !== messageId) ?? null;
         toast.success(
           `Deleted ${result.purged} dead letter${result.purged === 1 ? '' : 's'}. Job history is preserved.`
         );
@@ -223,44 +242,32 @@
     );
   }
 
-  onMount(() => {
-    let previousKey: string | null = null;
-    const unsubscribe = page.subscribe(({ url, params }) => {
-      if (params.name !== queueName || stopped) return;
-      const view = url.searchParams.get('view');
-      tab = QUEUE_VIEWS.includes(view as QueueView)
-        ? (view as QueueView)
-        : 'overview';
-      const requestedStatus = url.searchParams.get('status') ?? 'active';
-      status = ['active', 'all', ...JOB_STATUSES].includes(requestedStatus)
-        ? requestedStatus
-        : 'active';
-      const offset = Number(url.searchParams.get('skip'));
-      skip =
-        Number.isInteger(offset) && offset >= 0 && offset <= 1000 ? offset : 0;
-      const id = url.searchParams.get('job');
-      const jobChanged = selectedJobId !== id;
-      if (jobChanged) {
-        selectedJobId = id;
-        job = null;
-        jobError = null;
-      }
-      const key = detailKey();
-      if (key !== previousKey) {
-        previousKey = key;
-        dashboard = null;
-        detailError = null;
-        if (tab === 'dead-letters') letters = null;
-        void refresh(tab === 'dead-letters');
-      } else if (jobChanged) void loadJob();
+  $effect(() => {
+    // Only URL changes trigger a new detail read; polling never clears the rendered snapshot.
+    detailKey();
+    untrack(() => {
+      detailError = null;
+      void refresh(tab === 'dead-letters', false, true);
     });
+  });
+  $effect(() => {
+    const id = selectedJobId;
+    untrack(() => {
+      if (loadedJobId === id) return;
+      loadedJobId = id;
+      job = null;
+      jobError = null;
+      void loadJob();
+    });
+  });
+  onMount(() => {
     const timer = setInterval(() => {
       now = Date.now();
-      if (polling && !refreshing) void refresh();
+      if (polling && !updates.pending) void refresh();
     }, 2500);
     return () => {
       stopped = true;
-      unsubscribe();
+      updates.stop();
       clearInterval(timer);
     };
   });
@@ -300,24 +307,13 @@
         </div>
       {/if}
     </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs text-gray-500" role="status"
-        >{refreshing
-          ? 'Refreshing…'
-          : lastUpdated
-            ? `Updated ${new Date(lastUpdated).toLocaleTimeString()}`
-            : 'Connecting…'}</span
-      >
-      <Button size="sm" variant="outline" onclick={() => (polling = !polling)}
-        >{polling ? 'Pause updates' : 'Resume updates'}</Button
-      >
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={refreshing || busy}
-        onclick={() => refresh(tab === 'dead-letters')}>Refresh now</Button
-      >
-    </div>
+    <RefreshControls
+      bind:polling
+      {lastUpdated}
+      manual={updates.manual}
+      {busy}
+      refresh={() => refresh(tab === 'dead-letters', true)}
+    />
   </div>
 
   {#if error}<Alert
@@ -334,7 +330,7 @@
       class="grid grid-cols-2 lg:grid-cols-4 gap-3"
       aria-label="Queue transport statistics"
     >
-      {#each [{ label: 'Ready to run', value: queue.activeCount, hint: 'Available messages', color: 'text-gray-900' }, { label: 'In flight', value: queue.inFlightCount, hint: 'Leased by workers, including lock waits', color: 'text-blue-700' }, { label: 'Delayed', value: queue.delayedCount, hint: 'Scheduled or waiting for retry', color: 'text-orange-700' }, { label: 'Dead letters', value: queue.deadLetterCount, hint: 'Failures awaiting operator action', color: 'text-red-700' }] as metric}
+      {#each [{ label: 'Ready to run', value: queue.activeCount, hint: 'Available messages', color: 'text-gray-900' }, { label: 'In flight', value: queue.inFlightCount, hint: 'Leased by workers, including lock waits', color: 'text-blue-700' }, { label: 'Delayed', value: queue.delayedCount, hint: 'Scheduled or waiting for retry', color: 'text-orange-700' }, { label: 'Dead letters', value: queue.deadLetterCount, hint: 'Failures awaiting operator action', color: 'text-red-700' }] as metric (metric.label)}
         <div class="rounded-lg border bg-white p-4">
           <h2 class="text-xs text-gray-500">{metric.label}</h2>
           <p class="text-3xl font-semibold tabular-nums my-2 {metric.color}">
@@ -352,26 +348,16 @@
         message="Transport statistics are unavailable. Counts marked — are unknown; tracked job state is shown separately."
       />{/if}
 
-    {#if receipt}<div
-        class="rounded-lg border border-green-200 bg-green-50 px-5 py-4 space-y-3"
-        role="status"
-      >
-        <div class="flex justify-between gap-3">
-          <p class="text-sm text-green-900">
-            {receipt.count} message{receipt.count === 1 ? '' : 's'} replayed. Original
-            failed job history is preserved.
-          </p>
-          <Button size="sm" variant="ghost" onclick={() => (receipt = null)}
-            >Dismiss</Button
-          >
-        </div>
-        <div class="flex flex-wrap gap-3">
-          {#each receipt.jobIds as id}<button
-              class="text-xs font-mono text-blue-700 underline"
-              onclick={() => openJob(id)}>Open new job {id.slice(0, 10)}</button
-            >{/each}
-        </div>
-      </div>{/if}
+    {#if receipt}
+      {#key receipt}
+        <ReplayResult
+          {receipt}
+          {polling}
+          {openJob}
+          dismiss={() => (receipt = null)}
+        />
+      {/key}
+    {/if}
 
     <div class="rounded-lg border bg-white shadow-sm overflow-hidden">
       <nav class="flex flex-wrap gap-1 border-b p-3" aria-label="Queue views">
@@ -402,8 +388,8 @@
           /><Button
             variant="outline"
             size="sm"
-            disabled={refreshing || busy}
-            onclick={() => refresh(tab === 'dead-letters')}
+            disabled={updates.manual || busy}
+            onclick={() => refresh(tab === 'dead-letters', true)}
             >Retry loading details</Button
           >
         </div>{/if}
@@ -419,7 +405,7 @@
             {pageSize}
             {now}
             {busy}
-            {refreshing}
+            changing={loadedDetailKey !== detailKey()}
             error={detailError}
             {isAdmin}
             {openJob}
@@ -442,7 +428,7 @@
               {:else}
                 <a
                   class="font-medium text-blue-700 underline"
-                  href={`/login?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`}
+                  href={`/login?redirect=${encodeURIComponent(page.url.pathname + page.url.search)}`}
                   >Sign in to manage dead letters</a
                 >.
               {/if}
@@ -453,8 +439,8 @@
           {queueName}
           {letters}
           {isAdmin}
-          busy={busy || refreshing}
-          refresh={() => refresh(true)}
+          busy={busy || updates.inspecting}
+          refresh={() => refresh(true, true)}
           {retry}
           {flush}
           {openJob}

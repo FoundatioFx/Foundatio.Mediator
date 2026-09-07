@@ -15,7 +15,7 @@
     pageSize,
     now,
     busy,
-    refreshing,
+    changing,
     error,
     isAdmin,
     changeStatus,
@@ -29,7 +29,7 @@
     pageSize: number;
     now: number;
     busy: boolean;
-    refreshing: boolean;
+    changing: boolean;
     error: string | null;
     isAdmin: boolean;
     changeStatus: (status: string) => void;
@@ -79,6 +79,12 @@
     >
   </form>
 </div>
+{#if changing && dashboard && !error}<p
+    class="px-4 py-2 text-xs text-gray-500"
+    role="status"
+  >
+    Loading the selected job view…
+  </p>{/if}
 {#if !dashboard && !error}<div class="flex justify-center py-8">
     <Spinner />
   </div>{:else if dashboard}
@@ -143,14 +149,14 @@
   >
     <span
       >{dashboard.total
-        ? `${skip + 1}–${Math.min(skip + dashboard.jobs.length, dashboard.total)} of ${dashboard.total.toLocaleString()}`
+        ? `${dashboard.skip + 1}–${Math.min(dashboard.skip + dashboard.jobs.length, dashboard.total)} of ${dashboard.total.toLocaleString()}`
         : '0 jobs'} · shared state, newest first</span
     >
     <div class="flex gap-2">
       <Button
         size="sm"
         variant="outline"
-        disabled={skip === 0 || refreshing}
+        disabled={skip === 0 || changing}
         onclick={() => changePage(Math.max(0, skip - pageSize))}
         >Previous</Button
       ><Button
@@ -158,7 +164,7 @@
         variant="outline"
         disabled={skip + pageSize >= dashboard.total ||
           skip >= 1000 ||
-          refreshing}
+          changing}
         onclick={() => changePage(skip + pageSize)}>Next</Button
       >
     </div>

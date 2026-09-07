@@ -20,7 +20,7 @@
     flush: (max: number, messageId?: string) => void;
     openJob: (id: string) => void;
   } = $props();
-  let inspected = $state<DeadLetterView | null>(null);
+  let inspected = $state<string | null>(null);
   let flushDialog: HTMLDialogElement;
   let flushTarget = $state<string | null>(null);
   let limit = $state(100);
@@ -47,7 +47,8 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <p class="text-xs text-gray-500 max-w-lg">
       Showing up to 100 available messages. Refresh to check for new dead
-      letters. Retrying creates a new job and preserves the original failure.
+      letters. Retrying moves a message back to the normal queue with the same
+      payload. A new failure creates a new dead letter.
     </p>
     <div class="flex flex-wrap gap-2 items-center">
       <Button size="sm" variant="outline" disabled={busy} onclick={refresh}
@@ -93,7 +94,7 @@
                 class="text-blue-700 text-sm font-medium underline decoration-dotted"
                 onclick={() =>
                   (inspected =
-                    inspected?.messageId === letter.messageId ? null : letter)}
+                    inspected === letter.messageId ? null : letter.messageId)}
                 >Inspect {letter.messageType?.split('.').pop() ??
                   'message'}</button
               >
@@ -107,7 +108,10 @@
               {#if letter.jobId}<Button
                   size="sm"
                   variant="ghost"
-                  onclick={() => openJob(letter.jobId!)}>Original job</Button
+                  onclick={() => openJob(letter.jobId!)}
+                  >{letter.headers['fm-replayed-at']
+                    ? 'Failed job'
+                    : 'Original job'}</Button
                 >{/if}<Button
                 size="sm"
                 variant="outline"
@@ -123,13 +127,33 @@
               >
             </div>
           </div>
+          {#if letter.headers['fm-replayed-at']}
+            <div
+              class="flex flex-wrap items-center gap-2 text-xs text-orange-800"
+            >
+              <span class="rounded bg-orange-50 px-2 py-1 font-medium"
+                >Failed again after retry</span
+              >
+              <span
+                >Requeued {formatTime(letter.headers['fm-replayed-at'])}</span
+              >
+              {#if letter.headers['fm-original-job-id']}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onclick={() => openJob(letter.headers['fm-original-job-id'])}
+                  >Previous job</Button
+                >
+              {/if}
+            </div>
+          {/if}
           <p class="text-sm text-red-700 whitespace-pre-wrap break-words">
             {letter.reason ?? 'No failure reason recorded'}
           </p>
           <p class="font-mono text-xs text-gray-400 break-all">
             {letter.messageId}
           </p>
-          {#if inspected?.messageId === letter.messageId}
+          {#if inspected === letter.messageId}
             <div class="bg-gray-50 rounded p-3 space-y-3">
               <div>
                 <h4 class="text-xs font-semibold mb-2">

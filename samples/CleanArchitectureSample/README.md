@@ -119,7 +119,7 @@ Running without a real transport is refused on purpose: with `Workers` other tha
 
 ## Distributed Queue Walkthrough
 
-Open the **Queues** page (sign in as admin) with **Live Events** in a second tab. Each control below maps to one scenario.
+Open **Try it** at `/try` (sign in as admin) with **Live Events** in a second tab. Each control below maps to one scenario. Receipts link to queue details for progress, cancellation, and dead-letter management. The **Queues** dashboard at `/queues` contains only operational monitoring.
 
 ### 1. Tracked long-running job: progress, heartbeat, cancel
 
@@ -297,9 +297,9 @@ Registered with `.AddQueueHeaderProvider<TenantHeaderProvider>()`. Every provide
 
 `ServiceDefaults` adds `.AddMeter(DistributedMetrics.MeterName)`, so the Aspire dashboard's Metrics view shows `queue.messages.enqueued`, `queue.messages.processed`, `queue.messages.failed`, `queue.messages.dead_lettered`, `queue.messages.in_flight`, `queue.handler.duration`, the sampled `queue.depth.*` gauges, and `notifications.published`/`received`/`dropped`, tagged by queue, message type, and group. Enqueue and process spans are linked (not parented), so an hour-long job does not stretch the request's trace.
 
-**UI:** set **Jobs** to 20, then **Enqueue export**. With two export replicas at concurrency 2, four jobs run at a time. The inspector identifies each attempt with `WorkerId`; completion notifications populate **Live worker activity** with host badges. Open the full event feed for order, product, webhook, and bank-file events. The last responding API and its worker selection appear below the dashboard.
+**UI:** on **Try it**, set **Jobs** to 20, then **Enqueue export**. With two export replicas at concurrency 2, four jobs run at a time. The inspector identifies each attempt with `WorkerId`; completion notifications populate **Live worker activity** with host badges. Open the full event feed for order, product, webhook, and bank-file events. The last responding API and its worker selection appear below the dashboard.
 
-The `/queues` dashboard shows totals across subscriptions, scenario controls, and live worker activity. Click a queue name to open its own `/queues/{queueName}` page; the red dead-letter count links directly to that queue's **Dead letters** view. Scenario receipts also provide a **View queue** link. The details page reads only the selected queue and has four views:
+The `/queues` dashboard shows transport totals, subscriptions, job lookup, and live worker activity. Search by queue or group and filter for dead letters, in-flight work, unavailable statistics, or tracked jobs. Scenario controls and enqueue receipts live on the separate `/try` page, available from **Try it** in desktop and mobile navigation. Click a queue name to open its own `/queues/{queueName}` page; the red dead-letter count links directly to that queue's **Dead letters** view. The Try it page provides **View queue** and shareable job links after enqueueing; validation failures stay on that page. The details page reads only the selected queue and has four views:
 
 - **Overview** shows ready, in-flight (including lock waits), delayed, and dead-letter counts; processing counters across workers over the last 24 hours; hourly trends and the complete hourly table; and retained tracked-job totals with links to each status. Failed-attempt counters include retries and terminal failures. Untracked queues still expose their transport statistics and processing counters.
 - **Jobs** shows shared job state, filters, pagination, progress, worker identities, and cancellation. Job links, filters, and page positions survive reloads and browser back/forward navigation.
@@ -320,7 +320,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-For an Aspire CLI run with isolated ports, set `SAMPLE_BASE_URL` to the frontend URL shown by Aspire. The suite checks anonymous monitoring and authorization, running/queued cancellation, deep links, validation, retries, single/bulk replay, confirmed flush with retained history, both locked jobs, worker events, pagination, stale refresh errors, and mobile overflow. Queue-details checks also cover isolated statistics, settings, browser navigation, sign-in return links, legacy links, missing queues, unavailable counts, and explicit dead-letter inspection. It creates and flushes demo work, so it deliberately refuses non-local URLs. Browser tests use real SQS/SNS in LocalStack and shared Redis; an already running local sample is required. Selected statistics and error responses are intercepted to verify otherwise intermittent states deterministically.
+For an Aspire CLI run with isolated ports, set `SAMPLE_BASE_URL` to the frontend URL shown by Aspire. The suite checks anonymous monitoring and authorization, running/queued cancellation, deep links, validation, retries, single/bulk replay, confirmed flush with retained history, both locked jobs, worker events, pagination, stale refresh errors, and mobile overflow. Dashboard checks cover operational filters, unknown initial data, and the absence of sample controls; Try it checks cover sign-in returns and receipt navigation. Queue-details checks also cover isolated statistics, settings, browser navigation, sign-in return links, legacy links, missing queues, unavailable counts, and explicit dead-letter inspection. It creates and flushes demo work, so it deliberately refuses non-local URLs. Browser tests use real SQS/SNS in LocalStack and shared Redis; an already running local sample is required. Selected statistics and error responses are intercepted to verify otherwise intermittent states deterministically.
 
 ## Mediator Feature Walkthrough
 

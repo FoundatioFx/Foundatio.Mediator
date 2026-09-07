@@ -3,17 +3,15 @@
   import { goto, replaceState } from '$app/navigation';
   import { queuesApi } from '$lib/api';
   import { Button, Spinner, Alert, Sparkline } from '$lib/components/ui';
-  import QueueScenarios from '$lib/components/queues/QueueScenarios.svelte';
+  import WorkerActivity from '$lib/components/queues/WorkerActivity.svelte';
   import JobInspector from '$lib/components/queues/JobInspector.svelte';
   import { data, describeError, queueUrl } from '$lib/components/queues/utils';
   import {
     type QueueSummary,
     type JobSummary,
-    type HostInfoView,
-    type EnqueueReceipt
+    type HostInfoView
   } from '$lib/types/queue';
   import { auth } from '$lib/stores/auth.svelte';
-  import { eventStream } from '$lib/stores/eventstream.svelte';
   import { toast } from '$lib/stores/toast.svelte';
 
   let queues = $state<QueueSummary[]>([]);
@@ -21,7 +19,6 @@
   let selectedJobId = $state<string | null>(null);
   let job = $state<JobSummary | null>(null);
   let jobLookup = $state('');
-  let receipt = $state<EnqueueReceipt | null>(null);
   let loading = $state(true);
   let refreshing = $state(false);
   let busy = $state<string | null>(null);
@@ -31,15 +28,32 @@
   let now = $state(Date.now());
   let polling = $state(true);
   let filter = $state('');
+  let queueView = $state('all');
   let refreshInFlight: Promise<void> | null = null;
   let stopped = false;
   const isAdmin = $derived(auth.user?.role === 'Admin');
   const visibleQueues = $derived(
-    queues.filter((q) =>
-      `${q.queueName} ${q.group ?? ''}`
-        .toLowerCase()
-        .includes(filter.toLowerCase())
+    queues.filter(
+      (q) =>
+        `${q.queueName} ${q.group ?? ''}`
+          .toLowerCase()
+          .includes(filter.toLowerCase()) &&
+        (queueView === 'all' ||
+          (queueView === 'dead-letters' &&
+            q.statisticsAvailable &&
+            q.deadLetterCount > 0) ||
+          (queueView === 'in-flight' &&
+            q.statisticsAvailable &&
+            q.inFlightCount > 0) ||
+          (queueView === 'unavailable' && !q.statisticsAvailable) ||
+          (queueView === 'tracked' && q.trackProgress))
     )
+  );
+  const deadLetterQueues = $derived(
+    queues.filter((q) => q.statisticsAvailable && q.deadLetterCount > 0).length
+  );
+  const unavailableQueues = $derived(
+    queues.filter((q) => !q.statisticsAvailable).length
   );
   const totals = $derived(
     queues.reduce(
@@ -53,12 +67,8 @@
     )
   );
   const statisticsAvailable = $derived(
-    queues.every((q) => q.statisticsAvailable)
+    lastUpdated !== null && queues.every((q) => q.statisticsAvailable)
   );
-  const activity = $derived(
-    eventStream.events.filter((e) => e.category === 'job').slice(0, 8)
-  );
-
   function updateUrl() {
     const url = new URL(window.location.href);
     if (selectedJobId) url.searchParams.set('job', selectedJobId);
@@ -147,17 +157,6 @@
       await refresh();
     }
   }
-  function enqueue(
-    label: string,
-    action: () => ReturnType<typeof queuesApi.enqueueExports>
-  ) {
-    void run(label, action, (value) => {
-      receipt = value;
-      toast.success(
-        `${value.count} ${label.toLowerCase()} message${value.count === 1 ? '' : 's'} accepted.`
-      );
-    });
-  }
   function cancelJob(id: string) {
     void run(
       'cancel',
@@ -200,15 +199,15 @@
 </script>
 
 <svelte:head
-  ><title>Queue operations - Clean Architecture Sample</title></svelte:head
+  ><title>Queue dashboard - Clean Architecture Sample</title></svelte:head
 >
 
 <div class="space-y-6 pb-6">
   <div class="flex flex-wrap items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Queue operations</h1>
+      <h1 class="text-2xl font-bold text-gray-900">Queue dashboard</h1>
       <p class="text-sm text-gray-500 mt-1">
-        Follow work from acceptance to completion, across every worker process.
+        Backlog, processing activity, and failures across all queues.
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -232,7 +231,11 @@
       type="error"
       message={`Monitoring unavailable: ${error}. Previously loaded values may be stale.`}
     />{/if}
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  <div
+    class="grid grid-cols-2 lg:grid-cols-4 gap-3"
+    role="group"
+    aria-label="Queue transport totals"
+  >
     {#each [{ label: 'Ready to run', value: totals.ready, hint: 'Available transport messages', color: 'text-gray-900' }, { label: 'In flight', value: totals.running, hint: 'Leased by workers, including lock waits', color: 'text-blue-700' }, { label: 'Delayed', value: totals.delayed, hint: 'Scheduled or waiting for retry', color: 'text-orange-700' }, { label: 'Dead letters', value: totals.dead, hint: 'Failures awaiting operator action', color: 'text-red-700' }] as metric}
       <div class="rounded-lg border bg-white p-4">
         <div class="text-xs text-gray-500">{metric.label}</div>
@@ -245,43 +248,10 @@
       </div>
     {/each}
   </div>
-  {#if !statisticsAvailable}<Alert
+  {#if lastUpdated !== null && !statisticsAvailable}<Alert
       type="warning"
       message="Transport statistics are unavailable for one or more queues. Counts marked — are unknown; tracked job state is shown separately."
     />{/if}
-  <QueueScenarios {isAdmin} busy={!!busy} {enqueue} />
-  {#if receipt}<div
-      class="rounded-lg border border-green-200 bg-green-50 px-5 py-4 space-y-2"
-      role="status"
-    >
-      <div class="flex justify-between gap-3">
-        <div>
-          <strong class="text-sm text-green-900"
-            >{receipt.count} accepted on {receipt.queueName}</strong
-          >
-          <p class="text-xs text-green-800">
-            Acceptance confirms enqueueing. Open a receipt to follow completion
-            or cancellation.
-          </p>
-        </div>
-        <Button size="sm" variant="ghost" onclick={() => (receipt = null)}
-          >Dismiss</Button
-        >
-      </div>
-      <a
-        class="inline-block text-sm text-blue-700 underline"
-        href={queueUrl(
-          receipt.queueName,
-          receipt.jobIds.length ? 'jobs' : 'overview'
-        )}>View queue</a
-      >
-      <div class="flex flex-wrap gap-2">
-        {#each receipt.jobIds as id}<button
-            class="text-xs font-mono text-blue-700 underline"
-            onclick={() => openJob(id)}>Open job {id.slice(0, 10)}</button
-          >{/each}
-      </div>
-    </div>{/if}
 
   <form
     class="flex flex-wrap gap-2 items-center"
@@ -309,29 +279,52 @@
       <div>
         <h2 id="queues-title" class="font-semibold">Subscriptions</h2>
         <p class="text-xs text-gray-500 mt-1">
-          Transport counts are approximate. Counters cover the last 24 hours
-          across workers.
+          {lastUpdated === null ? '—' : queues.length} registered · {lastUpdated ===
+          null
+            ? '—'
+            : deadLetterQueues} with dead letters · {lastUpdated === null
+            ? '—'
+            : unavailableQueues} with unavailable statistics
         </p>
       </div>
-      <label class="text-xs text-gray-500"
-        >Filter queues<input
-          aria-label="Filter queues"
-          bind:value={filter}
-          placeholder="Queue or group"
-          class="ml-2 border rounded px-2 py-1.5 text-sm"
-        /></label
-      >
+      <div class="flex flex-wrap gap-3">
+        <label class="text-xs text-gray-500"
+          >Search
+          <input
+            aria-label="Filter queues"
+            bind:value={filter}
+            placeholder="Queue or group"
+            class="mt-1 block w-full border rounded px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label class="text-xs text-gray-500"
+          >Show
+          <select
+            aria-label="Queue view"
+            bind:value={queueView}
+            class="mt-1 block border rounded px-2 py-1.5 text-sm"
+          >
+            <option value="all">All queues</option>
+            <option value="dead-letters">With dead letters</option>
+            <option value="in-flight">In flight</option>
+            <option value="unavailable">Unavailable statistics</option>
+            <option value="tracked">Tracked jobs</option>
+          </select>
+        </label>
+      </div>
     </div>
     {#if loading}<div class="flex justify-center py-8">
         <Spinner />
       </div>{:else if !visibleQueues.length}<p
         class="p-6 text-center text-gray-500"
       >
-        {queues.length
-          ? 'No queues match your filter.'
-          : 'No queues are registered.'}
+        {lastUpdated === null
+          ? 'Queue data is unavailable. Use Refresh now to try again.'
+          : queues.length
+            ? 'No queues match your filter.'
+            : 'No queues are registered.'}
       </p>{:else}<div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
+        <table class="min-w-full text-sm" aria-label="Queue subscriptions">
           <thead class="bg-gray-50 text-xs text-gray-500"
             ><tr
               ><th class="p-4 text-left">Queue / worker group</th><th
@@ -359,25 +352,35 @@
                   ><div class="flex items-center gap-4">
                     <div>
                       <span class="font-medium text-green-700"
-                        >{queue.messagesProcessed.toLocaleString()}</span
-                      ><Sparkline
-                        data={queue.counterStats?.buckets.map(
-                          (b) => b.counters.processed ?? 0
-                        ) ?? []}
-                        color="#16a34a"
-                        label="Completed"
-                      />
+                        >{queue.counterStats
+                          ? (
+                              queue.counterStats.totals.processed ?? 0
+                            ).toLocaleString()
+                          : '—'}</span
+                      >{#if queue.counterStats}<div>
+                          <Sparkline
+                            data={queue.counterStats?.buckets.map(
+                              (b) => b.counters.processed ?? 0
+                            ) ?? []}
+                            color="#16a34a"
+                          />
+                        </div>{/if}
                     </div>
                     <div>
                       <span class="font-medium text-red-700"
-                        >{queue.messagesFailed.toLocaleString()}</span
-                      ><Sparkline
-                        data={queue.counterStats?.buckets.map(
-                          (b) => b.counters.failed ?? 0
-                        ) ?? []}
-                        color="#dc2626"
-                        label="Failed attempts"
-                      />
+                        >{queue.counterStats
+                          ? (
+                              queue.counterStats.totals.failed ?? 0
+                            ).toLocaleString()
+                          : '—'}</span
+                      >{#if queue.counterStats}<div>
+                          <Sparkline
+                            data={queue.counterStats?.buckets.map(
+                              (b) => b.counters.failed ?? 0
+                            ) ?? []}
+                            color="#dc2626"
+                          />
+                        </div>{/if}
                     </div>
                   </div></td
                 ><td class="p-4 text-right tabular-nums"
@@ -402,51 +405,11 @@
       </div>{/if}
   </section>
 
-  <section class="rounded-lg border bg-white p-5 space-y-4">
-    <div class="flex flex-wrap justify-between gap-3">
-      <div>
-        <h2 class="font-semibold">Live worker activity</h2>
-        <p class="text-xs text-gray-500 mt-1">
-          Best-effort notifications from workers to this API's event feed. Job
-          details remain the source for status.
-        </p>
-      </div>
-      <span
-        class="text-xs self-center {eventStream.isConnected
-          ? 'text-green-700'
-          : 'text-orange-700'}"
-        >{!auth.isAuthenticated
-          ? 'Sign in for live events'
-          : eventStream.isConnected
-            ? 'Event feed connected'
-            : 'Event feed reconnecting'}</span
-      >
-    </div>
-    {#if !activity.length}<p class="text-sm text-gray-400">
-        Complete a scenario to see which worker handled it. Both bank files
-        should publish completion events.
-      </p>{:else}<ul class="divide-y">
-        {#each activity as event (event.id)}<li
-            class="py-2 flex flex-wrap gap-2 justify-between text-sm"
-          >
-            <span
-              >{event.type}
-              <span class="text-xs text-gray-500"
-                >{event.host ?? 'Unknown host'}</span
-              ></span
-            ><span class="text-xs text-gray-400"
-              >{event.timestamp.toLocaleTimeString()}{#if typeof event.data.jobId === 'string'}
-                · <button
-                  class="text-blue-700 underline"
-                  onclick={() => openJob(String(event.data.jobId))}
-                  >Open job</button
-                >{/if}</span
-            >
-          </li>{/each}
-      </ul>{/if}<a class="text-xs text-blue-700 underline" href="/events"
-      >Open the full event feed</a
-    >
-  </section>
+  <p class="text-xs text-gray-500">
+    Transport counts are approximate. Activity counters cover the last 24 hours
+    across workers; — means unavailable.
+  </p>
+  <WorkerActivity />
   {#if host}<p class="text-xs text-gray-400">
       Last responding API: {host.hostId}. Worker selection on that node: {host.workers}.
       Separate worker processes are identified on tracked attempts.

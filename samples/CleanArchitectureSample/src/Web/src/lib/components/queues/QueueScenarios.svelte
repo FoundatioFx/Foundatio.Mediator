@@ -47,9 +47,7 @@
     >
   </div>
   {#if !isAdmin}<div class="px-5 py-4 text-sm text-gray-600">
-      <a href="/login?redirect=/queues" class="text-blue-600 underline"
-        >Sign in</a
-      >
+      <a href="/login?redirect=/try" class="text-blue-600 underline">Sign in</a>
       as <strong>admin / admin</strong> to run scenarios and manage work. Monitoring
       remains available without signing in.
     </div>{/if}
@@ -160,8 +158,11 @@
     <a href="/orders/new" class="text-blue-700 underline">Create an order</a> to
     exercise independent subscriptions and the shared confirmation/fulfillment
     queue.
-    <a href="/products" class="text-blue-700 underline">Update a product</a> to see
-    notifications invalidate caches across API replicas. Inspect subscriptions below
-    and follow the full event feed.
+    <a href="/products" class="text-blue-700 underline">Update a product</a> to
+    see notifications invalidate caches across API replicas. Inspect
+    subscriptions on the
+    <a href="/queues" class="text-blue-700 underline">queue dashboard</a>
+    and follow the
+    <a href="/events" class="text-blue-700 underline">full event feed</a>.
   </p>
 </section>

@@ -1,5 +1,7 @@
 # PR 149 distributed performance measurements
 
+This is the historical baseline. See the [subsequent optimization measurements](../2026-09-06-batching/README.md) for the batching implementation, repeated comparisons, sustained runs, and remaining limits.
+
 Measured on September 6, 2026 against runtime source `1f21e5e6f047f8ba4016a204ad6a1a2e7e1814f0`, using the benchmark harness in this change. No runtime performance changes were made for these measurements. The harness assembly hashes and complete workload settings are archived with each dataset.
 
 The longer baseline completed **30/30 runs**, offering **33,060,000 messages**, with no missing, duplicate, invalid, or dropped deliveries. The exploratory sweep ran **120 cases** and offered **3,750,000 messages**. It preserved one failed lossless fixed-rate run and six intentionally lossy buffer-overload runs. No queue run lost or duplicated a message.

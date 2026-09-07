@@ -1,0 +1,522 @@
+[
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 100000,
+    "capacity": 100000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 100000,
+    "capacity": 100000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 3,
+    "rate": 0,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 4096,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 250,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "sqs",
+    "payload": 128,
+    "producers": 40,
+    "fanout": 1,
+    "rate": 0,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "transport": "memory",
+    "payload": 128,
+    "producers": 8,
+    "fanout": 1,
+    "rate": 0,
+    "count": 250000,
+    "capacity": 250000
+  }
+]

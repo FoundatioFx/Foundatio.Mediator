@@ -2,7 +2,7 @@
 
 This executable compares completed work across Foundatio's local mediator, distributed in-memory workers, and SQS/SNS, plus MassTransit using its in-memory and SQS/SNS transports. Broker-backed consumers run in separate .NET processes. The producer and consumers run on the same machine; the broker can be LocalStack or AWS.
 
-The [September 6 measurements](results/2026-09-06-localstack/README.md) include a 30-run longer baseline, a 120-run scaling/overload sweep, raw results, and broker request-count analysis. They retain the failed fixed-rate case and shared-host limitations.
+The [optimization measurements](results/2026-09-06-batching/README.md) include repeated comparisons, 100,000-message runs, concurrency scaling, and broker request counts. The [original baseline](results/2026-09-06-localstack/README.md) is retained, including its failed fixed-rate case. Both reports preserve raw results, variation, and shared-host limitations.
 
 ## Run it
 

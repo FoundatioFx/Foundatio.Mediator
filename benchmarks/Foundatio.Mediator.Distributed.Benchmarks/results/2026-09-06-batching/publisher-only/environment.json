@@ -1,0 +1,42 @@
+{
+  "capturedUtc": "2026-09-06T23:47:24.8492131+00:00",
+  "machineName": "codesmith",
+  "processorCount": 24,
+  "os": "Ubuntu 26.04.1 LTS",
+  "runtime": ".NET 10.0.11",
+  "frequency": 1000000000,
+  "serverGc": false,
+  "seed": 149,
+  "repetitions": 1,
+  "cases": [
+    "masstransit/memory/pubsub/p128/s8/c10/f1/b250000/r0/w0"
+  ],
+  "command": [
+    "run",
+    "--operation",
+    "pubsub",
+    "--endpoint",
+    "http://localhost:14566",
+    "--timeout",
+    "300",
+    "--output",
+    "/tmp/pr149-publisher-final",
+    "--framework",
+    "masstransit",
+    "--transport",
+    "memory",
+    "--payload",
+    "128",
+    "--producers",
+    "8",
+    "--fanout",
+    "1",
+    "--rate",
+    "0",
+    "--count",
+    "250000",
+    "--capacity",
+    "250000"
+  ],
+  "harnessSha256": "3DE1F4C0B539525027C8DA22D2A88E9E9CFE50ADBAE344B9771158FCA64EC0D4"
+}

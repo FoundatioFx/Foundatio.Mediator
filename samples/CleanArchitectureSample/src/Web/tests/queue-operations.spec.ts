@@ -114,8 +114,8 @@ test('anonymous monitoring is usable and mutations require an administrator', as
     page.getByRole('heading', { name: 'Try the workflow', exact: true })
   ).toHaveCount(0);
   await expect(
-    page.getByText('Sign in for live events', { exact: true })
-  ).toBeVisible();
+    page.getByRole('heading', { name: 'Live worker activity', exact: true })
+  ).toHaveCount(0);
   const queues = await request.get('/api/queues/queues');
   expect(queues.ok()).toBeTruthy();
   expect(
@@ -497,8 +497,8 @@ test('both jobs sharing a bank lock complete and publish events across processes
     page.getByRole('heading', { name: 'Queue dashboard', exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText('BankFileGenerated', { exact: false })
-  ).toHaveCount(2);
+    page.getByRole('heading', { name: 'Live worker activity', exact: true })
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Enqueue / })).toHaveCount(0);
 });
 

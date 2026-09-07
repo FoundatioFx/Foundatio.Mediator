@@ -241,9 +241,49 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
     }
 
     [Theory]
+    [InlineData(0, 100, 1)]
+    [InlineData(11, 100, 1)]
+    [InlineData(24, 100, 1)]
+    [InlineData(-1, 100, 0)]
+    [InlineData(24, 10, 0)]
+    public async Task TargetedPurge_DeletesOnlyMatchWithinScanLimit_AndReleasesOtherMessages(int targetIndex, int max, int expectedPurged)
+    {
+        await using var transport = new InMemoryTransport();
+        await using var provider = BuildHost(transport, new HandlerSignal());
+        var mediator = provider.GetRequiredService<IMediator>();
+        const string queue = "PoisonBodyMessage";
+        await transport.Queues.SendAsync(QueueDefinition.DeadLetterQueueNameFor(queue), Enumerable.Range(1, 25)
+            .Select(i => new QueueEntry
+            {
+                Body = Encoding.UTF8.GetBytes($"failed message {i}"),
+                Headers = new Dictionary<string, string> { [MessageHeaders.OriginalQueueName] = queue }
+            }).ToArray(), TestCancellationToken);
+        var before = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queue, 25), TestCancellationToken);
+        var target = targetIndex < 0 ? "missing" : before.Value[targetIndex].MessageId;
+
+        var purge = await mediator.InvokeAsync<Result<DeadLetterPurgeResult>>(
+            new PurgeDeadLetters(queue, max, target), TestCancellationToken);
+
+        Assert.Equal(expectedPurged, purge.Value.Purged);
+        var after = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queue, 25), TestCancellationToken);
+        var expected = before.Value.Where(m => expectedPurged == 0 || m.MessageId != target).OrderBy(m => m.MessageId).ToArray();
+        var remaining = after.Value.OrderBy(m => m.MessageId).ToArray();
+        Assert.Equal(expected.Length, remaining.Length);
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.Equal(expected[i].MessageId, remaining[i].MessageId);
+            Assert.Equal(expected[i].Body, remaining[i].Body);
+            Assert.Equal(expected[i].Headers, remaining[i].Headers);
+        }
+    }
+
+    [Theory]
     [InlineData("peek")]
     [InlineData("replay")]
+    [InlineData("missing-replay")]
     [InlineData("purge")]
+    [InlineData("targeted-purge")]
+    [InlineData("missing-purge")]
     public async Task CancelledAdministration_ReleasesReceivedDeadLetters(string operation)
     {
         await using var transport = new InMemoryTransport();
@@ -259,7 +299,10 @@ public class QueueAdministrationTests(ITestOutputHelper output) : TestWithLoggin
             {
                 case "peek": await handler.HandleAsync(new ListDeadLetters("PoisonBodyMessage", 3), cancellation.Token); break;
                 case "replay": await handler.HandleAsync(new ReplayDeadLetters("PoisonBodyMessage"), cancellation.Token); break;
+                case "missing-replay": await handler.HandleAsync(new ReplayDeadLetters("PoisonBodyMessage", MessageId: "missing"), cancellation.Token); break;
                 case "purge": await handler.HandleAsync(new PurgeDeadLetters("PoisonBodyMessage"), cancellation.Token); break;
+                case "targeted-purge": await handler.HandleAsync(new PurgeDeadLetters("PoisonBodyMessage", MessageId: "one"), cancellation.Token); break;
+                case "missing-purge": await handler.HandleAsync(new PurgeDeadLetters("PoisonBodyMessage", MessageId: "missing"), cancellation.Token); break;
             }
         });
         Assert.Equal(["one", "two"], client.Released.Order());

@@ -205,10 +205,16 @@
       }
     );
   }
-  function flush(max: number) {
+  function flush(max: number, messageId?: string) {
     void run(
-      () => queuesApi.purgeDeadLetters(queueName, max),
+      () => queuesApi.purgeDeadLetters(queueName, max, messageId),
       (result) => {
+        if (!result.purged) {
+          toast.info(
+            'No matching available messages were deleted. Refresh and try again.'
+          );
+          return;
+        }
         toast.success(
           `Deleted ${result.purged} dead letter${result.purged === 1 ? '' : 's'}. Job history is preserved.`
         );

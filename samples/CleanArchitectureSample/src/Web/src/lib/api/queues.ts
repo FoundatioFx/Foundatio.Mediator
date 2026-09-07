@@ -54,10 +54,11 @@ export const queuesApi = {
       messageId: messageId ?? null
     }),
 
-  purgeDeadLetters: (queueName: string, max = 1000) =>
+  purgeDeadLetters: (queueName: string, max = 1000, messageId?: string) =>
     api.postJSON<DeadLetterPurgeResult>('/api/queues/dead-letters/purge', {
       queueName,
-      max
+      max,
+      messageId: messageId ?? null
     }),
 
   enqueueExports: (

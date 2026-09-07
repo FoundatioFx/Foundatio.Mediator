@@ -26,8 +26,11 @@ public record ListDeadLetters(string QueueName, int Take = 20);
 /// <summary>Sends dead-lettered messages back to their original queue. <paramref name="MessageId"/> limits the replay to one message.</summary>
 public record ReplayDeadLetters(string QueueName, int Max = 100, string? MessageId = null);
 
-/// <summary>Permanently deletes dead-lettered messages.</summary>
-public record PurgeDeadLetters(string QueueName, int Max = 1000);
+/// <summary>Permanently deletes dead-lettered messages. <paramref name="MessageId"/> limits deletion to one message.</summary>
+/// <param name="QueueName">The original queue name.</param>
+/// <param name="Max">Maximum number of available messages to inspect, clamped to 1–100,000.</param>
+/// <param name="MessageId">The dead-letter message id to delete, or <c>null</c> to delete all inspected messages.</param>
+public record PurgeDeadLetters(string QueueName, int Max = 1000, string? MessageId = null);
 
 // ── Views ────────────────────────────────────────────────────────────
 
@@ -218,18 +221,20 @@ public class QueueAdministrationHandler(
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var startedAt = _timeProvider.GetUtcNow();
 
-        while (replayed + skipped < max)
+        var pending = new HashSet<QueueMessage>();
+        try
         {
-            var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - replayed - skipped), ct).ConfigureAwait(false);
-            if (batch.Count == 0)
-                break;
-
-            bool progressed = false;
-            var pending = new HashSet<QueueMessage>(batch);
-            try
+            while (replayed + skipped < max)
             {
+                var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - replayed - skipped), ct).ConfigureAwait(false);
+                if (batch.Count == 0)
+                    break;
+
+                bool progressed = false;
+                pending.UnionWith(batch);
                 foreach (var message in batch)
                 {
+                    ct.ThrowIfCancellationRequested();
                     // A replayed message that fails again lands back here with a newer timestamp; leave those
                     // for the next operator decision instead of looping on them.
                     bool deadLetteredDuringReplay = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetteredAt), out var deadLetteredAt)
@@ -246,8 +251,7 @@ public class QueueAdministrationHandler(
                     if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
                     {
                         skipped++;
-                        await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-                        pending.Remove(message);
+                        // Keep non-matches leased while searching; SQS may otherwise return the same batch.
                         continue;
                     }
 
@@ -291,19 +295,19 @@ public class QueueAdministrationHandler(
                     if (command.MessageId is not null)
                         return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
                 }
-            }
-            finally
-            {
-                // A targeted replay or a failed request must release the rest of the received batch.
-                foreach (var message in pending)
-                    await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
+
+                if (!progressed)
+                    break;
             }
 
-            if (!progressed)
-                break;
+            return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
         }
-
-        return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
+        finally
+        {
+            // Release non-matches and any unprocessed entries, including after cancellation or a failed operation.
+            foreach (var message in pending)
+                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
+        }
     }
 
     public async Task<Result<DeadLetterPurgeResult>> HandleAsync(PurgeDeadLetters command, CancellationToken ct)
@@ -311,33 +315,55 @@ public class QueueAdministrationHandler(
         if (topology.GetByQueueName(command.QueueName) is null)
             return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
 
-        int purged = 0;
+        int purged = 0, inspected = 0;
         var max = Math.Clamp(command.Max, 1, 100_000);
-        while (purged < max)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new HashSet<QueueMessage>();
+        try
         {
-            var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - purged), ct).ConfigureAwait(false);
-            if (batch.Count == 0)
-                break;
-
-            var pending = new HashSet<QueueMessage>(batch);
-            try
+            while (inspected < max)
             {
+                var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - inspected), ct).ConfigureAwait(false);
+                if (batch.Count == 0)
+                    break;
+
+                bool progressed = false;
+                pending.UnionWith(batch);
                 foreach (var message in batch)
                 {
+                    ct.ThrowIfCancellationRequested();
+                    if (!seen.Add(message.Id))
+                        continue;
+
+                    progressed = true;
+                    inspected++;
+                    // Keep non-matches leased until the search ends so later batches stay reachable.
+                    if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
+                        continue;
+
                     await client.CompleteAsync(message, ct).ConfigureAwait(false);
                     pending.Remove(message);
                     purged++;
+                    if (command.MessageId is not null)
+                    {
+                        logger.LogWarning("Purged dead letter {MessageId} from {QueueName}", message.Id, command.QueueName);
+                        break;
+                    }
                 }
+                // Stop if leases expired and the transport repeats a batch, or the selected message was deleted.
+                if (!progressed || (command.MessageId is not null && purged > 0))
+                    break;
             }
-            finally
-            {
-                foreach (var message in pending)
-                    await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-            }
-        }
 
-        logger.LogWarning("Purged {Count} dead letter(s) from {QueueName}", purged, command.QueueName);
-        return new DeadLetterPurgeResult(command.QueueName, purged);
+            logger.LogWarning("Purged {Count} dead letter(s) from {QueueName}", purged, command.QueueName);
+            return new DeadLetterPurgeResult(command.QueueName, purged);
+        }
+        finally
+        {
+            // Release non-matches and any unprocessed entries, including after cancellation or a failed operation.
+            foreach (var message in pending)
+                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
+        }
     }
 
     private async Task ReleaseDeadLetterAsync(QueueMessage message)

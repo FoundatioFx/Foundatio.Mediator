@@ -23,7 +23,7 @@ Running queues in production means answering "what is stuck, and why?" and actin
 | `CancelQueueJob(jobId)` | `Result<QueueJobCancellation>` | Requests cancellation; the worker honours it on its next progress report or poll |
 | `ListDeadLetters(queueName, take)` | `Result<IReadOnlyList<DeadLetterView>>` | Peeks at dead letters: reason, attempts, timestamps, correlation ID, headers, body preview, and truncation indicator |
 | `ReplayDeadLetters(queueName, max, messageId?)` | `Result<DeadLetterReplayResult>` | Sends dead letters back to their original queue; messages dead-lettered after the replay started are left alone |
-| `PurgeDeadLetters(queueName, max)` | `Result<DeadLetterPurgeResult>` | Deletes dead letters permanently |
+| `PurgeDeadLetters(queueName, max, messageId?)` | `Result<DeadLetterPurgeResult>` | Deletes dead letters permanently; an optional message ID selects one record |
 
 ```csharp
 [HandlerEndpointGroup("queues")]
@@ -40,9 +40,9 @@ public class QueueAdminEndpoints
 
 `DeadLetterReplayResult.Receipts` contains one `QueueReceipt` per replay. Tracked replays get a new job ID, leaving the original Failed job intact and recording `fm-original-job-id` on the message. Link the new receipt to your job detail view. Replaying does not fix the original cause of failure.
 
-Purge deletes available dead-letter messages up to its limit; it preserves job history. Confirm the queue and limit in an operator UI, and refresh afterward: leased messages and new failures may remain. `QueueOverview.StatisticsAvailable` distinguishes unavailable transport statistics from zero counts.
+Purge deletes available dead-letter messages up to its limit; it preserves job history. Pass the dead-letter `MessageId` to delete only that record: `new PurgeDeadLetters(queueName, Max: 10_000, MessageId: messageId)`. For a targeted operation, `Max` bounds the number of available messages inspected; non-matches are released, and a missing or leased target returns `Purged = 0`. Confirm the selected message, or the queue and bulk limit, in an operator UI, and refresh afterward: leased messages and new failures may remain. `QueueOverview.StatisticsAvailable` distinguishes unavailable transport statistics from zero counts.
 
-Peeking and replaying receive from the dead-letter queue, so they lock the messages briefly; with SQS a peek returns them with a zero visibility timeout and polls for at most a second, so an empty listing answers in about a second.
+Peeking, replaying, and purging receive from the dead-letter queue, so they lock the messages briefly. Targeted replay and purge keep non-matches leased until the bounded search ends, then release them even if the request fails or is cancelled; otherwise SQS can keep returning the first batch instead of reaching the selected record. With SQS a peek returns messages with a zero visibility timeout and polls for at most a second, so an empty listing answers in about a second.
 
 ## Metrics
 

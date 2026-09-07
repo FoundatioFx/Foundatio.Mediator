@@ -17,12 +17,17 @@
     busy: boolean;
     refresh: () => void;
     retry: (messageId?: string, max?: number) => void;
-    flush: (max: number) => void;
+    flush: (max: number, messageId?: string) => void;
     openJob: (id: string) => void;
   } = $props();
   let inspected = $state<DeadLetterView | null>(null);
   let flushDialog: HTMLDialogElement;
+  let flushTarget = $state<string | null>(null);
   let limit = $state(100);
+  function confirmFlush(messageId: string | null = null) {
+    flushTarget = messageId;
+    flushDialog.showModal();
+  }
   function formatted(body: string) {
     try {
       return JSON.stringify(JSON.parse(body), null, 2);
@@ -33,6 +38,7 @@
   $effect(() => {
     queueName;
     inspected = null;
+    flushTarget = null;
     flushDialog?.close();
   });
 </script>
@@ -68,7 +74,7 @@
           size="sm"
           variant="destructive"
           disabled={busy || !letters?.length}
-          onclick={() => flushDialog.showModal()}>Flush dead letters</Button
+          onclick={() => confirmFlush()}>Flush dead letters</Button
         >
       {/if}
     </div>
@@ -81,7 +87,7 @@
   {:else}
     <div class="divide-y border rounded-lg">
       {#each letters as letter (letter.messageId)}
-        <div class="p-4 space-y-2">
+        <div class="p-4 space-y-2" data-message-id={letter.messageId}>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <button
@@ -98,7 +104,7 @@
                 )}
               </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               {#if letter.jobId}<Button
                   size="sm"
                   variant="ghost"
@@ -109,6 +115,12 @@
                   disabled={busy}
                   onclick={() => retry(letter.messageId, 10000)}
                   >Retry message</Button
+                ><Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  onclick={() => confirmFlush(letter.messageId)}
+                  >Flush message</Button
                 >{/if}
             </div>
           </div>
@@ -155,25 +167,39 @@
   class="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl p-6 shadow-xl backdrop:bg-black/50"
   aria-labelledby="flush-title"
 >
-  <h2 id="flush-title" class="text-lg font-semibold">Flush dead letters?</h2>
+  <h2 id="flush-title" class="text-lg font-semibold">
+    {flushTarget !== null ? 'Flush this message?' : 'Flush dead letters?'}
+  </h2>
   <p class="text-sm text-gray-600 mt-3">
-    Permanently delete up to {limit.toLocaleString()} currently available messages
+    {#if flushTarget !== null}
+      Permanently delete message <strong class="font-mono break-all"
+        >{flushTarget}</strong
+      >
+    {:else}
+      Permanently delete up to {limit.toLocaleString()} currently available messages
+    {/if}
     from <strong class="break-all">{queueName}-dead-letter</strong>. This cannot
     be undone. Failed job history is preserved.
   </p>
   <p class="text-xs text-gray-500 mt-2">
-    Leased messages and new failures may remain. Refresh afterward to verify the
-    queue.
+    {#if flushTarget !== null}
+      Other dead letters will remain in the queue.
+    {:else}
+      Leased messages and new failures may remain. Refresh afterward to verify
+      the queue.
+    {/if}
   </p>
-  <div class="flex gap-2 justify-end mt-5">
+  <div class="flex flex-wrap gap-2 justify-end mt-5">
     <Button variant="outline" onclick={() => flushDialog.close()}
-      >Keep messages</Button
+      >{flushTarget !== null ? 'Keep message' : 'Keep messages'}</Button
     ><Button
       variant="destructive"
+      disabled={busy}
       onclick={() => {
         flushDialog.close();
-        flush(limit);
-      }}>Delete dead letters</Button
+        flush(flushTarget !== null ? 10000 : limit, flushTarget ?? undefined);
+      }}
+      >{flushTarget !== null ? 'Delete message' : 'Delete dead letters'}</Button
     >
   </div>
 </dialog>

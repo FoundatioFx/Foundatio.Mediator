@@ -130,6 +130,12 @@ test('anonymous monitoring is usable and mutations require an administrator', as
       })
     ).status()
   ).toBe(401);
+  for (const action of ['replay', 'purge']) {
+    const denied = await request.post(`/api/queues/dead-letters/${action}`, {
+      data: { queueName: 'sample-DemoExportJob', messageId: 'selected-record' }
+    });
+    expect(denied.status()).toBe(401);
+  }
   await page
     .getByRole('complementary')
     .getByRole('link', { name: 'Try it', exact: true })
@@ -369,6 +375,99 @@ test('flush asks for confirmation and preserves failed job history', async ({
     .click();
   await expect(page.getByText(/No available dead letters/)).toBeVisible();
   await finished(request, receipt.jobIds, 'Failed');
+});
+
+test('individual flush removes only the selected record and individual retry preserves the original failure', async ({
+  page
+}) => {
+  const request = page.request;
+  await signIn(page);
+  const first = await enqueue(page, 'Enqueue webhook', 'flaky-webhook');
+  const second = await enqueue(page, 'Enqueue webhook', 'flaky-webhook');
+  const originals = [...first.jobIds, ...second.jobIds];
+  await finished(request, originals, 'Failed');
+  await viewQueue(page, second, 'dead-letters');
+  const rows = page.locator('[data-message-id]');
+  await expect(rows).toHaveCount(2);
+  const targetId = (await rows.first().getAttribute('data-message-id'))!;
+  const otherId = (await rows.last().getAttribute('data-message-id'))!;
+  const target = page.locator(`[data-message-id="${targetId}"]`);
+  const other = page.locator(`[data-message-id="${otherId}"]`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await target
+    .getByRole('button', { name: 'Flush message', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Flush this message?' });
+  await expect(dialog).toContainText(targetId);
+  await expect(dialog).toContainText(second.queueName);
+  await expect(dialog).toContainText('Other dead letters will remain');
+  await expect(dialog).not.toContainText(otherId);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    )
+    .toBeTruthy();
+  await dialog
+    .getByRole('button', { name: 'Keep message', exact: true })
+    .click();
+  await expect(rows).toHaveCount(2);
+
+  // Cancelling a selected flush must not leave its id attached to a later bulk flush.
+  await page
+    .getByRole('button', { name: 'Flush dead letters', exact: true })
+    .click();
+  const bulk = page.getByRole('dialog', { name: 'Flush dead letters?' });
+  await expect(bulk).not.toContainText(targetId);
+  await bulk
+    .getByRole('button', { name: 'Keep messages', exact: true })
+    .click();
+  await target
+    .getByRole('button', { name: 'Flush message', exact: true })
+    .click();
+  const deleted = page.waitForResponse((r) =>
+    r.url().endsWith('/dead-letters/purge')
+  );
+  await dialog
+    .getByRole('button', { name: 'Delete message', exact: true })
+    .click();
+  const result = await deleted;
+  expect(result.ok()).toBeTruthy();
+  expect(result.request().postDataJSON().messageId).toBe(targetId);
+  expect((await result.json()).purged).toBe(1);
+  await expect(target).toHaveCount(0);
+  await expect(other).toBeVisible();
+  await expect(rows).toHaveCount(1);
+
+  // A stale record must never turn into a bulk deletion.
+  const missing = await request.post('/api/queues/dead-letters/purge', {
+    data: { queueName: second.queueName, messageId: targetId }
+  });
+  expect(missing.ok()).toBeTruthy();
+  expect((await missing.json()).purged).toBe(0);
+  await page
+    .getByRole('button', { name: 'Refresh dead letters', exact: true })
+    .click();
+  await expect(
+    other.getByRole('button', { name: 'Retry message', exact: true })
+  ).toBeEnabled();
+  const replayed = page.waitForResponse((r) =>
+    r.url().endsWith('/dead-letters/replay')
+  );
+  await other
+    .getByRole('button', { name: 'Retry message', exact: true })
+    .click();
+  const replayResponse = await replayed;
+  expect(replayResponse.ok()).toBeTruthy();
+  expect(replayResponse.request().postDataJSON().messageId).toBe(otherId);
+  const replay: DeadLetterReplayResult = await replayResponse.json();
+  expect(replay.replayed).toBe(1);
+  const newId = replay.receipts[0].jobId!;
+  expect(originals).not.toContain(newId);
+  await finished(request, [newId]);
+  await finished(request, originals, 'Failed');
+  await expect(page.getByText(/No available dead letters/)).toBeVisible();
 });
 
 test('both jobs sharing a bank lock complete and publish events across processes', async ({

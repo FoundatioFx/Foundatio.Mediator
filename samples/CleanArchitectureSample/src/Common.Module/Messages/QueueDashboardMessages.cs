@@ -20,7 +20,7 @@ public record CancelJob(string JobId);
 
 public record ReplayQueueDeadLetters(string QueueName, int Max = 100, string? MessageId = null);
 
-public record PurgeQueueDeadLetters(string QueueName, int Max = 1000);
+public record PurgeQueueDeadLetters(string QueueName, int Max = 1000, string? MessageId = null);
 
 public record EnqueueDemoJob(int Count = 1, int Steps = 20, int StepDelayMs = 1500, int FailTimes = 0, bool CriticalFailure = false);
 

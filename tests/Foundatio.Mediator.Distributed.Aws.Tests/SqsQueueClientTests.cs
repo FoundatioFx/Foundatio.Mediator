@@ -458,4 +458,51 @@ public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper ou
         Assert.Equal(1, replay.Value!.Replayed);
         Assert.Single(await client.ReceiveAsync(queueName, 10, TestCancellationToken));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TargetedDeadLetterOperation_SelectsBeyondFirstBatch_AndPreservesOtherRecords(bool replay)
+    {
+        var client = new SqsQueueClient(fixture.CreateSqsClient(), new SqsQueueClientOptions { WaitTimeSeconds = 20 }, null, Log.CreateLogger<SqsQueueClient>());
+        var prefix = $"t{Guid.NewGuid():N}";
+        var queueName = $"{prefix}-PoisonBodyMessage";
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IQueueClient>(client);
+        services.AddSingleton(new HandlerSignal());
+        services.AddMediator(b => b.AddAssembly<PoisonBodyMessageHandler>().AddAssembly<QueueAdministrationHandler>())
+            .AddDistributedQueues(o => { o.Workers = WorkerSelection.None; o.ResourcePrefix = prefix; });
+        await using var provider = services.BuildServiceProvider();
+        await client.EnsureQueuesAsync([new QueueDefinition { Name = queueName }], TestCancellationToken);
+        await client.SendAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), Enumerable.Range(1, 25)
+            .Select(i => new QueueEntry
+            {
+                Body = System.Text.Encoding.UTF8.GetBytes($"failed message {i}"),
+                Headers = new Dictionary<string, string> { [MessageHeaders.OriginalQueueName] = queueName }
+            }).ToArray(), TestCancellationToken);
+        var mediator = provider.GetRequiredService<IMediator>();
+        var before = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queueName, 25), TestCancellationToken);
+        Assert.Equal(25, before.Value.Count);
+        var target = before.Value[^1];
+
+        if (replay)
+        {
+            var result = await mediator.InvokeAsync<Result<DeadLetterReplayResult>>(
+                new ReplayDeadLetters(queueName, MessageId: target.MessageId), TestCancellationToken);
+            Assert.Equal(1, result.Value.Replayed);
+            var message = Assert.Single(await client.ReceiveAsync(queueName, 1, TestCancellationToken));
+            Assert.Equal(target.Body, System.Text.Encoding.UTF8.GetString(message.Body.Span));
+        }
+        else
+        {
+            var result = await mediator.InvokeAsync<Result<DeadLetterPurgeResult>>(
+                new PurgeDeadLetters(queueName, MessageId: target.MessageId), TestCancellationToken);
+            Assert.Equal(1, result.Value.Purged);
+        }
+
+        var after = await mediator.InvokeAsync<Result<IReadOnlyList<DeadLetterView>>>(new ListDeadLetters(queueName, 25), TestCancellationToken);
+        Assert.Equal(before.Value.Where(m => m.MessageId != target.MessageId).Select(m => m.MessageId).Order(),
+            after.Value.Select(m => m.MessageId).Order());
+    }
 }

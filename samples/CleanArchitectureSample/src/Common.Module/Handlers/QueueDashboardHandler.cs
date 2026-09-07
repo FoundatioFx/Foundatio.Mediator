@@ -114,7 +114,7 @@ public class QueueDashboardHandler(
     [HandlerAuthorize(Roles = ["Admin"])]
     [HandlerEndpoint(HandlerMethod.Post, "dead-letters/purge")]
     public async Task<Result<DeadLetterPurgeResult>> HandleAsync(PurgeQueueDeadLetters command, IMediator mediator, CancellationToken ct)
-        => await mediator.InvokeAsync<Result<DeadLetterPurgeResult>>(new PurgeDeadLetters(command.QueueName, command.Max), ct);
+        => await mediator.InvokeAsync<Result<DeadLetterPurgeResult>>(new PurgeDeadLetters(command.QueueName, command.Max, command.MessageId), ct);
 
     /// <summary>
     /// Invoking a <c>[Queue]</c> handler enqueues instead of running; the job id of a tracked job comes back in

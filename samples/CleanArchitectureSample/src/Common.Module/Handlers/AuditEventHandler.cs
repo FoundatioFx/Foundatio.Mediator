@@ -7,13 +7,13 @@ namespace Common.Module.Handlers;
 
 /// <summary>
 /// Audits product events. Products.Module never sees this handler; it publishes events and subscribers react.
-/// Each message type gets its own queue named after the type, all in the "events" worker group.
+/// Each handler/message pair gets an independent queue, all in the "events" worker group.
 /// Order events are audited by <see cref="OrderAuditHandler"/> through the <c>IOrderEvent</c> interface.
 /// </summary>
-[Queue(Group = "events", Description = "Audit trail for product events")]
 public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHandler> logger)
 {
     // Product events
+    [Queue(DisplayName = "Product created audit", Group = "events", Description = "Audit trail for product events")]
     public async Task HandleAsync(ProductCreated evt, CancellationToken cancellationToken)
     {
         logger.LogDebug("Auditing ProductCreated event for product {ProductId}", evt.ProductId);
@@ -33,6 +33,7 @@ public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHan
         ), cancellationToken);
     }
 
+    [Queue(DisplayName = "Product updated audit", Group = "events", Description = "Audit trail for product events")]
     public async Task HandleAsync(ProductUpdated evt, CancellationToken cancellationToken)
     {
         logger.LogDebug("Auditing ProductUpdated event for product {ProductId}", evt.ProductId);
@@ -53,6 +54,7 @@ public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHan
         ), cancellationToken);
     }
 
+    [Queue(DisplayName = "Product deleted audit", Group = "events", Description = "Audit trail for product events")]
     public async Task HandleAsync(ProductDeleted evt, CancellationToken cancellationToken)
     {
         logger.LogDebug("Auditing ProductDeleted event for product {ProductId}", evt.ProductId);
@@ -68,6 +70,7 @@ public class AuditEventHandler(IAuditService auditService, ILogger<AuditEventHan
     }
 
     // Stock-specific events
+    [Queue(DisplayName = "Stock change audit", Group = "events", Description = "Audit trail for product events")]
     public async Task HandleAsync(ProductStockChanged evt, CancellationToken cancellationToken)
     {
         logger.LogDebug("Auditing ProductStockChanged event for product {ProductId}", evt.ProductId);

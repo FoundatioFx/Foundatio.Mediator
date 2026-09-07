@@ -559,10 +559,8 @@ test('queue details isolate statistics, preserve navigation, and return to dead 
   await expect(activity.getByText('19', { exact: true })).toBeVisible();
   await expect(
     page
-      .getByRole('table', {
-        name: `Hourly processing counters for ${queue.queueName}`
-      })
-      .getByRole('cell', { name: '123', exact: true })
+      .getByRole('status', { name: 'Selected hour', exact: true })
+      .getByText('123', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByText(/Job tracking is not enabled for this queue/)
@@ -670,7 +668,7 @@ test('legacy queue links redirect and unavailable statistics are distinct from z
     page.getByRole('region', { name: 'Worker counters' })
   ).toContainText('Shared counter history is unavailable');
   await expect(
-    page.getByRole('table', { name: /Hourly processing counters/ })
+    page.getByRole('group', { name: /Hourly queue activity/ })
   ).toHaveCount(0);
 });
 
@@ -742,11 +740,9 @@ test('dashboard filters operational issues and keeps sample work on Try it', asy
     `/queues/${encodeURIComponent(queues[2].queueName)}?view=dead-letters`
   );
   await view.selectOption('all');
-  const unknown = table
-    .getByRole('row')
-    .filter({
-      has: page.getByRole('link', { name: queues[1].queueName, exact: true })
-    });
+  const unknown = table.getByRole('row').filter({
+    has: page.getByRole('link', { name: queues[1].queueName, exact: true })
+  });
   await expect(unknown.getByText('—', { exact: true })).toHaveCount(6);
   await page
     .getByLabel('Filter queues', { exact: true })
@@ -814,4 +810,148 @@ test('dashboard filters operational issues and keeps sample work on Try it', asy
       () => document.documentElement.scrollWidth <= window.innerWidth
     )
   ).toBeTruthy();
+});
+
+test('hourly histogram shows three distinct series with pointer and keyboard inspection', async ({
+  page
+}) => {
+  const actual: QueueSummary[] = await (
+    await page.request.get('/api/queues/queues')
+  ).json();
+  const queue = actual.find((q) => !q.trackProgress)!;
+  const end = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+  const buckets = Array.from({ length: 24 }, (_, i) => ({
+    hour: new Date(end - (23 - i) * 3_600_000).toISOString(),
+    counters: {
+      processed: i === 23 ? 28 : (i * 7) % 23,
+      failed: i === 8 ? 5 : i === 23 ? 1 : 0,
+      dead_lettered: i === 16 ? 7 : i === 23 ? 2 : 0
+    }
+  }));
+  let mode = 'normal';
+  await page.route('**/api/queues/queue?**', (route) =>
+    route.fulfill({
+      json: {
+        ...queue,
+        counterStats: {
+          totals: { processed: 250, failed: 6, dead_lettered: 9 },
+          buckets:
+            mode === 'empty'
+              ? []
+              : buckets
+                  .map((bucket) => ({
+                    ...bucket,
+                    counters:
+                      mode === 'zero'
+                        ? {}
+                        : mode === 'large'
+                          ? { ...bucket.counters, processed: 2_000_000 }
+                          : bucket.counters
+                  }))
+                  .toReversed()
+        }
+      }
+    })
+  );
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`/queues/${encodeURIComponent(queue.queueName)}`);
+  const chart = page.getByRole('group', {
+    name: `Hourly queue activity for ${queue.queueName}`,
+    exact: true
+  });
+  await expect(chart).toBeVisible();
+  await expect(page.getByRole('table', { name: /Hourly/ })).toHaveCount(0);
+  await expect(chart.locator('path[data-series]')).toHaveCount(3);
+  const paths = await chart
+    .locator('path[data-series]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        series: node.getAttribute('data-series'),
+        color: node.getAttribute('stroke'),
+        dash: node.getAttribute('stroke-dasharray'),
+        path: node.getAttribute('d')
+      }))
+    );
+  expect(new Set(paths.map((path) => path.color)).size).toBe(3);
+  expect(new Set(paths.map((path) => path.dash)).size).toBe(3);
+  expect(new Set(paths.map((path) => path.path)).size).toBe(3);
+  const values = page.getByRole('status', {
+    name: 'Selected hour',
+    exact: true
+  });
+  await expect(values).toHaveText(
+    /Completed\s*28.*Failed attempts\s*1.*Dead-lettered\s*2/
+  );
+  const hours = chart.getByRole('button');
+  await expect(hours).toHaveCount(24);
+  await hours.nth(8).hover();
+  await expect(values).toHaveText(/Failed attempts\s*5/);
+  await hours.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(hours.nth(1)).toBeFocused();
+  await expect(values).toHaveText(/Completed\s*7/);
+  await page.keyboard.press('End');
+  await expect(hours.last()).toBeFocused();
+  await expect(values).toHaveText(/Completed\s*28/);
+  await page.screenshot({
+    path: 'test-results/queue-hourly-histogram.png',
+    fullPage: true
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await hours.nth(16).click();
+  await expect(values).toHaveText(/Dead-lettered\s*7/);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBeTruthy();
+  await page.screenshot({
+    path: 'test-results/queue-hourly-histogram-mobile.png',
+    fullPage: true
+  });
+  await page
+    .getByRole('button', { name: 'Pause updates', exact: true })
+    .click();
+  mode = 'large';
+  await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(values).toHaveText(/Completed\s*2,000,000/);
+  for (const name of ['large', 'zero']) {
+    mode = name;
+    await page
+      .getByRole('button', { name: 'Refresh now', exact: true })
+      .click();
+    if (name === 'zero')
+      await expect(values).toHaveText(
+        /Completed\s*0.*Failed attempts\s*0.*Dead-lettered\s*0/
+      );
+    expect(
+      await chart.evaluate((svg) =>
+        Array.from(
+          svg.querySelectorAll<SVGPathElement>('path[data-series]')
+        ).every((path) => {
+          const bounds = path.getBBox();
+          const view = (svg as SVGSVGElement).viewBox.baseVal;
+          return (
+            [bounds.x, bounds.y, bounds.width, bounds.height].every(
+              Number.isFinite
+            ) &&
+            bounds.x >= 0 &&
+            bounds.y >= 0 &&
+            bounds.x + bounds.width <= view.width &&
+            bounds.y + bounds.height <= view.height
+          );
+        })
+      )
+    ).toBeTruthy();
+  }
+  mode = 'empty';
+  await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(
+    page.getByText('No hourly activity has been recorded in this window.', {
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(chart).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

@@ -1,22 +1,26 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth.svelte';
+  import { tenant, TENANTS } from '$lib/stores/tenant.svelte';
 </script>
 
 <header class="bg-white shadow-sm border-b border-gray-200">
   <div class="px-4 sm:px-6 lg:px-8">
-    <div class="flex h-12 justify-between items-center">
+    <div
+      class="flex min-h-12 flex-wrap justify-between items-center gap-3 py-2"
+    >
       <div class="flex items-center">
         <a href="/" class="text-xl font-bold text-gray-900">
           Clean Architecture
         </a>
       </div>
 
-      <nav class="hidden md:flex items-stretch space-x-8 self-stretch -mb-px">
+      <nav class="hidden lg:flex items-stretch space-x-8 self-stretch -mb-px">
         <!-- Public nav links - always visible -->
         <a
           href="/"
-          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname === '/'
+          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page
+            .url.pathname === '/'
             ? 'border-blue-500 text-blue-600'
             : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
         >
@@ -24,7 +28,9 @@
         </a>
         <a
           href="/products"
-          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/products')
+          class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith(
+            '/products'
+          )
             ? 'border-blue-500 text-blue-600'
             : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
         >
@@ -35,7 +41,9 @@
         {#if auth.isAuthenticated}
           <a
             href="/orders"
-            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/orders')
+            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith(
+              '/orders'
+            )
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
           >
@@ -43,7 +51,9 @@
           </a>
           <a
             href="/reports"
-            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith('/reports')
+            class="inline-flex items-center border-b-2 text-sm font-medium transition-colors {$page.url.pathname.startsWith(
+              '/reports'
+            )
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-900'}"
           >
@@ -58,37 +68,83 @@
           class="inline-flex items-center gap-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-900 transition-colors"
         >
           API Docs
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-3 w-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
           </svg>
         </a>
       </nav>
 
-      {#if auth.isAuthenticated && auth.user}
-        <div class="flex items-center gap-3">
-          <span class="text-sm text-gray-700">
-            {auth.user.displayName}
-            <span class="ml-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-              {auth.user.role}
+      <div class="flex flex-wrap items-center gap-4">
+        <label
+          class="flex items-center gap-1.5 text-xs text-gray-500"
+          title="Sent as the X-Tenant header on every request; the API copies it into queued messages and tracked jobs"
+        >
+          Tenant
+          <select
+            value={tenant.current}
+            onchange={(e) => tenant.set(e.currentTarget.value)}
+            class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-mono text-gray-800"
+          >
+            {#each TENANTS as t (t)}
+              <option value={t}>{t}</option>
+            {/each}
+          </select>
+        </label>
+
+        {#if auth.isAuthenticated && auth.user}
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-700">
+              {auth.user.displayName}
+              <span
+                class="ml-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+              >
+                {auth.user.role}
+              </span>
             </span>
-          </span>
-          <button
-            onclick={() => auth.logout()}
-            class="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-      {:else}
-        <div class="flex items-center">
-          <a
-            href="/login"
-            class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-          >
-            Sign in
-          </a>
-        </div>
-      {/if}
+            <button
+              onclick={() => auth.logout()}
+              class="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        {:else}
+          <div class="flex items-center">
+            <a
+              href={$page.url.pathname === '/login'
+                ? '/login'
+                : `/login?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`}
+              class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              Sign in
+            </a>
+          </div>
+        {/if}
+      </div>
     </div>
+    <nav
+      class="flex flex-wrap gap-x-4 gap-y-2 border-t py-2 text-sm lg:hidden"
+      aria-label="Sample navigation"
+    >
+      <a href="/" class="text-gray-600">Dashboard</a>
+      <a href="/products" class="text-gray-600">Products</a>
+      <a href="/queues" class="text-blue-700">Queues</a>
+      <a href="/events" class="text-blue-700">Live Events</a>
+      <a href="/try" class="text-gray-600">Try it</a>
+      {#if auth.isAuthenticated}<a href="/orders" class="text-gray-600"
+          >Orders</a
+        >{/if}
+    </nav>
   </div>
 </header>

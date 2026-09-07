@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "samples/CleanArchitectureSample/src/AppHost/AppHost.csproj"
+  }
+}

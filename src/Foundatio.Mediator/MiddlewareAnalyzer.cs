@@ -277,6 +277,8 @@ internal static class MiddlewareAnalyzer
             AssemblyName = classSymbol.ContainingAssembly.Name,
             IsExplicitlyDeclared = middlewareAttr != null,
             ExplicitOnly = explicitOnly,
+            Stage = middlewareAttr?.NamedArguments.FirstOrDefault(pair => pair.Key == "Stage").Value.Value is int stage ? stage : 0,
+            IsDispatcher = middlewareAttr?.NamedArguments.FirstOrDefault(pair => pair.Key == "IsDispatcher").Value.Value is true,
             HasConstructorParameters = hasConstructorParameters,
             HasMethodDIParameters = hasMethodDIParameters,
             Diagnostics = new(diagnostics.ToArray()),

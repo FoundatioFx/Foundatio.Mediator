@@ -1,6 +1,10 @@
+using Api.Infrastructure;
 using Common.Module;
+using Common.Module.Events;
 using Foundatio.Mediator;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Foundatio.Mediator.Distributed;
+using Foundatio.Mediator.Distributed.Aws;
+using Foundatio.Mediator.Distributed.Redis;
 using Microsoft.AspNetCore.RateLimiting;
 using Orders.Module;
 using Products.Module;
@@ -10,89 +14,102 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddOpenApi();
+var options = AppOptions.Parse(args);
 
-// Simple cookie authentication for the sample
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
+builder.AddServiceDefaults();
+builder.AddRedisAndCaching();
+
+// Created up front so the job metadata provider below can read the current request before the container exists.
+var httpContextAccessor = new HttpContextAccessor();
+builder.Services.AddSingleton<IHttpContextAccessor>(httpContextAccessor);
+
+// Handlers take TenantContext as a parameter: on a worker it comes from the message headers via the
+// CallContext; inline, DI resolves it from the current request.
+builder.Services.AddScoped(_ => TenantHeaderProvider.Resolve(httpContextAccessor.HttpContext));
+
+// [QueueLock] needs a lock every replica shares; the library only supplies a process-local one for in-memory queues.
+builder.Services.AddSingleton<IQueueLockProvider, RedisQueueLockProvider>();
+
+// ── Foundatio.Mediator ──
+builder.Services.AddMediator()
+    .ConfigureDistributed(opts => opts.ResourcePrefix = builder.Configuration["Distributed:ResourcePrefix"] ?? "sample")
+    .AddDistributedQueues(opts =>
     {
-        options.Cookie.Name = "ModularMonolith.Auth";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Strict;
-        options.ExpireTimeSpan = TimeSpan.FromHours(8);
-        options.SlidingExpiration = true;
-        // Return 401 JSON instead of redirecting to a login page
-        options.Events.OnRedirectToLogin = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
-        };
-        options.Events.OnRedirectToAccessDenied = context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return Task.CompletedTask;
-        };
-    });
-builder.Services.AddAuthorization();
+        // One setting decides which workers this process runs: "all", "none" (API node), or a list of
+        // groups/queues such as "exports,imports". Comes from --workers, then Distributed:Workers config.
+        opts.WorkerId = new HostInfo().HostId;
+        opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]);
 
-// Rate limiting policies — applied to endpoints via the [RateLimited] attribute
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        // Tracked jobs remember who asked for them; the dashboard shows tenant and user per job.
+        opts.JobMetadataProvider = _ => TenantHeaderProvider.JobMetadata(httpContextAccessor.HttpContext);
 
-    // Default policy: 10 requests per 10-second window
-    options.AddFixedWindowLimiter("default", limiter =>
-    {
-        limiter.PermitLimit = 10;
-        limiter.Window = TimeSpan.FromSeconds(10);
-        limiter.QueueLimit = 0;
-    });
+        // Optional startup override: most labels live on [Queue], but a host can customize one here.
+        opts.QueueOverrides["order-created"] = queue => queue.DisplayName = "Order confirmation and fulfillment";
+    })
+    .AddQueueHeaderProvider<TenantHeaderProvider>()
+    .AddDistributedNotifications(notifications => notifications
+        // Every domain event in Common.Module crosses the bus (the event feed may be connected to any API node)...
+        .IncludeNotificationsFromAssemblyOf<IOrderEvent>()
+        // ...except this one: only queued handlers consume it, and the publishing node already enqueued them.
+        .Exclude<ProductStockChanged>())
+    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
+    .UseRedisJobState();
 
-    // Strict policy: 3 requests per 30-second window (for write operations)
-    options.AddFixedWindowLimiter("strict", limiter =>
-    {
-        limiter.PermitLimit = 3;
-        limiter.Window = TimeSpan.FromSeconds(30);
-        limiter.QueueLimit = 0;
-    });
-});
-
-// Add Foundatio.Mediator — all referenced module assemblies are auto-discovered
-builder.Services.AddMediator();
-
-// Add module services
-// Order matters: Common.Module provides cross-cutting services that other modules may depend on
+// ── Domain modules ──
 builder.Services.AddCommonModule();
 builder.Services.AddOrdersModule();
 builder.Services.AddProductsModule();
 builder.Services.AddReportsModule();
 
-// Cross-module event handlers (AuditEventHandler, NotificationEventHandler) are now
-// in Common.Module and will be discovered automatically via the source generator
+if (options.IsApiEnabled)
+{
+    builder.Services.AddOpenApi();
+    builder.AddSampleAuthentication();
+
+    // Rate limiting policies — applied to endpoints via the [EndpointRateLimiter] attribute
+    builder.Services.AddRateLimiter(rateLimiter =>
+    {
+        rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        // Default policy: 10 requests per 10-second window
+        rateLimiter.AddFixedWindowLimiter("default", limiter =>
+        {
+            limiter.PermitLimit = 10;
+            limiter.Window = TimeSpan.FromSeconds(10);
+            limiter.QueueLimit = 0;
+        });
+
+        // Strict policy: 3 requests per 30-second window (for write operations)
+        rateLimiter.AddFixedWindowLimiter("strict", limiter =>
+        {
+            limiter.PermitLimit = 3;
+            limiter.Window = TimeSpan.FromSeconds(30);
+            limiter.QueueLimit = 0;
+        });
+    });
+}
 
 var app = builder.Build();
 
-// Serve static files from the SPA
-app.UseDefaultFiles();
-app.MapStaticAssets();
+app.LogStartupDiagnostics(options);
+app.MapHealthCheckEndpoints();
+app.UseSuppressInstrumentation("/api/queues/queues", "/api/queues/queue", "/api/queues/job-dashboard", "/api/queues/dead-letters", "/api/queues/host", "/api/events");
 
-app.MapOpenApi();
-app.MapScalarApiReference();
+if (options.IsApiEnabled)
+{
+    app.UseDefaultFiles();
+    app.MapStaticAssets();
 
-app.UseHttpsRedirection();
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 
-app.UseRateLimiter();
+    app.UseHttpsRedirection();
+    app.UseRateLimiter();
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Map module endpoints - discovers and maps all endpoint modules from referenced assemblies
-app.MapMediatorEndpoints();
-
-// SPA fallback - serves index.html for client-side routing
-app.MapFallbackToFile("/index.html");
+    app.MapMediatorEndpoints();
+    app.MapFallbackToFile("/index.html");
+}
 
 app.Run();
-
-

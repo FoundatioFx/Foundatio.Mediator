@@ -18,6 +18,7 @@ internal readonly record struct HandlerInfo
     public EquatableArray<ParameterInfo> Parameters { get; init; }
     public EquatableArray<CallSiteInfo> CallSites { get; init; }
     public EquatableArray<MiddlewareInfo> Middleware { get; init; }
+    public bool HasDispatcher => Middleware.Any(m => m.IsDispatcher);
     public EquatableArray<HandlerAttributeMetadataInfo> AttributeMetadata { get; init; }
 
     /// <summary>

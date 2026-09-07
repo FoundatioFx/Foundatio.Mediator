@@ -1,4 +1,4 @@
-﻿namespace Common.Module;
+namespace Common.Module;
 
 public class EntityAction<T>
 {

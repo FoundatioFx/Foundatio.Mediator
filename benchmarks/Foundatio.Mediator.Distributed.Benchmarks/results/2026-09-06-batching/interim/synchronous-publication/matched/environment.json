@@ -1,0 +1,36 @@
+{
+  "capturedUtc": "2026-09-06T22:41:33.0795178+00:00",
+  "machineName": "codesmith",
+  "processorCount": 24,
+  "os": "Ubuntu 26.04.1 LTS",
+  "runtime": ".NET 10.0.11",
+  "frequency": 1000000000,
+  "serverGc": false,
+  "seed": 149,
+  "repetitions": 1,
+  "cases": [
+    "foundatio/sqs/pubsub/p128/s40/c10/f1/b5000/r0/w0"
+  ],
+  "command": [
+    "run",
+    "--framework",
+    "foundatio",
+    "--transport",
+    "sqs",
+    "--operation",
+    "pubsub",
+    "--count",
+    "5000",
+    "--capacity",
+    "5000",
+    "--producers",
+    "40",
+    "--output",
+    "/tmp/pr149-batching-final/matched",
+    "--endpoint",
+    "http://localhost:14566",
+    "--timeout",
+    "300"
+  ],
+  "harnessSha256": "2A60C0360C2F17E3B9916181E7721D3C70D26C7C6CD28F3F00852290C91D1064"
+}

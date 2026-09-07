@@ -1,0 +1,43 @@
+{
+  "capturedUtc": "2026-09-06T23:10:24.9623444+00:00",
+  "machineName": "codesmith",
+  "processorCount": 24,
+  "os": "Ubuntu 26.04.1 LTS",
+  "runtime": ".NET 10.0.11",
+  "frequency": 1000000000,
+  "serverGc": false,
+  "seed": 149,
+  "repetitions": 5,
+  "cases": [
+    "foundatio/local/queue/p128/s8/c8/f1/b5000000/r0/w0",
+    "foundatio/memory/queue/p128/s8/c8/f1/b250000/r0/w0",
+    "masstransit/memory/queue/p128/s8/c8/f1/b250000/r0/w0",
+    "foundatio/sqs/queue/p128/s8/c8/f1/b5000/r0/w0",
+    "masstransit/sqs/queue/p128/s8/c8/f1/b5000/r0/w0",
+    "foundatio/local/pubsub/p128/s8/c10/f1/b5000000/r0/w0",
+    "foundatio/memory/pubsub/p128/s8/c10/f1/b250000/r0/w0",
+    "masstransit/memory/pubsub/p128/s8/c10/f1/b250000/r0/w0",
+    "foundatio/sqs/pubsub/p128/s8/c10/f1/b5000/r0/w0",
+    "masstransit/sqs/pubsub/p128/s8/c10/f1/b5000/r0/w0"
+  ],
+  "command": [
+    "matrix",
+    "--suite",
+    "standard",
+    "--count",
+    "5000",
+    "--local-count",
+    "5000000",
+    "--memory-count",
+    "250000",
+    "--repetitions",
+    "5",
+    "--output",
+    "/tmp/pr149-batching-confirmed/standard",
+    "--endpoint",
+    "http://localhost:14566",
+    "--timeout",
+    "300"
+  ],
+  "harnessSha256": "6597FF6E2D320455B30EAC47BC9CDC0BC824C1979D834842073BE74FB3E3D34D"
+}

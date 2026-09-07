@@ -83,7 +83,7 @@
     <Spinner />
   </div>{:else if dashboard}
   {#if dashboard.jobs.length === 0}<p class="p-8 text-center text-gray-500">
-      No jobs in this view. Try another status or enqueue a scenario.
+      No jobs in this view. Try another status or search for a job by ID.
     </p>{:else}<div class="divide-y">
       {#each dashboard.jobs as entry (entry.jobId)}<div
           class="px-5 py-4 space-y-2"

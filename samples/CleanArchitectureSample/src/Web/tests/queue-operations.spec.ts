@@ -12,7 +12,7 @@ import type {
 } from '../src/lib/types/queue';
 
 async function signIn(page: Page) {
-  await page.goto('/login?redirect=/queues');
+  await page.goto('/login?redirect=/try');
   await page
     .getByRole('textbox', { name: 'Username', exact: true })
     .fill('admin');
@@ -109,7 +109,10 @@ test('anonymous monitoring is usable and mutations require an administrator', as
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Enqueue export', exact: true })
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Try the workflow', exact: true })
+  ).toHaveCount(0);
   await expect(
     page.getByText('Sign in for live events', { exact: true })
   ).toBeVisible();
@@ -127,6 +130,31 @@ test('anonymous monitoring is usable and mutations require an administrator', as
       })
     ).status()
   ).toBe(401);
+  await page
+    .getByRole('complementary')
+    .getByRole('link', { name: 'Try it', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/try$/);
+  await expect(
+    page.getByRole('button', { name: 'Enqueue export', exact: true })
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('heading', { name: 'Subscriptions', exact: true })
+  ).toHaveCount(0);
+  await page
+    .getByRole('main')
+    .getByRole('link', { name: 'Sign in', exact: true })
+    .click();
+  await expect(page).toHaveURL(/redirect=\/try$/);
+  await page
+    .getByRole('textbox', { name: 'Username', exact: true })
+    .fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('admin');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/try$/);
+  await expect(
+    page.getByRole('button', { name: 'Enqueue export', exact: true })
+  ).toBeEnabled();
 });
 
 test('running and queued jobs can be inspected, linked, and cooperatively cancelled', async ({
@@ -136,7 +164,19 @@ test('running and queued jobs can be inspected, linked, and cooperatively cancel
   await signIn(page);
   await page.getByLabel('Export job count', { exact: true }).fill('8');
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
-  await viewQueue(page, receipt);
+  await page
+    .getByRole('link', {
+      name: `Open job ${receipt.jobIds[0].slice(0, 10)}`,
+      exact: true
+    })
+    .click();
+  const receiptDialog = page.getByRole('dialog', { name: 'Job details' });
+  await expect(receiptDialog).toContainText(receipt.jobIds[0]);
+  await page.reload();
+  await expect(receiptDialog).toContainText(receipt.jobIds[0]);
+  await receiptDialog
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   try {
     let running: JobSummary | undefined;
     let queued: JobSummary | undefined;
@@ -351,6 +391,16 @@ test('both jobs sharing a bank lock complete and publish events across processes
     receipt.jobIds.map((id) => job(request, id))
   );
   expect(states.every((s) => !!s.workerId)).toBeTruthy();
+  await page
+    .getByRole('link', { name: 'Open queue dashboard', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Queue dashboard', exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('BankFileGenerated', { exact: false })
+  ).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^Enqueue / })).toHaveCount(0);
 });
 
 test('pagination, queue filtering, stale-data errors, and mobile layout remain usable', async ({
@@ -622,4 +672,146 @@ test('legacy queue links redirect and unavailable statistics are distinct from z
   await expect(
     page.getByRole('table', { name: /Hourly processing counters/ })
   ).toHaveCount(0);
+});
+
+test('dashboard filters operational issues and keeps sample work on Try it', async ({
+  page
+}) => {
+  const actual: QueueSummary[] = await (
+    await page.request.get('/api/queues/queues')
+  ).json();
+  const queues: QueueSummary[] = actual.slice(0, 3).map((queue, i) => ({
+    ...queue,
+    trackProgress: i === 2,
+    statisticsAvailable: i !== 1,
+    deadLetterCount: i === 0 ? 2 : i === 1 ? 999 : 0,
+    inFlightCount: i === 2 ? 3 : i === 1 ? 999 : 0,
+    counterStats: i === 1 ? null : queue.counterStats
+  }));
+  let unavailable = true;
+  let reads = 0;
+  let enqueues = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/queues/enqueue/'))
+      enqueues++;
+  });
+  await page.route('**/api/queues/queues', (route) => {
+    reads++;
+    return unavailable
+      ? route.fulfill({
+          status: 503,
+          contentType: 'application/problem+json',
+          body: JSON.stringify({ title: 'Monitoring outage', status: 503 })
+        })
+      : route.fulfill({ json: queues });
+  });
+  await page.goto('/queues');
+  await expect(page.getByText(/Queue data is unavailable/)).toBeVisible();
+  await expect(
+    page
+      .getByRole('group', { name: 'Queue transport totals' })
+      .getByText('—', { exact: true })
+  ).toHaveCount(4);
+  await expect(
+    page.getByText('No queues are registered.', { exact: true })
+  ).toHaveCount(0);
+  unavailable = false;
+  await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
+  const table = page.getByRole('table', { name: 'Queue subscriptions' });
+  await expect(table.locator('tbody tr')).toHaveCount(3);
+  const view = page.getByRole('combobox', { name: 'Queue view', exact: true });
+  for (const [value, index] of [
+    ['dead-letters', 0],
+    ['in-flight', 2],
+    ['unavailable', 1],
+    ['tracked', 2]
+  ] as const) {
+    await view.selectOption(value);
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await expect(
+      table.getByRole('link', { name: queues[index].queueName, exact: true })
+    ).toBeVisible();
+  }
+  await expect(
+    table.getByRole('link', {
+      name: `View dead letters for ${queues[2].queueName}`,
+      exact: true
+    })
+  ).toHaveAttribute(
+    'href',
+    `/queues/${encodeURIComponent(queues[2].queueName)}?view=dead-letters`
+  );
+  await view.selectOption('all');
+  const unknown = table
+    .getByRole('row')
+    .filter({
+      has: page.getByRole('link', { name: queues[1].queueName, exact: true })
+    });
+  await expect(unknown.getByText('—', { exact: true })).toHaveCount(6);
+  await page
+    .getByLabel('Filter queues', { exact: true })
+    .fill('no-such-subscription');
+  await expect(
+    page.getByText('No queues match your filter.', { exact: true })
+  ).toBeVisible();
+  await page.getByLabel('Filter queues', { exact: true }).fill('');
+  await page
+    .getByRole('button', { name: 'Pause updates', exact: true })
+    .click();
+  unavailable = true;
+  await page.getByRole('button', { name: 'Refresh now', exact: true }).click();
+  await expect(
+    page.getByText(
+      /Monitoring unavailable:.*Previously loaded values may be stale/
+    )
+  ).toBeVisible();
+  await expect(table.locator('tbody tr')).toHaveCount(3);
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(/scenario|sample jobs|bank files|Try the workflow/i)
+  ).toHaveCount(0);
+  expect(enqueues).toBe(0);
+
+  await page
+    .getByRole('complementary')
+    .getByRole('link', { name: 'Try it', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Try it', exact: true })
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Try the workflow', exact: true })
+  ).toBeVisible();
+  const before = reads;
+  await page.clock.install();
+  await page.clock.runFor(6000);
+  expect(reads).toBe(before);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBeTruthy();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sample navigation' })
+      .getByRole('link', { name: 'Try it', exact: true })
+  ).toBeVisible();
+  await page.screenshot({
+    path: 'test-results/try-workflow-mobile.png',
+    fullPage: true
+  });
+  await page
+    .getByRole('link', { name: 'Open queue dashboard', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Queue dashboard', exact: true })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBeTruthy();
 });

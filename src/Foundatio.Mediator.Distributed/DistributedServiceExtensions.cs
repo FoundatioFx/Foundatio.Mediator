@@ -16,8 +16,8 @@ public static class DistributedServiceExtensions
     /// <summary>
     /// Registers queue routing for every <see cref="QueueAttribute"/> handler: the middleware that
     /// enqueues, one worker per queue (subject to <see cref="DistributedQueueOptions"/> filters), and
-    /// the infrastructure initializer. A transport may be registered before or after this call;
-    /// without one the in-memory queue client is used.
+    /// the infrastructure initializer. Configure the native Foundatio message bus before starting
+    /// the host, for example with <c>AddFoundatio().Messaging.UseInMemory()</c>.
     /// </summary>
     public static IMediatorBuilder AddDistributedQueues(
         this IMediatorBuilder builder,

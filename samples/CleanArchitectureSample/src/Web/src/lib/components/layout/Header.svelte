@@ -139,12 +139,12 @@
     >
       <a href="/" class="text-gray-600">Dashboard</a>
       <a href="/products" class="text-gray-600">Products</a>
-      <a href="/queues" class="text-blue-700">Queues</a>
-      <a href="/events" class="text-blue-700">Live Events</a>
-      <a href="/try" class="text-gray-600">Try it</a>
       {#if auth.isAuthenticated}<a href="/orders" class="text-gray-600"
           >Orders</a
         >{/if}
+      <a href="/queues" class="text-blue-700">Queues</a>
+      <a href="/try" class="text-gray-600">Try it</a>
+      <a href="/events" class="text-blue-700">Live Events</a>
     </nav>
   </div>
 </header>

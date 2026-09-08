@@ -297,7 +297,7 @@ Registered with `.AddQueueHeaderProvider<TenantHeaderProvider>()`. Every provide
 
 ### 8. Observability and scale-out
 
-`ServiceDefaults` adds `.AddMeter(DistributedMetrics.MeterName)`, so the Aspire dashboard's Metrics view shows `queue.messages.enqueued`, `queue.messages.processed`, `queue.messages.failed`, `queue.messages.dead_lettered`, `queue.messages.in_flight`, `queue.handler.duration`, the sampled `queue.depth.*` gauges, and `notifications.published`/`received`/`dropped`, tagged by queue, message type, and group. Enqueue and process spans are linked (not parented), so an hour-long job does not stretch the request's trace.
+`ServiceDefaults` adds `.AddMeter(DistributedMetrics.MeterName)`, so the Aspire dashboard's Metrics view shows `queue.messages.enqueued`, `queue.messages.processed`, `queue.messages.failed`, `queue.messages.dead_lettered`, `queue.messages.in_flight`, `queue.handler.duration`, the sampled `queue.depth.*` gauges, and `notifications.published`/`received`, tagged by queue, message type, and group. Enqueue and process spans are linked (not parented), so an hour-long job does not stretch the request's trace.
 
 **UI:** on **Try it**, set **Jobs** to 20, then **Enqueue export**. With two export replicas at concurrency 2, four jobs run at a time. The inspector identifies each attempt with `WorkerId`; completion notifications populate **Live worker activity** with host badges. Open the full event feed for order, product, webhook, and bank-file events. The last responding API and its worker selection appear below the dashboard.
 
@@ -365,7 +365,7 @@ RetryMiddleware (Execute, Order=0)
                       └─ Handler
 ```
 
-`MiddlewareStage.Processing` is the default for queued handlers. `ValidationMiddleware` explicitly uses `Stage = MiddlewareStage.Both`, so invalid work is rejected before acceptance and checked again on processing. `QueueMiddleware` dispatches the enqueue branch; the worker runs the processing branch in a fresh scope, including `QueueLockMiddleware` and the handler middleware. Use `Stage = MiddlewareStage.Enqueue` for request-side-only work.
+`[Queue]` attaches ordinary `BeforeAsync` middleware. `ValidationMiddleware` uses `OrderBefore = [typeof(QueueMiddleware)]`, so invalid work is rejected before acceptance and checked again on processing. Queue middleware short-circuits on the caller and continues on the worker. The usual `After` and `Finally` rules apply; there are no distributed stages in core. An optional `MessageProcessingContext` identifies worker execution. `QueueLockMiddleware` uses it to acquire locks only while processing.
 
 ### Caching
 

@@ -105,7 +105,7 @@ public static class DistributedServiceExtensions
                 throw new InvalidOperationException($"Queue '{queueName}' has conflicting DisplayName values. Set the same label on its handlers or use QueueOverrides to configure it once.");
             var displayName = displayNames.FirstOrDefault();
 
-            var handlers = HandlerRegistry.OrderRegistrations(members.Select(m => m.Handler));
+            var handlers = members.Select(m => m.Handler).ToArray();
             var messageType = members[0].Handler.MessageType!;
 
             var retrySchedule = !string.IsNullOrWhiteSpace(settings.RetryDelays) ? QueueRetryDelay.ParseSchedule(settings.RetryDelays!) : null;
@@ -117,10 +117,10 @@ public static class DistributedServiceExtensions
                 DisplayName = displayName,
                 Settings = settings,
                 MessageType = messageType,
-                Handlers = handlers
+                Handlers = handlers,
+                Registry = registry
             };
             topology.Add(registration);
-            registry.SetPublishGroup($"queue:{queueName}", handlers);
 
             var visibilityTimeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
 
@@ -136,6 +136,7 @@ public static class DistributedServiceExtensions
                 QueueName = queueName,
                 MessageType = messageType,
                 Registrations = handlers,
+                ResolveHandlers = registration.HandlersFor,
                 Concurrency = concurrency,
                 PrefetchCount = prefetchCount,
                 VisibilityTimeout = visibilityTimeout,
@@ -219,7 +220,12 @@ public static class DistributedServiceExtensions
         if (type == typeof(void) || type == typeof(Task) || type == typeof(ValueTask))
             return;
         if (type.IsGenericType && type.FullName!.StartsWith("System.ValueTuple`", StringComparison.Ordinal))
-            type = type.GetGenericArguments()[0];
+        {
+            var items = type.GetGenericArguments();
+            if (items.Skip(1).Any(item => item.IsValueType && Nullable.GetUnderlyingType(item) is null))
+                throw new InvalidOperationException($"Queue handler '{handler.SourceHandlerName}.{handler.MethodName}' has a non-nullable value-type cascading event. Use a nullable event or publish it inside the handler so enqueue short-circuiting cannot publish a default event.");
+            type = items[0];
+        }
         if (type == typeof(Result) || type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Result<>))
             return;
         throw new InvalidOperationException($"Queue handler '{handler.SourceHandlerName}.{handler.MethodName}' returns '{handler.HandlerMethod!.ReturnType}'. Queue handlers must return void, Task, ValueTask, Result, Result<T>, or a cascading tuple with Result/Result<T> first (optionally awaited). Enqueueing returns acceptance; the worker produces the eventual result.");

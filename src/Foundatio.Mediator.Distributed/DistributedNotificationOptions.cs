@@ -25,8 +25,8 @@ public class DistributedNotificationOptions
     public bool ReceiveNotifications { get; set; } = true;
 
     /// <summary>
-    /// Capacity of the outbound buffer between local publishes and the bus. A full buffer
-    /// evicts the oldest notification and records a drop; publishing never waits for remote delivery.
+    /// Capacity of the local notification subscription before distribution filtering. A full buffer
+    /// evicts the oldest notification; Mediator does not expose a drop count. Publishing never waits for remote delivery.
     /// </summary>
     public int MaxCapacity { get; set; } = 1000;
 

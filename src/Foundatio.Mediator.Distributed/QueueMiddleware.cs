@@ -11,12 +11,12 @@ namespace Foundatio.Mediator.Distributed;
 /// On the worker side, where a <see cref="MessageProcessingContext"/> is present, it runs the handler.
 /// </summary>
 /// <remarks>
-/// <para>When handlers explicitly share a queue, the registry selects one matching enqueue pipeline
-/// per publication. The worker processes all matching handlers in that group.</para>
+/// <para>When handlers explicitly share a queue, this middleware sends only from the first matching
+/// registration in Mediator's existing publication order. The worker processes the matching group.</para>
 /// <para>A notification re-published from the distributed bus is not enqueued again: the node that
 /// published it already did.</para>
 /// </remarks>
-[Middleware(ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton, IsDispatcher = true)]
+[Middleware(ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton, Order = int.MaxValue)]
 public class QueueMiddleware
 {
     private readonly IMessageBus _bus;
@@ -42,23 +42,27 @@ public class QueueMiddleware
         _bus = bus;
     }
 
-    public async ValueTask<object?> ExecuteAsync(
+    public async ValueTask<HandlerResult> BeforeAsync(
         object message,
-        HandlerExecutionDelegate next,
         HandlerExecutionInfo handlerInfo,
         CallContext? callContext,
         IServiceProvider services,
         CancellationToken cancellationToken)
     {
+        if (callContext?.Get(typeof(MessageProcessingContext)) is MessageProcessingContext)
+            return HandlerResult.Continue();
+
         // The originating node enqueued this notification before publishing it to the bus.
         if (DistributedContext.IsInboundNotification(message))
-            return Result.Accepted("Message queued by the originating node");
+            return HandlerResult.ShortCircuit(Result.Accepted("Message queued by the originating node"));
 
         var registration = _topology.GetByDescriptorId(handlerInfo.DescriptorId)
             ?? throw new InvalidOperationException(
                 $"Handler '{handlerInfo.DescriptorId}' is marked [Queue] but has no queue registration. Call AddDistributedQueues() after AddMediator().");
 
         var messageType = message.GetType();
+        if (registration.HandlersFor(messageType)[0].DescriptorId != handlerInfo.DescriptorId)
+            return HandlerResult.ShortCircuit(Result.Accepted("Message queued by the subscription owner"));
 
         await WaitForInfrastructureAsync(registration.QueueName, messageType, cancellationToken).ConfigureAwait(false);
 
@@ -138,7 +142,7 @@ public class QueueMiddleware
 
         DistributedMetrics.Enqueued.Add(1, DistributedMetrics.Tags(registration.QueueName, messageType.Name, registration.Settings.Group));
 
-        return Result.Accepted("Message queued");
+        return HandlerResult.ShortCircuit(Result.Accepted("Message queued"));
     }
 
     private async Task WaitForInfrastructureAsync(string queueName, Type messageType, CancellationToken cancellationToken)

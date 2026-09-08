@@ -37,7 +37,7 @@ finally { await host.StopAsync(); }
 
 public record GenerateGreeting(string Name);
 
-[Middleware(Stage = MiddlewareStage.Enqueue)]
+[Middleware(OrderBefore = [typeof(QueueMiddleware)])]
 public class GreetingValidationMiddleware
 {
     public HandlerResult Before(GenerateGreeting message)

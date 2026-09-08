@@ -25,9 +25,9 @@ Configure the native Foundatio bus separately. Include concrete types, `IDistrib
 await mediator.PublishAsync(new OrderChanged(orderId), ct);
 ```
 
-Local handlers run through ordinary Mediator dispatch. The bridge buffers one outbound publication. Each receiving node acknowledges the native delivery before invoking its local handlers. Self-origin suppression and inbound dispatch context prevent loops and repeated queue enqueues.
+Local handlers run through ordinary Mediator dispatch. The bridge observes local notifications through the existing `SubscribeAsync` hook and filters the buffered notifications using its distribution rules. Each receiving node acknowledges the native delivery before invoking its local handlers. Self-origin suppression and inbound dispatch context prevent loops and repeated queue enqueues.
 
-`PublishAsync` does not confirm remote delivery. The bounded outbox drops its oldest item when full and records a drop metric. It is not durable. Disconnected nodes, process termination, or subscription recovery can lose messages; consumers should refresh authoritative state.
+`PublishAsync` does not confirm remote delivery. The bounded local subscription drops its oldest item when full. It buffers local notifications before filtering, so unrelated local traffic can also fill it. Mediator does not expose an exact drop count; this integration does not publish one. The buffer is not durable. Disconnected nodes, process termination, or subscription recovery can lose messages; consumers should refresh authoritative state.
 
 ## Native node subscriptions
 

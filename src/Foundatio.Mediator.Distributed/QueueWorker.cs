@@ -134,7 +134,7 @@ public sealed class QueueWorker : BackgroundService
             if (handlers.Count == 0)
                 return MessageOutcome.DeadLetter($"No handler accepts message type {messageType.Name}");
             await using var scope = _scopeFactory.CreateAsyncScope();
-            using var callContext = CallContext.Rent().Set(processing).Set(HandlerDispatchContext.Processing);
+            using var callContext = CallContext.Rent().Set(processing);
             RestoreHeaders(processing.Headers, callContext, scope.ServiceProvider);
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             if (mediator is Mediator) mediator = Mediator.FromServiceProvider(scope.ServiceProvider);
@@ -192,8 +192,11 @@ public sealed class QueueWorker : BackgroundService
             ? resolved : null;
     }
 
-    private List<HandlerRegistration> HandlersFor(Type messageType)
+    private IReadOnlyList<HandlerRegistration> HandlersFor(Type messageType)
     {
+        if (_options.ResolveHandlers is { } resolve)
+            return resolve(messageType);
+
         var handlers = new List<HandlerRegistration>(_options.Registrations.Count);
         foreach (var handler in _options.Registrations)
         {

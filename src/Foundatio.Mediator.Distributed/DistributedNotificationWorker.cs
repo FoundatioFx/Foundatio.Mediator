@@ -33,12 +33,6 @@ public sealed class DistributedNotificationWorker : BackgroundService
     private sealed class InboundMarker;
     private readonly TaskCompletionSource _outboundReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _inboundReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private long _droppedCount;
-    private long _lastDropWarningTicks;
-
-    /// <summary>Number of outbound notifications evicted from this worker's bounded buffer.</summary>
-    public long DroppedCount => Interlocked.Read(ref _droppedCount);
-
     private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
 
@@ -95,9 +89,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
             var options = new SubscriberOptions
             {
                 MaxCapacity = _options.MaxCapacity,
-                FullMode = BoundedChannelFullMode.DropOldest,
-                Filter = message => _options.ShouldDistribute(message.GetType()) && !_inboundMessages.TryGetValue(message, out _),
-                OnDropped = OnDropped
+                FullMode = BoundedChannelFullMode.DropOldest
             };
             if (_infraReady is not null)
                 await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false);
@@ -110,6 +102,11 @@ public sealed class DistributedNotificationWorker : BackgroundService
                 while (await pending.ConfigureAwait(false))
                 {
                     var envelope = subscription.Current;
+                    if (!_options.ShouldDistribute(envelope.Message.GetType()) || _inboundMessages.TryGetValue(envelope.Message, out _))
+                    {
+                        pending = subscription.MoveNextAsync();
+                        continue;
+                    }
                     var publication = PublishOutboundAsync(envelope, stoppingToken);
                     // In-memory transports usually finish synchronously. Keep that path free of
                     // parallel-enumerator locks and task scheduling, while filling broker batches.
@@ -136,18 +133,6 @@ public sealed class DistributedNotificationWorker : BackgroundService
             _outboundReady.TrySetException(ex);
             throw;
         }
-    }
-
-    private void OnDropped(object item)
-    {
-        Interlocked.Increment(ref _droppedCount);
-        var notification = ((MessageContext<object>)item).Message;
-        DistributedMetrics.NotificationsDropped.Add(1, new KeyValuePair<string, object?>("message_type", notification.GetType().Name));
-        var now = _timeProvider.GetUtcNow().UtcTicks;
-        var previous = Interlocked.Read(ref _lastDropWarningTicks);
-        if ((previous == 0 || now - previous >= TimeSpan.TicksPerMinute)
-            && Interlocked.CompareExchange(ref _lastDropWarningTicks, now, previous) == previous)
-            _logger.LogWarning("Distributed notification buffer is full; oldest notifications are being dropped. Total dropped: {DroppedCount}. Use a queue subscription when delivery must be durable.", DroppedCount);
     }
 
     private async Task PublishOutboundAsync(MessageContext<object> envelope, CancellationToken stoppingToken)

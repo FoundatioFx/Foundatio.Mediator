@@ -8,7 +8,7 @@ nav:
 
 # Native Core Alternative to PR 149
 
-This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
+This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. **The existing Mediator runtime, source generator, and core test projects match `main` (`a148013`) exactly.** It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
 
 The core changes are included directly in [Foundatio PR #533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
 
@@ -30,12 +30,22 @@ Handlers remain ordinary methods with convention discovery, scoped dependencies,
 
 The Clean Architecture sample demonstrates validation before enqueue, tracked exports, retrying webhooks, terminal failures, imports, bank resource locks, event feeds, worker selection, and queue administration. The UI exposes replay lineage as typed fields, rather than interpreting provider wire headers. The console sample shows a complete started-host workflow without Docker.
 
+## Built through existing Mediator features
+
+`[Queue]` attaches an ordinary `BeforeAsync` middleware through `[UseMiddleware]`. Caller-side routing short-circuits with acceptance. The worker provides native `MessageProcessingContext` through the existing `CallContext`, so the same middleware continues to the handler. No dispatcher marker or stage enum is added to core.
+
+Validation uses normal `OrderBefore = [typeof(QueueMiddleware)]` and runs on both sides. Standard short-circuit lifecycle rules apply: `After` is skipped on acceptance and `Finally` runs. `ExecuteAsync` wraps the normal pipeline. `ScopedPerInvoke` keeps its existing scope ownership, including an additional invocation scope inside a worker scope.
+
+The notification bridge observes `SubscribeAsync`, which works with both generated publish interceptors and runtime publication, including messages with no local handlers. Distribution filters and inbound echo suppression live in the extension. The bounded subscription filters after buffering and cannot report exact buffer drop counts.
+
+A successful `EnqueueAsync` returns the typed receipt through the existing `Result<T>` success API (`Status = Ok`). Invoking a queued handler directly still returns `Accepted`. Neither operation returns the eventual business result. Queued cascading tuples use reference-type or nullable event items; non-nullable value-type events should be published explicitly inside the handler.
+
 ## Ownership and boundaries
 
 | Responsibility | PR 149 | Native alternative |
 | --- | --- | --- |
-| Discovery, middleware stages, generated invocation | Mediator | Mediator |
-| Queue routing and interpreting `Result` | Mediator | Mediator |
+| Discovery, middleware, generated invocation | Mediator with distributed stage/dispatcher changes | Unchanged Mediator core |
+| Queue routing and interpreting `Result` | Distributed extension plus core dispatcher logic | Ordinary middleware in the distributed extension |
 | Receiving, capacity, serialization, delivery leases, settlement | Mediator distributed runtime | Foundatio messaging runtime |
 | AWS transport and batching | Mediator AWS package | Native Foundatio AWS transport |
 | Progress, cancellation, execution history | Mediator state stores | Existing job stores and `JobState`; broker records cannot enter runtime claims |
@@ -44,7 +54,7 @@ The Clean Architecture sample demonstrates validation before enqueue, tracked ex
 | Dead-letter inspection and recovery | Mediator provider operations | Native message administration |
 | Testing delivery and provider contracts | Mediator transport harness | Native Foundatio harness and conformance suites |
 
-Default queued notification handlers receive independent copies with independent retry budgets. Explicitly sharing `QueueName` opts into one delivery and retry unit. Each attempt uses one fresh DI scope. Only registered message types may be deserialized.
+Default queued notification handlers receive independent copies with independent retry budgets. Explicitly sharing `QueueName` opts into one delivery and retry unit. Each attempt starts with a worker scope; handlers retain their normal lifetime semantics, including `ScopedPerInvoke`. Shared queues use Mediator's existing publication order without registry mutation. Every caller pipeline can run, while queue middleware sends only from the first matching registration; this is not atomic validation across handlers. Only registered message types may be deserialized.
 
 Keep the application contracts explicit:
 
@@ -68,13 +78,14 @@ Counting C# lines including comments and blanks, excluding generated files:
 | --- | ---: | ---: |
 | Packages | 4 | 1 |
 | C# files | 70 | 32 |
-| C# lines | 8,442 | 3,044 |
+| C# lines | 8,442 | 3,047 |
+| Existing Mediator core files changed | 11 | 0 |
 
 That removes about 64% of the Mediator-owned distributed source. The core extension adds **2,055 net lines in Foundatio's `src` tree**, including testing support. Queue tracking and ordinary jobs use the same job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
-## Measured performance
+## Measured performance (previous implementation)
 
-Measurements below use the unified job store at core revision `823972fc`, recorded in the raw results. Subsequent cleanup removed unused store types and registrations without changing the measured execution path. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
+The measurements below are historical: they predate the change to ordinary middleware and still include the core dispatcher additions. They use the unified job store at Foundatio revision `823972fc`, recorded in the raw results. They are not measurements of the current implementation. Subsequent cleanup removed unused store types and registrations without changing the measured execution path. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
 
 | Scenario | PR 149 messages/s | Native messages/s | Allocated bytes/message: PR 149 / native |
 | --- | ---: | ---: | ---: |
@@ -92,14 +103,14 @@ Median per-run p99 latency, in milliseconds (PR 149 / native):
 
 The native implementation has higher dispatch and allocation overhead in memory. Enqueue tail latency is also higher in these runs. The LocalStack run puts broker throughput in the same general range, with PR 149 ahead at the median in this run set. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking measurements use in-memory stores to isolate runtime overhead; live Redis correctness is verified separately. These results do not measure payload-heavy processing, crash recovery throughput, or cross-region latency.
 
-Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. Generated local Mediator dispatch is unchanged from PR 149.
+Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. The current implementation restores the Mediator runtime and generators to main; these historical runs instead shared PR 149's core changes.
 
 The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) include the pinned PR 149 baseline, standalone programs, measurement settings, and all 18 results. Run `compare.ps1`, `compare.ps1 -Tracking`, and `compare.ps1 -Aws -Messages 2000` to repeat them.
 
 ## Validation
 
 - Foundatio: full solution build; **2,212 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Superseded store fixtures were removed after their lifecycle coverage moved into the shared job-store conformance suite.
-- Mediator: the default pinned-source build has zero warnings; **746 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
+- Mediator: the pinned-source build has zero warnings; **752 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
 - Sample: frontend type check and production build passed; **23 Playwright scenarios passed against separate API and worker processes**. The console workflow completes validation, enqueue, progress, and native state observation.
 - Focused failure coverage includes conservative/manual lease renewal, graceful drain, failed acknowledgment remaining nonterminal, expired history not blocking work, stale-attempt fencing, Redis lock ownership, unknown wire types, independent node copies, and SQS replay beyond the first receive batch.
 
@@ -111,4 +122,4 @@ I prefer the native-core direction if #533 is the foundation the project intends
 
 I would not choose it on a claim of universally faster execution: PR 149 is leaner in the in-memory measurements. The native approach also couples the initial release to new core APIs that need review. If the priority is an independent Mediator release or minimum in-process queue overhead, PR 149 has a practical advantage.
 
-Keep the convenience of convention-based handlers while making enqueue acceptance, local invocation, and best-effort broadcast visibly different operations. That preserves the developer experience without hiding the distributed contract.
+Keep the convenience of convention-based handlers through the existing extension points, with zero distributed changes to core. Make enqueue acceptance, local invocation, and best-effort broadcast visibly different operations. That preserves the developer experience without hiding the distributed contract.

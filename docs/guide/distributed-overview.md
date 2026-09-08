@@ -8,7 +8,7 @@ nav:
 
 # Going Distributed
 
-This alternative uses Foundatio's native message bus for delivery and Mediator's generated handlers for application code. It builds on Foundatio PR #533; follow the [source setup](./distributed-transports#source-setup) before building this branch.
+This alternative uses Foundatio's native message bus for delivery and Mediator's existing middleware, subscriptions, and generated handlers for application code. The Mediator runtime and source generator projects match `main` without distributed-specific changes. It builds on Foundatio PR #533; follow the [source setup](./distributed-transports#source-setup) before building this branch.
 
 Start with the [console sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/samples/DistributedConsoleSample), then explore the Clean Architecture sample's **Try it** and **Queues** pages.
 

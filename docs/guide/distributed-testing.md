@@ -37,6 +37,8 @@ finally
 
 Imports are `Foundatio`, `Foundatio.Messaging`, `Foundatio.Messaging.Testing`, `Foundatio.Mediator`, and `Foundatio.Mediator.Distributed`, plus normal hosting and DI namespaces.
 
+The existing Mediator runtime, source generator, and core test projects match `main`. Composition tests cover normal Before/After/Finally and Execute middleware, short-circuiting, message transformation, scoped nested calls, queued tuple cascades, and both runtime and generated cluster publication.
+
 The Mediator integration suite verifies enqueue validation, receipts, retry results, terminal failures, scopes, headers, fanout, shared queues, manual settlement, cancellation, replay, wire-type allowlisting, and node broadcasts. Native delivery lease, shutdown, storage fencing, and provider contracts are tested in the pinned core source.
 
 The Clean Architecture sample also has Playwright workflows for progress, cancellation, dead letters, replay, locks, and navigation against real Redis and LocalStack. Set `SAMPLE_BASE_URL` to the running local frontend, then run `npm run test:e2e` in its Web project.

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
@@ -41,6 +43,9 @@ public sealed class QueueTopology
 /// </summary>
 public sealed class QueueRegistration
 {
+    private readonly ConcurrentDictionary<Type, IReadOnlyList<HandlerRegistration>> _matchingHandlers = new();
+    internal HandlerRegistry? Registry { get; init; }
+
     /// <summary>
     /// The fully prefixed queue name.
     /// </summary>
@@ -73,16 +78,15 @@ public sealed class QueueRegistration
     /// Handlers that accept <paramref name="messageType"/>, including handlers declared on an interface
     /// or base type of it.
     /// </summary>
-    public IReadOnlyList<HandlerRegistration> HandlersFor(Type messageType)
+    public IReadOnlyList<HandlerRegistration> HandlersFor(Type messageType) => _matchingHandlers.GetOrAdd(messageType, type =>
     {
-        var result = new List<HandlerRegistration>(Handlers.Count);
-        foreach (var handler in Handlers)
-        {
-            if (handler.MessageType is { } declared && declared.IsAssignableFrom(messageType))
-                result.Add(handler);
-        }
+        var matching = Handlers.Where(handler => handler.MessageType?.IsAssignableFrom(type) == true).ToArray();
+        if (Registry is null || matching.Length < 2)
+            return matching;
 
-        return result;
-    }
-
+        // Reuse Mediator's existing publication order without changing its registry.
+        var byDelegate = matching.ToDictionary(handler => handler.PublishAsync);
+        return Registry.GetPublishHandlersForType(type)
+            .Where(byDelegate.ContainsKey).Select(publish => byDelegate[publish]).ToArray();
+    });
 }

@@ -7,6 +7,8 @@ namespace Foundatio.Mediator.Distributed;
 /// </summary>
 public class QueueWorkerOptions
 {
+    internal Func<Type, IReadOnlyList<HandlerRegistration>>? ResolveHandlers { get; init; }
+
     /// <summary>
     /// The fully prefixed queue name.
     /// </summary>

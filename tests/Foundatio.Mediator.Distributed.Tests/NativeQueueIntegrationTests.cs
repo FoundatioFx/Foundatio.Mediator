@@ -196,6 +196,38 @@ public sealed class NativeQueueIntegrationTests
     }
 
     [Fact]
+    public async Task NodeNotifications_PublishWithoutLocalHandlersReachesRemoteSubscribers()
+    {
+        await using var transport = new InMemoryMessageTransport();
+        await using var first = await TestApplication.StartAsync(transport: transport, notifications: true);
+        await using var second = await TestApplication.StartAsync(transport: transport, notifications: true);
+        await using var received = second.Mediator.SubscribeAsync<UnhandledBroadcast>(CT).GetAsyncEnumerator(CT);
+        var pending = received.MoveNextAsync().AsTask();
+        await first.Mediator.PublishAsync(new UnhandledBroadcast("refresh"), CT);
+        Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(5), CT));
+        Assert.Equal("refresh", received.Current.Value);
+    }
+
+    [Fact]
+    public async Task NodeNotifications_RuntimePublishDoesNotRepeatQueuedSideEffects()
+    {
+        await using var transport = new InMemoryMessageTransport();
+        await using var first = await TestApplication.StartAsync(transport: transport, notifications: true);
+        await using var second = await TestApplication.StartAsync(transport: transport, notifications: true);
+        object message = new BroadcastEvent("runtime");
+        await first.Mediator.PublishAsync(message, CT);
+        await second.Log.Broadcast.Task.WaitAsync(TimeSpan.FromSeconds(5), CT);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(CT);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        while (!first.Log.Events.Concat(second.Log.Events).Contains("queued-broadcast:runtime"))
+            await Task.Delay(10, timeout.Token);
+        await Task.Delay(100, CT);
+        Assert.Single(first.Log.Events.Concat(second.Log.Events), value => value == "queued-broadcast:runtime");
+        Assert.Single(first.Log.Events, value => value == "broadcast:runtime");
+        Assert.Single(second.Log.Events, value => value == "broadcast:runtime");
+    }
+
+    [Fact]
     public async Task NodeNotifications_ReachOtherNodesOnceWithoutRebroadcast()
     {
         await using var transport = new InMemoryMessageTransport();
@@ -220,7 +252,7 @@ internal sealed class TestApplication(IHost host) : IAsyncDisposable
     public MessageAdministration Administration => new(Transport);
     public Task DrainAsync() => Harness.WaitForIdleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IJobRuntimeStore? store = null, bool notifications = false, ITextSerializer? serializer = null)
+    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IJobRuntimeStore? store = null, bool notifications = false, ITextSerializer? serializer = null, Action<IServiceCollection>? configure = null)
     {
         var builder = Host.CreateApplicationBuilder();
         var foundatio = builder.Services.AddFoundatio();
@@ -232,10 +264,11 @@ internal sealed class TestApplication(IHost host) : IAsyncDisposable
         builder.Services.AddSingleton<NativeLog>();
         builder.Services.AddScoped<NativeTenant>();
         builder.Services.AddScoped<NativeScope>();
+        configure?.Invoke(builder.Services);
         var mediator = builder.Services.AddMediator(options => options.AddAssembly<NativeWorkHandler>().SetMediatorLifetime(ServiceLifetime.Scoped))
             .AddDistributedQueues(options => { options.Workers = workers ?? WorkerSelection.All; options.ShutdownTimeout = TimeSpan.FromMilliseconds(100); })
             .AddQueueHeaderProvider<NativeTenantHeaders>();
-        if (notifications) mediator.AddDistributedNotifications(options => options.Include<BroadcastEvent>());
+        if (notifications) mediator.AddDistributedNotifications(options => options.Include<BroadcastEvent>().Include<UnhandledBroadcast>());
         var host = builder.Build();
         await host.StartAsync(TestContext.Current.CancellationToken);
         return new TestApplication(host);
@@ -267,7 +300,7 @@ public sealed class NativeTenantHeaders(NativeTenant tenant) : IQueueHeaderProvi
     public void Restore(IReadOnlyDictionary<string, string> headers, CallContext context) => tenant.Name = headers.GetValueOrDefault("tenant") ?? "default";
 }
 public record NativeWork(string Value);
-[Middleware(ExplicitOnly = true, Stage = MiddlewareStage.Enqueue)]
+[Middleware(ExplicitOnly = true, OrderBefore = [typeof(QueueMiddleware)])]
 public class NativeValidationMiddleware
 {
     public HandlerResult Before(NativeWork message) => message.Value.Length == 0 ? HandlerResult.ShortCircuit(Result.Invalid("Value is required")) : HandlerResult.Continue();
@@ -302,7 +335,13 @@ public class NativeManualHandler
         throw new InvalidOperationException("Already committed");
     }
 }
+public sealed record UnhandledBroadcast(string Value);
 public record BroadcastEvent(string Value);
+[Queue]
+public class NativeBroadcastQueuedHandler(NativeLog log)
+{
+    public void Handle(BroadcastEvent message) => log.Events.Enqueue("queued-broadcast:" + message.Value);
+}
 public class NativeBroadcastHandler(NativeLog log)
 {
     public void Handle(BroadcastEvent message) { log.Events.Enqueue("broadcast:" + message.Value); log.Broadcast.TrySetResult(); }

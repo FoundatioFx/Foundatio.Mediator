@@ -61,7 +61,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter(DistributedMetri
 | `queue.messages.in_flight` | up-down counter | handlers running in this process |
 | `queue.handler.duration` | histogram (ms) | `outcome` = `processed` or `failed` |
 | `queue.depth.visible`, `queue.depth.delayed`, `queue.depth.in_flight`, `queue.depth.dead_letter` | gauges | `queue`; sampled from the transport every `QueueDepthPollInterval` |
-| `notifications.published`, `notifications.received`, `notifications.dropped` | counters | `message_type`; dropped counts outbound buffer evictions |
+| `notifications.published`, `notifications.received` | counters | `message_type`; local subscription drops are not observable |
 
 Depth gauges are the autoscaling signal when the transport does not publish its own; with SQS prefer the CloudWatch queue metrics, which do not depend on a process being alive.
 
@@ -73,11 +73,11 @@ Both run on the `Foundatio.Mediator` activity source.
 
 ## Job State
 
-With `TrackProgress`, `QueueJobState` records status, progress, attempt, `WorkerId`, error, metadata, `LastUpdatedUtc`, and `LastHeartbeatUtc`. Configure `DistributedQueueOptions.WorkerId` to identify the process or replica; it defaults to machine name plus process ID. Each new attempt records its worker and resets progress. Worker identity is retained after completion for diagnosis.
+With `TrackProgress`, `JobState` records status, progress, attempt, `WorkerId`, error, metadata, `LastUpdatedUtc`, and `LastHeartbeatUtc`. Configure `DistributedQueueOptions.WorkerId` to identify the process or replica; it defaults to machine name plus process ID. Each new attempt records its worker and resets progress. Worker identity is retained after completion for diagnosis.
 
-A stale heartbeat warrants investigation; it can reflect worker loss or a state-store outage. It does not prove the handler stopped. Transport lease renewal is independent of state-store heartbeats, and a redelivered message updates the same job on its new attempt. Display cancellation-requested separately from Cancelled: use `IsCancellationRequestedAsync` for a pending request, and wait for worker-confirmed state before reporting completion.
+A stale heartbeat warrants investigation; it can reflect worker loss or a state-store outage. It does not prove the handler stopped. Transport lease renewal is independent of state-store heartbeats, and a redelivered message updates the same job on its new attempt. Display cancellation-requested separately from Cancelled: inspect `CancellationRequested` on the job snapshot for a pending request, and wait for worker-confirmed state before reporting completion.
 
-Job state expires `JobStateExpiry` (default 24 hours) after its last write. The Redis store keeps nonterminal jobs for at least `NonTerminalExpiry` (default 7 days) so a live job never disappears from tracking.
+The native job store applies retention using `JobStateExpiry` and its own history settings. History is operational tracking; expiration does not prevent an accepted broker delivery from executing.
 
 ## Logs
 

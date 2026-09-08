@@ -31,7 +31,7 @@ public class ExportReportHandler
 }
 ```
 
-`MessageProcessingContext` comes directly from `Foundatio.Messaging`. Add it only when a handler needs progress, attempt information, headers, or explicit settlement. Ordinary dependencies still come from one fresh DI scope per delivery.
+`MessageProcessingContext` comes directly from `Foundatio.Messaging`. Add it only when a handler needs progress, attempt information, headers, or explicit settlement. Workers supply a DI scope per delivery. A handler configured with `ScopedPerInvoke` retains Mediator's normal behavior and owns an additional invocation scope.
 
 ```csharp
 var accepted = await mediator.EnqueueAsync(new ExportReport("monthly"), ct);
@@ -42,7 +42,7 @@ if (accepted.IsSuccess)
 }
 ```
 
-`EnqueueAsync` validates the enqueue middleware pipeline and returns `Result<QueueReceipt>`. It does not wait for the worker. A tracked receipt can be queried through the native `IJobMonitor`. `WaitForCompletionAsync` is useful for console applications and tests; cancelling that wait does not cancel the job.
+`EnqueueAsync` runs the ordinary middleware pipeline and returns `Result<QueueReceipt>`. A successful result contains the broker acceptance receipt; its `Status` is `Ok`. It does not wait for the worker. A tracked receipt can be queried through the native `IJobMonitor`. `WaitForCompletionAsync` is useful for console applications and tests; cancelling that wait does not cancel the job.
 
 Queue handlers may also be invoked through `InvokeAsync`, which returns acceptance rather than the eventual handler value. Prefer `EnqueueAsync` at application boundaries to make this distinction visible.
 
@@ -59,7 +59,7 @@ Queue handlers may also be invoked through `InvokeAsync`, which returns acceptan
 | `Group` | Operational worker selection |
 | `QueueName` | Explicitly share one delivery and retry budget |
 
-Successful results acknowledge. `Error`, `Unavailable`, and `RateLimited` retry. Other unsuccessful results dead-letter immediately. Exceptions retry until the budget is exhausted. Cascading messages are emitted during processing, so their side effects must also tolerate redelivery.
+Successful results acknowledge. `Error`, `Unavailable`, and `RateLimited` retry. Other unsuccessful results dead-letter immediately. Exceptions retry until the budget is exhausted. Cascading messages are emitted during processing, so their side effects must also tolerate redelivery. Queued tuples must use reference-type or nullable cascading events, so short-circuiting never publishes a default value-type event; non-nullable value-type events can be published explicitly inside the handler.
 
 Foundatio controls receiving, lease renewal, and settlement. Lost ownership cancels the processing token. On shutdown, receiving stops and admitted handlers have `ShutdownTimeout` to finish. Ambiguous acknowledgments remain nonterminal in tracking and may produce another delivery.
 
@@ -73,7 +73,24 @@ With `AutoComplete = false`, await `context.CompleteAsync(ct)` or `context.Aband
 
 ## Middleware and context
 
-Use `MiddlewareStage.Enqueue` for validation and authorization, `Processing` for worker-only behavior, and `Both` when a hook should run at both boundaries. Headers cross the wire explicitly through `AddQueueHeaderProvider<T>()`; scoped services and the caller's DI container do not.
+`[Queue]` attaches ordinary `BeforeAsync` middleware through `[UseMiddleware]`. On the caller it sends and short-circuits with acceptance. On the worker, the supplied `MessageProcessingContext` makes it continue to the handler. The core runtime and source generators are unchanged.
+
+Order validation before queue routing using the existing ordering API:
+
+```csharp
+[Middleware(OrderBefore = [typeof(QueueMiddleware)])]
+public class ValidationMiddleware
+{
+    public HandlerResult Before(ExportReport message)
+        => string.IsNullOrWhiteSpace(message.ReportId)
+            ? HandlerResult.ShortCircuit(Result.Invalid("Report ID is required"))
+            : HandlerResult.Continue();
+}
+```
+
+That validation runs on both the caller and the worker. Normal short-circuit rules apply: `After` does not run on acceptance; `Finally` still runs. `ExecuteAsync` middleware wraps the usual pipeline. Worker-only behavior can check an optional `MessageProcessingContext`; there are no distributed middleware stages. Middleware dependencies retain normal Mediator lifetime and resolution rules on both sides.
+
+Headers cross the wire explicitly through `AddQueueHeaderProvider<T>()`; scoped services and the caller's DI container do not.
 
 ## Resource locking {#single-flight-with-queuelock}
 
@@ -83,4 +100,4 @@ Use `MiddlewareStage.Enqueue` for validation and authorization, `Processing` for
 
 Mediator exposes typed dashboard queries over native `MessageAdministration` and `IJobRuntimeStore` operations. Use `IJobMonitor` for read-only job queries and completion observation. Inspect raw dead letters before deletion or replay. Replaying creates a fresh execution identity and retains the failed history. Sending the replacement and deleting the original are not a cross-broker transaction: an uncertain replay can produce a duplicate.
 
-SQS inspection uses bounded receive/hold/release, up to 1,000 messages or ten seconds per scan. A missing result can mean it was outside that snapshot. Shared queue retries rerun every matching handler; default independent subscriptions isolate failures.
+SQS inspection uses bounded receive/hold/release, up to 1,000 messages or ten seconds per scan. A missing result can mean it was outside that snapshot. Shared queue retries rerun every matching handler; default independent subscriptions isolate failures. Shared queues preserve ordinary Mediator publication: each caller pipeline can run, while queue middleware sends only from the first matching registration. They do not provide an atomic validation step across handlers.

@@ -26,7 +26,6 @@ public sealed class HandlerRegistry : IDisposable
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeAsyncResponseDelegate> _invokeAsyncWithResponseCache = new();
     private readonly ConcurrentDictionary<(Type MessageType, Type ResponseType), InvokeResponseDelegate> _invokeWithResponseCache = new();
     private readonly ConcurrentDictionary<Type, PublishAsyncDelegate[]> _publishCache = new();
-    private readonly Dictionary<string, string> _publishGroups = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Type, HandlerRegistration?> _openGenericClosedCache = new();
 
     // Subscription type → array of entries (copy-on-write per group).
@@ -459,37 +458,6 @@ public sealed class HandlerRegistry : IDisposable
         return BuildAndCachePublishHandlers(messageType);
     }
 
-    /// <summary>
-    /// Configures registrations that represent a single publication destination. The first ordered,
-    /// matching registration supplies its enqueue pipeline. Invoke dispatch remains unchanged.
-    /// Extension packages must configure groups during startup, before publishing any messages.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public void SetPublishGroup(string name, IEnumerable<HandlerRegistration> registrations)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("A publication group name is required.", nameof(name));
-        if (!_publishCache.IsEmpty)
-            throw new InvalidOperationException("Publication groups must be configured before the first publish.");
-        foreach (var registration in registrations)
-        {
-            if (_publishGroups.TryGetValue(registration.DescriptorId, out var existing) && existing != name)
-                throw new InvalidOperationException($"Handler '{registration.DescriptorId}' already belongs to publication group '{existing}'.");
-            _publishGroups[registration.DescriptorId] = name;
-        }
-    }
-
-    /// <summary>Orders handler registrations by relative source-handler declarations and numeric order.</summary>
-    public static IReadOnlyList<HandlerRegistration> OrderRegistrations(IEnumerable<HandlerRegistration> registrations)
-    {
-        var items = registrations.Distinct().ToList();
-        IReadOnlyList<string> Resolve(IReadOnlyList<string> names) => names
-            .SelectMany(name => items.Where(item => item.HandlerClassName == name || item.SourceHandlerTypeName == name))
-            .Select(item => item.DescriptorId).Distinct().ToArray();
-        return TopologicalSort.Sort(items, item => item.DescriptorId,
-            item => Resolve(item.OrderBefore), item => Resolve(item.OrderAfter), item => item.Order);
-    }
-
     private PublishAsyncDelegate[] BuildAndCachePublishHandlers(Type messageType)
     {
         var allHandlers = new List<HandlerRegistration>();
@@ -507,12 +475,14 @@ public sealed class HandlerRegistry : IDisposable
             currentType = currentType.BaseType;
         }
 
-        var ordered = OrderRegistrations(allHandlers);
-        HashSet<string>? destinations = _publishGroups.Count > 0 ? new(StringComparer.Ordinal) : null;
-        var handlers = ordered.Where(handler => destinations is null
-                || !_publishGroups.TryGetValue(handler.DescriptorId, out var group)
-                || destinations.Add(group))
-            .Select(handler => handler.PublishAsync).ToArray();
+        var handlers = TopologicalSort.Sort(
+                allHandlers.Distinct().ToList(),
+                h => h.HandlerClassName,
+                h => h.OrderBefore,
+                h => h.OrderAfter,
+                h => h.Order)
+            .Select(h => h.PublishAsync)
+            .ToArray();
 
         return _publishCache.GetOrAdd(messageType, handlers);
     }
@@ -587,25 +557,15 @@ public sealed class HandlerRegistry : IDisposable
             throw new ObjectDisposedException(nameof(HandlerRegistry));
 
         var maxCapacity = options?.MaxCapacity ?? 100;
-        var onDropped = options?.OnDropped;
         var channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maxCapacity)
         {
             FullMode = options?.FullMode ?? BoundedChannelFullMode.DropOldest,
             SingleWriter = false,
             SingleReader = true
-        }, onDropped is null ? null : item => onDropped(item!));
+        });
 
         // Detect if T is MessageContext<TInner> — if so, subscribe to TInner but wrap into the context.
         var (subscriptionType, entry) = CreateSubscriptionEntry(channel.Writer);
-        if (options?.Filter is { } filter)
-        {
-            var unfiltered = entry;
-            entry = new SubscriptionEntry((message, context) =>
-            {
-                if (filter(message))
-                    unfiltered.Write(message, context);
-            }, unfiltered.Complete);
-        }
 
         AddSubscription(subscriptionType, entry);
         try

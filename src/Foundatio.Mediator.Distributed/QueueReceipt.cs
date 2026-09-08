@@ -42,7 +42,7 @@ public static class QueueMediatorExtensions
         using var context = CallContext.Rent().Set(capture);
         var result = await handler.HandleAsync(mediator, message, context, cancellationToken, typeof(object)).ConfigureAwait(false);
         if (capture.Receipt is { } receipt)
-            return Result.Accepted(receipt);
+            return receipt;
         if (result is IResult validation && !validation.IsSuccess)
             return Result<QueueReceipt>.FromResult(validation);
         throw new InvalidOperationException("The enqueue pipeline returned without sending a message. Enqueue validation should return an unsuccessful Result when it short-circuits.");

@@ -36,7 +36,7 @@ public class QueueLockMiddleware
         CallContext? callContext,
         CancellationToken cancellationToken)
     {
-        // Only the worker side holds a MessageProcessingContext; the enqueue side never reaches this middleware.
+        // Only the worker holds a MessageProcessingContext; caller-side execution continues without a lock.
         if (callContext?.TryGet<MessageProcessingContext>(out var queueContext) != true || queueContext is null)
             return await next().ConfigureAwait(false);
 

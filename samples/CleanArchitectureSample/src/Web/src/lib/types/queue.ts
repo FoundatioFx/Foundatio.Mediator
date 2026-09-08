@@ -94,6 +94,8 @@ export interface DeadLetterView {
   body: string;
   bodyTruncated: boolean;
   headers: Record<string, string>;
+  originalJobId?: string | null;
+  replayedAt?: string | null;
 }
 
 export interface DeadLetterReplayResult {

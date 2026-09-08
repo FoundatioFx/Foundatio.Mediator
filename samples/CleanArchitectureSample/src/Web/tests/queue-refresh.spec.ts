@@ -52,7 +52,9 @@ async function fixture(page: Page) {
   const queues: QueueSummary[] = await (
     await page.request.get('/api/queues/queues')
   ).json();
-  const queue = queues.find((q) => q.queueName === queueName)!;
+  const exportQueue = queues.find((q) => q.displayName === 'Export jobs');
+  expect(exportQueue, 'The sample must expose the export queue').toBeDefined();
+  const queue = { ...exportQueue!, queueName };
   const state = {
     queue,
     letters: [original],
@@ -223,10 +225,9 @@ test('retry removes the selected row before inspection completes and distinguish
         messageId: 'new-failure',
         jobId: 'retry-job',
         deadLetteredAt: '2026-09-07T07:00:00Z',
-        headers: {
-          'fm-original-job-id': 'original-job',
-          'fm-replayed-at': '2026-09-07T07:00:00Z'
-        }
+        originalJobId: 'original-job',
+        replayedAt: '2026-09-07T07:00:00Z',
+        headers: {}
       }
     ];
     state.job = {
@@ -413,7 +414,10 @@ test('real transport removes the retried dead letter and identifies the new fail
     }
   });
   expect(response.ok()).toBeTruthy();
-  const originalId = (await response.json()).jobIds[0];
+  const receipt = await response.json();
+  const originalId = receipt.jobIds[0];
+  const queueName: string = receipt.queueName;
+  const detailUrl = `/queues/${encodeURIComponent(queueName)}`;
   const getJob = async (id: string): Promise<JobSummary> => {
     const response = await request.get(`/api/queues/queue-job/${id}`);
     expect(response.ok()).toBeTruthy();
@@ -463,7 +467,7 @@ test('real transport removes the retried dead letter and identifies the new fail
       letters.some((letter) => letter.messageId === source!.messageId)
     ).toBe(false);
     const failure = letters.find((letter) => letter.jobId === retryId)!;
-    expect(failure.headers['fm-original-job-id']).toBe(originalId);
+    expect(failure.originalJobId).toBe(originalId);
     const failedRow = page.locator(`[data-message-id="${failure.messageId}"]`);
     await expect(failedRow).toContainText('Failed again after retry');
     await failedRow.getByRole('button', { name: 'Purge message' }).click();

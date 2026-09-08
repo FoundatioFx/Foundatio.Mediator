@@ -1,149 +1,61 @@
-using System.Diagnostics;
+using Foundatio.Messaging;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Foundatio.Mediator.Distributed;
 
-/// <summary>
-/// Hosted service that pre-creates all queues and topics in the background.
-/// Workers and publishers await <see cref="DistributedInfrastructureReady.WaitAsync"/>
-/// before using infrastructure. Queue-only hosts may accept requests during provisioning;
-/// notification hosts await subscription readiness during startup.
-/// </summary>
+/// <summary>Declares the discovered destinations through Foundatio's configured topology policy.</summary>
 internal sealed class DistributedInfrastructureInitializer(
-    IQueueClient? queueClient,
-    IPubSubClient? pubSubClient,
+    IMessageTransport transport,
+    MessagingTopologyOptions? policy,
     DistributedInfrastructureOptions options,
     DistributedInfrastructureReady ready,
     ILogger<DistributedInfrastructureInitializer> logger) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         ready.MarkStarted();
-
-        if (options.QueueNames.Count == 0 && options.TopicNames.Count == 0)
-        {
-            ready.SetReady();
-            return Task.CompletedTask;
-        }
-
-        // Fire and forget — workers await ready.WaitAsync() before polling
-        _ = InitializeAsync(cancellationToken);
-        return Task.CompletedTask;
-    }
-
-    private async Task InitializeAsync(CancellationToken cancellationToken)
-    {
         try
         {
-            var sw = Stopwatch.StartNew();
-            using var activity = MediatorActivitySource.Instance.StartActivity("Mediator Infrastructure Setup");
-
-            // Warm up the transport connections with one real call per transport.
-            // The first AWS SDK call absorbs DNS resolution, TLS handshake, and
-            // endpoint discovery (~20s against cold LocalStack). Creating one queue
-            // and one topic first means the parallel batch below gets warm connections.
-            var warmUpTasks = new List<Task>(2);
-            if (options.QueueNames.Count > 0 && queueClient is not null)
-                warmUpTasks.Add(queueClient.EnsureQueuesAsync([options.QueueNames[0]], cancellationToken));
-            if (options.TopicNames.Count > 0 && pubSubClient is not null)
-                warmUpTasks.Add(pubSubClient.EnsureTopicsAsync([options.TopicNames[0]], cancellationToken));
-            await Task.WhenAll(warmUpTasks).ConfigureAwait(false);
-            logger.LogInformation("Transport connections warm in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-
-            // Now create the remaining queues/topics with warm connections
-            var tasks = new List<Task>(2);
-
-            if (options.QueueNames.Count > 1 && queueClient is not null)
+            var declarations = options.QueueNames.Concat(options.TopicNames)
+                .Select(address => new DestinationDeclaration { Address = address }).ToList();
+            if (transport is not ISupportsDeadLetterSink)
+                declarations.AddRange(options.QueueNames.Select(source => new DestinationDeclaration { Address = DestinationAddress.ForQueue(source.Name + ".deadletter") }));
+            var mode = policy?.Mode ?? TopologyMode.Ensure;
+            if (mode != TopologyMode.None)
             {
-                var remaining = options.QueueNames.Skip(1).ToList();
-                logger.LogInformation("Ensuring remaining {Count} queue(s) exist: {Queues}", remaining.Count, remaining);
-                tasks.Add(queueClient.EnsureQueuesAsync(remaining, cancellationToken));
+                var provisioning = transport as ISupportsProvisioning
+                    ?? throw new InvalidOperationException("The configured transport cannot provision or validate destinations. Configure TopologyMode.None when provisioning externally.");
+                if (mode == TopologyMode.Ensure)
+                    await provisioning.EnsureAsync(declarations, cancellationToken).ConfigureAwait(false);
+                else
+                    foreach (var declaration in declarations)
+                        if (!await provisioning.ExistsAsync(declaration.Address, cancellationToken).ConfigureAwait(false))
+                            throw new InvalidOperationException($"Destination '{declaration.Address}' has not been provisioned.");
             }
-
-            // Topic was already fully set up (queue + subscribe) during warm-up
-            // so we only need to process additional topics if there are more than one.
-            if (options.TopicNames.Count > 1 && pubSubClient is not null)
-            {
-                var remaining = options.TopicNames.Skip(1).ToList();
-                logger.LogInformation("Ensuring remaining {Count} topic(s) exist: {Topics}", remaining.Count, remaining);
-                tasks.Add(pubSubClient.EnsureTopicsAsync(remaining, cancellationToken));
-            }
-
-            if (tasks.Count > 0)
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            logger.LogInformation("Distributed infrastructure ready in {ElapsedMs}ms", sw.ElapsedMilliseconds);
             ready.SetReady();
+            logger.LogInformation("Foundatio messaging is ready with {Count} declared destinations", declarations.Count);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            ready.SetCancelled(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to initialize distributed infrastructure");
-            ready.SetFailed(ex);
-        }
+        catch (Exception exception) { ready.SetFailed(exception); throw; }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
-/// <summary>
-/// Signals that distributed infrastructure (queues, topics) has been created.
-/// Workers await <see cref="WaitAsync"/> before starting their polling loops.
-/// </summary>
+/// <summary>Readiness of this application's discovered messaging destinations.</summary>
 public sealed class DistributedInfrastructureReady
 {
-    private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private volatile bool _started;
-
-    /// <summary>
-    /// Whether the initializer has started. Before the host starts there is nothing to wait for.
-    /// </summary>
-    public bool IsStarted => _started;
-
-    /// <summary>
-    /// Whether provisioning has completed successfully.
-    /// </summary>
-    public bool IsReady => _tcs.Task.IsCompletedSuccessfully;
-
-    internal void MarkStarted() => _started = true;
-
-    /// <summary>
-    /// Blocks until infrastructure is ready or throws if initialization failed.
-    /// </summary>
-    public Task WaitAsync(CancellationToken cancellationToken = default)
-    {
-        if (_tcs.Task.IsCompleted)
-            return _tcs.Task;
-
-        return WaitWithCancellationAsync(cancellationToken);
-    }
-
-    private async Task WaitWithCancellationAsync(CancellationToken cancellationToken)
-    {
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var reg = cancellationToken.Register(() => cancelTcs.TrySetCanceled(cancellationToken));
-        await Task.WhenAny(_tcs.Task, cancelTcs.Task).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        await _tcs.Task.ConfigureAwait(false); // propagate any failure
-    }
-
-    internal void SetReady() => _tcs.TrySetResult();
-
-    internal void SetFailed(Exception ex) => _tcs.TrySetException(ex);
-
-    internal void SetCancelled(CancellationToken cancellationToken) => _tcs.TrySetCanceled(cancellationToken);
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public bool IsStarted { get; private set; }
+    public bool IsReady => _ready.Task.IsCompletedSuccessfully;
+    public Task WaitAsync(CancellationToken cancellationToken = default) => _ready.Task.WaitAsync(cancellationToken);
+    internal void MarkStarted() => IsStarted = true;
+    internal void SetReady() => _ready.TrySetResult();
+    internal void SetFailed(Exception exception) => _ready.TrySetException(exception);
 }
 
-/// <summary>
-/// Collects queue and topic names during service registration for use by
-/// <see cref="DistributedInfrastructureInitializer"/> at startup.
-/// </summary>
 internal sealed class DistributedInfrastructureOptions
 {
-    public List<QueueDefinition> QueueNames { get; } = [];
-    public List<TopicDefinition> TopicNames { get; } = [];
+    public List<DestinationAddress> QueueNames { get; } = [];
+    public List<DestinationAddress> TopicNames { get; } = [];
 }

@@ -1,3 +1,5 @@
+using Foundatio.Messaging;
+using Foundatio.Lock;
 using Foundatio.Mediator;
 
 namespace Foundatio.Mediator.Distributed;
@@ -9,7 +11,7 @@ namespace Foundatio.Mediator.Distributed;
 /// <remarks>
 /// The lock key is, in order: <see cref="Key"/>, the message's <see cref="IHaveLockKey.GetLockKey"/>, or the
 /// queue name plus message id. Contention waits with jitter while renewing the queue lease,
-/// without consuming another handler attempt. Requires an <see cref="IQueueLockProvider"/>.
+/// without consuming another handler attempt. Requires an <see cref="ILockProvider"/>.
 /// </remarks>
 [UseMiddleware(typeof(QueueLockMiddleware))]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false, Inherited = true)]

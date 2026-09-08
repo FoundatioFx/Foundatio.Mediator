@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Foundatio" Version="13.0.4" />
+
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.4.0" />
     <PackageReference Include="MiniValidation" Version="0.10.0" />
   </ItemGroup>

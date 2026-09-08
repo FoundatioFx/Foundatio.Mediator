@@ -1,3 +1,5 @@
+using Foundatio.Serializer;
+using Foundatio.Messaging;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using System.Diagnostics;
@@ -10,7 +12,7 @@ namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
 /// Background service that bridges locally published distributed notifications
-/// to a remote <see cref="IPubSubClient"/> (outbound) and re-publishes inbound bus messages
+/// to a remote <see cref="IMessageBus"/> (outbound) and re-publishes inbound bus messages
 /// to the local mediator.
 /// </summary>
 /// <remarks>
@@ -21,11 +23,11 @@ namespace Foundatio.Mediator.Distributed;
 public sealed class DistributedNotificationWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IPubSubClient _bus;
+    private readonly IMessageBus _bus;
     private readonly DistributedNotificationOptions _options;
-    private readonly JsonSerializerOptions _jsonOptions;
+    private readonly ISerializer _serializer;
     private readonly ILogger<DistributedNotificationWorker> _logger;
-    private readonly MessageTypeResolver? _typeResolver;
+    private readonly IMessageTypeRegistry? _typeResolver;
 
     private readonly ConditionalWeakTable<object, InboundMarker> _inboundMessages = new();
     private sealed class InboundMarker;
@@ -42,17 +44,17 @@ public sealed class DistributedNotificationWorker : BackgroundService
 
     public DistributedNotificationWorker(
         IServiceScopeFactory scopeFactory,
-        IPubSubClient bus,
+        IMessageBus bus,
         DistributedNotificationOptions options,
         ILogger<DistributedNotificationWorker> logger,
-        MessageTypeResolver? typeResolver = null,
+        IMessageTypeRegistry? typeResolver = null,
         DistributedInfrastructureReady? infraReady = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null, ISerializer? serializer = null)
     {
         _scopeFactory = scopeFactory;
         _bus = bus;
         _options = options;
-        _jsonOptions = options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
+        _serializer = serializer ?? DefaultSerializer.Instance;
         _logger = logger;
         _typeResolver = typeResolver;
         _infraReady = infraReady;
@@ -154,24 +156,23 @@ public sealed class DistributedNotificationWorker : BackgroundService
         try
         {
             var messageType = notification.GetType();
-            var body = JsonSerializer.SerializeToUtf8Bytes(notification, messageType, _jsonOptions);
             var headers = new Dictionary<string, string>
             {
-                [MessageHeaders.MessageType] = messageType.FullName!,
-                [MessageHeaders.OriginHostId] = _options.HostId,
-                [MessageHeaders.PublishedAt] = _timeProvider.GetUtcNow().ToString("O")
+                [KnownHeaders.MessageType] = messageType.FullName!,
+                [ExecutionHeaders.OriginNode] = _options.HostId,
+                [ExecutionHeaders.EnqueuedAt] = _timeProvider.GetUtcNow().ToString("O")
             };
             using var activity = MediatorActivitySource.Instance.StartActivity($"Publish {messageType.Name}", ActivityKind.Producer, envelope.ActivityContext);
             if (Activity.Current is { } active)
             {
-                headers[MessageHeaders.TraceParent] = active.Id!;
+                headers[KnownHeaders.TraceParent] = active.Id!;
                 if (active.TraceStateString is { Length: > 0 } traceState)
-                    headers[MessageHeaders.TraceState] = traceState;
+                    headers[KnownHeaders.TraceState] = traceState;
             }
             activity?.SetTag("messaging.operation.type", "publish");
             activity?.SetTag("messaging.destination.name", _options.EffectiveTopic);
             activity?.SetTag("messaging.message.type", messageType.FullName);
-            await _bus.PublishAsync(_options.EffectiveTopic, [new PubSubEntry { Body = body, Headers = headers }], stoppingToken)
+            await _bus.PublishAsync(notification, new MessagePublishOptions { Topic = _options.EffectiveTopic, Headers = Foundatio.Messaging.MessageHeaders.Create(headers) }, stoppingToken)
                 .WaitAsync(stoppingToken).ConfigureAwait(false);
             DistributedMetrics.NotificationsPublished.Add(1, new KeyValuePair<string, object?>("message_type", messageType.Name));
         }
@@ -201,10 +202,8 @@ public sealed class DistributedNotificationWorker : BackgroundService
             IAsyncDisposable? subscription = null;
             try
             {
-                subscription = await _bus.SubscribeAsync(_options.EffectiveTopic, async (message, ct) =>
-                {
-                    await ProcessInboundMessageAsync(message, ct).ConfigureAwait(false);
-                }, stoppingToken).ConfigureAwait(false);
+                subscription = await _bus.SubscribeNodeAsync(ProcessInboundMessageAsync,
+                    new MessageNodeSubscriptionOptions { Topic = _options.EffectiveTopic, NodeId = _options.HostId }, stoppingToken).ConfigureAwait(false);
 
                 _inboundReady.TrySetResult();
                 attempt = 0;
@@ -235,26 +234,26 @@ public sealed class DistributedNotificationWorker : BackgroundService
         }
     }
 
-    private async Task ProcessInboundMessageAsync(PubSubMessage message, CancellationToken cancellationToken)
+    private async Task ProcessInboundMessageAsync(IMessageContext message, CancellationToken cancellationToken)
     {
         // Skip messages from this host (self-delivery prevention)
-        if (message.Headers.TryGetValue(MessageHeaders.OriginHostId, out var originHostId)
+        if (message.Headers.TryGetValue(ExecutionHeaders.OriginNode, out var originHostId)
             && string.Equals(originHostId, _options.HostId, StringComparison.Ordinal))
         {
             return;
         }
 
-        if (!message.Headers.TryGetValue(MessageHeaders.MessageType, out var typeName) || string.IsNullOrEmpty(typeName))
+        if (!message.Headers.TryGetValue(KnownHeaders.MessageType, out var typeName) || string.IsNullOrEmpty(typeName))
         {
-            _logger.LogWarning("Received bus message without {Header} header, skipping", MessageHeaders.MessageType);
+            _logger.LogWarning("Received bus message without {Header} header, skipping", KnownHeaders.MessageType);
             return;
         }
 
         // Types registered at startup resolve directly. A concrete type published elsewhere for a handler
         // declared on an interface or base type is loaded only if this node's own rules would distribute it.
-        var messageType = _typeResolver?.TryResolve(typeName);
-        if (messageType is null && _typeResolver?.TryResolve(typeName, typeof(object)) is { } candidate && _options.ShouldDistribute(candidate))
-            messageType = candidate;
+        var messageType = _typeResolver?.Resolve(typeName);
+
+
 
         if (messageType is null || !_options.ShouldDistribute(messageType))
         {
@@ -265,7 +264,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         object? notification;
         try
         {
-            notification = JsonSerializer.Deserialize(message.Body.Span, messageType, _jsonOptions);
+            notification = _serializer.Deserialize(message.Body, messageType);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -284,8 +283,8 @@ public sealed class DistributedNotificationWorker : BackgroundService
         // Restore trace context from the publishing node so this processing
         // appears as a child span of the original operation
         ActivityContext parentContext = default;
-        if (message.Headers.TryGetValue(MessageHeaders.TraceParent, out var traceParent)
-            && ActivityContext.TryParse(traceParent, message.Headers.GetValueOrDefault(MessageHeaders.TraceState), out var parsed))
+        if (message.Headers.TryGetValue(KnownHeaders.TraceParent, out var traceParent)
+            && ActivityContext.TryParse(traceParent, message.Headers.GetValueOrDefault(KnownHeaders.TraceState), out var parsed))
         {
             parentContext = parsed;
         }

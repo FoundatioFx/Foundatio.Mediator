@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 using Common.Module.Messages;
 using Common.Module.Middleware;
 using Foundatio.Mediator;
@@ -16,7 +17,7 @@ public class QueueDashboardHandler(
     QueueTopology topology,
     DistributedQueueOptions queueOptions,
     HostInfo host,
-    IQueueJobStateStore? stateStore = null,
+    IMessageExecutionStore? stateStore = null,
     DistributedInfrastructureReady? infraReady = null)
 {
     // ── Reads ──
@@ -48,19 +49,19 @@ public class QueueDashboardHandler(
     public async Task<Result<JobDashboardView>> HandleAsync(GetJobDashboard query, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
+            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
         if (topology.GetByQueueName(query.QueueName) is not { Settings.TrackProgress: true })
             return Result.NotFound("This queue is not registered for job tracking.");
         if (query.Skip is < 0 or > 1000 || query.Take is < 1 or > 50)
             return Result.Invalid("Choose a page size from 1 to 50 and an offset from 0 to 1000.");
 
-        var allStatuses = Enum.GetValues<QueueJobStatus>();
-        QueueJobStatus[] statuses;
+        var allStatuses = Enum.GetValues<MessageExecutionStatus>();
+        MessageExecutionStatus[] statuses;
         if (query.Status == "active")
-            statuses = [QueueJobStatus.Queued, QueueJobStatus.Processing, QueueJobStatus.RetryPending, QueueJobStatus.EnqueueUnknown];
+            statuses = [MessageExecutionStatus.Queued, MessageExecutionStatus.Processing, MessageExecutionStatus.RetryPending, MessageExecutionStatus.EnqueueUnknown];
         else if (query.Status == "all")
             statuses = allStatuses;
-        else if (Enum.TryParse<QueueJobStatus>(query.Status, out var status) && Enum.IsDefined(status))
+        else if (Enum.TryParse<MessageExecutionStatus>(query.Status, out var status) && Enum.IsDefined(status))
             statuses = [status];
         else
             return Result.Invalid("Choose active, all, or a supported job status.");
@@ -77,14 +78,16 @@ public class QueueDashboardHandler(
             Counts = counts.ToDictionary(),
             Jobs = await Task.WhenAll(jobs.Select(job => ToJobSummaryAsync(job, ct))).ConfigureAwait(false),
             Total = counts.Where(count => statuses.Any(status => status.ToString() == count.Key)).Sum(count => count.Value),
-            Skip = query.Skip, Take = query.Take, UpdatedUtc = DateTimeOffset.UtcNow
+            Skip = query.Skip,
+            Take = query.Take,
+            UpdatedUtc = DateTimeOffset.UtcNow
         };
     }
 
     [HandlerAllowAnonymous]
     public async Task<Result<JobSummary>> HandleAsync(GetQueueJobDetail query, IMediator mediator, CancellationToken ct)
     {
-        var job = await mediator.InvokeAsync<Result<QueueJobState>>(new GetQueueJob(query.JobId), ct);
+        var job = await mediator.InvokeAsync<Result<MessageExecutionState>>(new GetQueueJob(query.JobId), ct);
         return job.IsSuccess ? await ToJobSummaryAsync(job.Value!, ct).ConfigureAwait(false) : Result<JobSummary>.FromResult(job);
     }
 
@@ -199,13 +202,13 @@ public class QueueDashboardHandler(
         CounterStats = q.Counters is null ? null : ToCounterStats(q.Counters)
     };
 
-    private static CounterStatsView ToCounterStats(QueueCounterStats stats) => new()
+    private static CounterStatsView ToCounterStats(MessageExecutionCounters stats) => new()
     {
         Totals = stats.Totals,
         Buckets = stats.Buckets.Select(b => new CounterBucketView { Hour = b.Hour, Counters = b.Counters }).ToList()
     };
 
-    private async Task<JobSummary> ToJobSummaryAsync(QueueJobState s, CancellationToken ct) => new()
+    private async Task<JobSummary> ToJobSummaryAsync(MessageExecutionState s, CancellationToken ct) => new()
     {
         JobId = s.JobId,
         QueueName = s.QueueName,
@@ -216,7 +219,7 @@ public class QueueDashboardHandler(
         Attempt = s.Attempt,
         WorkerId = s.WorkerId,
         LastUpdatedUtc = s.LastUpdatedUtc,
-        CancellationRequested = stateStore is not null && s.Status is not (QueueJobStatus.Completed or QueueJobStatus.Failed or QueueJobStatus.Cancelled)
+        CancellationRequested = stateStore is not null && s.Status is not (MessageExecutionStatus.Completed or MessageExecutionStatus.Failed or MessageExecutionStatus.Cancelled)
             && await stateStore.IsCancellationRequestedAsync(s.JobId, ct).ConfigureAwait(false),
         CreatedUtc = s.CreatedUtc,
         StartedUtc = s.StartedUtc,

@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 using Foundatio.Mediator;
 
 namespace Foundatio.Mediator.Distributed;
@@ -79,7 +80,7 @@ public sealed class QueueAttribute : Attribute
     public string? RetryDelays { get; set; }
 
     /// <summary>
-    /// Tracks job state and progress in the <see cref="IQueueJobStateStore"/>.
+    /// Tracks job state and progress in the <see cref="IMessageExecutionStore"/>.
     /// </summary>
     public bool TrackProgress { get; set; }
 

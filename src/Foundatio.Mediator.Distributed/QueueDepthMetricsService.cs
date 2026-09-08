@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +9,7 @@ namespace Foundatio.Mediator.Distributed;
 /// <c>queue.depth.*</c> observable gauges.
 /// </summary>
 internal sealed class QueueDepthMetricsService(
-    IQueueClient client,
+    IMessageTransport transport,
     QueueTopology topology,
     DistributedQueueOptions options,
     ILogger<QueueDepthMetricsService> logger,
@@ -34,9 +35,19 @@ internal sealed class QueueDepthMetricsService(
         {
             try
             {
-                var stats = await client.GetQueueStatsAsync(queueNames, stoppingToken).ConfigureAwait(false);
-                foreach (var stat in stats)
-                    DistributedMetrics.RecordDepth(stat);
+                var administration = new MessageAdministration(transport, _timeProvider);
+                foreach (var name in queueNames)
+                {
+                    var stats = await administration.GetStatsAsync(DestinationAddress.ForQueue(name), stoppingToken).ConfigureAwait(false);
+                    DistributedMetrics.RecordDepth(new QueueStats
+                    {
+                        QueueName = name,
+                        ActiveCount = stats.Queued,
+                        InFlightCount = stats.Working,
+                        DelayedCount = stats.Delayed ?? 0,
+                        DeadLetterCount = stats.Deadletter
+                    });
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

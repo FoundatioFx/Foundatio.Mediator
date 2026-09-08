@@ -2,7 +2,6 @@
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Foundatio.Mediator.Distributed.Benchmarks/Foundatio.Mediator.Distributed.Benchmarks.csproj" />
     <Project Path="benchmarks/Foundatio.Mediator.Benchmarks/Foundatio.Mediator.Benchmarks.csproj" />
-    <Project Path="benchmarks/Foundatio.Mediator.Distributed.Load/Foundatio.Mediator.Distributed.Load.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
@@ -28,14 +27,9 @@
     <Project Path="src/Foundatio.Mediator.CodeFixes/Foundatio.Mediator.CodeFixes.csproj" />
     <Project Path="src/Foundatio.Mediator/Foundatio.Mediator.csproj" />
     <Project Path="src/Foundatio.Mediator.Distributed/Foundatio.Mediator.Distributed.csproj" />
-    <Project Path="src/Foundatio.Mediator.Distributed.Aws/Foundatio.Mediator.Distributed.Aws.csproj" />
-    <Project Path="src/Foundatio.Mediator.Distributed.Redis/Foundatio.Mediator.Distributed.Redis.csproj" />
-    <Project Path="src/Foundatio.Mediator.Distributed.Testing/Foundatio.Mediator.Distributed.Testing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Foundatio.Mediator.Tests/Foundatio.Mediator.Tests.csproj" />
     <Project Path="tests/Foundatio.Mediator.Distributed.Tests/Foundatio.Mediator.Distributed.Tests.csproj" />
-    <Project Path="tests/Foundatio.Mediator.Distributed.Aws.Tests/Foundatio.Mediator.Distributed.Aws.Tests.csproj" />
-    <Project Path="tests/Foundatio.Mediator.Distributed.Redis.Tests/Foundatio.Mediator.Distributed.Redis.Tests.csproj" />
   </Folder>
 </Solution>

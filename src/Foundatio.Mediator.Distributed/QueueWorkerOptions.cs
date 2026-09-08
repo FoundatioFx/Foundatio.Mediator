@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
@@ -13,7 +14,7 @@ public class QueueWorkerOptions
 
     /// <summary>
     /// The declared message type of the queue's handlers. Used as the deserialization fallback when a
-    /// message carries no <see cref="MessageHeaders.MessageType"/> header.
+    /// message carries no <see cref="KnownHeaders.MessageType"/> header.
     /// </summary>
     public required Type MessageType { get; init; }
 

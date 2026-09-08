@@ -1,10 +1,11 @@
 using Amazon.Runtime;
+using Amazon.SQS;
+using Amazon.SQS.Model;
 using System.Diagnostics;
 using System.Text.Json;
-using Foundatio;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
-using Foundatio.Messaging;
+using Foundatio.Mediator.Distributed.Aws;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -20,23 +21,22 @@ string prefix = "compare-" + Guid.NewGuid().ToString("N");
 string queueName = prefix + "-comparison";
 var builder = Host.CreateApplicationBuilder();
 builder.Logging.ClearProviders();
-var messaging = builder.Services.AddFoundatio().Messaging.UseInMemoryExecutionTracking();
-if (aws) messaging.UseAws(options => { options.ServiceUrl = serviceUrl; options.Credentials = new BasicAWSCredentials("test", "test"); });
-else messaging.UseInMemory();
 builder.Services.AddSingleton<Measurements>();
-builder.Services.AddMediator(options => options.AddAssembly<ComparisonHandler>())
+var mediatorBuilder = builder.Services.AddMediator(options => options.AddAssembly<ComparisonHandler>())
     .ConfigureDistributed(options => options.ResourcePrefix = prefix)
     .AddDistributedQueues(options =>
 {
+    options.AllowProcessLocalJobStateForDevelopment = true;
     options.QueueDepthPollInterval = TimeSpan.Zero;
     options.ReceiveBatchDelay = TimeSpan.Zero;
     options.QueueOverrides["comparison"] = queue => { queue.Concurrency = concurrency; queue.TrackProgress = tracking; };
 });
+if (aws) mediatorBuilder.UseAws(options => options.ServiceUrl = serviceUrl);
 using var host = builder.Build();
 await host.StartAsync();
 var mediator = host.Services.GetRequiredService<IMediator>();
 var measurements = host.Services.GetRequiredService<Measurements>();
-var administration = new MessageAdministration(host.Services.GetRequiredService<IMessageTransport>());
+var administration = host.Services.GetRequiredService<IQueueClient>();
 using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
 try
 {
@@ -50,22 +50,15 @@ try
     var elapsed = Stopwatch.GetElapsedTime(started);
     var output = new
     {
-        Implementation = "foundatio-native",
-        Transport = aws ? "localstack" : "memory",
-        Messages = count,
-        Concurrency = concurrency,
-        Tracking = tracking,
+        Implementation = "pr149", Transport = aws ? "localstack" : "memory", Messages = count, Concurrency = concurrency, Tracking = tracking,
         Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
-        ElapsedMilliseconds = elapsed.TotalMilliseconds,
-        MessagesPerSecond = count / elapsed.TotalSeconds,
+        ElapsedMilliseconds = elapsed.TotalMilliseconds, MessagesPerSecond = count / elapsed.TotalSeconds,
         AllocatedBytesPerMessage = (GC.GetTotalAllocatedBytes(true) - allocated) / (double)count,
         CpuMilliseconds = (Process.GetCurrentProcess().TotalProcessorTime - cpu).TotalMilliseconds,
-        AcceptanceP50Milliseconds = Percentile(accepts, .50),
-        AcceptanceP99Milliseconds = Percentile(accepts, .99),
+        AcceptanceP50Milliseconds = Percentile(accepts, .50), AcceptanceP99Milliseconds = Percentile(accepts, .99),
         HandlerCompletionP50Milliseconds = Percentile(measurements.CompletionMilliseconds, .50),
         HandlerCompletionP99Milliseconds = Percentile(measurements.CompletionMilliseconds, .99),
-        UniqueProcessed = measurements.UniqueProcessed,
-        Duplicates = measurements.Duplicates
+        UniqueProcessed = measurements.UniqueProcessed, Duplicates = measurements.Duplicates
     };
     Console.WriteLine(JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
 }
@@ -74,9 +67,17 @@ finally
     await host.StopAsync(timeout.Token);
     if (aws)
     {
-        var provisioning = (ISupportsProvisioning)host.Services.GetRequiredService<IMessageTransport>();
-        await provisioning.DeleteAsync(DestinationAddress.ForQueue(queueName), timeout.Token);
-        await provisioning.DeleteAsync(DestinationAddress.ForQueue(queueName + ".deadletter"), timeout.Token);
+        using var sqs = new AmazonSQSClient(new BasicAWSCredentials("test", "test"), new AmazonSQSConfig { ServiceURL = serviceUrl, AuthenticationRegion = "us-east-1" });
+        foreach (string name in new[] { queueName, queueName + "-dead-letter" })
+        {
+            try
+            {
+                var queue = await sqs.GetQueueUrlAsync(name, timeout.Token);
+                await sqs.DeleteQueueAsync(new DeleteQueueRequest { QueueUrl = queue.QueueUrl }, timeout.Token);
+            }
+            catch (QueueDoesNotExistException) { }
+        }
+
     }
 }
 
@@ -95,8 +96,8 @@ async Task<double[]> RunAsync(int size)
     await measurements.Completion.Task.WaitAsync(timeout.Token);
     while (true)
     {
-        var stats = await administration.GetStatsAsync(DestinationAddress.ForQueue(queueName), timeout.Token);
-        if (stats.Queued == 0 && stats.Working == 0) break;
+        var stats = (await administration.GetQueueStatsAsync([queueName], timeout.Token))[0];
+        if (stats.ActiveCount == 0 && stats.InFlightCount == 0) break;
         await Task.Delay(1, timeout.Token);
     }
     return accepts;
@@ -104,10 +105,7 @@ async Task<double[]> RunAsync(int size)
 int ReadInt(string name, int fallback)
 {
     int index = Array.IndexOf(args, name);
-    if (index < 0) return fallback;
-    if (index + 1 >= args.Length || !int.TryParse(args[index + 1], out int value) || value < 1)
-        throw new ArgumentException($"{name} requires a positive integer.");
-    return value;
+    return index < 0 ? fallback : int.Parse(args[index + 1]);
 }
 static double Percentile(double[] values, double percentile)
 {

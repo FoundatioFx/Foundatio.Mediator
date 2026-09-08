@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <Import Project="../../../../build/foundatio-core.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -26,8 +27,6 @@
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator\Foundatio.Mediator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.CodeFixes\Foundatio.Mediator.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.Distributed\Foundatio.Mediator.Distributed.csproj" />
-    <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.Distributed.Aws\Foundatio.Mediator.Distributed.Aws.csproj" />
-    <ProjectReference Include="..\..\..\..\src\Foundatio.Mediator.Distributed.Redis\Foundatio.Mediator.Distributed.Redis.csproj" />
     <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     <ProjectReference Include="..\Common.Module\Common.Module.csproj" />
     <ProjectReference Include="..\Orders.Module\Orders.Module.csproj" />
@@ -36,8 +35,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.SQS" Version="4.0.2.24" />
-    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.2.26" />
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.4.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.5" />
     <PackageReference Include="MiniValidation" Version="0.10.0" />
@@ -46,4 +43,8 @@
   </ItemGroup>
 
 
+  <ItemGroup>
+    <ProjectReference Include="$(FoundatioCorePath)/src/Foundatio.Aws/Foundatio.Aws.csproj" />
+    <ProjectReference Include="$(FoundatioCorePath)/src/Foundatio.Redis/Foundatio.Redis.csproj" />
+  </ItemGroup>
 </Project>

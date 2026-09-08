@@ -8,86 +8,37 @@ nav:
 
 # Going Distributed
 
-Run the [small console sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/DistributedConsoleSample) for a complete started-host flow with validation, a typed receipt, and deterministic completion. No Docker is required.
+This alternative uses Foundatio's native message bus for delivery and Mediator's generated handlers for application code. It builds on Foundatio PR #533; follow the [source setup](./distributed-transports#source-setup) before building this branch.
 
-You built your app with Foundatio Mediator. Messages flow through handlers, events trigger side effects, middleware handles cross-cutting concerns. Then the question comes: **how do we scale this out?**
+Start with the [console sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/samples/DistributedConsoleSample), then explore the Clean Architecture sample's **Try it** and **Queues** pages.
 
-The usual answer is to rip out in-process messaging and replace it with a different system: new SDKs, new serialization, new retry logic, new monitoring. Foundatio Mediator takes a different approach: **the same handlers, the same middleware, now running wherever you decide.**
+## Choose the contract explicitly
 
-## The Idea
+| Operation | What completion means | Intended use |
+| --- | --- | --- |
+| `InvokeAsync` on a local handler | The handler finished | Queries and synchronous commands |
+| `EnqueueAsync` on a `[Queue]` handler | The broker accepted work; the receipt identifies optional tracking | Work that may run later or elsewhere |
+| `PublishAsync` with distributed notifications | Local dispatch finished; remote publication was buffered | Cache invalidation and live UI signals |
 
-Your handlers already don't know who calls them, and your events already don't know who listens. That is exactly the boundary a queue needs.
+A queue is an at-least-once boundary. Handlers must tolerate duplicates, messages must serialize, and acceptance is separate from successful processing. Queue handlers retain ordinary method parameters, dependency injection, middleware, cascading events, and `Result` handling.
 
-- **Offload work to background workers?** Add `[Queue]` to the handler.
-- **Have every node hear about an event?** Mark the notification as distributed.
-- **Move a set of workers to their own process so it can scale on its own?** Change one setting. No code changes.
+Distributed notifications are best effort. Disconnected nodes and a full outbound buffer can lose events. Use independent queued handlers for business side effects that need retries.
 
-```csharp
-[Queue(Group = "exports", TrackProgress = true)]
-public class ReportExportHandler
-{
-    public async Task<Result> HandleAsync(ExportReport cmd, QueueContext ctx, IReportService reports, CancellationToken ct)
-    {
-        await reports.ExportAsync(cmd.ReportId, progress => ctx.ReportProgressAsync(progress, ct: ct), ct);
-        return Result.Ok();
-    }
-}
-```
-
-Calling `mediator.InvokeAsync(new ExportReport(...))` serializes the message, sends it to the `ReportExport-ExportReport` subscription, and returns `Result.Accepted` to confirm transport acceptance. A worker, in this process or another, runs the handler through the normal middleware pipeline.
-
-## One Build, Any Topology
-
-Every process runs the same code. `DistributedQueueOptions.Workers` decides what a process does:
-
-| Setting | Process behaviour |
-| --- | --- |
-| `all` (default) | API plus every worker in one process. Where you start. |
-| `none` | Enqueue only. Your web nodes. |
-| `exports,imports` | Only the `exports` and `imports` groups. A worker deployment you can scale independently. |
-| `!imports` | Everything except the `imports` group. |
+## Register infrastructure once
 
 ```csharp
-builder.Services.AddMediator()
-    .AddDistributedQueues(o => o.Workers = WorkerSelection.Parse(builder.Configuration["Distributed:Workers"]));
+builder.Services.AddFoundatio().Messaging
+    .UseInMemory()
+    .UseInMemoryExecutionTracking();
+builder.Services.AddMediator().AddDistributedQueues();
 ```
 
-Start with `all`. When one queue needs more capacity, deploy a second copy of the same build with `Distributed__Workers=exports` and scale that deployment on queue depth. See [Scaling Out](./distributed-scaling).
+For multiple processes, configure native AWS messaging and shared Redis tracking and locking. There are no Mediator transport packages or compatibility interfaces. Foundatio owns broker capacity, delivery leases, retry settlement, execution history, and provider administration. Mediator owns discovery, routing, scoped invocation, and interpretation of handler results.
 
-## Two Patterns, One System
+Tracking records broker-driven execution; it does not schedule the same message through a second job runtime.
 
-**Queues** are for work that must happen, at least once, on one consumer: background jobs, order processing, report generation, imports. They give you retries, dead-lettering, visibility timeouts with automatic renewal, progress tracking, and cancellation.
+## Scale the same application
 
-**Distributed notifications** are for events every node needs to hear: cache invalidation, real-time updates, configuration changes. Publishing is unchanged; the event is broadcast and each node runs its own local handlers.
+`WorkerSelection.Parse(configuration["Distributed:Workers"])` accepts `all`, `none`, named queues or groups, and exclusions such as `!imports`. Every host knows the complete topology, even when it runs no workers.
 
-The two compose. A distributed event can have a `[Queue]` handler: the publishing node enqueues the work once, every node runs its local handlers, and the queue's worker runs the queued one.
-
-## What Doesn't Change
-
-| Feature | Still works |
-| --- | :---: |
-| Convention-based handler discovery | ✅ |
-| Middleware pipeline (Before/After/Finally/Execute) | ✅ |
-| Dependency injection in handlers | ✅ |
-| Result types and error handling | ✅ |
-| Cascading messages | ✅ |
-| Handlers declared on an interface or base type | ✅ |
-| OpenTelemetry tracing, plus queue metrics | ✅ |
-| Authorization (enforced on the enqueuing node) | ✅ |
-
-## Delivery Guarantees
-
-Queues are **at least once**. A message is redelivered when a worker dies, when its handler fails with a retryable result, or when a visibility timeout lapses without renewal. Make queued handlers idempotent. To coordinate concurrent work on a shared resource, use [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock).
-
-Notifications are **best effort**. Buffer overflow, downtime, and shutdown can lose events; transports can also redeliver them. Use durable queue subscriptions for work that must survive those boundaries.
-
-## Where to Go Next
-
-- [Distributed Queues](./distributed-queues): handlers, retries, dead letters, progress, locks, headers
-- [Scaling Out](./distributed-scaling): worker selection, process topologies, autoscaling on queue depth, graceful shutdown
-- [Distributed Notifications](./distributed-notifications): cross-node fan-out and which events to include
-- [Transport Providers](./distributed-transports): AWS SQS/SNS, Redis job state, provisioning and IAM
-- [Operations](./distributed-operations): administration handlers, dead-letter replay, metrics and traces
-- [Testing](./distributed-testing): the recording queue client and multi-node tests in one process
-
-For job tracking, use `await mediator.EnqueueAsync(message, ct)` and read the successful result’s `Value.JobId` and `Value.QueueName`. Independent queued handlers have independent subscriptions/retries by default; explicitly sharing `QueueName` opts into shared processing.
+Default queued notification handlers each get an independent queue and retry budget. Explicitly naming the same `QueueName` groups handlers into one delivery and retry unit. A later handler failure can rerun earlier handlers in that group.

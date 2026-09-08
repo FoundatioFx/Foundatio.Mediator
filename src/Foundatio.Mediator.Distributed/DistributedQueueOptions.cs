@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Foundatio.Messaging;
 
 namespace Foundatio.Mediator.Distributed;
 
@@ -13,11 +13,6 @@ public class DistributedQueueOptions
     /// zero disables coalescing. A slow handler never extends this delay.
     /// </summary>
     public TimeSpan ReceiveBatchDelay { get; set; } = TimeSpan.FromMilliseconds(1);
-
-    /// <summary>
-    /// Serializer options for message bodies. Defaults to <see cref="JsonSerializerOptions.Default"/>.
-    /// </summary>
-    public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
     /// Which workers run in this process. Defaults to <see cref="WorkerSelection.All"/>. Set from
@@ -55,22 +50,13 @@ public class DistributedQueueOptions
     /// </summary>
     public TimeSpan QueueDepthPollInterval { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    /// Allows a process that runs no workers, or only some, to keep the default in-memory queue client.
-    /// Off by default because messages enqueued to an in-memory queue with no worker in the same process are lost.
-    /// </summary>
-    public bool AllowInMemoryWithoutWorkers { get; set; }
-
-    /// <summary>Explicit development/test escape hatch for tracked distributed transports with a process-local state store.</summary>
-    public bool AllowProcessLocalJobStateForDevelopment { get; set; }
-
     /// <summary>Operational overrides keyed by logical subscription name, before ResourcePrefix is applied.</summary>
     public IDictionary<string, Action<QueueAttribute>> QueueOverrides { get; } = new Dictionary<string, Action<QueueAttribute>>(StringComparer.OrdinalIgnoreCase);
 
     internal string RemovePrefix(string name) => string.IsNullOrEmpty(ResourcePrefix) ? name : name[(ResourcePrefix.Length + 1)..];
 
     /// <summary>
-    /// Produces <see cref="QueueJobState.Metadata"/> for tracked jobs from the message being enqueued,
+    /// Produces <see cref="MessageExecutionState.Metadata"/> for tracked jobs from the message being enqueued,
     /// for example a tenant or requesting-user id that a job state store can index on.
     /// </summary>
     public Func<object, IReadOnlyDictionary<string, string>?>? JobMetadataProvider { get; set; }

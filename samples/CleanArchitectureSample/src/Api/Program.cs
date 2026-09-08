@@ -1,10 +1,10 @@
+using Foundatio;
+using Foundatio.Messaging;
 using Api.Infrastructure;
 using Common.Module;
 using Common.Module.Events;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
-using Foundatio.Mediator.Distributed.Aws;
-using Foundatio.Mediator.Distributed.Redis;
 using Microsoft.AspNetCore.RateLimiting;
 using Orders.Module;
 using Products.Module;
@@ -27,12 +27,16 @@ builder.Services.AddSingleton<IHttpContextAccessor>(httpContextAccessor);
 // CallContext; inline, DI resolves it from the current request.
 builder.Services.AddScoped(_ => TenantHeaderProvider.Resolve(httpContextAccessor.HttpContext));
 
-// [QueueLock] needs a lock every replica shares; the library only supplies a process-local one for in-memory queues.
-builder.Services.AddSingleton<IQueueLockProvider, RedisQueueLockProvider>();
+// Foundatio owns the broker, execution history, and resource locks. Mediator supplies the handlers.
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging
+    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
+    .UseRedisExecutionTracking();
+foundatio.Locking.UseRedis();
 
 // ── Foundatio.Mediator ──
 builder.Services.AddMediator()
-    .ConfigureDistributed(opts => opts.ResourcePrefix = builder.Configuration["Distributed:ResourcePrefix"] ?? "sample")
+    .ConfigureDistributed(opts => opts.ResourcePrefix = builder.Configuration["Distributed:ResourcePrefix"] ?? "native-sample")
     .AddDistributedQueues(opts =>
     {
         // One setting decides which workers this process runs: "all", "none" (API node), or a list of
@@ -51,9 +55,7 @@ builder.Services.AddMediator()
         // Every domain event in Common.Module crosses the bus (the event feed may be connected to any API node)...
         .IncludeNotificationsFromAssemblyOf<IOrderEvent>()
         // ...except this one: only queued handlers consume it, and the publishing node already enqueued them.
-        .Exclude<ProductStockChanged>())
-    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
-    .UseRedisJobState();
+        .Exclude<ProductStockChanged>());
 
 // ── Domain modules ──
 builder.Services.AddCommonModule();

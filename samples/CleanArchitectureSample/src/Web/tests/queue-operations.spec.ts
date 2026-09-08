@@ -364,6 +364,18 @@ test('flush asks for confirmation and preserves failed job history', async ({
   const receipt = await enqueue(page, 'Enqueue export', 'exports');
   await finished(request, receipt.jobIds, 'Failed');
   await viewQueue(page, receipt, 'dead-letters');
+  let createdMessageIds: string[] = [];
+  await expect.poll(async () => {
+    const response = await request.get(
+      `/api/queues/dead-letters?queueName=${encodeURIComponent(receipt.queueName)}&take=100`
+    );
+    expect(response.ok()).toBeTruthy();
+    const letters: { messageId: string; jobId: string | null }[] = await response.json();
+    createdMessageIds = letters
+      .filter((letter) => letter.jobId && receipt.jobIds.includes(letter.jobId))
+      .map((letter) => letter.messageId);
+    return createdMessageIds.length;
+  }).toBe(2);
   await page
     .getByRole('button', { name: 'Flush dead letters', exact: true })
     .click();
@@ -372,9 +384,8 @@ test('flush asks for confirmation and preserves failed job history', async ({
   await dialog
     .getByRole('button', { name: 'Keep messages', exact: true })
     .click();
-  await expect(
-    page.getByRole('button', { name: 'Inspect DemoExportJob', exact: true })
-  ).toHaveCount(2);
+  for (const messageId of createdMessageIds)
+    await expect(page.locator(`[data-message-id="${messageId}"]`)).toBeVisible();
   await page
     .getByRole('button', { name: 'Flush dead letters', exact: true })
     .click();

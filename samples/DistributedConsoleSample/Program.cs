@@ -1,12 +1,12 @@
+using Foundatio.Messaging;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
-using Foundatio.Mediator.Distributed.Testing;
+using Foundatio;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
-await using var transport = new InMemoryTransport();
-builder.Services.AddInMemoryDistributedTransport(transport);
+builder.Services.AddFoundatio().Messaging.UseInMemory().UseInMemoryExecutionTracking();
 builder.Services.AddMediator(options => options.AddAssembly<GenerateGreetingHandler>())
     .ConfigureDistributed(options => options.ResourcePrefix = "demo")
     .AddDistributedQueues();
@@ -24,10 +24,10 @@ try
     var receipt = accepted.Value;
     Console.WriteLine($"Accepted {receipt.JobId} on {receipt.QueueName}");
 
-    await transport.DrainAsync(TimeSpan.FromSeconds(10));
-    var state = await host.Services.GetRequiredService<IQueueJobStateStore>().GetJobStateAsync(receipt.JobId!);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var state = await host.Services.GetRequiredService<IMessageExecutionStore>().WaitForCompletionAsync(receipt.JobId!, timeout.Token);
     Console.WriteLine($"Job {state!.Status}: {state.ProgressMessage}");
-    if (state.Status != QueueJobStatus.Completed)
+    if (state.Status != MessageExecutionStatus.Completed)
         throw new InvalidOperationException("The greeting job did not complete.");
 }
 finally { await host.StopAsync(); }
@@ -46,7 +46,7 @@ public class GreetingValidationMiddleware
 [Queue(TrackProgress = true)]
 public class GenerateGreetingHandler
 {
-    public async Task<Result> HandleAsync(GenerateGreeting message, QueueContext context, CancellationToken ct)
+    public async Task<Result> HandleAsync(GenerateGreeting message, MessageProcessingContext context, CancellationToken ct)
     {
         await context.ReportProgressAsync(100, $"Hello, {message.Name}!", ct);
         return Result.Ok();

@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 using System.Diagnostics;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
@@ -20,9 +21,9 @@ public class ObservabilityMiddleware
 {
     private const long SlowHandlerThresholdMs = 100;
 
-    public Stopwatch Before(object message, HandlerExecutionInfo info, QueueContext? queueContext, ILogger<IMediator> logger)
+    public Stopwatch Before(object message, HandlerExecutionInfo info, MessageProcessingContext? context, ILogger<IMediator> logger)
     {
-        var source = queueContext is not null
+        var source = context is not null
             ? "queue"
             : message is IDistributedNotification
                 ? "distributed event"

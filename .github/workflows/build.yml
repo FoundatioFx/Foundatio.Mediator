@@ -2,28 +2,51 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
 
 jobs:
-  integration-coverage:
-    name: Required integration suites
+  native-integration:
+    name: Native core and Mediator
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      localstack:
+        image: localstack/localstack:3.8.1
+        ports: ['4566:4566']
+        env:
+          SERVICES: sqs,sns
+        options: >-
+          --health-cmd "curl -fsS http://localhost:4566/_localstack/health" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      FOUNDATIO_REDIS_CONNECTION_STRING: localhost:6379
+      FOUNDATIO_AWS_CONNECTION_STRING: serviceurl=http://localhost:4566;accesskey=test;secretkey=test;region=us-east-1
     steps:
       - uses: actions/checkout@v6
-      - name: Verify AWS and Redis remain in the tested solution
-        shell: python
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Fetch the exact native core dependency
+        shell: pwsh
+        run: ./build/setup-foundatio-core.ps1
+      - name: Build native core and its provider tests
+        run: dotnet build .dependencies/Foundatio/Foundatio.slnx
+      - name: Test core delivery and providers
         run: |
-          import pathlib
-          import xml.etree.ElementTree as ET
-          projects = {p.attrib['Path'] for p in ET.parse('Foundatio.Mediator.slnx').iter('Project')}
-          for provider in ('Aws', 'Redis'):
-              path = f'tests/Foundatio.Mediator.Distributed.{provider}.Tests/Foundatio.Mediator.Distributed.{provider}.Tests.csproj'
-              assert path in projects and pathlib.Path(path).is_file(), f'Required integration suite missing: {path}'
-              assert 'integration.testconfig.json' in pathlib.Path(path).read_text(), f'Skip-failure configuration missing: {path}'
-              print(f'Required: {provider} integration suite, skipped tests fail CI')
+          dotnet test --solution .dependencies/Foundatio/Foundatio.slnx --no-build
+      - name: Build Mediator and samples
+        run: dotnet build Foundatio.Mediator.slnx
+      - name: Test generated handlers and native integration
+        run: dotnet test --solution Foundatio.Mediator.slnx --no-build
+      - name: Smoke test the complete console workflow
+        run: dotnet run --project samples/DistributedConsoleSample --no-build
+
   sample-web:
     name: Sample frontend
     runs-on: ubuntu-latest
@@ -42,36 +65,3 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-  build:
-    needs: integration-coverage
-    uses: FoundatioFx/Foundatio/.github/workflows/build-workflow.yml@main
-    secrets: inherit
-    with:
-      new-test-runner: true
-  distributed-benchmark-smoke:
-    name: Distributed benchmark smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-      - name: Build and verify benchmark accounting
-        run: |
-          dotnet build benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release -p:GeneratePackageOnBuild=false
-          dotnet benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll self-test
-      - name: Start isolated SQS and SNS
-        run: docker compose -p mediator-bench -f benchmarks/Foundatio.Mediator.Distributed.Benchmarks/compose.yaml up -d --wait
-      - name: Verify all framework and transport paths
-        run: dotnet benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll matrix --suite smoke --repetitions 1 --timeout 60 --output BenchmarkDotNet.Artifacts/distributed/smoke
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: distributed-benchmark-smoke
-          path: BenchmarkDotNet.Artifacts/distributed/smoke
-      - name: Stop benchmark infrastructure
-        if: always()
-        run: docker compose -p mediator-bench -f benchmarks/Foundatio.Mediator.Distributed.Benchmarks/compose.yaml down

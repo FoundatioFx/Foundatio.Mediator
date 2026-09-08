@@ -1,3 +1,5 @@
+using Foundatio.Messaging;
+using Foundatio.Lock;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
@@ -11,20 +13,20 @@ namespace Foundatio.Mediator.Distributed;
 [Middleware(Order = -90, ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton)]
 public class QueueLockMiddleware
 {
-    private readonly IQueueLockProvider? _lockProvider;
+    private readonly ILockProvider? _lockProvider;
     private readonly QueueTopology _topology;
     private readonly ILogger<QueueLockMiddleware> _logger;
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, QueueLockAttribute?> _settings = new(StringComparer.Ordinal);
 
-    public QueueLockMiddleware(QueueTopology topology, ILogger<QueueLockMiddleware> logger, IQueueClient queueClient, IQueueLockProvider? lockProvider = null, TimeProvider? timeProvider = null)
+    public QueueLockMiddleware(QueueTopology topology, ILogger<QueueLockMiddleware> logger, ILockProvider? lockProvider = null, TimeProvider? timeProvider = null)
     {
         _topology = topology;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         // A process-local lock is only safe when the queue is process-local too.
-        _lockProvider = lockProvider ?? (!queueClient.IsDistributed ? new InMemoryQueueLockProvider(_timeProvider) : null);
+        _lockProvider = lockProvider;
     }
 
     public async ValueTask<object?> ExecuteAsync(
@@ -34,8 +36,8 @@ public class QueueLockMiddleware
         CallContext? callContext,
         CancellationToken cancellationToken)
     {
-        // Only the worker side holds a QueueContext; the enqueue side never reaches this middleware.
-        if (callContext?.TryGet<QueueContext>(out var queueContext) != true || queueContext is null)
+        // Only the worker side holds a MessageProcessingContext; the enqueue side never reaches this middleware.
+        if (callContext?.TryGet<MessageProcessingContext>(out var queueContext) != true || queueContext is null)
             return await next().ConfigureAwait(false);
 
         var settings = _settings.GetOrAdd(handlerInfo.DescriptorId, FindSettings);
@@ -44,7 +46,7 @@ public class QueueLockMiddleware
 
         if (_lockProvider is null)
             throw new InvalidOperationException(
-                $"Handler '{handlerInfo.DescriptorId}' uses [QueueLock] but no IQueueLockProvider is registered. " +
+                $"Handler '{handlerInfo.DescriptorId}' uses [QueueLock] but no ILockProvider is registered. " +
                 "Register one every worker shares (Redis, a database); the in-memory lock is only used with the in-memory queue.");
 
         var key = settings.Key
@@ -57,16 +59,18 @@ public class QueueLockMiddleware
 
         var acquireTimeout = TimeSpan.FromSeconds(Math.Max(0, settings.AcquireTimeoutSeconds));
 
-        IQueueLock? queueLock = null;
+        ILock? queueLock = null;
         bool reportedContention = false;
         while (queueLock is null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Task<IQueueLock?>? acquisition = null;
+            Task<ILock?>? acquisition = null;
             try
             {
+                using var acquisitionTimeout = new CancellationTokenSource(acquireTimeout, _timeProvider);
+                using var acquisitionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, acquisitionTimeout.Token);
                 queueLock = await QueueOperation.RunAsync(
-                    ct => acquisition = _lockProvider.TryAcquireAsync(key, lifetime, acquireTimeout, ct),
+                    ct => acquisition = _lockProvider.TryAcquireAsync(key, lifetime, releaseOnDispose: true, cancellationToken: acquisitionCancellation.Token),
                     acquireTimeout + TimeSpan.FromSeconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
             }
             catch
@@ -104,7 +108,7 @@ public class QueueLockMiddleware
         }
     }
 
-    private async Task ReleaseLateAcquisitionAsync(Task<IQueueLock?> acquisition)
+    private async Task ReleaseLateAcquisitionAsync(Task<ILock?> acquisition)
     {
         try
         {
@@ -117,7 +121,7 @@ public class QueueLockMiddleware
         }
     }
 
-    private async Task ReleaseAsync(IQueueLock queueLock)
+    private async Task ReleaseAsync(ILock queueLock)
     {
         try
         {
@@ -130,7 +134,7 @@ public class QueueLockMiddleware
         }
     }
 
-    private async Task RenewAsync(IQueueLock queueLock, TimeSpan lifetime, QueueContext context, CancellationToken cancellationToken)
+    private async Task RenewAsync(ILock queueLock, TimeSpan lifetime, MessageProcessingContext context, CancellationToken cancellationToken)
     {
         var expires = _timeProvider.GetUtcNow() + lifetime;
         bool retry = false;
@@ -147,12 +151,12 @@ public class QueueLockMiddleware
                 if (remaining <= TimeSpan.Zero)
                     break;
                 var started = _timeProvider.GetUtcNow();
-                await QueueOperation.RunAsync(ct => queueLock.RenewAsync(lifetime, ct), remaining, _timeProvider, cancellationToken).ConfigureAwait(false);
+                await QueueOperation.RunAsync(ct => queueLock.RenewAsync(lifetime).WaitAsync(ct), remaining, _timeProvider, cancellationToken).ConfigureAwait(false);
                 expires = started + lifetime;
                 retry = false;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
-            catch (QueueLeaseLostException) { break; }
+            catch (LockOwnershipLostException) { break; }
             catch (Exception ex)
             {
                 retry = true;
@@ -162,7 +166,7 @@ public class QueueLockMiddleware
         if (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("Lock lost for message {MessageId} on {QueueName}; cancelling processing", context.MessageId, context.QueueName);
-            context.OnCancelProcessing?.Invoke();
+            context.CancelProcessing();
         }
     }
 

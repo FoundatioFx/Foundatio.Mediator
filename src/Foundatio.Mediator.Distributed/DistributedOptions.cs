@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Distributed;
@@ -8,8 +7,6 @@ public sealed class DistributedOptions
 {
     /// <summary>Application/environment prefix inherited unless a feature or provider overrides it.</summary>
     public string? ResourcePrefix { get; set; }
-    /// <summary>Message serialization inherited by queues and notifications.</summary>
-    public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 }
 
 /// <summary>Configures common distributed defaults before registering queues or notifications.</summary>
@@ -24,7 +21,7 @@ public static class DistributedOptionsExtensions
         return builder;
     }
 
-    /// <summary>Gets the shared defaults for provider adapters. Providers should apply them when resolving their services.</summary>
+    /// <summary>Gets the shared naming defaults for mediator queues and notifications.</summary>
     public static DistributedOptions GetDistributedOptions(this IMediatorBuilder builder)
     {
         var existing = builder.Services.FirstOrDefault(service => service.ServiceType == typeof(DistributedOptions))?.ImplementationInstance as DistributedOptions;

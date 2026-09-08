@@ -84,12 +84,14 @@ samples/CleanArchitectureSample/src/
 Open [samples/CleanArchitectureSample/src/Api/Program.cs](samples/CleanArchitectureSample/src/Api/Program.cs) and highlight:
 
 ```csharp
-// One setting decides which workers this process runs: all, none, or a list of groups
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseAws().UseRedisExecutionTracking();
+foundatio.Locking.UseRedis();
+
+// One setting selects the workers hosted by this process.
 builder.Services.AddMediator()
     .AddDistributedQueues(opts => opts.Workers = WorkerSelection.Parse(options.Workers ?? builder.Configuration["Distributed:Workers"]))
-    .AddDistributedNotifications()
-    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
-    .UseRedisJobState();
+    .AddDistributedNotifications();
 
 // Register your modules
 builder.Services.AddCommonModule();
@@ -466,7 +468,7 @@ public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
 {
     public async Task<Result> HandleAsync(
         DemoExportJob message,
-        QueueContext queueContext,
+        MessageProcessingContext context,
         CancellationToken ct)
     {
         for (int i = 1; i <= message.Steps; i++)
@@ -475,7 +477,7 @@ public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
             await Task.Delay(message.StepDelayMs, ct);
 
             int percent = (int)((double)i / message.Steps * 100);
-            await queueContext.ReportProgressAsync(percent, $"Step {i}/{message.Steps}");
+            await context.ReportProgressAsync(percent, $"Step {i}/{message.Steps}");
         }
 
         return Result.Ok();
@@ -485,7 +487,7 @@ public class DemoExportJobHandler(ILogger<DemoExportJobHandler> logger)
 
 ### Script
 
-> "With `TrackProgress = true`, the worker tracks the full lifecycle of each job in Redis — queued, processing, progress percentage, completed, failed, or cancelled. `QueueContext` is injected as a handler parameter, giving you `ReportProgressAsync()` for live progress updates.
+> "With `TrackProgress = true`, the worker tracks the full lifecycle of each job in Redis — queued, processing, progress percentage, completed, failed, or cancelled. `MessageProcessingContext` is injected as a handler parameter, giving you `ReportProgressAsync()` for live progress updates.
 >
 > Let's see it live."
 

@@ -1,5 +1,5 @@
+using Foundatio.Messaging;
 using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Foundatio.Mediator.Distributed;
@@ -7,7 +7,7 @@ namespace Foundatio.Mediator.Distributed;
 /// <summary>
 /// Middleware attached to <see cref="QueueAttribute"/> handlers. On the caller side it serializes
 /// the message, sends it to the handler's queue, and returns <see cref="Result.Accepted()"/>.
-/// On the worker side, where a <see cref="QueueContext"/> is present, it runs the handler.
+/// On the worker side, where a <see cref="MessageProcessingContext"/> is present, it runs the handler.
 /// </summary>
 /// <remarks>
 /// <para>When handlers explicitly share a queue, the registry selects one matching enqueue pipeline
@@ -18,29 +18,27 @@ namespace Foundatio.Mediator.Distributed;
 [Middleware(ExplicitOnly = true, Lifetime = MediatorLifetime.Singleton, IsDispatcher = true)]
 public class QueueMiddleware
 {
-    private readonly IQueueClient _client;
+    private readonly IMessageBus _bus;
     private readonly QueueTopology _topology;
     private readonly DistributedQueueOptions _options;
-    private readonly IQueueJobStateStore? _stateStore;
+    private readonly IMessageExecutionStore? _stateStore;
     private readonly DistributedInfrastructureReady? _infraReady;
-    private readonly JsonSerializerOptions _jsonOptions;
     private readonly TimeProvider _timeProvider;
 
     public QueueMiddleware(
-        IQueueClient client,
+        IMessageBus bus,
         QueueTopology topology,
         DistributedQueueOptions? options = null,
-        IQueueJobStateStore? stateStore = null,
+        IMessageExecutionStore? stateStore = null,
         DistributedInfrastructureReady? infraReady = null,
         TimeProvider? timeProvider = null)
     {
-        _client = client;
         _topology = topology;
         _options = options ?? new DistributedQueueOptions();
         _stateStore = stateStore;
         _infraReady = infraReady;
-        _jsonOptions = _options.JsonSerializerOptions ?? JsonSerializerOptions.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _bus = bus;
     }
 
     public async ValueTask<object?> ExecuteAsync(
@@ -63,14 +61,13 @@ public class QueueMiddleware
 
         await WaitForInfrastructureAsync(registration.QueueName, messageType, cancellationToken).ConfigureAwait(false);
 
-        var body = JsonSerializer.SerializeToUtf8Bytes(message, messageType, _jsonOptions);
         var now = _timeProvider.GetUtcNow();
 
         var headers = new Dictionary<string, string>
         {
-            [MessageHeaders.MessageType] = messageType.FullName!,
-            [MessageHeaders.EnqueuedAt] = now.ToString("O"),
-            [MessageHeaders.CorrelationId] = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N")
+            [KnownHeaders.MessageType] = messageType.FullName!,
+            [ExecutionHeaders.EnqueuedAt] = now.ToString("O"),
+            [KnownHeaders.CorrelationId] = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N")
         };
 
         using var activity = MediatorActivitySource.Instance.StartActivity($"Enqueue {registration.QueueName}", ActivityKind.Producer);
@@ -81,9 +78,9 @@ public class QueueMiddleware
         var traceActivity = activity ?? Activity.Current;
         if (traceActivity is not null)
         {
-            headers[MessageHeaders.TraceParent] = traceActivity.Id!;
+            headers[KnownHeaders.TraceParent] = traceActivity.Id!;
             if (traceActivity.TraceStateString is { Length: > 0 } traceState)
-                headers[MessageHeaders.TraceState] = traceState;
+                headers[KnownHeaders.TraceState] = traceState;
         }
 
         foreach (var provider in services.GetServices<IQueueHeaderProvider>())
@@ -93,14 +90,14 @@ public class QueueMiddleware
         if (registration.Settings.TrackProgress && _stateStore is not null)
         {
             jobId = Guid.NewGuid().ToString("N");
-            headers[MessageHeaders.JobId] = jobId;
+            headers[ExecutionHeaders.ExecutionId] = jobId;
 
-            var jobState = new QueueJobState
+            var jobState = new MessageExecutionState
             {
                 JobId = jobId,
                 QueueName = registration.QueueName,
                 MessageType = messageType.FullName ?? messageType.Name,
-                Status = QueueJobStatus.Queued,
+                Status = MessageExecutionStatus.Queued,
                 CreatedUtc = now,
                 LastUpdatedUtc = now,
                 Metadata = _options.JobMetadataProvider?.Invoke(message)
@@ -113,7 +110,11 @@ public class QueueMiddleware
         var receipt = new QueueReceipt(registration.QueueName, jobId);
         try
         {
-            await _client.SendAsync(registration.QueueName, [new QueueEntry { Body = body, Headers = headers }], cancellationToken).ConfigureAwait(false);
+            await _bus.SendAsync(message, new MessageSendOptions
+            {
+                Destination = registration.QueueName,
+                Headers = Foundatio.Messaging.MessageHeaders.Create(headers)
+            }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -121,7 +122,7 @@ public class QueueMiddleware
             {
                 try
                 {
-                    await QueueOperation.RunAsync(ct => _stateStore.UpdateJobStatusAsync(jobId, QueueJobStatus.EnqueueUnknown,
+                    await QueueOperation.RunAsync(ct => _stateStore.UpdateJobStatusAsync(jobId, MessageExecutionStatus.EnqueueUnknown,
                         errorMessage: exception.Message, expiry: _options.JobStateExpiry, cancellationToken: ct),
                         TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
                 }

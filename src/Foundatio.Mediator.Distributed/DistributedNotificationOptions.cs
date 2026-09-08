@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using System.Text.Json;
 
 namespace Foundatio.Mediator.Distributed;
 
 /// <summary>
-/// Options for bridging notifications across processes through an <see cref="IPubSubClient"/>.
+/// Options for bridging notifications across processes through an <see cref="Foundatio.Messaging.IMessageBus"/>.
 /// </summary>
 public class DistributedNotificationOptions
 {
@@ -24,8 +23,6 @@ public class DistributedNotificationOptions
     /// host to skip its inbound subscription while continuing to publish distributed notifications.
     /// </summary>
     public bool ReceiveNotifications { get; set; } = true;
-
-    public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
     /// Capacity of the outbound buffer between local publishes and the bus. A full buffer

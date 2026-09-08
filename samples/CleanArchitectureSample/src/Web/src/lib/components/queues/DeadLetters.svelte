@@ -109,7 +109,7 @@
                   size="sm"
                   variant="ghost"
                   onclick={() => openJob(letter.jobId!)}
-                  >{letter.headers['fm-replayed-at']
+                  >{letter.replayedAt
                     ? 'Failed job'
                     : 'Original job'}</Button
                 >{/if}<Button
@@ -127,7 +127,7 @@
               >
             </div>
           </div>
-          {#if letter.headers['fm-replayed-at']}
+          {#if letter.replayedAt}
             <div
               class="flex flex-wrap items-center gap-2 text-xs text-orange-800"
             >
@@ -135,13 +135,13 @@
                 >Failed again after retry</span
               >
               <span
-                >Requeued {formatTime(letter.headers['fm-replayed-at'])}</span
+                >Requeued {formatTime(letter.replayedAt)}</span
               >
-              {#if letter.headers['fm-original-job-id']}
+              {#if letter.originalJobId}
                 <Button
                   size="sm"
                   variant="ghost"
-                  onclick={() => openJob(letter.headers['fm-original-job-id'])}
+                  onclick={() => { if (letter.originalJobId) openJob(letter.originalJobId); }}
                   >Previous job</Button
                 >
               {/if}

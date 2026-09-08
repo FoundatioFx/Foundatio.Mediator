@@ -1,3 +1,4 @@
+using Foundatio.Messaging;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
@@ -12,7 +13,7 @@ public record GetQueueOverview;
 public record GetQueueDetail(string QueueName);
 
 /// <summary>Lists tracked jobs on a queue by status, newest first.</summary>
-public record ListQueueJobs(string QueueName, QueueJobStatus Status, int Skip = 0, int Take = 50);
+public record ListQueueJobs(string QueueName, MessageExecutionStatus Status, int Skip = 0, int Take = 50);
 
 /// <summary>Gets one tracked job.</summary>
 public record GetQueueJob(string JobId);
@@ -69,7 +70,7 @@ public sealed record QueueOverview
     public long Processed { get; init; }
     public long Failed { get; init; }
     public long DeadLettered { get; init; }
-    public QueueCounterStats? Counters { get; init; }
+    public MessageExecutionCounters? Counters { get; init; }
 }
 
 /// <summary>A dead-lettered message.</summary>
@@ -84,6 +85,10 @@ public sealed record DeadLetterView
     public int? Attempts { get; init; }
     public string? JobId { get; init; }
     public string? CorrelationId { get; init; }
+    /// <summary>The prior tracked execution when this message was replayed.</summary>
+    public string? OriginalJobId { get; init; }
+    /// <summary>When the operator replayed this message.</summary>
+    public DateTimeOffset? ReplayedAt { get; init; }
 
     /// <summary>The message body as text, truncated to 4,096 characters.</summary>
     public required string Body { get; init; }
@@ -111,16 +116,16 @@ public sealed record QueueJobCancellation(string JobId, bool CancellationRequest
 public class QueueAdministrationHandler(
     QueueTopology topology,
     IQueueWorkerRegistry workers,
-    IQueueClient client,
+    IMessageTransport transport,
     ILogger<QueueAdministrationHandler> logger,
-    IQueueJobStateStore? stateStore = null,
+    IMessageExecutionStore? stateStore = null,
     TimeProvider? timeProvider = null)
 {
     private const int MaxBodyPreview = 4096;
+    private readonly MessageAdministration _administration = new(transport, timeProvider);
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     // Long enough for SQS to consult every server, short enough that administration calls stay snappy.
-    private static readonly TimeSpan s_adminPollWait = TimeSpan.FromSeconds(1);
 
     public async Task<Result<IReadOnlyList<QueueOverview>>> HandleAsync(GetQueueOverview query, CancellationToken ct)
     {
@@ -144,22 +149,22 @@ public class QueueAdministrationHandler(
         return await ToOverviewAsync(registration, stats.GetValueOrDefault(registration.QueueName), ct).ConfigureAwait(false);
     }
 
-    public async Task<Result<IReadOnlyList<QueueJobState>>> HandleAsync(ListQueueJobs query, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<MessageExecutionState>>> HandleAsync(ListQueueJobs query, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
+            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
 
         if (topology.GetByQueueName(query.QueueName) is null)
             return Result.NotFound($"Queue '{query.QueueName}' is not registered.");
 
         var jobs = await stateStore.GetJobsByStatusAsync(query.QueueName, query.Status, Math.Max(0, query.Skip), Math.Clamp(query.Take, 1, 500), ct).ConfigureAwait(false);
-        return Result<IReadOnlyList<QueueJobState>>.Ok(jobs);
+        return Result<IReadOnlyList<MessageExecutionState>>.Ok(jobs);
     }
 
-    public async Task<Result<QueueJobState>> HandleAsync(GetQueueJob query, CancellationToken ct)
+    public async Task<Result<MessageExecutionState>> HandleAsync(GetQueueJob query, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
+            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
 
         var state = await stateStore.GetJobStateAsync(query.JobId, ct).ConfigureAwait(false);
         return state is null ? Result.NotFound($"Job '{query.JobId}' was not found.") : state;
@@ -168,7 +173,7 @@ public class QueueAdministrationHandler(
     public async Task<Result<QueueJobCancellation>> HandleAsync(CancelQueueJob command, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IQueueJobStateStore.");
+            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
 
         var requested = await stateStore.RequestCancellationAsync(command.JobId, ct).ConfigureAwait(false);
         if (!requested)
@@ -180,216 +185,92 @@ public class QueueAdministrationHandler(
 
     public async Task<Result<IReadOnlyList<DeadLetterView>>> HandleAsync(ListDeadLetters query, CancellationToken ct)
     {
-        if (topology.GetByQueueName(query.QueueName) is null)
-            return Result.NotFound($"Queue '{query.QueueName}' is not registered.");
-
-        var take = Math.Clamp(query.Take, 1, 100);
-        var views = new List<DeadLetterView>(take);
-        var received = new List<QueueMessage>(take);
-
-        // Receiving locks the messages; abandoning with no delay puts them straight back, so this is a peek.
-        try
-        {
-            while (received.Count < take)
-            {
-                var batch = await ReceiveDeadLettersWithTimeoutAsync(query.QueueName, take - received.Count, ct).ConfigureAwait(false);
-                if (batch.Count == 0)
-                    break;
-                received.AddRange(batch);
-            }
-
-            foreach (var message in received)
-                views.Add(ToView(message));
-        }
-        finally
-        {
-            foreach (var message in received)
-            {
-                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-            }
-        }
-
-        return views;
+        if (topology.GetByQueueName(query.QueueName) is null) return Result.NotFound($"Queue '{query.QueueName}' is not registered.");
+        var entries = await _administration.PeekDeadLettersAsync(DestinationAddress.ForQueue(query.QueueName), Math.Clamp(query.Take, 1, 100), ct).ConfigureAwait(false);
+        return Result<IReadOnlyList<DeadLetterView>>.Ok(entries.Select(entry => ToView(entry, query.QueueName)).ToArray());
     }
 
     public async Task<Result<DeadLetterReplayResult>> HandleAsync(ReplayDeadLetters command, CancellationToken ct)
     {
-        if (topology.GetByQueueName(command.QueueName) is null)
-            return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
-
-        int replayed = 0, skipped = 0;
+        var registration = topology.GetByQueueName(command.QueueName);
+        if (registration is null) return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
+        var source = DestinationAddress.ForQueue(command.QueueName);
         var receipts = new List<QueueReceipt>();
-        var max = Math.Clamp(command.Max, 1, 10_000);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var startedAt = _timeProvider.GetUtcNow();
-
-        var pending = new HashSet<QueueMessage>();
-        try
+        var ids = command.MessageId is { } id ? new[] { id }
+            : (await _administration.PeekDeadLettersAsync(source, Math.Clamp(command.Max, 1, 1000), ct).ConfigureAwait(false)).Select(entry => entry.Id).ToArray();
+        foreach (var messageId in ids)
         {
-            while (replayed + skipped < max)
+            string? executionId = registration.Settings.TrackProgress && stateStore is not null ? Guid.NewGuid().ToString("N") : null;
+            try
             {
-                var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - replayed - skipped), ct).ConfigureAwait(false);
-                if (batch.Count == 0)
-                    break;
-
-                bool progressed = false;
-                pending.UnionWith(batch);
-                foreach (var message in batch)
+                if (await _administration.ReplayDeadLetterAsync(source, messageId, async (entry, token) =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    // A replayed message that fails again lands back here with a newer timestamp; leave those
-                    // for the next operator decision instead of looping on them.
-                    bool deadLetteredDuringReplay = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetteredAt), out var deadLetteredAt)
-                        && deadLetteredAt >= startedAt;
-
-                    if (!seen.Add(message.Id) || deadLetteredDuringReplay)
+                    var headers = entry.Headers.ToBuilder().Set(ExecutionHeaders.ReplayedAt, _timeProvider.GetUtcNow().ToString("O"));
+                    headers.Remove(KnownHeaders.Attempts);
+                    if (entry.Headers.TryGetValue(ExecutionHeaders.ExecutionId, out var original)) headers.Set(ExecutionHeaders.OriginalExecutionId, original);
+                    if (executionId is not null)
                     {
-                        await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-                        pending.Remove(message);
-                        continue;
-                    }
-
-                    progressed = true;
-                    if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
-                    {
-                        skipped++;
-                        // Keep non-matches leased while searching; SQS may otherwise return the same batch.
-                        continue;
-                    }
-
-                    string? newJobId = null;
-                    if (message.Headers.TryGetValue(MessageHeaders.JobId, out var originalJobId))
-                    {
-                        if (stateStore is null)
-                            throw new InvalidOperationException("Replaying tracked work requires an IQueueJobStateStore.");
-                        var original = await stateStore.GetJobStateAsync(originalJobId, ct).ConfigureAwait(false);
-                        var now = _timeProvider.GetUtcNow();
-                        newJobId = Guid.NewGuid().ToString("N");
-                        await stateStore.SetJobStateAsync(new QueueJobState
+                        headers.Set(ExecutionHeaders.ExecutionId, executionId);
+                        await stateStore!.SetJobStateAsync(new MessageExecutionState
                         {
-                            JobId = newJobId, QueueName = command.QueueName,
-                            MessageType = original?.MessageType ?? message.Headers.GetValueOrDefault(MessageHeaders.MessageType) ?? "",
-                            CreatedUtc = now, LastUpdatedUtc = now, Metadata = original?.Metadata
-                        }, cancellationToken: ct).ConfigureAwait(false);
+                            JobId = executionId,
+                            QueueName = source.Name,
+                            MessageType = entry.Headers.GetValueOrDefault(KnownHeaders.MessageType) ?? registration.MessageType.Name,
+                            Status = MessageExecutionStatus.Queued,
+                            CreatedUtc = _timeProvider.GetUtcNow(),
+                            LastUpdatedUtc = _timeProvider.GetUtcNow()
+                        }, cancellationToken: token).ConfigureAwait(false);
                     }
+                    return new TransportMessage { Body = entry.Body, ContentType = entry.ContentType, Headers = headers.Build(), MessageId = Guid.NewGuid().ToString("N") };
+                }, ct).ConfigureAwait(false)) receipts.Add(new QueueReceipt(source.Name, executionId));
+            }
+            catch (Exception exception)
+            {
+                if (executionId is not null && stateStore is not null)
+                {
                     try
                     {
-                        await client.ReplayAsync(message, ct, newJobId).ConfigureAwait(false);
+                        await QueueOperation.RunAsync(token => stateStore.UpdateJobStatusAsync(executionId, MessageExecutionStatus.EnqueueUnknown,
+                            errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
                     }
-                    catch (Exception exception)
-                    {
-                        if (newJobId is not null)
-                        {
-                            try
-                            {
-                                await QueueOperation.RunAsync(token => stateStore!.UpdateJobStatusAsync(newJobId, QueueJobStatus.EnqueueUnknown,
-                                    errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
-                            }
-                            catch { /* Preserve the original replay failure. */ }
-                        }
-                        throw;
-                    }
-                    pending.Remove(message);
-                    receipts.Add(new QueueReceipt(command.QueueName, newJobId));
-                    replayed++;
-                    logger.LogInformation("Replayed dead letter {MessageId} to {QueueName}", message.Id, command.QueueName);
-
-                    if (command.MessageId is not null)
-                        return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
+                    catch (Exception stateError) { logger.LogWarning(stateError, "Unable to record the uncertain replay outcome for {ExecutionId}", executionId); }
                 }
-
-                if (!progressed)
-                    break;
+                throw;
             }
-
-            return new DeadLetterReplayResult(command.QueueName, replayed, skipped) { Receipts = receipts };
         }
-        finally
-        {
-            // Release non-matches and any unprocessed entries, including after cancellation or a failed operation.
-            foreach (var message in pending)
-                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-        }
+        return new DeadLetterReplayResult(source.Name, receipts.Count, ids.Length - receipts.Count) { Receipts = receipts };
     }
 
     public async Task<Result<DeadLetterPurgeResult>> HandleAsync(PurgeDeadLetters command, CancellationToken ct)
     {
-        if (topology.GetByQueueName(command.QueueName) is null)
-            return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
-
-        int purged = 0, inspected = 0;
-        var max = Math.Clamp(command.Max, 1, 100_000);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var pending = new HashSet<QueueMessage>();
-        try
-        {
-            while (inspected < max)
-            {
-                var batch = await ReceiveDeadLettersWithTimeoutAsync(command.QueueName, Math.Min(10, max - inspected), ct).ConfigureAwait(false);
-                if (batch.Count == 0)
-                    break;
-
-                bool progressed = false;
-                pending.UnionWith(batch);
-                foreach (var message in batch)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    if (!seen.Add(message.Id))
-                        continue;
-
-                    progressed = true;
-                    inspected++;
-                    // Keep non-matches leased until the search ends so later batches stay reachable.
-                    if (command.MessageId is not null && !string.Equals(command.MessageId, message.Id, StringComparison.Ordinal))
-                        continue;
-
-                    await client.CompleteAsync(message, ct).ConfigureAwait(false);
-                    pending.Remove(message);
-                    purged++;
-                    if (command.MessageId is not null)
-                    {
-                        logger.LogWarning("Purged dead letter {MessageId} from {QueueName}", message.Id, command.QueueName);
-                        break;
-                    }
-                }
-                // Stop if leases expired and the transport repeats a batch, or the selected message was deleted.
-                if (!progressed || (command.MessageId is not null && purged > 0))
-                    break;
-            }
-
-            logger.LogWarning("Purged {Count} dead letter(s) from {QueueName}", purged, command.QueueName);
-            return new DeadLetterPurgeResult(command.QueueName, purged);
-        }
-        finally
-        {
-            // Release non-matches and any unprocessed entries, including after cancellation or a failed operation.
-            foreach (var message in pending)
-                await ReleaseDeadLetterAsync(message).ConfigureAwait(false);
-        }
+        if (topology.GetByQueueName(command.QueueName) is null) return Result.NotFound($"Queue '{command.QueueName}' is not registered.");
+        var source = DestinationAddress.ForQueue(command.QueueName);
+        var ids = command.MessageId is { } id ? new[] { id }
+            : (await _administration.PeekDeadLettersAsync(source, Math.Clamp(command.Max, 1, 1000), ct).ConfigureAwait(false)).Select(entry => entry.Id).ToArray();
+        int count = 0;
+        foreach (var messageId in ids)
+            if (await _administration.DeleteDeadLetterAsync(source, messageId, ct).ConfigureAwait(false)) count++;
+        return new DeadLetterPurgeResult(source.Name, count);
     }
-
-    private async Task ReleaseDeadLetterAsync(QueueMessage message)
-    {
-        try
-        {
-            await QueueOperation.RunAsync(token => client.AbandonAsync(message, TimeSpan.Zero, token),
-                TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(exception, "Failed to release inspected dead letter {MessageId}", message.Id);
-        }
-    }
-
-    private Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersWithTimeoutAsync(string queueName, int maxCount, CancellationToken ct)
-        => client.ReceiveDeadLettersAsync(queueName, maxCount, s_adminPollWait, ct);
 
     private async Task<Dictionary<string, QueueStats>> SafeStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct)
     {
         try
         {
-            var stats = await client.GetQueueStatsAsync(queueNames, ct).ConfigureAwait(false);
-            return stats.ToDictionary(s => s.QueueName, StringComparer.OrdinalIgnoreCase);
+            var results = new Dictionary<string, QueueStats>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in queueNames)
+            {
+                var stats = await _administration.GetStatsAsync(DestinationAddress.ForQueue(name), ct).ConfigureAwait(false);
+                results[name] = new QueueStats
+                {
+                    QueueName = name,
+                    ActiveCount = stats.Queued,
+                    DelayedCount = stats.Delayed ?? 0,
+                    InFlightCount = stats.Working,
+                    DeadLetterCount = stats.Deadletter
+                };
+            }
+            return results;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -401,7 +282,7 @@ public class QueueAdministrationHandler(
     private async Task<QueueOverview> ToOverviewAsync(QueueRegistration registration, QueueStats? stats, CancellationToken ct)
     {
         var worker = workers.GetWorker(registration.QueueName);
-        QueueCounterStats? counters = null;
+        MessageExecutionCounters? counters = null;
         if (stateStore is not null)
         {
             try { counters = await stateStore.GetCounterStatsAsync(registration.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false); }
@@ -435,7 +316,7 @@ public class QueueAdministrationHandler(
         };
     }
 
-    private static DeadLetterView ToView(QueueMessage message)
+    private static DeadLetterView ToView(TransportEntry message, string queueName)
     {
         var body = Encoding.UTF8.GetString(message.Body.Span);
         bool truncated = body.Length > MaxBodyPreview;
@@ -445,14 +326,16 @@ public class QueueAdministrationHandler(
         return new DeadLetterView
         {
             MessageId = message.Id,
-            QueueName = message.QueueName,
-            OriginalQueueName = message.Headers.GetValueOrDefault(MessageHeaders.OriginalQueueName),
-            MessageType = message.Headers.GetValueOrDefault(MessageHeaders.MessageType),
-            Reason = message.Headers.GetValueOrDefault(MessageHeaders.DeadLetterReason),
-            DeadLetteredAt = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetteredAt), out var at) ? at : null,
-            Attempts = int.TryParse(message.Headers.GetValueOrDefault(MessageHeaders.DeadLetterDequeueCount), out var attempts) ? attempts : null,
-            JobId = message.Headers.GetValueOrDefault(MessageHeaders.JobId),
-            CorrelationId = message.Headers.GetValueOrDefault(MessageHeaders.CorrelationId),
+            QueueName = queueName,
+            OriginalQueueName = message.Headers.GetValueOrDefault(KnownHeaders.DeadLetterOriginalDestination),
+            MessageType = message.Headers.GetValueOrDefault(KnownHeaders.MessageType),
+            Reason = message.Headers.GetValueOrDefault(KnownHeaders.DeadLetterReason),
+            DeadLetteredAt = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(KnownHeaders.DeadLetterFailedAt), out var at) ? at : null,
+            Attempts = int.TryParse(message.Headers.GetValueOrDefault(KnownHeaders.DeadLetterAttempts), out var attempts) ? attempts : null,
+            JobId = message.Headers.GetValueOrDefault(ExecutionHeaders.ExecutionId),
+            CorrelationId = message.Headers.GetValueOrDefault(KnownHeaders.CorrelationId),
+            OriginalJobId = message.Headers.GetValueOrDefault(ExecutionHeaders.OriginalExecutionId),
+            ReplayedAt = DateTimeOffset.TryParse(message.Headers.GetValueOrDefault(ExecutionHeaders.ReplayedAt), out var replayedAt) ? replayedAt : null,
             Headers = new Dictionary<string, string>(message.Headers),
             BodyTruncated = truncated,
             Body = body

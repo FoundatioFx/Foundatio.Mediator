@@ -22,7 +22,6 @@ public static class DistributedMetrics
     internal static readonly Counter<long> Failed = Meter.CreateCounter<long>("queue.messages.failed", "{message}", "Messages whose handler failed and were abandoned for retry.");
     internal static readonly Counter<long> DeadLettered = Meter.CreateCounter<long>("queue.messages.dead_lettered", "{message}", "Messages moved to a dead-letter queue.");
     internal static readonly Counter<long> Deferred = Meter.CreateCounter<long>("queue.messages.deferred", "{message}", "Deliveries waiting for a resource lock without consuming a handler retry.");
-    internal static readonly Counter<long> Abandoned = Meter.CreateCounter<long>("queue.messages.abandoned", "{message}", "Messages returned to the queue without processing, for example during shutdown.");
     internal static readonly Histogram<double> HandlerDuration = Meter.CreateHistogram<double>("queue.handler.duration", "ms", "Handler execution time per message.");
     internal static readonly UpDownCounter<long> InFlight = Meter.CreateUpDownCounter<long>("queue.messages.in_flight", "{message}", "Messages currently being processed by this process.");
     internal static readonly Counter<long> NotificationsDropped = Meter.CreateCounter<long>("notifications.dropped", "{message}", "Best-effort notifications evicted from the outbound buffer.");

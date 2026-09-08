@@ -1,3 +1,6 @@
+using Foundatio;
+using Foundatio.Serializer;
+using Foundatio.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -30,7 +33,7 @@ public static class DistributedServiceExtensions
             ?? throw new InvalidOperationException("AddDistributedQueues requires AddMediator to be called first.");
 
         var defaults = builder.GetDistributedOptions();
-        var options = new DistributedQueueOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
+        var options = new DistributedQueueOptions { ResourcePrefix = defaults.ResourcePrefix };
         configure?.Invoke(options);
         if (options.ReceiveBatchDelay < TimeSpan.Zero || options.ReceiveBatchDelay > TimeSpan.FromSeconds(1))
             throw new ArgumentOutOfRangeException(nameof(options.ReceiveBatchDelay), "Receive batch delay must be between zero and one second.");
@@ -46,28 +49,11 @@ public static class DistributedServiceExtensions
             return builder;
         }
 
-        // Transports register IQueueClient with AddSingleton and DI resolves the last registration, so this
-        // default only wins when nothing else is added, regardless of whether UseAws() comes before or after.
-        services.TryAddSingleton<IQueueClient>(sp =>
-        {
-            var queueOptions = sp.GetRequiredService<DistributedQueueOptions>();
-            if (!queueOptions.Workers.IsAll && !queueOptions.AllowInMemoryWithoutWorkers)
-            {
-                throw new InvalidOperationException(
-                    "Workers are disabled or filtered in this process but no IQueueClient transport is registered, so enqueued messages " +
-                    "would go to an in-memory queue nothing consumes. Register a transport (for example UseAws()), " +
-                    "or set DistributedQueueOptions.AllowInMemoryWithoutWorkers for tests.");
-            }
-
-            return new InMemoryQueueClient(sp.GetService<TimeProvider>());
-        });
-
         services.TryAddSingleton<QueueMiddleware>();
         services.TryAddSingleton<QueueLockMiddleware>();
 
         var workerRegistry = new QueueWorkerRegistry();
         services.AddSingleton<IQueueWorkerRegistry>(workerRegistry);
-        var typeResolver = GetOrAddTypeResolver(services);
         var infraOptions = GetOrAddInfrastructureOptions(services);
 
         var queues = new Dictionary<string, List<(HandlerRegistration Handler, QueueAttribute Settings)>>(StringComparer.OrdinalIgnoreCase);
@@ -88,7 +74,7 @@ public static class DistributedServiceExtensions
                 throw new InvalidOperationException($"Queue override '{logicalName}' cannot change QueueName. Configure subscription identity on the handler.");
             var queueName = options.ApplyPrefix(logicalName);
 
-            typeResolver.Register(messageType);
+            RegisterMessageType(services, messageType);
 
             if (!queues.TryGetValue(queueName, out var list))
             {
@@ -106,7 +92,6 @@ public static class DistributedServiceExtensions
         var unknownOverrides = options.QueueOverrides.Keys.Except(queues.Keys.Select(options.RemovePrefix), StringComparer.OrdinalIgnoreCase).ToArray();
         if (unknownOverrides.Length > 0)
             throw new InvalidOperationException($"Unknown queue overrides: {string.Join(", ", unknownOverrides)}. Available subscriptions: {string.Join(", ", queues.Keys.Select(options.RemovePrefix))}.");
-        bool anyTrackProgress = false;
 
         foreach (var queueName in queueOrder)
         {
@@ -139,15 +124,8 @@ public static class DistributedServiceExtensions
             var visibilityTimeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
 
             // Queues must exist for enqueue-only nodes too; dead-letter queues are provisioned alongside.
-            infraOptions.QueueNames.Add(new QueueDefinition
-            {
-                Name = queueName,
-                VisibilityTimeout = visibilityTimeout,
-                MaxAttempts = settings.MaxAttempts
-            });
+            infraOptions.QueueNames.Add(DestinationAddress.ForQueue(queueName));
 
-            if (settings.TrackProgress)
-                anyTrackProgress = true;
 
             var concurrency = Math.Max(1, settings.Concurrency);
             var prefetchCount = settings.PrefetchCount > 0 ? settings.PrefetchCount : concurrency;
@@ -194,24 +172,24 @@ public static class DistributedServiceExtensions
             workerInfo.Stats.SetWorkerRegistered(true);
 
             services.AddSingleton<IHostedService>(sp => new QueueWorker(
-                sp.GetRequiredService<IQueueClient>(),
+                sp.GetRequiredService<IMessageBus>(),
+                sp.GetRequiredService<IMessageTypeRegistry>(),
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 workerOptions,
                 sp.GetService<DistributedQueueOptions>(),
                 sp.GetRequiredService<ILogger<QueueWorker>>(),
                 workerInfo,
-                sp.GetService<IQueueJobStateStore>(),
+                sp.GetService<IMessageExecutionStore>(),
                 sp.GetService<DistributedInfrastructureReady>(),
                 sp.GetService<TimeProvider>(),
-                sp.GetService<MessageTypeResolver>()));
+                sp.GetService<ISerializer>()));
         }
 
-        if (anyTrackProgress && !services.Any(sd => sd.ServiceType == typeof(IQueueJobStateStore)))
-            services.AddSingleton<IQueueJobStateStore, InMemoryQueueJobStateStore>();
+
 
         services.AddSingleton<IHostedService, DistributedConfigurationValidator>();
         services.AddSingleton<IHostedService>(sp => new QueueDepthMetricsService(
-            sp.GetRequiredService<IQueueClient>(),
+            sp.GetRequiredService<IMessageTransport>(),
             sp.GetRequiredService<QueueTopology>(),
             sp.GetRequiredService<DistributedQueueOptions>(),
             sp.GetRequiredService<ILogger<QueueDepthMetricsService>>(),
@@ -304,8 +282,8 @@ public static class DistributedServiceExtensions
 
     /// <summary>
     /// Bridges notifications across processes. Types selected by <see cref="DistributedNotificationOptions"/>
-    /// are published to the <see cref="IPubSubClient"/> and re-published locally on every other node.
-    /// Register a transport before calling this; otherwise the in-memory pub/sub client is used.
+    /// are published to the <see cref="IMessageBus"/> and re-published locally on every other node.
+    /// Configure the native Foundatio message bus before starting the host.
     /// </summary>
     public static IMediatorBuilder AddDistributedNotifications(
         this IMediatorBuilder builder,
@@ -317,29 +295,25 @@ public static class DistributedServiceExtensions
             return builder;
 
         var defaults = builder.GetDistributedOptions();
-        var options = new DistributedNotificationOptions { ResourcePrefix = defaults.ResourcePrefix, JsonSerializerOptions = defaults.JsonSerializerOptions };
+        var options = new DistributedNotificationOptions { ResourcePrefix = defaults.ResourcePrefix };
         configure?.Invoke(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxCapacity, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxConcurrentPublishes, 1);
 
         services.AddSingleton(options);
 
-        if (!services.Any(sd => sd.ServiceType == typeof(IPubSubClient)))
-            services.AddSingleton<IPubSubClient, InMemoryPubSubClient>();
-
         var infraOptions = GetOrAddInfrastructureOptions(services);
-        infraOptions.TopicNames.Add(new TopicDefinition { Name = options.EffectiveTopic });
+        infraOptions.TopicNames.Add(DestinationAddress.ForTopic(options.EffectiveTopic));
 
         var distributedTypes = new HashSet<Type>();
         var registry = services.GetHandlerRegistry();
-        var typeResolver = GetOrAddTypeResolver(services);
         if (registry is not null)
         {
             foreach (var reg in registry.Registrations)
             {
                 if (reg.MessageType is not null && options.ShouldDistribute(reg.MessageType))
                 {
-                    typeResolver.Register(reg.MessageType);
+                    RegisterMessageType(services, reg.MessageType);
                     distributedTypes.Add(reg.MessageType);
                 }
             }
@@ -349,7 +323,7 @@ public static class DistributedServiceExtensions
         {
             if (options.ShouldDistribute(type))
             {
-                typeResolver.Register(type);
+                RegisterMessageType(services, type);
                 distributedTypes.Add(type);
             }
         }
@@ -358,12 +332,13 @@ public static class DistributedServiceExtensions
 
         services.AddSingleton<IHostedService>(sp => new DistributedNotificationWorker(
             sp.GetRequiredService<IServiceScopeFactory>(),
-            sp.GetRequiredService<IPubSubClient>(),
+            sp.GetRequiredService<IMessageBus>(),
             sp.GetRequiredService<DistributedNotificationOptions>(),
             sp.GetRequiredService<ILogger<DistributedNotificationWorker>>(),
-            sp.GetService<MessageTypeResolver>(),
+            sp.GetRequiredService<IMessageTypeRegistry>(),
             sp.GetService<DistributedInfrastructureReady>(),
-            sp.GetService<TimeProvider>()));
+            sp.GetService<TimeProvider>(),
+            sp.GetService<ISerializer>()));
 
         return builder;
     }
@@ -381,8 +356,8 @@ public static class DistributedServiceExtensions
         services.AddSingleton(ready);
 
         services.AddSingleton<IHostedService>(sp => new DistributedInfrastructureInitializer(
-            infraOptions.QueueNames.Count > 0 ? sp.GetService<IQueueClient>() : null,
-            infraOptions.TopicNames.Count > 0 ? sp.GetService<IPubSubClient>() : null,
+            sp.GetRequiredService<IMessageTransport>(),
+            sp.GetService<MessagingTopologyOptions>(),
             sp.GetRequiredService<DistributedInfrastructureOptions>(),
             sp.GetRequiredService<DistributedInfrastructureReady>(),
             sp.GetRequiredService<ILogger<DistributedInfrastructureInitializer>>()));
@@ -390,15 +365,11 @@ public static class DistributedServiceExtensions
         return infraOptions;
     }
 
-    private static MessageTypeResolver GetOrAddTypeResolver(IServiceCollection services)
+    private static void RegisterMessageType(IServiceCollection services, Type type)
     {
-        var descriptor = services.FirstOrDefault(sd => sd.ServiceType == typeof(MessageTypeResolver));
-        if (descriptor?.ImplementationInstance is MessageTypeResolver existing)
-            return existing;
-
-        var resolver = new MessageTypeResolver();
-        services.AddSingleton(resolver);
-        return resolver;
+        if (type.IsInterface || type.IsAbstract) return;
+        if (!services.Any(descriptor => descriptor.ImplementationInstance is MessageTypeRegistration registration && registration.MessageType == type))
+            services.AddSingleton(new MessageTypeRegistration(type.FullName ?? type.Name, type));
     }
 
     private sealed class DistributedQueuesMarker;

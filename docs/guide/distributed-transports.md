@@ -6,194 +6,59 @@ nav:
     order: 40
 ---
 
-# Transport Providers
+# Native Foundatio Providers
 
-Queues and notifications sit on pluggable transports. In development the in-memory transports work out of the box; in production you register a provider before or after `AddDistributedQueues()` and `AddDistributedNotifications()`.
+The integration depends on `Foundatio.Mediator.Distributed` and native Foundatio libraries. It has no AWS, Redis, testing, or custom transport compatibility layer.
 
-## In-Memory (Default)
+## Source setup
+
+This branch uses unreleased core additions on top of Foundatio PR #533. The exact core revision is pinned in `build/foundatio-core.json`.
+
+```powershell
+./build/setup-foundatio-core.ps1
+dotnet build Foundatio.Mediator.slnx
+dotnet test --solution Foundatio.Mediator.slnx --no-build
+```
+
+The script checks out the pinned core source into `.dependencies/Foundatio`. For active core development, pass `-p:FoundatioCorePath=/absolute/path/to/Foundatio` to the build. There is no placeholder NuGet version; publication waits until the native APIs have a released dependency.
+
+## In memory
 
 ```csharp
-builder.Services.AddMediator()
-    .AddDistributedQueues()
-    .AddDistributedNotifications();
+builder.Services.AddFoundatio().Messaging
+    .UseInMemory()
+    .UseInMemoryExecutionTracking();
+builder.Services.AddMediator().AddDistributedQueues();
 ```
 
-The in-memory queue models real lease semantics (received messages stay invisible until completed, abandoned, or expired) so behaviour in tests matches production, but nothing survives a restart and nothing crosses processes.
+This configuration is process-local and suitable for the console sample. Use a shared broker and store when API and workers run separately.
 
-::: warning
-Startup fails if workers are disabled or filtered while the in-memory queue is the default, because messages would be enqueued to a queue nothing consumes. Register a transport, or set `AllowInMemoryWithoutWorkers` in tests. Transports can be registered before or after `AddDistributedQueues()`.
-:::
-
-## AWS (SQS + SNS)
-
-```bash
-dotnet add package Foundatio.Mediator.Distributed.Aws
-```
+## AWS and Redis
 
 ```csharp
-builder.Services.AddMediator()
-    .AddDistributedQueues()
-    .AddDistributedNotifications()
-    .UseAws();
-```
-
-`UseAws()` without a `ServiceUrl` creates the SDK clients from the default credential chain and region (environment, instance or task role, profiles). Pre-registered `IAmazonSQS` and `IAmazonSimpleNotificationService` services are used when present.
-
-```csharp
-.UseAws(aws =>
-{
-    aws.ServiceUrl = "http://localhost:4566";   // LocalStack; static test credentials unless aws.Credentials is set
-    aws.Region = "us-east-1";
-
-    aws.Queues.Provisioning = SqsProvisioningMode.Create;   // Create | Validate | None
-    aws.Queues.DeadLetterRetention = TimeSpan.FromDays(14);
-    aws.Queues.WaitTimeSeconds = 20;                         // long polling
-
-    aws.Notifications.QueuePrefix = "notifications";        // per-node subscription queues
-    aws.Notifications.SubscriptionQueueRetention = TimeSpan.FromMinutes(5);
-    aws.Notifications.HeartbeatInterval = TimeSpan.FromMinutes(2);
-    aws.Notifications.StaleSubscriptionAge = TimeSpan.FromMinutes(10);
-    aws.Notifications.CleanupOnDispose = true;
-});
-```
-
-`UseAwsQueues(...)` and `UseAwsNotifications(...)` configure either half on its own.
-
-### Queues on SQS
-
-Each queue is an SQS standard queue named from `ResourcePrefix` plus the logical handler/message subscription name or explicit `QueueName`, with a dead-letter queue `{queue}-dead-letter`. The `[Queue]` settings become queue attributes: `TimeoutSeconds` is the SQS visibility timeout (also requested on every receive, so the transport lock and the worker's renewal cadence always agree), `MaxAttempts` sets a redrive policy whose receive count sits above it so the library's own dead-lettering runs first, and dead-letter queues keep messages for `DeadLetterRetention`.
-
-Bodies travel as UTF-8 JSON text. Multiple headers pack into one `fm-headers` JSON attribute by default, reducing transport overhead. Receivers accept both packed and individual attributes. Set `aws.Queues.PackHeaders = false` or `aws.Notifications.PackHeaders = false` for external consumers or SNS filters that need individual attributes; exceeding the native attribute limit still requires packing. The transport uses a conservative shared SQS/SNS limit of 256 KiB, including attribute names, data types, and values. An oversized message fails at enqueue naming the destination, size, and message type. FIFO queues are not supported; rely on idempotency and [`[QueueLock]`](./distributed-queues#single-flight-with-queuelock) rather than ordering.
-
-### Provisioning {#provisioning}
-
-| Mode | Behaviour |
-| --- | --- |
-| `Create` (default) | Missing queues and dead-letter queues are created at startup with the attributes above; existing queues with different attributes are updated. |
-| `Validate` | Every queue and dead-letter queue must already exist with matching attributes. Startup fails with one exception listing every missing queue and mismatch. |
-| `None` | Nothing is created or checked; queue URLs are resolved lazily. |
-
-For deployments where application roles must not create infrastructure, provision once with elevated permissions and run the application in `Validate`:
-
-```csharp
-// e.g. from a "provision" console command
-var client = (SqsQueueClient)provider.GetRequiredService<IQueueClient>();
-await client.ProvisionAsync(provider.GetRequiredService<QueueTopology>().Queues
-    .Select(q => new QueueDefinition { Name = q.QueueName, VisibilityTimeout = TimeSpan.FromSeconds(q.Settings.TimeoutSeconds), MaxAttempts = q.Settings.MaxAttempts })
-    .ToList(), ct);
-```
-
-IAM actions by role:
-
-| Role | Actions |
-| --- | --- |
-| Enqueue only | `sqs:SendMessage`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes` |
-| Worker | adds `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility` |
-| Notifications | adds `sqs:CreateQueue`, `sqs:DeleteQueue`, `sqs:SetQueueAttributes`, `sqs:TagQueue`, `sqs:ListQueues`, `sqs:ListQueueTags`, `sns:Subscribe`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:Publish` |
-| Provisioning | adds `sqs:CreateQueue`, `sqs:SetQueueAttributes`, `sqs:TagQueue`, `sns:CreateTopic`, `sns:GetTopicAttributes` |
-
-### Broker batching
-
-Concurrent queue sends and completions automatically share SQS batch requests. Concurrent notifications share SNS publish batches. Each caller waits for its own broker result: a failed entry fails that caller, while successful entries complete normally. An absent result is an unknown outcome and fails the affected caller. Successful entries are never retried as part of another entry's failure.
-
-`aws.Queues.Batching` and `aws.Notifications.Batching` expose these defaults:
-
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `MaxBatchSize` | 10 | Entries per request; full batches dispatch immediately |
-| `MaxDelay` | 1 ms | Collection window for a partial batch; zero sends available entries immediately |
-| `MaxConcurrency` | 4 | Concurrent batch operations per destination and operation |
-| `Capacity` | 1,024 | Waiting entries per destination and operation before callers wait for capacity |
-| `RequestTimeout` | 30 seconds | Request deadline, including SDK retries |
-
-Acknowledgments use the received batch size as a flush hint: a ready eight-entry acknowledgment batch does not wait for a tenth entry. If a peer is slow or fails, the partial-batch window still flushes the completed entries. Batches also respect the aggregate byte limit. Cancellation before dispatch removes the entry; cancellation after dispatch does not cancel another caller's request and leaves the cancelled entry's broker outcome uncertain. Disposing the client cancels pending callers and stops its batching workers. Register these clients as singletons and dispose them with the host. Tracing links each batch to its contributing operations without retaining a caller's request context in the transport worker.
-
-Queue workers briefly coalesce newly released capacity to avoid fragmented broker receives. `DistributedQueueOptions.ReceiveBatchDelay` defaults to 1 ms and can be zero. This applies to distributed transports under load when there is too little free capacity for the largest batch observed from that transport. Workers with room for a full batch receive immediately. The delay never increases the configured number of in-flight messages or waits indefinitely for a slow handler.
-
-### Notifications on SNS
-
-SNS subscriptions filter this node's own publications at the broker by default. The transport writes a reserved `fm-exclude-host` attribute for filtering and removes it on receive; the original headers still round-trip. The mediator also checks origin locally. If SNS rejects a subscription because its filter-policy quota is exhausted, the transport logs a warning and subscribes without the optimization.
-
-Set `aws.Notifications.FilterSelfPublications = false` when using external publishers that send no message attributes, or to avoid SNS filter-policy quotas. SNS's `exists: false` filter only matches messages that have at least one attribute; library publications always include the routing attribute when filtering is enabled. See [AWS filtering constraints](https://docs.aws.amazon.com/sns/latest/dg/subscription-filter-policy-constraints.html) and [key matching](https://docs.aws.amazon.com/sns/latest/dg/attribute-key-matching.html).
-
-One SNS topic per `ResourcePrefix` carries every distributed notification. Each process creates its own SQS subscription queue, `{QueuePrefix}-{HostId}`, subscribed with raw delivery, and deletes it on graceful shutdown when `CleanupOnDispose` is on.
-
-Processes are not always shut down gracefully. Subscription queues therefore carry a short retention (`SubscriptionQueueRetention`), heartbeat tags refreshed every `HeartbeatInterval`, and every starting process sweeps queues under the prefix whose heartbeat is older than `StaleSubscriptionAge`, unsubscribing and deleting them. A killed task leaves nothing behind for longer than the sweep interval.
-
-### LocalStack
-
-```yaml
-services:
-  localstack:
-    image: localstack/localstack:3.8.1
-    ports: ["4566:4566"]
-    environment:
-      - SERVICES=sqs,sns
-```
-
-```csharp
-.UseAws(aws => aws.ServiceUrl = "http://localhost:4566");
-```
-
-## Redis
-
-```bash
-dotnet add package Foundatio.Mediator.Distributed.Redis
-```
-
-The Redis package provides the job state store for `TrackProgress` handlers. Use it beside SQS so every node sees the same job state.
-
-```csharp
-builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect("localhost"));
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseAws().UseRedisExecutionTracking();
+foundatio.Locking.UseRedis();
 
 builder.Services.AddMediator()
-    .AddDistributedQueues()
-    .UseRedisJobState(o =>
-    {
-        o.KeyPrefix = "fm:jobs";                       // default
-        o.ResourcePrefix = "myapp-prod";               // optional, prepended to KeyPrefix
-        o.DefaultExpiry = TimeSpan.FromHours(24);      // when the caller passes no expiry
-        o.NonTerminalExpiry = TimeSpan.FromDays(7);    // floor for Queued and Processing jobs
-    });
+    .ConfigureDistributed(options => options.ResourcePrefix = "orders-production")
+    .AddDistributedQueues(options => options.Workers =
+        WorkerSelection.Parse(builder.Configuration["Distributed:Workers"]))
+    .AddDistributedNotifications(options => options.Include<OrderChanged>());
 ```
 
-Keys, with `{p}` = `KeyPrefix` or `{ResourcePrefix}:{KeyPrefix}`:
+Register a shared `IConnectionMultiplexer` for Redis, as the sample does for its distributed cache. Configure AWS credentials through the SDK credential chain. For local development only, set the service endpoint to LocalStack and use its dummy credentials.
 
-| Key | Contents |
-| --- | --- |
-| `{p}:{jobId}` | Hash: status, progress, timestamps, attempt, error, `LastHeartbeatUtc`, `meta:*` fields |
-| `{p}:{jobId}:cancel` | Cancellation flag, same TTL as the job |
-| `{p}:queues:{queue}` | Sorted set of jobs by creation time |
-| `{p}:queues:{queue}:status:{n}` | Sorted set per status |
-| `{p}:counters:{queue}:{yyyy-MM-ddTHH}` | Hourly processing counters, 48-hour TTL |
+SQS supplies competing consumers; SNS supplies node broadcasts. Foundatio batches concurrent sends and acknowledgments. The application configures native serialization once through Foundatio's serializer registration; the integration uses that same serializer for queued messages and notifications.
 
-Status transitions are single MULTI/EXEC transactions conditioned on the previous status and retried on conflict, so two workers racing on one job cannot leave it in two status sets. Index sets are trimmed on write and on read, so expired jobs do not accumulate. Redis 6 is sufficient.
+## Provisioning {#provisioning}
 
-## Custom Providers
+Native `TopologyMode.Ensure` creates destinations; `Validate` checks that they exist; `None` assumes externally provisioned infrastructure. Configure these on the Foundatio messaging builder. Mediator declares its discovered queues and topics before accepting work.
 
-Implement `IQueueClient` (or derive from `QueueClientBase`) for a queue transport and `IPubSubClient` for fan-out, and register them as singletons; before or after `AddDistributedQueues()` / `AddDistributedNotifications()` both work.
+Managed AWS node subscriptions intentionally create temporary tagged SQS queues and SNS subscriptions, even when durable topology is externally managed. They require queue creation/deletion, queue tagging/listing, topic subscription/unsubscription, and normal messaging permissions. Live nodes heartbeat; clean shutdown removes resources; new nodes reap stale subscriptions. These are managed resources, not native SQS TTL leases. A paused node that exceeds the stale window may lose its subscription.
 
-```csharp
-public interface IQueueClient : IAsyncDisposable
-{
-    Task SendAsync(string queueName, IReadOnlyList<QueueEntry> entries, CancellationToken ct = default);
-    Task<IReadOnlyList<QueueMessage>> ReceiveAsync(string queueName, int maxCount, TimeSpan? visibilityTimeout, CancellationToken ct = default);
-    Task CompleteAsync(QueueMessage message, CancellationToken ct = default);
-    Task AbandonAsync(QueueMessage message, TimeSpan delay = default, CancellationToken ct = default);
-    Task RenewTimeoutAsync(QueueMessage message, TimeSpan extension, CancellationToken ct = default);
-    Task DeadLetterAsync(QueueMessage message, string reason, CancellationToken ct = default);
+Queue retry and dead-letter decisions belong to Foundatio. Do not add an independent SQS redrive policy for those queues. Nontransactional fallback dead-letter moves and replay remain at least once.
 
-    // Defaults provided; override when the transport can do better
-    Task EnsureQueuesAsync(IReadOnlyList<QueueDefinition> queues, CancellationToken ct = default);
-    Task<IReadOnlyList<QueueStats>> GetQueueStatsAsync(IReadOnlyList<string> queueNames, CancellationToken ct = default);
-    Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, CancellationToken ct = default);
-    Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken ct = default);
-    Task ReplayAsync(QueueMessage deadLetter, CancellationToken ct = default);
-}
-```
+## Native transport extension points
 
-A `ReceiveAsync` implementation must honour `visibilityTimeout`: the worker renews halfway through the lease, so a transport that ignores it will redeliver long-running messages early. If the transport long-polls, override the `ReceiveDeadLettersAsync` overload that takes `waitTime` and bound the poll on the server: the default cancels client-side, and a poll the server keeps running can swallow a message an administrator just released. `QueueDefinition` carries the visibility timeout, retention, and max attempts your `EnsureQueuesAsync` should apply.
-
-## Startup
-
-On start, an initializer creates or validates queues and topics (one warm-up call, then the rest concurrently) and then releases the workers. Enqueues arriving before it finishes wait up to `EnqueueReadyTimeout`. If provisioning fails, workers do not start and the failure is logged; enqueues fail with the same error.
+Custom providers implement Foundatio's `IMessageTransport` and relevant capability interfaces. Mediator contains no provider-specific dispatch path. Provider conformance tests live with Foundatio core.

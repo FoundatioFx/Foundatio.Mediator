@@ -150,7 +150,9 @@
     <span
       >{dashboard.total
         ? `${dashboard.skip + 1}–${Math.min(dashboard.skip + dashboard.jobs.length, dashboard.total)} of ${dashboard.total.toLocaleString()}`
-        : '0 jobs'} · shared state, newest first</span
+        : '0 jobs'} · shared state, {status === 'active' || status === 'all'
+        ? 'processing first, then newest'
+        : 'newest first'}</span
     >
     <div class="flex gap-2">
       <Button

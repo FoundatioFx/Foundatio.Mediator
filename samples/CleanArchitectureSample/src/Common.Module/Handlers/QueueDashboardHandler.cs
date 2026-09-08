@@ -68,11 +68,12 @@ public class QueueDashboardHandler(
 
         var counts = await Task.WhenAll(allStatuses.Select(async status => new KeyValuePair<string, long>(status.ToString(),
             await stateStore.GetJobCountByStatusAsync(query.QueueName, status, ct).ConfigureAwait(false)))).ConfigureAwait(false);
-        // Each status index is newest first. Fetch only enough to merge the requested bounded page.
+        // Each status index is newest first. Merge with processing jobs first before taking the page.
         var pages = await Task.WhenAll(statuses.Select(status => stateStore.GetJobsByStatusAsync(query.QueueName, status,
             0, query.Skip + query.Take, ct))).ConfigureAwait(false);
         var jobs = pages.SelectMany(page => page).DistinctBy(job => job.JobId)
-            .OrderByDescending(job => job.CreatedUtc).ThenBy(job => job.JobId).Skip(query.Skip).Take(query.Take).ToArray();
+            .OrderByDescending(job => job.Status == MessageExecutionStatus.Processing)
+            .ThenByDescending(job => job.CreatedUtc).ThenBy(job => job.JobId).Skip(query.Skip).Take(query.Take).ToArray();
         return new JobDashboardView
         {
             Counts = counts.ToDictionary(),

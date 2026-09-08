@@ -12,9 +12,9 @@ Use the native `Foundatio.Testing` harness. Start a real host so infrastructure 
 
 ```csharp
 var builder = Host.CreateApplicationBuilder();
-builder.Services.AddFoundatio().Messaging
-    .UseTestHarness()
-    .UseInMemoryExecutionTracking();
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseTestHarness();
+foundatio.Jobs.UseInMemory();
 builder.Services.AddMediator(options => options.AddAssembly<ExportHandler>())
     .AddDistributedQueues();
 

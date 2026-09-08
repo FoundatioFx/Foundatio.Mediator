@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio;
 using Foundatio.Serializer;
 using Foundatio.Messaging;
@@ -179,7 +180,7 @@ public static class DistributedServiceExtensions
                 sp.GetService<DistributedQueueOptions>(),
                 sp.GetRequiredService<ILogger<QueueWorker>>(),
                 workerInfo,
-                sp.GetService<IMessageExecutionStore>(),
+                sp.GetService<IJobRuntimeStore>(),
                 sp.GetService<DistributedInfrastructureReady>(),
                 sp.GetService<TimeProvider>(),
                 sp.GetService<ISerializer>()));

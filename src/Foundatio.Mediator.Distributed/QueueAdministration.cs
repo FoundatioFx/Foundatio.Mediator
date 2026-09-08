@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio.Messaging;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -13,7 +14,7 @@ public record GetQueueOverview;
 public record GetQueueDetail(string QueueName);
 
 /// <summary>Lists tracked jobs on a queue by status, newest first.</summary>
-public record ListQueueJobs(string QueueName, MessageExecutionStatus Status, int Skip = 0, int Take = 50);
+public record ListQueueJobs(string QueueName, JobStatus Status, int Skip = 0, int Take = 50);
 
 /// <summary>Gets one tracked job.</summary>
 public record GetQueueJob(string JobId);
@@ -70,7 +71,7 @@ public sealed record QueueOverview
     public long Processed { get; init; }
     public long Failed { get; init; }
     public long DeadLettered { get; init; }
-    public MessageExecutionCounters? Counters { get; init; }
+    public JobCounterStats? Counters { get; init; }
 }
 
 /// <summary>A dead-lettered message.</summary>
@@ -118,8 +119,9 @@ public class QueueAdministrationHandler(
     IQueueWorkerRegistry workers,
     IMessageTransport transport,
     ILogger<QueueAdministrationHandler> logger,
-    IMessageExecutionStore? stateStore = null,
-    TimeProvider? timeProvider = null)
+    IJobRuntimeStore? stateStore = null,
+    TimeProvider? timeProvider = null,
+    DistributedQueueOptions? queueOptions = null)
 {
     private const int MaxBodyPreview = 4096;
     private readonly MessageAdministration _administration = new(transport, timeProvider);
@@ -149,31 +151,31 @@ public class QueueAdministrationHandler(
         return await ToOverviewAsync(registration, stats.GetValueOrDefault(registration.QueueName), ct).ConfigureAwait(false);
     }
 
-    public async Task<Result<IReadOnlyList<MessageExecutionState>>> HandleAsync(ListQueueJobs query, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<JobState>>> HandleAsync(ListQueueJobs query, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
+            return Result.Invalid("Job tracking is not configured; register an IJobRuntimeStore.");
 
         if (topology.GetByQueueName(query.QueueName) is null)
             return Result.NotFound($"Queue '{query.QueueName}' is not registered.");
 
-        var jobs = await stateStore.GetJobsByStatusAsync(query.QueueName, query.Status, Math.Max(0, query.Skip), Math.Clamp(query.Take, 1, 500), ct).ConfigureAwait(false);
-        return Result<IReadOnlyList<MessageExecutionState>>.Ok(jobs);
+        var jobs = await stateStore.QueryAsync(new JobQuery { QueueName = query.QueueName, Status = query.Status, NewestFirst = true, Skip = Math.Max(0, query.Skip), Limit = Math.Clamp(query.Take, 1, 500) }, ct).ConfigureAwait(false);
+        return Result<IReadOnlyList<JobState>>.Ok(jobs);
     }
 
-    public async Task<Result<MessageExecutionState>> HandleAsync(GetQueueJob query, CancellationToken ct)
+    public async Task<Result<JobState>> HandleAsync(GetQueueJob query, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
+            return Result.Invalid("Job tracking is not configured; register an IJobRuntimeStore.");
 
-        var state = await stateStore.GetJobStateAsync(query.JobId, ct).ConfigureAwait(false);
+        var state = await stateStore.GetAsync(query.JobId, ct).ConfigureAwait(false);
         return state is null ? Result.NotFound($"Job '{query.JobId}' was not found.") : state;
     }
 
     public async Task<Result<QueueJobCancellation>> HandleAsync(CancelQueueJob command, CancellationToken ct)
     {
         if (stateStore is null)
-            return Result.Invalid("Job tracking is not configured; register an IMessageExecutionStore.");
+            return Result.Invalid("Job tracking is not configured; register an IJobRuntimeStore.");
 
         var requested = await stateStore.RequestCancellationAsync(command.JobId, ct).ConfigureAwait(false);
         if (!requested)
@@ -211,12 +213,15 @@ public class QueueAdministrationHandler(
                     if (executionId is not null)
                     {
                         headers.Set(ExecutionHeaders.ExecutionId, executionId);
-                        await stateStore!.SetJobStateAsync(new MessageExecutionState
+                        await stateStore!.CreateIfAbsentAsync(new JobState
                         {
                             JobId = executionId,
+                            Name = source.Name,
+                            ExecutionOwner = JobExecutionOwner.Broker,
+                            HistoryRetention = queueOptions?.JobStateExpiry ?? TimeSpan.FromHours(24),
                             QueueName = source.Name,
-                            MessageType = entry.Headers.GetValueOrDefault(KnownHeaders.MessageType) ?? registration.MessageType.Name,
-                            Status = MessageExecutionStatus.Queued,
+                            PayloadType = entry.Headers.GetValueOrDefault(KnownHeaders.MessageType) ?? registration.MessageType.Name,
+                            Status = JobStatus.Queued,
                             CreatedUtc = _timeProvider.GetUtcNow(),
                             LastUpdatedUtc = _timeProvider.GetUtcNow()
                         }, cancellationToken: token).ConfigureAwait(false);
@@ -230,8 +235,7 @@ public class QueueAdministrationHandler(
                 {
                     try
                     {
-                        await QueueOperation.RunAsync(token => stateStore.UpdateJobStatusAsync(executionId, MessageExecutionStatus.EnqueueUnknown,
-                            errorMessage: exception.Message, cancellationToken: token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
+                        await QueueOperation.RunAsync(token => stateStore.MarkEnqueueUnknownAsync(executionId, exception.Message, token), TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
                     }
                     catch (Exception stateError) { logger.LogWarning(stateError, "Unable to record the uncertain replay outcome for {ExecutionId}", executionId); }
                 }
@@ -282,7 +286,7 @@ public class QueueAdministrationHandler(
     private async Task<QueueOverview> ToOverviewAsync(QueueRegistration registration, QueueStats? stats, CancellationToken ct)
     {
         var worker = workers.GetWorker(registration.QueueName);
-        MessageExecutionCounters? counters = null;
+        JobCounterStats? counters = null;
         if (stateStore is not null)
         {
             try { counters = await stateStore.GetCounterStatsAsync(registration.QueueName, TimeSpan.FromHours(24), ct).ConfigureAwait(false); }

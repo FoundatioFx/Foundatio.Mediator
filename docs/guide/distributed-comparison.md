@@ -8,7 +8,7 @@ nav:
 
 # Native Core Alternative to PR 149
 
-This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. It uses **one Mediator integration package**, native AWS messaging, native Redis execution tracking and locking, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
+This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
 
 The supporting [Foundatio PR #561](https://github.com/FoundatioFx/Foundatio/pull/561) is stacked on [#533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
 
@@ -16,7 +16,8 @@ The supporting [Foundatio PR #561](https://github.com/FoundatioFx/Foundatio/pull
 
 ```csharp
 var foundatio = builder.Services.AddFoundatio();
-foundatio.Messaging.UseAws().UseRedisExecutionTracking();
+foundatio.Messaging.UseAws();
+foundatio.Jobs.UseRedis();
 foundatio.Locking.UseRedis();
 
 builder.Services.AddMediator()
@@ -37,7 +38,7 @@ The Clean Architecture sample demonstrates validation before enqueue, tracked ex
 | Queue routing and interpreting `Result` | Mediator | Mediator |
 | Receiving, capacity, serialization, delivery leases, settlement | Mediator distributed runtime | Foundatio messaging runtime |
 | AWS transport and batching | Mediator AWS package | Native Foundatio AWS transport |
-| Progress, cancellation, execution history | Mediator state stores | Native execution stores; no runnable job or second scheduler |
+| Progress, cancellation, execution history | Mediator state stores | Existing job stores and `JobState`; broker records cannot enter runtime claims |
 | Redis resource ownership | Sample provider | Native Redis lock provider |
 | Node resource lifecycle | Mediator AWS pub/sub client | Native managed node subscriptions |
 | Dead-letter inspection and recovery | Mediator provider operations | Native message administration |
@@ -53,6 +54,12 @@ Keep the application contracts explicit:
 
 Queuing still changes serialization, authorization timing, failure handling, and idempotency requirements. Shared infrastructure does not make local invocation and distributed delivery interchangeable. Existing `InvokeAsync` support on a queued handler returns acceptance; examples prefer `EnqueueAsync` to make the boundary visible.
 
+## One job store
+
+Tracked queue work and ordinary background jobs share `IJobRuntimeStore`, `JobState`, `IJobMonitor`, and the existing in-memory/Redis implementations. Configure `Jobs.UseInMemory()` or `Jobs.UseRedis()` separately from messaging. The dashboard uses the normal query/count APIs, and cancellation is part of the returned job snapshot.
+
+`JobExecutionOwner.Broker` excludes queued work from runtime claims, retry scheduling, and lease recovery. The message bus still owns delivery leases and settlement. Every delivery attempt receives a fresh state-update token, so a delayed progress report or completion cannot overwrite a newer attempt. Retained history can expire without preventing broker work from running.
+
 ## Implementation size
 
 Counting C# lines including comments and blanks, excluding generated files:
@@ -61,29 +68,29 @@ Counting C# lines including comments and blanks, excluding generated files:
 | --- | ---: | ---: |
 | Packages | 4 | 1 |
 | C# files | 70 | 32 |
-| C# lines | 8,442 | 3,035 |
+| C# lines | 8,442 | 3,044 |
 
-That removes about 64% of the Mediator-owned distributed source. The core extension adds **2,413 net lines in Foundatio's `src` tree**, including testing support. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
+That removes about 64% of the Mediator-owned distributed source. The core extension adds **3,076 net lines in Foundatio's `src` tree**, including testing support and the superseded execution-store types still awaiting retirement. The active implementation uses the normal job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
 ## Measured performance
 
-Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
+Measurements below use the unified job store and the pinned core revision. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
 
 | Scenario | PR 149 messages/s | Native messages/s | Allocated bytes/message: PR 149 / native |
 | --- | ---: | ---: | ---: |
-| In memory | 184,264 | 72,060 | 6,169 / 11,191 |
-| In memory, tracked | 83,803 | 41,917 | 11,473 / 16,706 |
-| SQS / LocalStack | 2,584 | 2,900 | 39,855 / 48,956 |
+| In memory | 168,758 | 66,513 | 6,169 / 11,228 |
+| In memory, tracked | 84,033 | 35,640 | 11,487 / 19,157 |
+| SQS / LocalStack | 3,050 | 2,810 | 39,855 / 48,873 |
 
 Median per-run p99 latency, in milliseconds (PR 149 / native):
 
 | Scenario | Enqueue acceptance | Handler entry, including queue wait |
 | --- | ---: | ---: |
-| In memory | 0.24 / 1.89 | 26.07 / 91.69 |
-| In memory, tracked | 1.21 / 5.00 | 4.05 / 137.23 |
-| SQS / LocalStack | 20.25 / 29.20 | 427.79 / 199.20 |
+| In memory | 0.33 / 2.89 | 26.00 / 97.77 |
+| In memory, tracked | 1.62 / 5.13 | 3.38 / 160.44 |
+| SQS / LocalStack | 19.65 / 31.41 | 317.62 / 213.87 |
 
-The native implementation has higher dispatch and allocation overhead in memory. Enqueue tail latency is also higher in these runs. The LocalStack run puts broker throughput in the same general range, with the native version ahead at the median. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking measurements use in-memory stores to isolate runtime overhead; live Redis correctness is verified separately. These results do not measure payload-heavy processing, crash recovery throughput, or cross-region latency.
+The native implementation has higher dispatch and allocation overhead in memory. Enqueue tail latency is also higher in these runs. The LocalStack run puts broker throughput in the same general range, with PR 149 ahead at the median in this run set. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking measurements use in-memory stores to isolate runtime overhead; live Redis correctness is verified separately. These results do not measure payload-heavy processing, crash recovery throughput, or cross-region latency.
 
 Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. Generated local Mediator dispatch is unchanged from PR 149.
 
@@ -91,7 +98,7 @@ The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foun
 
 ## Validation
 
-- Foundatio: full solution build; **2,213 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Core CI and provider CI passed.
+- Foundatio: full solution build; **2,222 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured.
 - Mediator: the default pinned-source build has zero warnings; **746 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
 - Sample: frontend type check and production build passed; **23 Playwright scenarios passed against separate API and worker processes**. The console workflow completes validation, enqueue, progress, and native state observation.
 - Focused failure coverage includes conservative/manual lease renewal, graceful drain, failed acknowledgment remaining nonterminal, expired history not blocking work, stale-attempt fencing, Redis lock ownership, unknown wire types, independent node copies, and SQS replay beyond the first receive batch.

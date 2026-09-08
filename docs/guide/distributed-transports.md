@@ -25,9 +25,9 @@ The script checks out the pinned core source into `.dependencies/Foundatio`. For
 ## In memory
 
 ```csharp
-builder.Services.AddFoundatio().Messaging
-    .UseInMemory()
-    .UseInMemoryExecutionTracking();
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseInMemory();
+foundatio.Jobs.UseInMemory();
 builder.Services.AddMediator().AddDistributedQueues();
 ```
 
@@ -37,7 +37,8 @@ This configuration is process-local and suitable for the console sample. Use a s
 
 ```csharp
 var foundatio = builder.Services.AddFoundatio();
-foundatio.Messaging.UseAws().UseRedisExecutionTracking();
+foundatio.Messaging.UseAws();
+foundatio.Jobs.UseRedis();
 foundatio.Locking.UseRedis();
 
 builder.Services.AddMediator()

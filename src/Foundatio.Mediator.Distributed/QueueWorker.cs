@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio.Messaging;
 using Foundatio.Serializer;
 using System.Diagnostics;
@@ -35,7 +36,6 @@ public sealed class QueueWorker : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<QueueWorker> _logger;
     private readonly TimeSpan _shutdownTimeout;
-    private readonly TimeSpan _stateExpiry;
     private readonly string _workerId;
 
     public QueueWorker(
@@ -46,7 +46,7 @@ public sealed class QueueWorker : BackgroundService
         DistributedQueueOptions? distributedOptions,
         ILogger<QueueWorker> logger,
         QueueWorkerInfo? workerInfo = null,
-        IMessageExecutionStore? stateStore = null,
+        IJobRuntimeStore? stateStore = null,
         DistributedInfrastructureReady? infraReady = null,
         TimeProvider? timeProvider = null,
         ISerializer? serializer = null,
@@ -65,7 +65,6 @@ public sealed class QueueWorker : BackgroundService
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger;
         _shutdownTimeout = distributedOptions?.ShutdownTimeout ?? TimeSpan.FromSeconds(30);
-        _stateExpiry = distributedOptions?.JobStateExpiry ?? TimeSpan.FromHours(24);
         _pipeline = new MessageExecutionPipeline(new MessageExecutionOptions
         {
             QueueName = options.QueueName,
@@ -76,7 +75,6 @@ public sealed class QueueWorker : BackgroundService
             AutoComplete = options.AutoComplete,
             TrackProgress = options.TrackProgress,
             ExecutionIdHeader = ExecutionHeaders.ExecutionId,
-            StateRetention = _stateExpiry,
             WorkerId = _workerId,
             CancellationPollInterval = options.CancellationPollInterval,
             OnProcessed = RecordOutcome

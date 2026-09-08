@@ -1,6 +1,6 @@
 # Modular Monolith Sample
 
-This alternative uses **native Foundatio messaging, Redis execution tracking, and Redis locking**. Run `./build/setup-foundatio-core.ps1` from the repository root before building. Provider configuration is in `Api/Program.cs`; handlers use native `MessageProcessingContext` directly. See [the architecture comparison](../../docs/guide/distributed-comparison.md).
+This alternative uses **native Foundatio messaging, the Redis job store, and Redis locking**. Run `./build/setup-foundatio-core.ps1` from the repository root before building. Provider configuration is in `Api/Program.cs`; handlers use native `MessageProcessingContext` directly. See [the architecture comparison](../../docs/guide/distributed-comparison.md).
 
 
 A working modular monolith that shows Foundatio.Mediator in a realistic multi-module application, and proves the distributed-queue scenarios a real monolith needs when it moves its background work onto SQS/SNS: one build that runs as an API node or as any set of workers, tracked long-running jobs, retries and dead letters you can inspect and replay, resource locks that preserve distinct jobs, tenant propagation, and per-host visibility across replicas.
@@ -14,7 +14,7 @@ Four modules communicate only through the mediator. No module references another
 | Scenario | Where to look |
 | -------- | ------------- |
 | **Config-only topology** — API node, worker groups, or everything in one process, from one setting | `Api/AppOptions.cs`, `Api/Program.cs` (`WorkerSelection.Parse`), `AppHost/Program.cs` (`SAMPLE_TOPOLOGY`) |
-| **Tracked long-running job** — progress, heartbeat, cancel, host that ran it | `DemoExportJobHandler`, Redis job state via `UseRedisExecutionTracking()`, queue details → Jobs |
+| **Tracked long-running job** — progress, heartbeat, cancel, host that ran it | `DemoExportJobHandler`, Redis job state via `Jobs.UseRedis()`, queue details → Jobs |
 | **Interface-typed handler** — one queue for every `IOrderEvent` | `OrderAuditHandler.HandleAsync(IOrderEvent)`, `order-events` queue |
 | **Shared queue, several handlers, one message** | `OrderConfirmationHandler` + `OrderFulfillmentHandler` on `QueueName = "order-created"` |
 | **Distributed notifications with an explicit rule set** | `Program.cs`: `IncludeNotificationsFromAssemblyOf<IOrderEvent>()`, `Exclude<ProductStockChanged>()`; product events keep `IDistributedNotification` |
@@ -117,7 +117,7 @@ Every resource runs the same `Api` project. `AppOptions` turns `--mode`/`--worke
 
 `WorkerSelection` accepts `all`, `none`, or a comma-separated list of group or queue names with `!` for exclusions (`exports,imports`, `!events`). Names match `[Queue(Group = ...)]` or the queue name. Moving a group out of process is therefore only configuration: an API node sets `Distributed__Workers=none` (or `--mode api`), and the process that should run the group sets `Distributed__Workers=exports`. Nothing in the modules changes, and the API node still enqueues to every queue because the topology is registered on every node. The selected queue's Settings tab distinguishes the answering API from a separate worker process. Job details identify the worker that owns the latest attempt.
 
-Configure a shared native broker and execution store whenever workers and API hosts run separately. The sample uses native AWS messaging and Redis execution tracking and locking.
+Configure a shared native broker and job store whenever workers and API hosts run separately. The sample uses AWS messaging, the Redis job store, and Redis locking.
 
 ## Distributed Queue Walkthrough
 
@@ -144,7 +144,7 @@ public class DemoExportJobHandler(HostInfo host, ILogger<DemoExportJobHandler> l
 }
 ```
 
-- `TrackProgress = true` gives every message a job id and a `MessageExecutionState` in the store — Redis here via `UseRedisExecutionTracking()`, so any node can read it.
+- `TrackProgress = true` gives every message a job id and a `JobState` in the store — Redis here via `Jobs.UseRedis()`, so any node can read it.
 - `MessageProcessingContext.ReportProgressAsync(percent, message)` writes progress and the execution heartbeat, and throws `OperationCanceledException` if cancellation was requested from the dashboard. The worker also auto-renews the timeout halfway through the visibility lease while the handler runs, so a 60-second timeout is not a 60-second limit.
 - Invoking a `[Queue]` handler enqueues instead of running it. The result confirms acceptance. `QueueDashboardHandler` uses `mediator.EnqueueAsync` and reads the job ID from the typed receipt. The handler’s own generated endpoint answers `202 Accepted`; an application status URL is separate from the job identifier.
 - Returning `Result.Error(...)` (or throwing) abandons the message for retry; `Result.CriticalError(...)`, `Result.Invalid(...)`, and other non-transient statuses dead-letter it at once. The export Outcome selector deterministically chooses success, one transient failure, or an immediate dead letter.

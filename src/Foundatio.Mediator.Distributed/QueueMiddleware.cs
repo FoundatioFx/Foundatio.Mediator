@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio.Messaging;
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,7 +22,7 @@ public class QueueMiddleware
     private readonly IMessageBus _bus;
     private readonly QueueTopology _topology;
     private readonly DistributedQueueOptions _options;
-    private readonly IMessageExecutionStore? _stateStore;
+    private readonly IJobRuntimeStore? _stateStore;
     private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
 
@@ -29,7 +30,7 @@ public class QueueMiddleware
         IMessageBus bus,
         QueueTopology topology,
         DistributedQueueOptions? options = null,
-        IMessageExecutionStore? stateStore = null,
+        IJobRuntimeStore? stateStore = null,
         DistributedInfrastructureReady? infraReady = null,
         TimeProvider? timeProvider = null)
     {
@@ -92,18 +93,21 @@ public class QueueMiddleware
             jobId = Guid.NewGuid().ToString("N");
             headers[ExecutionHeaders.ExecutionId] = jobId;
 
-            var jobState = new MessageExecutionState
+            var jobState = new JobState
             {
                 JobId = jobId,
+                Name = registration.QueueName,
+                ExecutionOwner = JobExecutionOwner.Broker,
+                HistoryRetention = _options.JobStateExpiry,
                 QueueName = registration.QueueName,
-                MessageType = messageType.FullName ?? messageType.Name,
-                Status = MessageExecutionStatus.Queued,
+                PayloadType = messageType.FullName ?? messageType.Name,
+                Status = JobStatus.Queued,
                 CreatedUtc = now,
                 LastUpdatedUtc = now,
                 Metadata = _options.JobMetadataProvider?.Invoke(message)
             };
 
-            await _stateStore.SetJobStateAsync(jobState, _options.JobStateExpiry, cancellationToken).ConfigureAwait(false);
+            await _stateStore.CreateIfAbsentAsync(jobState, cancellationToken).ConfigureAwait(false);
             activity?.SetTag("messaging.job.id", jobId);
         }
 
@@ -122,8 +126,7 @@ public class QueueMiddleware
             {
                 try
                 {
-                    await QueueOperation.RunAsync(ct => _stateStore.UpdateJobStatusAsync(jobId, MessageExecutionStatus.EnqueueUnknown,
-                        errorMessage: exception.Message, expiry: _options.JobStateExpiry, cancellationToken: ct),
+                    await QueueOperation.RunAsync(ct => _stateStore.MarkEnqueueUnknownAsync(jobId, exception.Message, ct),
                         TimeSpan.FromSeconds(5), _timeProvider).ConfigureAwait(false);
                 }
                 catch { /* Preserve the transport failure and receipt even when state is unavailable. */ }

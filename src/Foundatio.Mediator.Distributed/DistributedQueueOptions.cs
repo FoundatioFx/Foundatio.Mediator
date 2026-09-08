@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio.Messaging;
 
 namespace Foundatio.Mediator.Distributed;
@@ -56,7 +57,7 @@ public class DistributedQueueOptions
     internal string RemovePrefix(string name) => string.IsNullOrEmpty(ResourcePrefix) ? name : name[(ResourcePrefix.Length + 1)..];
 
     /// <summary>
-    /// Produces <see cref="MessageExecutionState.Metadata"/> for tracked jobs from the message being enqueued,
+    /// Produces <see cref="JobState.Metadata"/> for tracked jobs from the message being enqueued,
     /// for example a tenant or requesting-user id that a job state store can index on.
     /// </summary>
     public Func<object, IReadOnlyDictionary<string, string>?>? JobMetadataProvider { get; set; }

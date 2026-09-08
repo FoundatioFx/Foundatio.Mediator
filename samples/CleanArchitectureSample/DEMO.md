@@ -85,7 +85,8 @@ Open [samples/CleanArchitectureSample/src/Api/Program.cs](samples/CleanArchitect
 
 ```csharp
 var foundatio = builder.Services.AddFoundatio();
-foundatio.Messaging.UseAws().UseRedisExecutionTracking();
+foundatio.Messaging.UseAws();
+foundatio.Jobs.UseRedis();
 foundatio.Locking.UseRedis();
 
 // One setting selects the workers hosted by this process.

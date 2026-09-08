@@ -29,9 +29,8 @@ builder.Services.AddScoped(_ => TenantHeaderProvider.Resolve(httpContextAccessor
 
 // Foundatio owns the broker, execution history, and resource locks. Mediator supplies the handlers.
 var foundatio = builder.Services.AddFoundatio();
-foundatio.Messaging
-    .UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!)
-    .UseRedisExecutionTracking();
+foundatio.Messaging.UseAws(aws => aws.ServiceUrl = builder.Configuration["AWS:ServiceURL"]!);
+foundatio.Jobs.UseRedis();
 foundatio.Locking.UseRedis();
 
 // ── Foundatio.Mediator ──

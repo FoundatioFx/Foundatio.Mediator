@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using System.Collections.Concurrent;
 using Foundatio;
 using Foundatio.Messaging;
@@ -28,7 +29,7 @@ public sealed class NativeQueueIntegrationTests
         Assert.True(accepted.IsSuccess);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(CT);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
-        Assert.Equal(MessageExecutionStatus.Completed, (await first.Store.WaitForCompletionAsync(accepted.Value.JobId!, deadline.Token)).Status);
+        Assert.Equal(JobStatus.Completed, (await first.Store.WaitForCompletionAsync(accepted.Value.JobId!, deadline.Token)).Status);
         Assert.Contains(first.Log.Events.Concat(second.Log.Events), value => value == "tenant:default");
         await first.Mediator.PublishAsync(new BroadcastEvent("encoded"), CT);
         await second.Log.Broadcast.Task.WaitAsync(TimeSpan.FromSeconds(5), CT);
@@ -43,8 +44,8 @@ public sealed class NativeQueueIntegrationTests
         Assert.True(result.IsSuccess);
         Assert.Equal("native-work", result.Value.QueueName);
         await app.DrainAsync();
-        var state = await app.Store.GetJobStateAsync(result.Value.JobId!, CT);
-        Assert.Equal(MessageExecutionStatus.Completed, state!.Status);
+        var state = await app.Store.GetAsync(result.Value.JobId!, CT);
+        Assert.Equal(JobStatus.Completed, state!.Status);
         Assert.Equal(100, state.Progress);
         Assert.Equal("hello", state.ProgressMessage);
         Assert.Single(app.Harness.Sent<NativeWork>());
@@ -60,7 +61,7 @@ public sealed class NativeQueueIntegrationTests
         var result = await app.Mediator.EnqueueAsync(new NativeWork(""), CT);
         Assert.False(result.IsSuccess);
         Assert.Empty(app.Harness.SentMessages);
-        Assert.Equal(0, await app.Store.GetJobCountByStatusAsync("native-work", MessageExecutionStatus.Queued, CT));
+        Assert.Equal(0, await app.Store.CountAsync(new JobQuery { QueueName = "native-work", Status = JobStatus.Queued }, CT));
         Assert.Empty(app.Log.Scopes);
     }
 
@@ -70,8 +71,8 @@ public sealed class NativeQueueIntegrationTests
         await using var app = await TestApplication.StartAsync();
         var accepted = await app.Mediator.EnqueueAsync(new NativeWork("retry"), CT);
         await app.DrainAsync();
-        var state = await app.Store.GetJobStateAsync(accepted.Value.JobId!, CT);
-        Assert.Equal(MessageExecutionStatus.Completed, state!.Status);
+        var state = await app.Store.GetAsync(accepted.Value.JobId!, CT);
+        Assert.Equal(JobStatus.Completed, state!.Status);
         Assert.Equal(2, state.Attempt);
         Assert.Single(app.Harness.Abandoned<NativeWork>());
         Assert.Equal(2, app.Log.Scopes.Count);
@@ -86,8 +87,8 @@ public sealed class NativeQueueIntegrationTests
         await app.DrainAsync();
         var entry = Assert.Single(app.Harness.DeadLetteredMessages);
         Assert.Contains("Invalid", entry.Reason);
-        var state = await app.Store.GetJobStateAsync(accepted.Value.JobId!, CT);
-        Assert.Equal(MessageExecutionStatus.Failed, state!.Status);
+        var state = await app.Store.GetAsync(accepted.Value.JobId!, CT);
+        Assert.Equal(JobStatus.Failed, state!.Status);
         Assert.Equal(1, state.Attempt);
     }
 
@@ -145,7 +146,7 @@ public sealed class NativeQueueIntegrationTests
         var result = await app.Mediator.EnqueueAsync(new NativeWork("later"), CT);
         Assert.True(result.IsSuccess);
         Assert.Empty(app.Harness.HandledMessages);
-        Assert.Equal(MessageExecutionStatus.Queued, (await app.Store.GetJobStateAsync(result.Value.JobId!, CT))!.Status);
+        Assert.Equal(JobStatus.Queued, (await app.Store.GetAsync(result.Value.JobId!, CT))!.Status);
         var stats = await app.Administration.GetStatsAsync(DestinationAddress.ForQueue("native-work"), CT);
         Assert.Equal(1, stats.Queued);
     }
@@ -159,7 +160,7 @@ public sealed class NativeQueueIntegrationTests
         // A second consumer host shares the native transport and store without a runnable job-store worker.
         await using var worker = await TestApplication.StartAsync(transport: app.Transport, store: app.Store);
         await app.DrainAsync();
-        Assert.Equal(MessageExecutionStatus.Cancelled, (await app.Store.GetJobStateAsync(result.Value.JobId!, CT))!.Status);
+        Assert.Equal(JobStatus.Cancelled, (await app.Store.GetAsync(result.Value.JobId!, CT))!.Status);
         Assert.Empty(worker.Log.Scopes);
     }
 
@@ -175,8 +176,8 @@ public sealed class NativeQueueIntegrationTests
         var receipt = Assert.Single(replay.Value.Receipts);
         Assert.NotEqual(original.Value.JobId, receipt.JobId);
         await app.DrainAsync();
-        Assert.Equal(MessageExecutionStatus.Failed, (await app.Store.GetJobStateAsync(original.Value.JobId!, CT))!.Status);
-        Assert.Equal(MessageExecutionStatus.Failed, (await app.Store.GetJobStateAsync(receipt.JobId!, CT))!.Status);
+        Assert.Equal(JobStatus.Failed, (await app.Store.GetAsync(original.Value.JobId!, CT))!.Status);
+        Assert.Equal(JobStatus.Failed, (await app.Store.GetAsync(receipt.JobId!, CT))!.Status);
     }
 
     [Fact]
@@ -213,20 +214,21 @@ internal sealed class TestApplication(IHost host) : IAsyncDisposable
     public IServiceProvider Services => host.Services;
     public IMediator Mediator => Services.GetRequiredService<IMediator>();
     public IMessageTransport Transport => Services.GetRequiredService<IMessageTransport>();
-    public IMessageExecutionStore Store => Services.GetRequiredService<IMessageExecutionStore>();
+    public IJobRuntimeStore Store => Services.GetRequiredService<IJobRuntimeStore>();
     public MessagingTestHarness Harness => Services.GetRequiredService<MessagingTestHarness>();
     public NativeLog Log => Services.GetRequiredService<NativeLog>();
     public MessageAdministration Administration => new(Transport);
     public Task DrainAsync() => Harness.WaitForIdleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IMessageExecutionStore? store = null, bool notifications = false, ITextSerializer? serializer = null)
+    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IJobRuntimeStore? store = null, bool notifications = false, ITextSerializer? serializer = null)
     {
         var builder = Host.CreateApplicationBuilder();
         var foundatio = builder.Services.AddFoundatio();
         if (serializer is not null) foundatio.AddSerializer(serializer);
-        var messaging = foundatio.Messaging.UseTestHarness().UseInMemoryExecutionTracking();
+        var messaging = foundatio.Messaging.UseTestHarness();
+        foundatio.Jobs.UseInMemory();
         if (transport is not null) messaging.UseTransport(transport);
-        if (store is not null) builder.Services.AddSingleton(store);
+        if (store is not null) foundatio.Jobs.UseRuntimeStore(store);
         builder.Services.AddSingleton<NativeLog>();
         builder.Services.AddScoped<NativeTenant>();
         builder.Services.AddScoped<NativeScope>();

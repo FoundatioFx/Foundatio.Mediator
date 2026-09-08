@@ -27,9 +27,9 @@ Distributed notifications are best effort. Disconnected nodes and a full outboun
 ## Register infrastructure once
 
 ```csharp
-builder.Services.AddFoundatio().Messaging
-    .UseInMemory()
-    .UseInMemoryExecutionTracking();
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseInMemory();
+foundatio.Jobs.UseInMemory();
 builder.Services.AddMediator().AddDistributedQueues();
 ```
 

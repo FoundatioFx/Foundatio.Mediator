@@ -1,3 +1,4 @@
+using Foundatio.Jobs;
 using Foundatio.Messaging;
 using Foundatio.Mediator;
 using Foundatio.Mediator.Distributed;
@@ -6,7 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddFoundatio().Messaging.UseInMemory().UseInMemoryExecutionTracking();
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Messaging.UseInMemory();
+foundatio.Jobs.UseInMemory();
 builder.Services.AddMediator(options => options.AddAssembly<GenerateGreetingHandler>())
     .ConfigureDistributed(options => options.ResourcePrefix = "demo")
     .AddDistributedQueues();
@@ -25,9 +28,9 @@ try
     Console.WriteLine($"Accepted {receipt.JobId} on {receipt.QueueName}");
 
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-    var state = await host.Services.GetRequiredService<IMessageExecutionStore>().WaitForCompletionAsync(receipt.JobId!, timeout.Token);
+    var state = await host.Services.GetRequiredService<IJobMonitor>().WaitForCompletionAsync(receipt.JobId!, timeout.Token);
     Console.WriteLine($"Job {state!.Status}: {state.ProgressMessage}");
-    if (state.Status != MessageExecutionStatus.Completed)
+    if (state.Status != JobStatus.Completed)
         throw new InvalidOperationException("The greeting job did not complete.");
 }
 finally { await host.StopAsync(); }

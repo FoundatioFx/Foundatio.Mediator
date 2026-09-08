@@ -42,7 +42,7 @@ if (accepted.IsSuccess)
 }
 ```
 
-`EnqueueAsync` validates the enqueue middleware pipeline and returns `Result<QueueReceipt>`. It does not wait for the worker. A tracked receipt can be queried through the native `IMessageExecutionStore`. `WaitForCompletionAsync` is useful for console applications and tests; cancelling that wait does not cancel the job.
+`EnqueueAsync` validates the enqueue middleware pipeline and returns `Result<QueueReceipt>`. It does not wait for the worker. A tracked receipt can be queried through the native `IJobMonitor`. `WaitForCompletionAsync` is useful for console applications and tests; cancelling that wait does not cancel the job.
 
 Queue handlers may also be invoked through `InvokeAsync`, which returns acceptance rather than the eventual handler value. Prefer `EnqueueAsync` at application boundaries to make this distinction visible.
 
@@ -67,7 +67,7 @@ Foundatio controls receiving, lease renewal, and settlement. Lost ownership canc
 
 Use `context.ReportProgressAsync(percent, description, ct)`. Progress updates affect only the current processing attempt. Progress also renews the delivery lease. Automatic renewal continues even when no progress is reported. `context.ReportProgressAsync(ct)` explicitly renews the lease and heartbeat.
 
-`IMessageExecutionStore.RequestCancellationAsync(jobId, ct)` requests cooperative cancellation. A queued job is skipped before invocation; a running job observes its token. Cancellation is not a rollback of side effects. Configure shared execution tracking for hosts that exchange jobs.
+`IJobClient.RequestCancellationAsync(jobId, ct)` requests cooperative cancellation. A queued job is skipped before invocation; a running job observes its token. Cancellation is not a rollback of side effects. Configure `Jobs.UseRedis()` for hosts that exchange jobs. Queued work uses `JobState` with `ExecutionOwner = Broker`; the normal job worker cannot claim it. Progress and completion use a fresh ownership token for each delivery attempt.
 
 With `AutoComplete = false`, await `context.CompleteAsync(ct)` or `context.AbandonAsync(delay, ct)` inside the handler. Returning without settlement leaves the delivery eligible for retry.
 
@@ -81,6 +81,6 @@ Use `MiddlewareStage.Enqueue` for validation and authorization, `Processing` for
 
 ## Administration
 
-Mediator exposes typed dashboard queries while `MessageAdministration` and `IMessageExecutionStore` own native operations. Inspect raw dead letters before deletion or replay. Replaying creates a fresh execution identity and retains the failed history. Sending the replacement and deleting the original are not a cross-broker transaction: an uncertain replay can produce a duplicate.
+Mediator exposes typed dashboard queries over native `MessageAdministration` and `IJobRuntimeStore` operations. Use `IJobMonitor` for read-only job queries and completion observation. Inspect raw dead letters before deletion or replay. Replaying creates a fresh execution identity and retains the failed history. Sending the replacement and deleting the original are not a cross-broker transaction: an uncertain replay can produce a duplicate.
 
 SQS inspection uses bounded receive/hold/release, up to 1,000 messages or ten seconds per scan. A missing result can mean it was outside that snapshot. Shared queue retries rerun every matching handler; default independent subscriptions isolate failures.

@@ -10,7 +10,7 @@ nav:
 
 This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. **The existing Mediator runtime, source generator, and core test projects match `main` (`a148013`) exactly.** It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
 
-The core changes are included directly in [Foundatio PR #533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
+The Foundatio messaging and job-store changes are included directly in [Foundatio PR #533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
 
 ## The application experience
 
@@ -83,29 +83,31 @@ Counting C# lines including comments and blanks, excluding generated files:
 
 That removes about 64% of the Mediator-owned distributed source. The core extension adds **2,055 net lines in Foundatio's `src` tree**, including testing support. Queue tracking and ordinary jobs use the same job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
-## Measured performance (previous implementation)
+## Measured performance
 
-The measurements below are historical: they predate the change to ordinary middleware and still include the core dispatcher additions. They use the unified job store at Foundatio revision `823972fc`, recorded in the raw results. They are not measurements of the current implementation. Subsequent cleanup removed unused store types and registrations without changing the measured execution path. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
+These runs measure the extension-only implementation at Mediator revision `e60b208`, with unchanged Mediator core from `a148013` and Foundatio dependency `9288e40b`. The comparison baseline is PR 149 at `89bd6d1`. The raw report records every revision and the distributed source fingerprint.
+
+Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. All 18 runs verified that every unique message completed with zero duplicates.
 
 | Scenario | PR 149 messages/s | Native messages/s | Allocated bytes/message: PR 149 / native |
 | --- | ---: | ---: | ---: |
-| In memory | 168,758 | 66,513 | 6,169 / 11,228 |
-| In memory, tracked | 84,033 | 35,640 | 11,487 / 19,157 |
-| SQS / LocalStack | 3,050 | 2,810 | 39,855 / 48,873 |
+| In memory | 168,651 | 76,888 | 6,166 / 11,332 |
+| In memory, tracked | 89,964 | 34,548 | 11,473 / 19,255 |
+| SQS / LocalStack | 2,846 | 3,033 | 39,880 / 49,028 |
 
 Median per-run p99 latency, in milliseconds (PR 149 / native):
 
 | Scenario | Enqueue acceptance | Handler entry, including queue wait |
 | --- | ---: | ---: |
-| In memory | 0.33 / 2.89 | 26.00 / 97.77 |
-| In memory, tracked | 1.62 / 5.13 | 3.38 / 160.44 |
-| SQS / LocalStack | 19.65 / 31.41 | 317.62 / 213.87 |
+| In memory | 0.22 / 2.05 | 30.10 / 78.94 |
+| In memory, tracked | 1.71 / 4.82 | 2.84 / 177.25 |
+| SQS / LocalStack | 19.11 / 26.91 | 376.03 / 184.60 |
 
-The native implementation has higher dispatch and allocation overhead in memory. Enqueue tail latency is also higher in these runs. The LocalStack run puts broker throughput in the same general range, with PR 149 ahead at the median in this run set. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking measurements use in-memory stores to isolate runtime overhead; live Redis correctness is verified separately. These results do not measure payload-heavy processing, crash recovery throughput, or cross-region latency.
+PR 149 is faster and allocates less in memory. Native allocation and enqueue tail latency are higher in all three scenarios. LocalStack throughput is in the same general range, with the native implementation ahead at the median in this run set. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking uses in-memory stores to isolate runtime overhead; Redis correctness is verified separately.
 
-Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. The current implementation restores the Mediator runtime and generators to main; these historical runs instead shared PR 149's core changes.
+Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. These results compare the complete distributed implementations, not a microbenchmark of core Mediator: the current variant uses unchanged main, while PR 149 contains its core dispatcher additions.
 
-The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) include the pinned PR 149 baseline, standalone programs, measurement settings, and all 18 results. Run `compare.ps1`, `compare.ps1 -Tracking`, and `compare.ps1 -Aws -Messages 2000` to repeat them.
+The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) include all 18 current runs in `comparison/results.json`. Earlier measurements are preserved as `comparison/results-with-core-dispatcher.json`; they measured the superseded implementation. Run `compare.ps1`, `compare.ps1 -Tracking`, and `compare.ps1 -Aws -Messages 2000` to repeat the current comparison.
 
 ## Validation
 

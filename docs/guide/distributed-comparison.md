@@ -10,7 +10,7 @@ nav:
 
 This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
 
-The supporting [Foundatio PR #561](https://github.com/FoundatioFx/Foundatio/pull/561) is stacked on [#533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
+The core changes are included directly in [Foundatio PR #533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
 
 ## The application experience
 

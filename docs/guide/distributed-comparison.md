@@ -70,11 +70,11 @@ Counting C# lines including comments and blanks, excluding generated files:
 | C# files | 70 | 32 |
 | C# lines | 8,442 | 3,044 |
 
-That removes about 64% of the Mediator-owned distributed source. The core extension adds **3,076 net lines in Foundatio's `src` tree**, including testing support and the superseded execution-store types still awaiting retirement. The active implementation uses the normal job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
+That removes about 64% of the Mediator-owned distributed source. The core extension adds **2,055 net lines in Foundatio's `src` tree**, including testing support. Queue tracking and ordinary jobs use the same job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
 ## Measured performance
 
-Measurements below use the unified job store and the pinned core revision. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
+Measurements below use the unified job store at core revision `823972fc`, recorded in the raw results. Subsequent cleanup removed unused store types and registrations without changing the measured execution path. Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. Every run verified all unique messages completed with zero duplicates.
 
 | Scenario | PR 149 messages/s | Native messages/s | Allocated bytes/message: PR 149 / native |
 | --- | ---: | ---: | ---: |
@@ -98,7 +98,7 @@ The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foun
 
 ## Validation
 
-- Foundatio: full solution build; **2,222 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured.
+- Foundatio: full solution build; **2,212 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Superseded store fixtures were removed after their lifecycle coverage moved into the shared job-store conformance suite.
 - Mediator: the default pinned-source build has zero warnings; **746 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
 - Sample: frontend type check and production build passed; **23 Playwright scenarios passed against separate API and worker processes**. The console workflow completes validation, enqueue, progress, and native state observation.
 - Focused failure coverage includes conservative/manual lease renewal, graceful drain, failed acknowledgment remaining nonterminal, expired history not blocking work, stale-attempt fencing, Redis lock ownership, unknown wire types, independent node copies, and SQS replay beyond the first receive batch.

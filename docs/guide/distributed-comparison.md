@@ -36,7 +36,7 @@ The Clean Architecture sample demonstrates validation before enqueue, tracked ex
 
 Validation uses normal `OrderBefore = [typeof(QueueMiddleware)]` and runs on both sides. Standard short-circuit lifecycle rules apply: `After` is skipped on acceptance and `Finally` runs. `ExecuteAsync` wraps the normal pipeline. `ScopedPerInvoke` keeps its existing scope ownership, including an additional invocation scope inside a worker scope.
 
-The notification bridge observes `SubscribeAsync`, which works with both generated publish interceptors and runtime publication, including messages with no local handlers. Distribution filters and inbound echo suppression live in the extension. The bounded subscription filters after buffering and cannot report exact buffer drop counts.
+The notification bridge observes `SubscribeAsync`, which works with both generated publish interceptors and runtime publication, including messages with no local handlers. Distribution filters and inbound echo suppression live in the extension. Explicit notification selections use typed subscriptions, keeping unrelated local types out of their buffers. Overlapping selections publish once and share the transport concurrency limit. Dynamic predicates and concrete value-type selections use the shared object subscription. Exact buffer drop counts are unavailable.
 
 A successful `EnqueueAsync` returns the typed receipt through the existing `Result<T>` success API (`Status = Ok`). Invoking a queued handler directly still returns `Accepted`. Neither operation returns the eventual business result. Queued cascading tuples use reference-type or nullable event items; non-nullable value-type events should be published explicitly inside the handler.
 
@@ -78,41 +78,39 @@ Counting C# lines including comments and blanks, excluding generated files:
 | --- | ---: | ---: |
 | Packages | 4 | 1 |
 | C# files | 70 | 32 |
-| C# lines | 8,442 | 3,047 |
+| C# lines | 8,442 | 3,087 |
 | Existing Mediator core files changed | 11 | 0 |
 
-That removes about 64% of the Mediator-owned distributed source. The core extension adds **2,055 net lines in Foundatio's `src` tree**, including testing support. Queue tracking and ordinary jobs use the same job stores. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
+That removes about 64% of the Mediator-owned distributed source. Queue tracking and ordinary jobs use the same Foundatio job stores, with provider and lifecycle coverage shared in its test harness. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
 ## Measured performance
 
-These runs measure the extension-only implementation at Mediator revision `e60b208`, with unchanged Mediator core from `a148013` and Foundatio dependency `9288e40b`. The comparison baseline is PR 149 at `89bd6d1`. The raw report records every revision and the distributed source fingerprint.
+The September 8 pass keeps Mediator core at `a148013` and pins Foundatio `54006ac7`. PR #149 is measured at `89bd6d1`. The previous native baseline uses Mediator `1623285` and Foundatio `9288e40`.
 
-Three alternating repetitions on the same Linux development machine and .NET 10.0.11, Release, concurrency 64, a 256-character payload, and 1,000-message warmup. Each in-memory run processes 10,000 messages; each SQS run processes 2,000. Values below are medians. All 18 runs verified that every unique message completed with zero duplicates.
+Median jobs/second on the same Linux development host, Release, system .NET 10.0.11, concurrency 64:
 
-| Scenario | PR 149 messages/s | Native messages/s | Allocated bytes/message: PR 149 / native |
-| --- | ---: | ---: | ---: |
-| In memory | 168,651 | 76,888 | 6,166 / 11,332 |
-| In memory, tracked | 89,964 | 34,548 | 11,473 / 19,255 |
-| SQS / LocalStack | 2,846 | 3,033 | 39,880 / 49,028 |
+| Scenario | PR #149 | Native before | Native after | Native allocated bytes/job, before → after |
+| --- | ---: | ---: | ---: | ---: |
+| In memory | 188,648 | 91,952 | 99,679 | 11,279 → 9,843 |
+| In memory, tracked | 37,457 | 31,672 | 30,949 | 19,205 → 17,045 |
+| SQS / LocalStack | 2,602 | 2,779 | 2,894 | 48,959 → 48,003 |
+| In memory + Redis tracking | 8,688 | 1,695 | 6,153 | 49,721 → 47,366 |
+| SQS / LocalStack + Redis tracking | 2,634 | 1,380 | 2,597 | 90,257 → 85,535 |
 
-Median per-run p99 latency, in milliseconds (PR 149 / native):
+Redis tracking is **3.63× faster** with the in-memory transport and **1.88× faster** with LocalStack. Redis acceptance p99 falls from **47.0 to 11.5 ms** in the memory-transport workload. PR #149 still wins on in-memory throughput and allocations. Memory tracking has lower allocations but no demonstrated throughput gain; its eight-run pooled median is 2.3% lower. LocalStack is an emulator, not a production AWS capacity estimate.
 
-| Scenario | Enqueue acceptance | Handler entry, including queue wait |
-| --- | ---: | ---: |
-| In memory | 0.22 / 2.05 | 30.10 / 78.94 |
-| In memory, tracked | 1.71 / 4.82 | 2.84 / 177.25 |
-| SQS / LocalStack | 19.11 / 26.91 | 376.03 / 184.60 |
+Typed notification subscriptions cut publisher time for one million local-only events with the bridge enabled from **193 to 56 ms**. In the mixed workload with capacity 10,000, the median remote count rises from **8,482 to all 10,000 cluster events**, while publisher time drops from **269 to 124 ms**. Best-effort broadcasts still lose events when their own buffers fill; the smaller-capacity and burst results remain in the report.
 
-PR 149 is faster and allocates less in memory. Native allocation and enqueue tail latency are higher in all three scenarios. LocalStack throughput is in the same general range, with the native implementation ahead at the median in this run set. Three short runs on a shared machine and an emulator do not establish production AWS capacity or a general speed advantage. Tracking uses in-memory stores to isolate runtime overhead; Redis correctness is verified separately.
+Three alternating repetitions per workload, with five additional before/after memory-tracking pairs. All use a 256-character payload and 1,000-message warmup. Runs process 200,000 untracked memory messages, 50,000 memory-tracked messages, or 10,000 Redis/LocalStack messages. Timing includes broker drain and verified tracked completion; handler-entry latency includes queue waiting. Startup, warmup, and shutdown are excluded. SQS drain uses approximate statistics.
 
-Timing includes sending and draining the broker. Latency samples end at handler entry, and SQS drain uses approximate statistics. Host startup, warmup, and shutdown are excluded. These results compare the complete distributed implementations, not a microbenchmark of core Mediator: the current variant uses unchanged main, while PR 149 contains its core dispatcher additions.
+The [complete report and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/comparison/optimization-2026-09-08) include concurrency 1/8, p99 latency, allocation counts, notification overload behavior, source/binary hashes, and the intermediate measurements. **91 successful queue runs processed 5,000,000 measured messages without missing or duplicate deliveries.** One additional pre-change baseline aborted with the known CLR error and was recorded and repeated. All 36 notification runs completed without remote duplicates. No alternate runtime was used.
 
-The [comparison runner and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) include all 18 current runs in `comparison/results.json`. Earlier measurements are preserved as `comparison/results-with-core-dispatcher.json`; they measured the superseded implementation. Run `compare.ps1`, `compare.ps1 -Tracking`, and `compare.ps1 -Aws -Messages 2000` to repeat the current comparison.
+Use `compare.ps1 -Redis`, `compare.ps1 -Aws -Redis`, or the other options in the [queue benchmark README](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) to repeat the comparison. The sibling notification benchmark reproduces paced, burst, and mixed traffic. Earlier studies remain in `comparison/results.json` and `comparison/results-with-core-dispatcher.json`.
 
 ## Validation
 
-- Foundatio: full solution build; **2,212 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Superseded store fixtures were removed after their lifecycle coverage moved into the shared job-store conformance suite.
-- Mediator: the pinned-source build has zero warnings; **752 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
+- Foundatio: full solution build; **2,221 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Coverage includes older Redis records, bounded admission cleanup, immutable header snapshots, and cooperative cancellation. The existing AppHost ASPIRE010 warning remains.
+- Mediator: the pinned-source build has zero warnings; **756 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
 - Sample: frontend type check and production build passed; **23 Playwright scenarios passed against separate API and worker processes**. The console workflow completes validation, enqueue, progress, and native state observation.
 - Focused failure coverage includes conservative/manual lease renewal, graceful drain, failed acknowledgment remaining nonterminal, expired history not blocking work, stale-attempt fencing, Redis lock ownership, unknown wire types, independent node copies, and SQS replay beyond the first receive batch.
 

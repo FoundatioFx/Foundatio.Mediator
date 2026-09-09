@@ -2,6 +2,8 @@
 param(
     [switch]$Aws,
     [switch]$Tracking,
+    [switch]$Redis,
+    [ValidateRange(1, 1024)][int]$Concurrency = 64,
     [ValidateRange(1, 1000000)][int]$Messages = 10000,
     [ValidateRange(1, 100)][int]$Repetitions = 3
 )
@@ -34,9 +36,10 @@ $programs = @{
 }
 $outputPath = Join-Path $repositoryRoot "BenchmarkDotNet.Artifacts/native-comparison/$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 New-Item -ItemType Directory -Force $outputPath | Out-Null
-$runArgs = @('--count', "$Messages", '--concurrency', '64')
+$runArgs = @('--count', "$Messages", '--concurrency', "$Concurrency")
 if ($Aws) { $runArgs += '--aws' }
-if ($Tracking) { $runArgs += '--tracking' }
+if ($Tracking -or $Redis) { $runArgs += '--tracking' }
+if ($Redis) { $runArgs += '--redis' }
 for ($iteration = 0; $iteration -lt $Repetitions; $iteration++) {
     $order = if ($iteration % 2 -eq 0) { @('pr149', 'native') } else { @('native', 'pr149') }
     foreach ($implementation in $order) {

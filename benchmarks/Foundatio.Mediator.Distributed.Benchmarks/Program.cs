@@ -1,3 +1,5 @@
+using StackExchange.Redis;
+using Foundatio.Jobs;
 using Amazon.Runtime;
 using System.Diagnostics;
 using System.Text.Json;
@@ -12,6 +14,8 @@ using Microsoft.Extensions.Logging;
 int count = ReadInt("--count", 20_000);
 int concurrency = ReadInt("--concurrency", 64);
 bool tracking = args.Contains("--tracking");
+bool redis = args.Contains("--redis");
+int completedExpected = 0;
 bool aws = args.Contains("--aws");
 string serviceUrl = Environment.GetEnvironmentVariable("BENCHMARK_AWS_URL") ?? "http://127.0.0.1:14566";
 if (aws && (!Uri.TryCreate(serviceUrl, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback))
@@ -20,8 +24,10 @@ string prefix = "compare-" + Guid.NewGuid().ToString("N");
 string queueName = prefix + "-comparison";
 var builder = Host.CreateApplicationBuilder();
 builder.Logging.ClearProviders();
+if (redis) builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(Environment.GetEnvironmentVariable("BENCHMARK_REDIS_CONNECTION_STRING") ?? "localhost:6379"));
 var foundatio = builder.Services.AddFoundatio();
-foundatio.Jobs.UseInMemory();
+if (redis) foundatio.Jobs.UseRedis(options => options.KeyPrefix = prefix + ":jobs:");
+else if (!args.Contains("--no-store")) foundatio.Jobs.UseInMemory();
 var messaging = foundatio.Messaging;
 if (aws) messaging.UseAws(options => { options.ServiceUrl = serviceUrl; options.Credentials = new BasicAWSCredentials("test", "test"); });
 else messaging.UseInMemory();
@@ -31,8 +37,8 @@ builder.Services.AddMediator(options => options.AddAssembly<ComparisonHandler>()
     .AddDistributedQueues(options =>
 {
     options.QueueDepthPollInterval = TimeSpan.Zero;
-    options.ReceiveBatchDelay = TimeSpan.Zero;
-    options.QueueOverrides["comparison"] = queue => { queue.Concurrency = concurrency; queue.TrackProgress = tracking; };
+    options.ReceiveBatchDelay = TimeSpan.FromMilliseconds(args.Contains("--default-delay") ? 1 : 0);
+    options.QueueOverrides["comparison"] = queue => { queue.Concurrency = concurrency; queue.TrackProgress = tracking; queue.AutoRenewTimeout = !args.Contains("--no-renew"); };
 });
 using var host = builder.Build();
 await host.StartAsync();
@@ -46,6 +52,7 @@ try
     await Task.Delay(50, timeout.Token);
     GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
     long allocated = GC.GetTotalAllocatedBytes(true);
+    int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
     var cpu = Process.GetCurrentProcess().TotalProcessorTime;
     long started = Stopwatch.GetTimestamp();
     var accepts = await RunAsync(count);
@@ -58,6 +65,8 @@ try
         Concurrency = concurrency,
         Tracking = tracking,
         Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+        TrackingStore = redis ? "redis" : "memory",
+        Gen0Collections = GC.CollectionCount(0) - gen0, Gen1Collections = GC.CollectionCount(1) - gen1, Gen2Collections = GC.CollectionCount(2) - gen2,
         ElapsedMilliseconds = elapsed.TotalMilliseconds,
         MessagesPerSecond = count / elapsed.TotalSeconds,
         AllocatedBytesPerMessage = (GC.GetTotalAllocatedBytes(true) - allocated) / (double)count,
@@ -100,6 +109,12 @@ async Task<double[]> RunAsync(int size)
         var stats = await administration.GetStatsAsync(DestinationAddress.ForQueue(queueName), timeout.Token);
         if (stats.Queued == 0 && stats.Working == 0) break;
         await Task.Delay(1, timeout.Token);
+    }
+    completedExpected += size;
+    if (tracking)
+    {
+        while (await host.Services.GetRequiredService<IJobRuntimeStore>().CountAsync(new JobQuery { QueueName = queueName, Status = JobStatus.Completed }, timeout.Token) != completedExpected)
+            await Task.Delay(1, timeout.Token);
     }
     return accepts;
 }

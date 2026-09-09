@@ -239,6 +239,31 @@ public sealed class NativeQueueIntegrationTests
         Assert.Single(first.Log.Events, value => value == "broadcast:changed");
         Assert.Single(second.Log.Events, value => value == "broadcast:changed");
     }
+
+    [Fact]
+    public async Task NodeNotifications_ValueTypesReachOtherNodesWithoutRebroadcast()
+    {
+        await using var transport = new InMemoryMessageTransport();
+        await using var first = await TestApplication.StartAsync(transport: transport, notifications: true,
+            notificationOptions: options => options.Include<ValueBroadcast>());
+        await using var second = await TestApplication.StartAsync(transport: transport, notifications: true,
+            notificationOptions: options => options.Include<ValueBroadcast>());
+        await first.Mediator.PublishAsync(new ValueBroadcast("changed"), CT);
+        await second.Log.Broadcast.Task.WaitAsync(TimeSpan.FromSeconds(5), CT);
+        await Task.Delay(100, CT);
+        Assert.Single(first.Log.Events, value => value == "value:changed");
+        Assert.Single(second.Log.Events, value => value == "value:changed");
+    }
+}
+
+public readonly record struct ValueBroadcast(string Value);
+public sealed class ValueBroadcastHandler(NativeLog log)
+{
+    public void Handle(ValueBroadcast message)
+    {
+        log.Events.Enqueue("value:" + message.Value);
+        log.Broadcast.TrySetResult();
+    }
 }
 
 internal sealed class TestApplication(IHost host) : IAsyncDisposable
@@ -252,7 +277,7 @@ internal sealed class TestApplication(IHost host) : IAsyncDisposable
     public MessageAdministration Administration => new(Transport);
     public Task DrainAsync() => Harness.WaitForIdleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IJobRuntimeStore? store = null, bool notifications = false, ITextSerializer? serializer = null, Action<IServiceCollection>? configure = null)
+    public static async Task<TestApplication> StartAsync(WorkerSelection? workers = null, IMessageTransport? transport = null, IJobRuntimeStore? store = null, bool notifications = false, ITextSerializer? serializer = null, Action<IServiceCollection>? configure = null, Action<DistributedNotificationOptions>? notificationOptions = null)
     {
         var builder = Host.CreateApplicationBuilder();
         var foundatio = builder.Services.AddFoundatio();
@@ -268,7 +293,11 @@ internal sealed class TestApplication(IHost host) : IAsyncDisposable
         var mediator = builder.Services.AddMediator(options => options.AddAssembly<NativeWorkHandler>().SetMediatorLifetime(ServiceLifetime.Scoped))
             .AddDistributedQueues(options => { options.Workers = workers ?? WorkerSelection.All; options.ShutdownTimeout = TimeSpan.FromMilliseconds(100); })
             .AddQueueHeaderProvider<NativeTenantHeaders>();
-        if (notifications) mediator.AddDistributedNotifications(options => options.Include<BroadcastEvent>().Include<UnhandledBroadcast>());
+        if (notifications) mediator.AddDistributedNotifications(options =>
+        {
+            options.Include<BroadcastEvent>().Include<UnhandledBroadcast>();
+            notificationOptions?.Invoke(options);
+        });
         var host = builder.Build();
         await host.StartAsync(TestContext.Current.CancellationToken);
         return new TestApplication(host);

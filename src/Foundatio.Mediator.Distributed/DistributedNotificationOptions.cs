@@ -25,14 +25,16 @@ public class DistributedNotificationOptions
     public bool ReceiveNotifications { get; set; } = true;
 
     /// <summary>
-    /// Capacity of the local notification subscription before distribution filtering. A full buffer
+    /// Capacity of each local notification subscription. Explicit selections use typed subscriptions;
+    /// dynamic predicates use a shared subscription before distribution filtering. A full buffer
     /// evicts the oldest notification; Mediator does not expose a drop count. Publishing never waits for remote delivery.
     /// </summary>
     public int MaxCapacity { get; set; } = 1000;
 
     /// <summary>
     /// Maximum transport publications in flight. Default is 40, allowing transports to coalesce concurrent full batches.
-    /// Set to 1 for sequential publication. The outbound buffer remains bounded by <see cref="MaxCapacity"/>.
+    /// Set to 1 to serialize transport calls; different subscription streams may interleave.
+    /// Each subscription buffer is bounded by <see cref="MaxCapacity"/>.
     /// </summary>
     public int MaxConcurrentPublishes { get; set; } = 40;
 
@@ -152,7 +154,23 @@ public class DistributedNotificationOptions
         }, this);
     }
 
-    internal bool HasDynamicRules => IncludeAllNotifications || MessageFilter is not null || IncludedAssignableTo.Count > 0;
+    internal bool HasDynamicRules => MessageFilter is not null;
+
+    internal static IEnumerable<Type> GetAttributedTypes()
+    {
+        var assemblyName = typeof(DistributedNotificationAttribute).Assembly.GetName().Name;
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (assembly.IsDynamic || !assembly.GetReferencedAssemblies().Any(reference => reference.Name == assemblyName))
+                continue;
+            IEnumerable<Type> types;
+            try { types = assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException exception) { types = exception.Types.OfType<Type>(); }
+            foreach (var type in types)
+                if (!type.ContainsGenericParameters && type.IsDefined(typeof(DistributedNotificationAttribute), inherit: true))
+                    yield return type;
+        }
+    }
 
     /// <summary>
     /// The notification types resolved at registration as distributed. Types matched only by a dynamic

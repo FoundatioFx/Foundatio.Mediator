@@ -1,9 +1,10 @@
 using Foundatio.Serializer;
 using Foundatio.Messaging;
 using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
+using System.Reflection;
 using System.Threading.Channels;
 using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -35,6 +36,8 @@ public sealed class DistributedNotificationWorker : BackgroundService
     private readonly TaskCompletionSource _inboundReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly DistributedInfrastructureReady? _infraReady;
     private readonly TimeProvider _timeProvider;
+    private readonly ConcurrentDictionary<Type, Type> _outboundRoutes = new();
+    private Type[] _subscriptionTypes = [];
 
     public DistributedNotificationWorker(
         IServiceScopeFactory scopeFactory,
@@ -93,39 +96,20 @@ public sealed class DistributedNotificationWorker : BackgroundService
             };
             if (_infraReady is not null)
                 await _infraReady.WaitAsync(stoppingToken).ConfigureAwait(false);
-            await using var subscription = mediator.SubscribeAsync<MessageContext<object>>(stoppingToken, options).GetAsyncEnumerator(stoppingToken);
-            var pending = subscription.MoveNextAsync();
+            var types = _options.HasDynamicRules || _options.ResolvedTypes.Any(type => type.IsValueType)
+                ? [typeof(object)]
+                : _options.ResolvedTypes.Concat(_options.IncludedAssignableTo)
+                    .Append(_options.IncludeAllNotifications ? typeof(INotification) : typeof(IDistributedNotification)).Distinct().ToArray();
+            _subscriptionTypes = types.Where(type => !types.Any(other => other != type && other.IsAssignableFrom(type))).ToArray();
+            using var slots = new SemaphoreSlim(_options.MaxConcurrentPublishes);
+            using var subscriptionCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var subscribe = typeof(DistributedNotificationWorker).GetMethod(nameof(RunSubscriptionAsync), BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var subscriptions = _subscriptionTypes.Select(type =>
+                subscribe.MakeGenericMethod(type).CreateDelegate<Func<IMediator, SubscriberOptions, SemaphoreSlim, CancellationTokenSource, Task>>(this)(mediator, options, slots, subscriptionCancellation)).ToArray();
+            foreach (var failed in subscriptions.Where(task => task.IsFaulted))
+                await failed.ConfigureAwait(false);
             _outboundReady.TrySetResult();
-            var active = new List<Task>(_options.MaxConcurrentPublishes);
-            try
-            {
-                while (await pending.ConfigureAwait(false))
-                {
-                    var envelope = subscription.Current;
-                    if (!_options.ShouldDistribute(envelope.Message.GetType()) || _inboundMessages.TryGetValue(envelope.Message, out _))
-                    {
-                        pending = subscription.MoveNextAsync();
-                        continue;
-                    }
-                    var publication = PublishOutboundAsync(envelope, stoppingToken);
-                    // In-memory transports usually finish synchronously. Keep that path free of
-                    // parallel-enumerator locks and task scheduling, while filling broker batches.
-                    if (!publication.IsCompletedSuccessfully)
-                        active.Add(publication);
-                    if (active.Count >= _options.MaxConcurrentPublishes)
-                    {
-                        await Task.WhenAny(active).ConfigureAwait(false);
-                        for (int i = active.Count - 1; i >= 0; i--)
-                            if (active[i].IsCompleted)
-                            {
-                                await active[i].ConfigureAwait(false);
-                                active.RemoveAt(i);
-                            }
-                    }
-                    pending = subscription.MoveNextAsync();
-                }
-            }
-            finally { await Task.WhenAll(active).ConfigureAwait(false); }
+            await Task.WhenAll(subscriptions).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         catch (Exception ex)
@@ -135,9 +119,46 @@ public sealed class DistributedNotificationWorker : BackgroundService
         }
     }
 
-    private async Task PublishOutboundAsync(MessageContext<object> envelope, CancellationToken stoppingToken)
+    private async Task RunSubscriptionAsync<T>(IMediator mediator, SubscriberOptions options, SemaphoreSlim slots, CancellationTokenSource subscriptionCancellation)
     {
-        var notification = envelope.Message;
+        var stoppingToken = subscriptionCancellation.Token;
+        await using var subscription = mediator.SubscribeAsync<MessageContext<T>>(stoppingToken, options).GetAsyncEnumerator(stoppingToken);
+        var pending = subscription.MoveNextAsync();
+        var active = new List<Task>(_options.MaxConcurrentPublishes);
+        try
+        {
+            while (await pending.ConfigureAwait(false))
+            {
+                var envelope = subscription.Current;
+                object notification = envelope.Message!;
+                var messageType = notification.GetType();
+                if (_options.ShouldDistribute(messageType) && !_inboundMessages.TryGetValue(notification, out _)
+                    && _outboundRoutes.GetOrAdd(messageType, static (type, types) => types.First(subscriptionType => subscriptionType.IsAssignableFrom(type)), _subscriptionTypes) == typeof(T))
+                {
+                    await slots.WaitAsync(stoppingToken).ConfigureAwait(false);
+                    var publication = PublishOutboundAsync(notification, envelope.ActivityContext, slots, stoppingToken);
+                    if (!publication.IsCompletedSuccessfully)
+                        active.Add(publication);
+                    for (int i = active.Count - 1; i >= 0; i--)
+                        if (active[i].IsCompleted)
+                        {
+                            await active[i].ConfigureAwait(false);
+                            active.RemoveAt(i);
+                        }
+                }
+                pending = subscription.MoveNextAsync();
+            }
+        }
+        catch
+        {
+            await subscriptionCancellation.CancelAsync().ConfigureAwait(false);
+            throw;
+        }
+        finally { await Task.WhenAll(active).ConfigureAwait(false); }
+    }
+
+    private async Task PublishOutboundAsync(object notification, ActivityContext parentContext, SemaphoreSlim slots, CancellationToken stoppingToken)
+    {
         try
         {
             var messageType = notification.GetType();
@@ -147,7 +168,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
                 [ExecutionHeaders.OriginNode] = _options.HostId,
                 [ExecutionHeaders.EnqueuedAt] = _timeProvider.GetUtcNow().ToString("O")
             };
-            using var activity = MediatorActivitySource.Instance.StartActivity($"Publish {messageType.Name}", ActivityKind.Producer, envelope.ActivityContext);
+            using var activity = MediatorActivitySource.Instance.StartActivity($"Publish {messageType.Name}", ActivityKind.Producer, parentContext);
             if (Activity.Current is { } active)
             {
                 headers[KnownHeaders.TraceParent] = active.Id!;
@@ -166,6 +187,7 @@ public sealed class DistributedNotificationWorker : BackgroundService
         {
             _logger.LogError(ex, "Failed to publish distributed notification {MessageType} to bus", notification.GetType().Name);
         }
+        finally { slots.Release(); }
     }
 
     /// <summary>

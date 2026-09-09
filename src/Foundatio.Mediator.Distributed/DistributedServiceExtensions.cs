@@ -326,7 +326,7 @@ public static class DistributedServiceExtensions
             }
         }
 
-        foreach (var type in options.IncludedTypes)
+        foreach (var type in options.IncludedTypes.Concat(DistributedNotificationOptions.GetAttributedTypes()))
         {
             if (options.ShouldDistribute(type))
             {

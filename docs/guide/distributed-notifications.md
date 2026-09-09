@@ -25,15 +25,15 @@ Configure the native Foundatio bus separately. Include concrete types, `IDistrib
 await mediator.PublishAsync(new OrderChanged(orderId), ct);
 ```
 
-Local handlers run through ordinary Mediator dispatch. The bridge observes local notifications through the existing `SubscribeAsync` hook and filters the buffered notifications using its distribution rules. Each receiving node acknowledges the native delivery before invoking its local handlers. Self-origin suppression and inbound dispatch context prevent loops and repeated queue enqueues.
+Local handlers run through ordinary Mediator dispatch. The bridge uses existing typed `SubscribeAsync` streams for explicit selections and marker notifications, so unrelated local types do not enter those buffers. Overlapping selections publish each event once. Attributed types are discovered from loaded application assemblies during registration; explicitly include types from assemblies loaded later or use `MessageFilter` for dynamic discovery. Each receiving node acknowledges the native delivery before invoking its local handlers. Self-origin suppression and inbound dispatch context prevent loops and repeated queue enqueues.
 
-`PublishAsync` does not confirm remote delivery. The bounded local subscription drops its oldest item when full. It buffers local notifications before filtering, so unrelated local traffic can also fill it. Mediator does not expose an exact drop count; this integration does not publish one. The buffer is not durable. Disconnected nodes, process termination, or subscription recovery can lose messages; consumers should refresh authoritative state.
+`PublishAsync` does not confirm remote delivery. Each bounded subscription drops its oldest item when full. `MessageFilter` and value-type selections use a shared subscription with filtering after buffering; unrelated local traffic can fill that buffer. Broad interface selections also buffer matching excluded types before filtering. Mediator does not expose an exact drop count; this integration does not publish one. The buffers are not durable. Disconnected nodes, process termination, or subscription recovery can lose messages; consumers should refresh authoritative state.
 
 ## Native node subscriptions
 
 The bridge calls `IMessageBus.SubscribeNodeAsync`. Memory and Redis use native expiring subscriptions; AWS uses tagged, independently owned SQS/SNS resources with heartbeat, cleanup on disposal, and stale resource cleanup at startup. Different nodes receive independent copies rather than competing on one queue.
 
-Set `ReceiveNotifications = false` for a publisher-only host. `MaxCapacity` bounds the outbound buffer; `MaxConcurrentPublishes` bounds concurrent native publishes.
+Set `ReceiveNotifications = false` for a publisher-only host. `MaxCapacity` bounds each subscription buffer; `MaxConcurrentPublishes` bounds concurrent native publishes across all subscriptions. Setting concurrency to one serializes transport calls, but different subscription streams can interleave.
 
 ## Compose with queues
 

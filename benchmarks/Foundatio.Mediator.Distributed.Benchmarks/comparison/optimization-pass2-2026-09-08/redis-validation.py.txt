@@ -1,0 +1,64 @@
+from pathlib import Path
+import hashlib, json, os, statistics, subprocess, sys
+
+root = Path('/tmp/performance-pass2')
+quick = True
+dlls = {
+    'pr149': '/tmp/mediator-core-alternative/.dependencies/PR149Benchmark/bin/Release/net10.0/PR149Benchmark.dll',
+    'before': str(root / 'before/Foundatio.Mediator.Distributed.Benchmarks.dll'),
+    'after': str(root / 'after/Foundatio.Mediator.Distributed.Benchmarks.dll')
+}
+scenarios = [
+    ('memory-64', 200000, 64, []),
+    ('memory-tracked-64', 50000, 64, ['--tracking']),
+    ('memory-1', 100000, 1, []),
+    ('memory-8', 100000, 8, []),
+    ('localstack-64', 10000, 64, ['--aws']),
+    ('redis-64', 10000, 64, ['--tracking', '--redis']),
+    ('localstack-redis-64', 10000, 64, ['--aws', '--tracking', '--redis'])
+]
+dlls.pop('pr149')
+scenarios = [('redis-64', 30000, 64, ['--tracking', '--redis'])]
+label = 'redis-validation'
+rows = []
+for iteration in range(5):
+    for scenario, count, concurrency, flags in scenarios:
+        cases = list(dlls)
+        rotation = iteration % len(cases)
+        cases = cases[rotation:] + cases[:rotation]
+        for case in cases:
+            for attempt in range(2):
+                trial = f'{label}-{iteration}-{scenario}-{case}-{attempt}'
+                command = ['/usr/bin/dotnet', dlls[case], '--count', str(count), '--concurrency', str(concurrency), *flags]
+                env = dict(os.environ, BENCHMARK_REDIS_CONNECTION_STRING='127.0.0.1:16419', BENCHMARK_AWS_URL='http://127.0.0.1:14566',
+                    DOTNET_DbgEnableMiniDump='1', DOTNET_DbgMiniDumpType='1', DOTNET_DbgMiniDumpName=str(root / f'{trial}-%p.dmp'))
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=180, env=env)
+                    stdout, stderr, code = result.stdout, result.stderr, result.returncode
+                except subprocess.TimeoutExpired as error:
+                    stdout = error.stdout or b''
+                    stderr = error.stderr or b''
+                    if isinstance(stdout, bytes): stdout = stdout.decode()
+                    if isinstance(stderr, bytes): stderr = stderr.decode()
+                    code = 124
+                (root / f'{trial}.stdout').write_text(stdout)
+                (root / f'{trial}.stderr').write_text(stderr)
+                row = dict(Case=case, Scenario=scenario, Iteration=iteration, Attempt=attempt, Exit=code, Command=command)
+                if code == 0:
+                    row.update(json.loads(stdout))
+                    assert row['UniqueProcessed'] == count and row['Duplicates'] == 0, row
+                    print(trial, round(row['MessagesPerSecond']), 'jobs/s', round(row['AllocatedBytesPerMessage']), 'B/job', flush=True)
+                else:
+                    print(trial, 'FAILED', code, stderr[-500:], flush=True)
+                rows.append(row)
+                (root / f'{label}-results.json').write_text(json.dumps(rows, indent=2) + '\n')
+                if code == 0: break
+
+summary = {}
+for scenario, *_ in scenarios:
+    summary[scenario] = {case: {
+        key: round(statistics.median(row[key] for row in rows if row['Exit'] == 0 and row['Scenario'] == scenario and row['Case'] == case), 3)
+        for key in ['MessagesPerSecond', 'AllocatedBytesPerMessage', 'AcceptanceP99Milliseconds', 'HandlerCompletionP99Milliseconds', 'CpuMilliseconds']
+    } for case in dlls}
+    print(scenario, summary[scenario], flush=True)
+(root / f'{label}-summary.json').write_text(json.dumps(summary, indent=2) + '\n')

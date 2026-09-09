@@ -118,13 +118,15 @@ public sealed class NativeQueueIntegrationTests
     public async Task Processing_RestoresHeadersIntoItsOwnScope()
     {
         await using var app = await TestApplication.StartAsync();
-        await using (var scope = app.Services.CreateAsyncScope())
+        foreach (var tenant in new[] { "acme", "globex" })
         {
-            scope.ServiceProvider.GetRequiredService<NativeTenant>().Name = "acme";
+            await using var scope = app.Services.CreateAsyncScope();
+            scope.ServiceProvider.GetRequiredService<NativeTenant>().Name = tenant;
             await scope.ServiceProvider.GetRequiredService<IMediator>().EnqueueAsync(new NativeWork("tenant"), CT);
         }
         await app.DrainAsync();
         Assert.Contains("tenant:acme", app.Log.Events);
+        Assert.Contains("tenant:globex", app.Log.Events);
         Assert.All(app.Log.Scopes, scope => Assert.True(scope.Disposed));
     }
 

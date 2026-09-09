@@ -209,7 +209,10 @@ public sealed class QueueWorker : BackgroundService
 
     private void RestoreHeaders(IReadOnlyDictionary<string, string> headers, CallContext callContext, IServiceProvider services)
     {
-        foreach (var provider in _headerProviders.Concat(services.GetServices<IQueueHeaderProvider>()).Distinct())
+        var scopedProviders = services.GetServices<IQueueHeaderProvider>();
+        if (_headerProviders.Length == 0 && scopedProviders is ICollection<IQueueHeaderProvider> { Count: 0 })
+            return;
+        foreach (var provider in _headerProviders.Concat(scopedProviders).Distinct())
             provider.Restore(headers, callContext);
     }
 

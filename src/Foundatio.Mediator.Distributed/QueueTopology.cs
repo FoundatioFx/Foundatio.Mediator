@@ -11,6 +11,19 @@ public sealed class QueueTopology
     private readonly Dictionary<string, QueueRegistration> _byQueueName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, QueueRegistration> _byDescriptorId = new(StringComparer.Ordinal);
     private readonly List<QueueRegistration> _queues = [];
+    private readonly ConcurrentDictionary<Type, HandlerRegistration> _enqueueHandlers = new();
+
+    internal HandlerRegistration GetEnqueueHandler(Type messageType, HandlerRegistry registry)
+        => _enqueueHandlers.GetOrAdd(messageType, static (type, state) =>
+        {
+            var handlers = state.Registry.GetRegistrationsForMessageType(type);
+            if (handlers.Count != 1)
+                throw new InvalidOperationException($"EnqueueAsync requires exactly one handler for '{type.Name}'; found {handlers.Count}. Use PublishAsync for multiple subscriptions.");
+            var handler = handlers[0];
+            if (state.Topology.GetByDescriptorId(handler.DescriptorId) is null)
+                throw new InvalidOperationException($"Handler '{handler.SourceHandlerName}' is not a queue handler.");
+            return handler;
+        }, (Topology: this, Registry: registry));
 
     /// <summary>
     /// Every queue, in registration order.
@@ -78,15 +91,15 @@ public sealed class QueueRegistration
     /// Handlers that accept <paramref name="messageType"/>, including handlers declared on an interface
     /// or base type of it.
     /// </summary>
-    public IReadOnlyList<HandlerRegistration> HandlersFor(Type messageType) => _matchingHandlers.GetOrAdd(messageType, type =>
+    public IReadOnlyList<HandlerRegistration> HandlersFor(Type messageType) => _matchingHandlers.GetOrAdd(messageType, static (type, self) =>
     {
-        var matching = Handlers.Where(handler => handler.MessageType?.IsAssignableFrom(type) == true).ToArray();
-        if (Registry is null || matching.Length < 2)
+        var matching = self.Handlers.Where(handler => handler.MessageType?.IsAssignableFrom(type) == true).ToArray();
+        if (self.Registry is null || matching.Length < 2)
             return matching;
 
         // Reuse Mediator's existing publication order without changing its registry.
         var byDelegate = matching.ToDictionary(handler => handler.PublishAsync);
-        return Registry.GetPublishHandlersForType(type)
+        return self.Registry.GetPublishHandlersForType(type)
             .Where(byDelegate.ContainsKey).Select(publish => byDelegate[publish]).ToArray();
-    });
+    }, this);
 }

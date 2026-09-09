@@ -32,12 +32,7 @@ public static class QueueMediatorExtensions
         if (mediator is not IServiceProvider services)
             throw new InvalidOperationException("EnqueueAsync requires a mediator that exposes its invocation service provider.");
         var registry = services.GetRequiredService<HandlerRegistry>();
-        var handlers = registry.GetRegistrationsForMessageType(message.GetType());
-        if (handlers.Count != 1)
-            throw new InvalidOperationException($"EnqueueAsync requires exactly one handler for '{message.GetType().Name}'; found {handlers.Count}. Use PublishAsync for multiple subscriptions.");
-        var handler = handlers[0];
-        if (services.GetRequiredService<QueueTopology>().GetByDescriptorId(handler.DescriptorId) is null)
-            throw new InvalidOperationException($"Handler '{handler.SourceHandlerName}' is not a queue handler.");
+        var handler = services.GetRequiredService<QueueTopology>().GetEnqueueHandler(message.GetType(), registry);
         var capture = new QueueReceiptCapture();
         using var context = CallContext.Rent().Set(capture);
         var result = await handler.HandleAsync(mediator, message, context, cancellationToken, typeof(object)).ConfigureAwait(false);

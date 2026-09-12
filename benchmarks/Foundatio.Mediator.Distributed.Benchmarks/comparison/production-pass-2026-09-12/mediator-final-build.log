@@ -1,0 +1,30 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Foundatio.Mediator.Abstractions -> /tmp/mediator-core-alternative/src/Foundatio.Mediator.Abstractions/bin/Release/netstandard2.0/Foundatio.Mediator.Abstractions.dll
+  Foundatio.Mediator.CodeFixes -> /tmp/mediator-core-alternative/src/Foundatio.Mediator.CodeFixes/bin/Release/netstandard2.0/Foundatio.Mediator.CodeFixes.dll
+  Foundatio.Mediator -> /tmp/mediator-core-alternative/src/Foundatio.Mediator/bin/Release/netstandard2.0/Foundatio.Mediator.dll
+  ConsoleSample -> /tmp/mediator-core-alternative/samples/ConsoleSample/bin/Release/net10.0/ConsoleSample.dll
+  Foundatio.Mediator.Tests -> /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Tests/bin/Release/net10.0/Foundatio.Mediator.Tests.dll
+  Foundatio.Mediator.Benchmarks -> /tmp/mediator-core-alternative/benchmarks/Foundatio.Mediator.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Benchmarks.dll
+  Foundatio -> /tmp/foundatio-core-alternative/src/Foundatio/bin/Release/net10.0/Foundatio.dll
+  Foundatio.Mediator.Distributed -> /tmp/mediator-core-alternative/src/Foundatio.Mediator.Distributed/bin/Release/net10.0/Foundatio.Mediator.Distributed.dll
+  Foundatio.Redis -> /tmp/foundatio-core-alternative/src/Foundatio.Redis/bin/Release/net10.0/Foundatio.Redis.dll
+  Foundatio.Testing -> /tmp/foundatio-core-alternative/src/Foundatio.Testing/bin/Release/net10.0/Foundatio.Testing.dll
+  Foundatio.Aws -> /tmp/foundatio-core-alternative/src/Foundatio.Aws/bin/Release/net10.0/Foundatio.Aws.dll
+  Foundatio.Mediator.Distributed.Benchmarks -> /tmp/mediator-core-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll
+  Foundatio.Mediator.Distributed.Tests -> /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Distributed.Tests/bin/Release/net10.0/Foundatio.Mediator.Distributed.Tests.dll
+  Foundatio -> /tmp/foundatio-core-alternative/src/Foundatio/bin/Debug/net10.0/Foundatio.dll
+  ServiceDefaults -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/ServiceDefaults/bin/Release/net10.0/ServiceDefaults.dll
+  DistributedConsoleSample -> /tmp/mediator-core-alternative/samples/DistributedConsoleSample/bin/Release/net10.0/DistributedConsoleSample.dll
+  Common.Module -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Common.Module/bin/Release/net10.0/Common.Module.dll
+  Orders.Module -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Orders.Module/bin/Release/net10.0/Orders.Module.dll
+  Products.Module -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Products.Module/bin/Release/net10.0/Products.Module.dll
+  Reports.Module -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Reports.Module/bin/Release/net10.0/Reports.Module.dll
+  Api -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Api/bin/Release/net10.0/Api.dll
+  AppHost -> /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/AppHost/bin/Release/net10.0/AppHost.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:08.31

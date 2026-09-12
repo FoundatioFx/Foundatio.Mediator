@@ -1,0 +1,23 @@
+{
+  "Implementation": "foundatio-native",
+  "Layer": "mediator",
+  "Transport": "memory",
+  "Messages": 100,
+  "Concurrency": 4,
+  "Tracking": false,
+  "Runtime": ".NET 10.0.12",
+  "TrackingStore": "memory",
+  "Gen0Collections": 0,
+  "Gen1Collections": 0,
+  "Gen2Collections": 0,
+  "ElapsedMilliseconds": 1.6801,
+  "MessagesPerSecond": 59520.2666507946,
+  "AllocatedBytesPerMessage": 8203.92,
+  "CpuMilliseconds": 4.382,
+  "AcceptanceP50Milliseconds": 0.0104,
+  "AcceptanceP99Milliseconds": 0.1796,
+  "HandlerCompletionP50Milliseconds": 0.9036,
+  "HandlerCompletionP99Milliseconds": 0.9845,
+  "UniqueProcessed": 100,
+  "Duplicates": 0
+}

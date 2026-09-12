@@ -21,3 +21,27 @@ For `-Aws`, start an isolated LocalStack with SQS enabled and set `BENCHMARK_AWS
 Defaults: Release, 10,000 messages, concurrency 64, 256-character payload, one 1,000-message warmup, three alternating repetitions. Timing includes all sends and broker drain; latency samples end at handler entry. Warmup and host startup/shutdown are outside the measured interval. Broker statistics are approximate on SQS. These are diagnostic measurements on a shared development machine, not production capacity guarantees. Historical PR 149 benchmark results elsewhere in this folder are not results of this implementation.
 
 See [the comparison report](../../docs/guide/distributed-comparison.md) for measured results and architectural tradeoffs.
+
+The runner refuses unoptimized Foundatio or Mediator assemblies, including Debug dependencies copied into a Release output directory. The CI smoke run checks this after building the complete solution. Preserve the before/after binaries before other builds so each comparison uses a fixed set of assemblies.
+
+## Isolate the delivery layers
+
+Run each layer in a fresh process to locate overhead before changing the runtime:
+
+```powershell
+$project = 'benchmarks/Foundatio.Mediator.Distributed.Benchmarks'
+foreach ($layer in 'transport', 'bus', 'execution', 'mediator') {
+    dotnet run --project $project -c Release -- --layer $layer --count 200000 --concurrency 64
+}
+```
+
+| Layer | Included work |
+| --- | --- |
+| `transport` | JSON serialization, raw in-memory send/receive, deserialization, acknowledgement |
+| `bus` | Bus routing and headers, supervised receiving, lease renewal, automatic acknowledgement |
+| `execution` | Bus plus native execution context, outcome handling and settlement |
+| `mediator` (default) | Full enqueue middleware, worker scope, generated handler dispatch and execution pipeline |
+
+Layer isolation accepts untracked in-memory delivery only. Each layer verifies all unique deliveries and waits for the broker to drain. The raw transport receiver runs one batch loop with synchronous no-op processing; it does not implement the supervised bus's cancellation, retries or renewal. These are progressively richer paths, not interchangeable configurations or independently subtractable costs. Use the full Mediator comparison to confirm an application-level improvement.
+
+The throughput runner sets `ReceiveBatchDelay` to zero to isolate processing cost. Add `--default-delay` to measure the integration's normal 1 ms collection policy. Keep lease renewal enabled when comparing production behavior.

@@ -1,0 +1,168 @@
+Running tests from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+Running tests from /tmp/foundatio-core-alternative/benchmarks/Messaging.Tests/bin/Release/net10.0/Foundatio.Messaging.Benchmarks.Tests.dll (net10.0|x64)
+Running tests from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+Running tests from /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.DeadLetterAsync_MovesEntryToDeadletterStatsAsync (0ms)
+  Transport does not support pull receive with dead-letter and stats (ISupportsPull + ISupportsDeadLetter + ISupportsStats).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+/tmp/foundatio-core-alternative/benchmarks/Messaging.Tests/bin/Release/net10.0/Foundatio.Messaging.Benchmarks.Tests.dll (net10.0|x64) passed (816ms)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.ReceiveAsync_WithExpiredMessage_DeadlettersAndSkipsAsync (0ms)
+  Transport does not support pull receive with expiration and stats (ISupportsPull + Expiration capability + ISupportsStats).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.ReceiveAsync_RespectsPriorityAsync (0ms)
+  Transport does not support pull receive with queue priority (ISupportsPull + Priority capability).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+[+24/x0/?0] Foundatio.Tests.dll (net10.0|x64)(2s)
+[+65/x0/?3] Foundatio.Aws.Tests.dll (net10.0|x64)(2s)
+[+46/x0/?0] Foundatio.Redis.Tests.dll (net10.0|x64)(2s)
+
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.SubscribeAsync_DeliversPushMessagesAsync (0ms)
+  Transport does not support push delivery (ISupportsPush).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Redis.Tests.RedisStreamsTransportConformanceTests.ReceiveAsync_RespectsPriorityAsync (0ms)
+  Transport does not support pull receive with queue priority (ISupportsPull + Priority capability).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64)
+[+58/x0/?0] Foundatio.Tests.dll (net10.0|x64)(5s)
+[+70/x0/?4] Foundatio.Aws.Tests.dll (net10.0|x64)(5s)
+[+52/x0/?1] Foundatio.Redis.Tests.dll (net10.0|x64)(5s)
+
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.TemporarySubscription_ExpiresWithoutListenerDisposalAsync (0ms)
+  Transport does not support expiring subscriptions.
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.PeekDeadLetteredAsync_PreservesEvidenceUntilExplicitDeletionAsync (0ms)
+  Transport does not support pull receive and dead-letter (ISupportsPull + ISupportsDeadLetter).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.CompleteAsync_WithExpiredReceipt_ThrowsReceiptExpiredExceptionAsync (0ms)
+  SQS DeleteMessage is idempotent for a stale receipt handle; strict receipt validation is not part of the shared contract.
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Aws.Tests.AwsMessageTransportConformanceTests.ReplayDeadLetteredAsync_PreservesApplicationIdAndResetsAttemptsAsync (0ms)
+  Transport has no dead-letter administration.
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64)
+skipped Foundatio.Redis.Tests.RedisStreamsTransportConformanceTests.SubscribeAsync_DeliversPushMessagesAsync (0ms)
+  Transport does not support push delivery (ISupportsPush).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64)
+[+116/x0/?0] Foundatio.Tests.dll (net10.0|x64)(8s)
+[+71/x0/?8] Foundatio.Aws.Tests.dll (net10.0|x64)(8s)
+[+58/x0/?2] Foundatio.Redis.Tests.dll (net10.0|x64)(8s)
+
+skipped Foundatio.Redis.Tests.RedisStreamsTransportConformanceTests.SendAsync_WithDeliverAt_DelaysVisibilityAsync (0ms)
+  Transport does not support pull receive with native queue delayed delivery (ISupportsPull + DelayedDelivery capability).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64)
+skipped Foundatio.Redis.Tests.RedisStreamsTransportConformanceTests.ReceiveAsync_WithExpiredMessage_DeadlettersAndSkipsAsync (0ms)
+  Transport does not support pull receive with expiration and stats (ISupportsPull + Expiration capability + ISupportsStats).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64)
+/tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64) passed (9s 363ms)
+/tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64) passed (11s 369ms)
+[+135/x0/?0] Foundatio.Tests.dll (net10.0|x64)(11s)
+
+skipped Foundatio.Tests.Caching.InMemoryHybridCacheClientTests.AddAsync_WithExpiration_ExpiresRemoteItems (0ms)
+  Skip because cache invalidation loops on this with 2 in memory cache client instances
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+153/x0/?1] Foundatio.Tests.dll (net10.0|x64)(14s)
+
+[+177/x0/?1] Foundatio.Tests.dll (net10.0|x64)(17s)
+
+[+280/x0/?1] Foundatio.Tests.dll (net10.0|x64)(20s)
+
+skipped Foundatio.Tests.Storage.FolderFileStorageTests.CanDeleteFolderWithMultiFolderWildcardsAsync (0ms)
+  Directory.EnumerateFiles does not support nested folder wildcards
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+503/x0/?2] Foundatio.Tests.dll (net10.0|x64)(23s)
+
+[+664/x0/?2] Foundatio.Tests.dll (net10.0|x64)(26s)
+
+[+682/x0/?2] Foundatio.Tests.dll (net10.0|x64)(29s)
+
+skipped Foundatio.Tests.Serializer.JsonNetSerializerTests.Benchmark (0ms)
+  Skip benchmarks for now
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+skipped Foundatio.Tests.Serializer.Utf8JsonSerializerTests.Benchmark (0ms)
+  Skip benchmarks for now
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+901/x0/?4] Foundatio.Tests.dll (net10.0|x64)(32s)
+
+[+1019/x0/?4] Foundatio.Tests.dll (net10.0|x64)(35s)
+
+skipped Foundatio.Tests.Serializer.CompressedMessagePackSerializerTests.Benchmark (0ms)
+  Skip benchmarks for now
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+1121/x0/?5] Foundatio.Tests.dll (net10.0|x64)(38s)
+
+[+1159/x0/?5] Foundatio.Tests.dll (net10.0|x64)(41s)
+
+[+1200/x0/?5] Foundatio.Tests.dll (net10.0|x64)(44s)
+
+[+1230/x0/?5] Foundatio.Tests.dll (net10.0|x64)(47s)
+
+[+1265/x0/?5] Foundatio.Tests.dll (net10.0|x64)(50s)
+
+skipped Foundatio.Tests.Serializer.MessagePackSerializerTests.Benchmark (0ms)
+  Skip benchmarks for now
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+skipped Foundatio.Tests.Storage.ScopedFolderFileStorageTests.CanDeleteFolderWithMultiFolderWildcardsAsync (0ms)
+  Directory.EnumerateFiles does not support nested folder wildcards
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+1442/x0/?7] Foundatio.Tests.dll (net10.0|x64)(53s)
+
+[+1460/x0/?7] Foundatio.Tests.dll (net10.0|x64)(56s)
+
+[+1461/x0/?7] Foundatio.Tests.dll (net10.0|x64)(59s)
+
+[+1469/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 02s)
+
+[+1472/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 05s)
+
+[+1475/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 08s)
+
+[+1476/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 11s)
+
+[+1476/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 14s)
+
+[+1476/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 17s)
+
+[+1521/x0/?7] Foundatio.Tests.dll (net10.0|x64)(1m 20s)
+
+skipped Foundatio.Tests.Caching.InMemoryHybridAwareCacheClientTests.AddAsync_WithExpiration_ExpiresRemoteItems (0ms)
+  Skip because cache invalidation loops on this with 2 in memory cache client instances
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+1708/x0/?8] Foundatio.Tests.dll (net10.0|x64)(1m 23s)
+
+[+1778/x0/?8] Foundatio.Tests.dll (net10.0|x64)(1m 26s)
+
+[+1889/x0/?8] Foundatio.Tests.dll (net10.0|x64)(1m 29s)
+
+[+1894/x0/?8] Foundatio.Tests.dll (net10.0|x64)(1m 32s)
+
+skipped Foundatio.Tests.Utility.ResiliencePolicyTests.CanShareCircuitBreaker (0ms)
+  Using this to test circuit breaker sharing in parallel, not a real test
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+1909/x0/?9] Foundatio.Tests.dll (net10.0|x64)(1m 35s)
+
+skipped Foundatio.Tests.Serializer.SystemTextJsonSerializerTests.Benchmark (0ms)
+  Skip benchmarks for now
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+2043/x0/?10] Foundatio.Tests.dll (net10.0|x64)(1m 38s)
+
+[+2047/x0/?10] Foundatio.Tests.dll (net10.0|x64)(1m 41s)
+
+skipped Foundatio.Tests.Messaging.InMemoryMessageTransportTests.SubscribeAsync_DeliversPushMessagesAsync (0ms)
+  Transport does not support push delivery (ISupportsPush).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+[+2054/x0/?11] Foundatio.Tests.dll (net10.0|x64)(1m 44s)
+
+skipped Foundatio.Tests.Messaging.InMemoryMessageTransportTests.SendAsync_WithDeliverAt_DelaysVisibilityAsync (0ms)
+  Transport does not support pull receive with native queue delayed delivery (ISupportsPull + DelayedDelivery capability).
+  from /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64)
+/tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64) passed (1m 46s 588ms)
+
+Test run summary: Passed!
+  /tmp/foundatio-core-alternative/benchmarks/Messaging.Tests/bin/Release/net10.0/Foundatio.Messaging.Benchmarks.Tests.dll (net10.0|x64) passed (816ms)
+  /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll (net10.0|x64) passed (1m 46s 588ms)
+  /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll (net10.0|x64) passed (11s 369ms)
+  /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll (net10.0|x64) passed (9s 363ms)
+
+  total: 2259
+  failed: 0
+  succeeded: 2235
+  skipped: 24
+  duration: 1m 46s 776ms

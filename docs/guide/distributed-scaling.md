@@ -52,7 +52,7 @@ Each process registers every queue's metadata even when it runs no worker for it
 
 ## Sizing a Worker
 
-`Concurrency` on the attribute is per process. Throughput for a queue is `Concurrency × replicas`. Keep `Concurrency` at what one instance can handle and scale replicas; that is the lever an autoscaler can move.
+`Concurrency` on the attribute is per process. The maximum number of active handlers is `Concurrency × replicas`; throughput also depends on handler duration, broker latency, and downstream capacity. Keep `Concurrency` at what one instance can handle and scale replicas; that is the lever an autoscaler can move.
 
 `PrefetchCount` defaults to `Concurrency` and caps each receive. Workers request no more than their currently available concurrency, so raising prefetch above concurrency does not hold additional leased messages while they wait to execute. A transport may impose a smaller batch limit.
 
@@ -75,7 +75,7 @@ When the host stops:
 3. In-flight handlers keep running for `ShutdownTimeout` (default 30 seconds). Handlers that finish in time complete their messages normally.
 4. Handlers still running when the window closes are cancelled and their messages abandoned for redelivery.
 
-Acknowledgements of finished work never observe the stopping token, so a handler that completed just as the process was told to stop is not re-run elsewhere. Keep `ShutdownTimeout` below the host's shutdown timeout (`HostOptions.ShutdownTimeout`) and the orchestrator's stop grace period (ECS `stopTimeout`, Kubernetes `terminationGracePeriodSeconds`).
+Acknowledgements use a separate bounded timeout after handler completion. A broker timeout or process failure can still leave acceptance of that acknowledgement unknown, causing redelivery. Handlers must keep their effects idempotent. Keep `ShutdownTimeout` below the host's shutdown timeout (`HostOptions.ShutdownTimeout`) and the orchestrator's stop grace period (ECS `stopTimeout`, Kubernetes `terminationGracePeriodSeconds`).
 
 Long jobs that outlive any reasonable window should be resumable: persist progress, and expect the message to be redelivered after a deploy with `DequeueCount` incremented.
 

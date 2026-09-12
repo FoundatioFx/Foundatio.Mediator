@@ -18,8 +18,8 @@ Running queues in production means answering "what is stuck, and why?" and actin
 | --- | --- | --- |
 | `GetQueueOverview` | `Result<IReadOnlyList<QueueOverview>>` | Every queue: ready, delayed, in-flight, dead letters, handlers, group, whether a worker runs in this process, 24-hour counters |
 | `GetQueueDetail(queueName)` | `Result<QueueOverview>` | One queue |
-| `ListQueueJobs(queueName, status, skip, take)` | `Result<IReadOnlyList<QueueJobState>>` | Tracked jobs by status, newest first |
-| `GetQueueJob(jobId)` | `Result<QueueJobState>` | One tracked job, with worker identity, metadata, and last heartbeat |
+| `ListQueueJobs(queueName, status, skip, take)` | `Result<IReadOnlyList<JobState>>` | Tracked jobs by status, newest first |
+| `GetQueueJob(jobId)` | `Result<JobState>` | One tracked job, with worker identity, metadata, and last heartbeat |
 | `CancelQueueJob(jobId)` | `Result<QueueJobCancellation>` | Requests cancellation; the worker honours it on its next progress report or poll |
 | `ListDeadLetters(queueName, take)` | `Result<IReadOnlyList<DeadLetterView>>` | Peeks at dead letters: reason, attempts, timestamps, correlation ID, headers, body preview, and truncation indicator |
 | `ReplayDeadLetters(queueName, max, messageId?)` | `Result<DeadLetterReplayResult>` | Sends dead letters back to their original queue; messages dead-lettered after the replay started are left alone |
@@ -58,6 +58,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter(DistributedMetri
 | `queue.messages.processed` | counter | `queue`, `message_type`, `group` |
 | `queue.messages.failed` | counter | abandoned for retry |
 | `queue.messages.dead_lettered` | counter | |
+| `queue.messages.deferred` | counter | Waiting for a resource lock |
 | `queue.messages.in_flight` | up-down counter | handlers running in this process |
 | `queue.handler.duration` | histogram (ms) | `outcome` = `processed` or `failed` |
 | `queue.depth.visible`, `queue.depth.delayed`, `queue.depth.in_flight`, `queue.depth.dead_letter` | gauges | `queue`; sampled from the transport every `QueueDepthPollInterval` |
@@ -67,9 +68,9 @@ Depth gauges are the autoscaling signal when the transport does not publish its 
 
 ## Traces
 
-Enqueueing starts a producer span (`Enqueue {queue}`) tagged with `messaging.destination.name` and `messaging.message.type`; the worker starts a consumer span (`Process {queue}`) that **links** to the producer rather than parenting under it, so a four-hour job does not stretch the API request's trace. Consumer spans carry `messaging.message.id`, `messaging.message.dequeue_count`, `messaging.message.conversation_id` (the correlation id), and the job id when tracked. Notification publish and process spans are tagged the same way.
+Register both `Foundatio.Mediator` and `Foundatio` activity sources. The integration emits enqueue and notification spans; Foundatio emits the queue consumer span and transport operations. Consumer spans restore the producer context from message headers as their parent. This preserves correlation across processes; processing a long-delayed message can therefore extend the trace's time range.
 
-Both run on the `Foundatio.Mediator` activity source.
+Enqueue spans include the queue, message type, and tracked job ID. Native consumer spans include the source and message ID. Use the job ID and worker identity in tracked state to connect a trace with a specific attempt.
 
 ## Job State
 
@@ -81,6 +82,6 @@ The native job store applies retention using `JobStateExpiry` and its own histor
 
 ## Logs
 
-Workers log at Information when they start and stop, when a message is abandoned for redelivery during shutdown; lock contention is logged at Debug; at Warning for retryable failures, dead letters, failed renewals and state-store writes; at Error when a message cannot be dead-lettered or the receive loop fails. Message-specific worker logs include the queue name and message id.
+Foundatio logs retryable handler failures and lease-renewal problems at Warning, terminal handler failures at Error, and failed state writes without hiding the original delivery outcome. Receive failures log the first error, subsequent warnings, and recovery. The integration also logs notification subscription failures, unknown wire types, lock loss, and administration failures. Alert on repeated receive failures, growing dead letters, and stalled backlog; a failed statistics read is not an empty queue.
 
 The [Clean Architecture sample](https://github.com/FoundatioFx/Foundatio.Mediator/tree/main/samples/CleanArchitectureSample) includes a complete operations UI with status filters, job detail links, cancellation, dead-letter inspection, replay receipts, confirmed flush, and a live event feed across API and worker replicas.

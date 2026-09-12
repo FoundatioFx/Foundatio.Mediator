@@ -1,0 +1,33 @@
+info: Foundatio.Extensions.Hosting.Messaging.MessagingTopologyStartupService[0]
+      Ensured declared message topology
+info: Foundatio.Extensions.Hosting.Messaging.MessageHandlerHostedService[0]
+      Started message handler subscriber:OrderPlaced
+info: Foundatio.Extensions.Hosting.Messaging.MessageHandlerHostedService[0]
+      Started message handler consumer:SendReceipt
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /tmp/foundatio-core-alternative
+info: Foundatio.QuickstartSample.SendReceiptHandler[0]
+      COMMAND handled: receipt for order 1001 sent to dev@example.com
+info: Foundatio.QuickstartSample.OrderPlacedHandler[0]
+      EVENT handled: order 1001 placed for Espresso Machine
+info: Foundatio.QuickstartSample.CleanupJob[0]
+      CRON tick: cleanup ran at 18:23:22
+info: Foundatio.QuickstartSample.ResizeImageJob[0]
+      JOB e840914dd6cd48bc859864707ee065ee started: resizing product-1001.png to 640x480
+info: Foundatio.QuickstartSample.ResizeImageJob[0]
+      JOB e840914dd6cd48bc859864707ee065ee progress: 25%
+info: Foundatio.QuickstartSample.ResizeImageJob[0]
+      JOB e840914dd6cd48bc859864707ee065ee progress: 50%
+info: Foundatio.QuickstartSample.ResizeImageJob[0]
+      JOB e840914dd6cd48bc859864707ee065ee progress: 75%
+info: Foundatio.QuickstartSample.ResizeImageJob[0]
+      JOB e840914dd6cd48bc859864707ee065ee progress: 100%
+Resize completed: Completed
+Enqueued ResizeImageJob e840914dd6cd48bc859864707ee065ee; CleanupJob (CRON) ticks within a minute. Ctrl+C to exit.
+Verified: producer-only registration, command, durable subscriber, delayed job, cancellation, and automatic CRON execution.
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...

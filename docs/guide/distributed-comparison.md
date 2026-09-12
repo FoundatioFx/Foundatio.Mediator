@@ -8,7 +8,7 @@ nav:
 
 # Native Core Alternative to PR 149
 
-This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. **The existing Mediator runtime, source generator, and core test projects match `main` (`a148013`) exactly.** It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
+This implementation keeps the handler experience while moving delivery into Foundatio's native messaging runtime. **The existing Mediator runtime, source generator, and core test projects match `main` (`3f76a7e`) exactly.** It uses **one Mediator integration package**, native AWS messaging, the Redis job store and lock provider, and the native test harness. There is no `IQueueClient`, `IPubSubClient`, compatibility context, or Mediator provider package.
 
 The Foundatio messaging and job-store changes are included directly in [Foundatio PR #533](https://github.com/FoundatioFx/Foundatio/pull/533). The exact source dependency is pinned in `build/foundatio-core.json`; `build/setup-foundatio-core.ps1` reproduces it. Packaging the integration is disabled until its native core dependency is released.
 
@@ -83,40 +83,31 @@ Counting C# lines including comments and blanks, excluding generated files:
 
 That removes about 64% of the Mediator-owned distributed source. Queue tracking and ordinary jobs use the same Foundatio job stores, with provider and lifecycle coverage shared in its test harness. These capabilities are real shared-core work, not a free dependency substitution. This comparison does not count the existing #533 runtime as newly implemented code.
 
-## Measured performance
+## Performance and validation
 
-The latest September 8 follow-up keeps Mediator core at `a148013`. Its baseline is Mediator `ff9c155` / Foundatio `54006ac7`; PR #149 is measured at `89bd6d1`. The final dependency revision is recorded in `build/foundatio-core.json`.
+The [September 12 production quality report](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/comparison/production-pass-2026-09-12) compares the previous native version, this update, and PR #149 on system .NET 10.0.12 in Release.
 
-Median jobs/second on the same shared Linux development host, Release, system .NET 10.0.11:
-
-| Scenario | PR #149 jobs/s | Before jobs/s | After jobs/s | Allocated bytes/job, before → after |
+| Workload | PR #149 jobs/s | Before jobs/s | After jobs/s | Allocated bytes/job, before → after |
 | --- | ---: | ---: | ---: | ---: |
-| In memory, concurrency 64 | 185,107 | 100,073 | 97,236 | 9,847 → 8,353 |
-| In memory, tracked, concurrency 64 | 37,120 | 31,049 | 30,584 | 17,049 → 15,533 |
-| In memory, concurrency 1 | 102,281 | 81,347 | 87,539 | 10,195 → 8,685 |
-| In memory, concurrency 8 | 180,014 | 80,149 | 84,685 | 9,852 → 8,333 |
-| SQS / LocalStack, concurrency 64 | 2,883 | 2,809 | 2,846 | 48,011 → 47,013 |
-| In memory + Redis tracking, concurrency 64 | 8,428 | 5,898 | 5,409 | 47,360 → 45,831 |
-| SQS / LocalStack + Redis tracking, concurrency 64 | 2,414 | 2,498 | 2,445 | 85,479 → 84,388 |
+| In memory, concurrency 64 | 181,195 | 95,696 | 100,346 | 8,358 → 7,928 |
+| In memory, tracked, concurrency 64 | 36,658 | 33,238 | 34,111 | 15,535 → 15,146 |
+| In memory, concurrency 1 | 110,805 | 93,045 | 100,537 | 8,686 → 8,271 |
+| In memory, concurrency 8 | 177,069 | 84,916 | 91,161 | 8,340 → 7,934 |
+| SQS / LocalStack, concurrency 64 | 2,788 | 3,065 | 2,968 | 47,026 → 46,623 |
+| In memory + Redis tracking, concurrency 64 | 10,619 | 7,757 | 7,600 | 45,852 → 45,450 |
+| SQS / LocalStack + Redis tracking, concurrency 64 | 2,702 | 2,653 | 2,582 | 84,285 → 83,930 |
 
-Untracked in-memory jobs allocate **15% less**, tracked memory **9% less**, and Redis-tracked jobs **3% less**. Concurrency 1/8 throughput improves 8%/6%; high-concurrency memory and LocalStack remain near the baseline. Redis's short runs varied; five longer alternating pairs measured 6,380 → 6,503 jobs/s, with 13% less process CPU. That does not establish a consistent Redis throughput gain. PR #149 still has lower in-memory overhead.
+Untracked memory throughput improved **5–8%**, with **about 5% fewer allocated bytes**. The normal 1 ms receive policy improved about 7%. Longer memory-tracking runs were level; longer Redis tracking measured **4% lower throughput with 5% less CPU**. PR #149 remains leaner in memory; this change does not establish a Redis or SQS throughput gain.
 
-The [complete report and raw measurements](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/comparison/optimization-pass2-2026-09-08) contain all 63 successful matrix runs (4.32M measured jobs), p99 latency, longer Redis checks, source/binary fingerprints and recovery evidence. Three rotating repetitions per cell use a 1,000-message warmup and 256-character payload. Timing includes broker drain and tracked completion; LocalStack is not production AWS capacity. One additional PR #149 trial and one build hit the known CLR abort and passed on same-runtime retries; the evidence retains both failures.
+The runtime starts asynchronous lease monitoring only when its first check is due. Expiry supervision remains active from admission. The new layer benchmark isolates transport, supervised receiving, native execution, and Mediator dispatch. Release builds also now preserve the configuration of native project references, and CI rejects unoptimized benchmark assemblies.
 
-A two-minute arrival test accepted **46,504 jobs**, completed **46,464**, and cancelled the expected **40**. A forced process crash interrupted 32 handlers; all 32 retried after restart. A second worker stopped and restarted gracefully during arrivals. Nothing remained pending or failed. The harness uses idempotent effects and does not imply exactly-once execution.
+All **63 matrix trials (4.32M jobs)** and **30 longer/default trials (3.2M jobs)** completed without missing or duplicate deliveries. Three rotating trials per matrix cell use a 1,000-message warmup and a 256-character payload; timing includes broker drain and tracked completion. LocalStack is not production AWS capacity. The linked report retains raw data, fingerprints and excluded mixed-build trials.
 
-Paced and mixed notification checks each delivered all 10,000 selected cluster events without duplicates. The [preceding full notification study](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/comparison/optimization-2026-09-08) retains the buffer-overload results and the 193 → 56 ms improvement for one million local-only events with the bridge enabled.
+A ten-minute recovery run accepted **69,354 jobs**, completed **69,314**, and cancelled the expected **40**. All **32** deliveries interrupted by a crash retried after replacement. Another worker restarted gracefully during arrivals. No pending/failed jobs or duplicate effects remained; the handler deliberately uses idempotent effects.
 
-Use the [queue benchmark runner](https://github.com/FoundatioFx/Foundatio.Mediator/tree/codex/core-distributed-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks) to repeat the comparisons. The sibling notification benchmark reproduces paced, burst and mixed traffic. Earlier studies remain in the comparison directory.
+Validation: full Release builds, **2,235 Foundatio tests** (24 existing skips), **756 Mediator tests**, **23 browser scenarios** against separate Release API/worker processes, frontend checks/build, console walkthrough, Quickstart and docs links. Foundatio retains its existing AppHost ASPIRE010 warning; Mediator builds without warnings.
 
-## Validation
-
-- Foundatio: full solution build; **2,229 tests passed**, 24 documented capability/platform/benchmark skips, with isolated Redis and LocalStack configured. Coverage includes older Redis records, bounded cleanup, immutable header snapshots, single-message failure outcomes, cancellation expiry, overlapping settlement and stale receipts. The existing AppHost ASPIRE010 warning remains.
-- Mediator: the pinned-source build has zero warnings; **756 tests passed**, including native integration and a custom serializer across queue and notification boundaries.
-- Sample: frontend type check and production build passed; **23 Playwright scenarios passed against separate API and worker processes**. The console workflow completes validation, enqueue, progress, and native state observation.
-- Focused failure coverage includes conservative/manual lease renewal, graceful drain, failed acknowledgment remaining nonterminal, expired history not blocking work, stale-attempt fencing, Redis lock ownership, unknown wire types, independent node copies, and SQS replay beyond the first receive batch.
-
-AWS node queues use explicit heartbeat and cleanup, not native TTL leases. Dead-letter fallback and replay send before deleting, so uncertain outcomes can duplicate work. Execution history is retained operational state, not permanent deduplication or fencing of external business writes. These limits are part of the contract.
+AWS node queues use heartbeat and cleanup rather than native TTL. Dead-letter fallback and replay send before deleting, so uncertain outcomes can duplicate work. History is operational tracking rather than permanent deduplication or fencing of external writes. A real AWS staging soak with deployment permissions and production-shaped handlers remains release work.
 
 ## Recommendation
 

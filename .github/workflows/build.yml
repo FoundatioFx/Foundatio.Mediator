@@ -36,16 +36,18 @@ jobs:
         shell: pwsh
         run: ./build/setup-foundatio-core.ps1
       - name: Build native core and its provider tests
-        run: dotnet build .dependencies/Foundatio/Foundatio.slnx
+        run: dotnet build .dependencies/Foundatio/Foundatio.slnx -c Release
       - name: Test core delivery and providers
         run: |
-          dotnet test --solution .dependencies/Foundatio/Foundatio.slnx --no-build
+          dotnet test --solution .dependencies/Foundatio/Foundatio.slnx -c Release --no-build
       - name: Build Mediator and samples
-        run: dotnet build Foundatio.Mediator.slnx
+        run: dotnet build Foundatio.Mediator.slnx -c Release
       - name: Test generated handlers and native integration
-        run: dotnet test --solution Foundatio.Mediator.slnx --no-build
+        run: dotnet test --solution Foundatio.Mediator.slnx -c Release --no-build
       - name: Smoke test the complete console workflow
-        run: dotnet run --project samples/DistributedConsoleSample --no-build
+        run: dotnet run --project samples/DistributedConsoleSample -c Release --no-build
+      - name: Verify optimized benchmark assemblies
+        run: dotnet run --project benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release --no-build -- --count 100 --concurrency 4
 
   sample-web:
     name: Sample frontend

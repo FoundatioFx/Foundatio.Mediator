@@ -1,0 +1,38 @@
+[
+  {
+    "Exit": 0,
+    "Mode": "paced",
+    "Capacity": 1000,
+    "Count": 10000,
+    "LocalOnlyEvents": 0,
+    "PublisherMilliseconds": 182.5909,
+    "AllocatedBytesPerPublish": 10094.9568,
+    "RemoteUnique": 10000,
+    "Duplicates": 0,
+    "SenderUnique": 10000
+  },
+  {
+    "Exit": 0,
+    "Mode": "mixed",
+    "Capacity": 10000,
+    "Count": 10000,
+    "LocalOnlyEvents": 1000000,
+    "PublisherMilliseconds": 115.5621,
+    "AllocatedBytesPerPublish": 163.67360792079208,
+    "RemoteUnique": 10000,
+    "Duplicates": 0,
+    "SenderUnique": 10000
+  },
+  {
+    "Exit": 0,
+    "Mode": "local-on",
+    "Capacity": 1000,
+    "Count": 1000000,
+    "LocalOnlyEvents": 1000000,
+    "PublisherMilliseconds": 53.8186,
+    "AllocatedBytesPerPublish": 88.045776,
+    "RemoteUnique": null,
+    "Duplicates": null,
+    "SenderUnique": 0
+  }
+]

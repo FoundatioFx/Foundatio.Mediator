@@ -1,9 +1,11 @@
+using Foundatio.Mediator;
+
 namespace Common.Module.Events;
 
 /// <summary>
-/// Marker interface for events that should be dispatched to connected clients (e.g., via SSE).
-/// Handlers in the Api project can listen for this interface to push real-time updates.
+/// Marker for notifications the API streams to connected browsers over SSE. Every implementation crosses
+/// the notification bus: the browser's connection may sit on a different node than the one that published.
 /// </summary>
-public interface IDispatchToClient
+public interface IDispatchToClient : INotification
 {
 }

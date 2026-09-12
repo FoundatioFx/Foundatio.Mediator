@@ -1,0 +1,50 @@
+{
+  "memory-64": {
+    "before": {
+      "MessagesPerSecond": 97225.859,
+      "AllocatedBytesPerMessage": 9835.788,
+      "AcceptanceP99Milliseconds": 2.459,
+      "HandlerCompletionP99Milliseconds": 1241.642,
+      "CpuMilliseconds": 12060.16
+    },
+    "after": {
+      "MessagesPerSecond": 90710.052,
+      "AllocatedBytesPerMessage": 8661.726,
+      "AcceptanceP99Milliseconds": 0.107,
+      "HandlerCompletionP99Milliseconds": 1349.732,
+      "CpuMilliseconds": 11778.241
+    }
+  },
+  "memory-tracked-64": {
+    "before": {
+      "MessagesPerSecond": 31052.026,
+      "AllocatedBytesPerMessage": 17051.251,
+      "AcceptanceP99Milliseconds": 4.897,
+      "HandlerCompletionP99Milliseconds": 1030.636,
+      "CpuMilliseconds": 6521.018
+    },
+    "after": {
+      "MessagesPerSecond": 30391.558,
+      "AllocatedBytesPerMessage": 15846.327,
+      "AcceptanceP99Milliseconds": 5.128,
+      "HandlerCompletionP99Milliseconds": 1063.189,
+      "CpuMilliseconds": 5985.687
+    }
+  },
+  "redis-64": {
+    "before": {
+      "MessagesPerSecond": 6276.847,
+      "AllocatedBytesPerMessage": 47387.2,
+      "AcceptanceP99Milliseconds": 11.628,
+      "HandlerCompletionP99Milliseconds": 720.431,
+      "CpuMilliseconds": 6566.995
+    },
+    "after": {
+      "MessagesPerSecond": 5878.664,
+      "AllocatedBytesPerMessage": 46150.978,
+      "AcceptanceP99Milliseconds": 10.846,
+      "HandlerCompletionP99Milliseconds": 754.543,
+      "CpuMilliseconds": 6291.993
+    }
+  }
+}

@@ -1,0 +1,15 @@
+info: Foundatio.Mediator.Distributed.DistributedInfrastructureInitializer[0]
+      Foundatio messaging is ready with 1 declared destinations
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /tmp/mediator-core-alternative
+info: Foundatio.Mediator[0]
+      Foundatio.Mediator registered 1 handler(s) and 1 middleware.
+Empty name: Invalid
+Accepted 5a9f0b23612346d7b6bf7d779df06194 on demo-GenerateGreeting
+Job Completed: Hello, World!
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...

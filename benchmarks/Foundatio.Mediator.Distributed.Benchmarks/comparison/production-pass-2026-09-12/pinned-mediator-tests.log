@@ -1,0 +1,28 @@
+Running tests from /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Tests/bin/Release/net10.0/Foundatio.Mediator.Tests.dll (net10.0|x64)
+Running tests from /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Distributed.Tests/bin/Release/net10.0/Foundatio.Mediator.Distributed.Tests.dll (net10.0|x64)
+/tmp/mediator-core-alternative/tests/Foundatio.Mediator.Distributed.Tests/bin/Release/net10.0/Foundatio.Mediator.Distributed.Tests.dll (net10.0|x64) passed (2s 025ms)
+[+307/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(2s)
+
+[+432/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(5s)
+
+[+505/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(8s)
+
+[+556/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(11s)
+
+[+604/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(14s)
+
+[+652/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(17s)
+
+[+696/x0/?0] Foundatio.Mediator.Tests.dll (net10.0|x64)(20s)
+
+/tmp/mediator-core-alternative/tests/Foundatio.Mediator.Tests/bin/Release/net10.0/Foundatio.Mediator.Tests.dll (net10.0|x64) passed (23s 395ms)
+
+Test run summary: Passed!
+  /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Distributed.Tests/bin/Release/net10.0/Foundatio.Mediator.Distributed.Tests.dll (net10.0|x64) passed (2s 025ms)
+  /tmp/mediator-core-alternative/tests/Foundatio.Mediator.Tests/bin/Release/net10.0/Foundatio.Mediator.Tests.dll (net10.0|x64) passed (23s 395ms)
+
+  total: 756
+  failed: 0
+  succeeded: 756
+  skipped: 0
+  duration: 23s 541ms

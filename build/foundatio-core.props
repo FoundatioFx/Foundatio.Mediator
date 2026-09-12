@@ -1,0 +1,14 @@
+<Project>
+  <!-- This alternative compiles against an exact unreleased core revision. See setup-foundatio-core.ps1. -->
+  <PropertyGroup>
+    <!-- External projects have no solution configuration mapping; preserve the caller's Release/Debug choice. -->
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+    <FoundatioCorePath Condition="'$(FoundatioCorePath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../.dependencies/Foundatio'))</FoundatioCorePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(FoundatioCorePath)/src/Foundatio/Foundatio.csproj" />
+  </ItemGroup>
+  <Target Name="RequireFoundatioCoreSource" BeforeTargets="PrepareForBuild" Condition="!Exists('$(FoundatioCorePath)/src/Foundatio/Foundatio.csproj')">
+    <Error Text="Run build/setup-foundatio-core.ps1 to fetch the pinned core source, or set FoundatioCorePath to a Foundatio checkout containing the native execution APIs." />
+  </Target>
+</Project>

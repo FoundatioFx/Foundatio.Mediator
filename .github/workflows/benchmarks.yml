@@ -20,6 +20,10 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    - name: Fetch native core source
+      shell: pwsh
+      run: ./build/setup-foundatio-core.ps1
+
     - name: Restore dependencies
       run: dotnet restore
 

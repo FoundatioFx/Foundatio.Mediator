@@ -1,0 +1,5 @@
+{
+  "Passed": true,
+  "ExitCode": -6,
+  "Message": "Foundatio was built without optimizations. Rebuild the solution with -c Release before benchmarking."
+}

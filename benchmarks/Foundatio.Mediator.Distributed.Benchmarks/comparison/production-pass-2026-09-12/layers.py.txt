@@ -1,0 +1,26 @@
+import json,subprocess,statistics
+from pathlib import Path
+root=Path('/tmp/production-pass-20260912')
+dll='/tmp/mediator-core-alternative/benchmarks/Foundatio.Mediator.Distributed.Benchmarks/bin/Release/net10.0/Foundatio.Mediator.Distributed.Benchmarks.dll'
+rows=[]
+for repeat in range(3):
+ layers=['transport','bus','execution','mediator']
+ layers=layers[repeat:]+layers[:repeat]
+ for layer in layers:
+  for attempt in range(2):
+   result=subprocess.run(['/usr/bin/dotnet',dll,'--count','200000','--concurrency','64','--layer',layer],capture_output=True,text=True,timeout=180)
+   name=f'layers-before-{repeat}-{layer}-{attempt}'
+   (root/(name+'.stdout')).write_text(result.stdout)
+   (root/(name+'.stderr')).write_text(result.stderr)
+   if result.returncode:
+    print(name,'FAILED',result.returncode,result.stderr[-400:],flush=True)
+    if attempt: raise RuntimeError(name)
+    continue
+   row=json.loads(result.stdout)
+   assert row['UniqueProcessed']==200000 and row['Duplicates']==0
+   rows.append(row)
+   print(name,round(row['MessagesPerSecond']),round(row['AllocatedBytesPerMessage']),flush=True)
+   break
+(root/'layers-before-results.json').write_text(json.dumps(rows,indent=2))
+for layer in ['transport','bus','execution','mediator']:
+ print(layer,{k:round(statistics.median(r[k] for r in rows if r['Layer']==layer),2) for k in ['MessagesPerSecond','AllocatedBytesPerMessage','CpuMilliseconds']},flush=True)

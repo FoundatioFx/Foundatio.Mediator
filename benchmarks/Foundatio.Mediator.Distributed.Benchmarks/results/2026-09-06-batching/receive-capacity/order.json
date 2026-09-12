@@ -1,0 +1,362 @@
+[
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 32,
+    "concurrency": 32,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 4096,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 1,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 1,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 2000,
+    "capacity": 2000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 100000,
+    "capacity": 100000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 100000,
+    "capacity": 100000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 64,
+    "concurrency": 64,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "queue",
+    "producers": 8,
+    "concurrency": 8,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "masstransit",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  },
+  {
+    "framework": "foundatio",
+    "operation": "pubsub",
+    "producers": 40,
+    "concurrency": 10,
+    "payload": 128,
+    "count": 5000,
+    "capacity": 5000
+  }
+]

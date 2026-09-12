@@ -14,7 +14,7 @@ export interface UserInfo {
 export const authApi = {
   login: (data: LoginRequest) => api.postJSON<UserInfo>('/api/auth/login', data),
 
-  logout: () => api.postJSON<void>('/api/auth/logout'),
+  logout: () => api.postJSON<void>('/api/auth/logout', {}),
 
   getCurrentUser: () =>
     api.getJSON<UserInfo>('/api/auth/current-user', {

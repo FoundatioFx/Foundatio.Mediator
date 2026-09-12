@@ -1,0 +1,218 @@
+using Amazon.Runtime;
+using Foundatio;
+using Foundatio.Jobs;
+using Foundatio.Mediator;
+using Foundatio.Mediator.Distributed;
+using Foundatio.Messaging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json;
+
+string prefix = Read("--prefix") ?? "recovery-" + Guid.NewGuid().ToString("N");
+string? workerId = Read("--worker");
+bool worker = workerId is not null;
+int seconds = int.Parse(Read("--seconds") ?? "120");
+string output = Read("--output") ?? "/tmp/performance-pass2";
+string redisConnection = Environment.GetEnvironmentVariable("BENCHMARK_REDIS_CONNECTION_STRING") ?? "127.0.0.1:16419";
+string awsUrl = Environment.GetEnvironmentVariable("BENCHMARK_AWS_URL") ?? "http://127.0.0.1:14566";
+if (!new Uri(awsUrl).IsLoopback) throw new ArgumentException("Use a local emulator.");
+var builder = Host.CreateApplicationBuilder();
+builder.Logging.ClearProviders();
+builder.Services.AddSingleton(new RunSettings(prefix, workerId ?? "producer"));
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
+var foundatio = builder.Services.AddFoundatio();
+foundatio.Jobs.UseRedis(options => options.KeyPrefix = prefix + ":jobs:");
+foundatio.Messaging.UseAws(options => { options.ServiceUrl = awsUrl; options.Credentials = new BasicAWSCredentials("test", "test"); });
+builder.Services.AddMediator(options => options.AddAssembly<RecoveryHandler>())
+    .ConfigureDistributed(options => options.ResourcePrefix = prefix)
+    .AddDistributedQueues(options =>
+    {
+        options.Workers = worker ? WorkerSelection.All : WorkerSelection.None;
+        options.WorkerId = workerId ?? "producer";
+        options.ShutdownTimeout = TimeSpan.FromSeconds(2);
+        options.QueueDepthPollInterval = TimeSpan.Zero;
+    });
+using var host = builder.Build();
+await host.StartAsync();
+var db = host.Services.GetRequiredService<IConnectionMultiplexer>().GetDatabase();
+if (worker)
+{
+    await db.StringSetAsync(prefix + ":ready:" + workerId, "1", TimeSpan.FromMinutes(10));
+    await host.WaitForShutdownAsync();
+    return;
+}
+
+var mediator = host.Services.GetRequiredService<IMediator>();
+var store = host.Services.GetRequiredService<IJobRuntimeStore>();
+var transport = host.Services.GetRequiredService<IMessageTransport>();
+string queue = prefix + "-recovery";
+using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+var token = timeout.Token;
+var accepted = new ConcurrentDictionary<string, string>();
+var cancelled = new HashSet<string>();
+var processes = new List<Process>();
+var logs = new List<Task>();
+var snapshots = new List<object>();
+Task? producing = null;
+int index = 0;
+var elapsed = Stopwatch.StartNew();
+try
+{
+    // Cancel queued work before any worker can execute it.
+    for (int i = 0; i < 20; i++)
+    {
+        string id = "queued-cancel-" + i;
+        await SendAsync(id, 0);
+        if (!await store.RequestCancellationAsync(accepted[id], token)) throw new Exception("Queued cancellation was rejected.");
+        cancelled.Add(id);
+    }
+
+    var first = StartWorker("first");
+    await WaitAsync(async () => await db.KeyExistsAsync(prefix + ":ready:first"));
+
+    // Kill a process while confirmed attempts are running, then start a replacement.
+    var recoveryIds = Enumerable.Range(0, 64).Select(i => "restart-" + i).ToArray();
+    await Parallel.ForEachAsync(recoveryIds, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = token }, async (id, _) => await SendAsync(id, 2000));
+    await WaitAsync(async () => (await db.HashGetAllAsync(prefix + ":started")).Count(entry => entry.Name.ToString().StartsWith("restart-")) >= 8);
+    int interrupted = (await db.HashGetAllAsync(prefix + ":started")).Count(entry => entry.Name.ToString().StartsWith("restart-"));
+    first.Kill(entireProcessTree: true);
+    await first.WaitForExitAsync(token);
+    Snapshot("killed", first.Id, interrupted);
+    StartWorker("replacement");
+    StartWorker("second");
+    await WaitAsync(async () => await db.KeyExistsAsync(prefix + ":ready:replacement") && await db.KeyExistsAsync(prefix + ":ready:second"));
+
+    // Keep work arriving throughout cancellation, recovery and a graceful worker restart.
+    producing = ProduceAsync();
+    var runningIds = Enumerable.Range(0, 20).Select(i => "running-cancel-" + i).ToArray();
+    foreach (var id in runningIds) await SendAsync(id, 60000);
+    await WaitAsync(async () => (await db.HashGetAllAsync(prefix + ":started")).Count(entry => entry.Name.ToString().StartsWith("running-cancel-")) == runningIds.Length);
+    var cancellationLatency = Stopwatch.StartNew();
+    foreach (var id in runningIds)
+    {
+        if (!await store.RequestCancellationAsync(accepted[id], token)) throw new Exception("Running cancellation was rejected.");
+        cancelled.Add(id);
+    }
+    await WaitAsync(async () => await store.CountAsync(new JobQuery { QueueName = queue, Status = JobStatus.Cancelled }, token) == 40);
+    cancellationLatency.Stop();
+    Snapshot("cancelled", 0, 40);
+
+    await Task.Delay(TimeSpan.FromSeconds(20), token);
+    var second = processes.Single(process => process.StartInfo.ArgumentList.Contains("second"));
+    await StopWorkerAsync(second);
+    Snapshot("graceful-stop", second.Id, 0);
+    StartWorker("second-restarted");
+    await producing;
+    await WaitAsync(async () => await store.CountAsync(new JobQuery { QueueName = queue, Status = JobStatus.Completed }, token) == accepted.Count - cancelled.Count);
+
+    var effects = await db.HashGetAllAsync(prefix + ":effects");
+    var attempts = await db.HashGetAllAsync(prefix + ":attempts");
+    if (attempts.Count(e => e.Name.ToString().StartsWith("restart-") && (long)e.Value > 1) < interrupted)
+        throw new Exception("Interrupted deliveries did not all retry.");
+    if (effects.Length != accepted.Count - cancelled.Count || effects.Any(e => cancelled.Contains(e.Name.ToString())))
+        throw new Exception("Side effects do not match expected non-cancelled work.");
+    if (await store.CountAsync(new JobQuery { QueueName = queue }, token) != accepted.Count)
+        throw new Exception("Tracked history does not match all accepted work.");
+    var failures = new[] { JobStatus.Failed, JobStatus.DeadLettered, JobStatus.RetryPending, JobStatus.EnqueueUnknown, JobStatus.Queued, JobStatus.Processing };
+    foreach (var status in failures)
+        if (await store.CountAsync(new JobQuery { QueueName = queue, Status = status }, token) != 0) throw new Exception("Unexpected jobs in " + status);
+    Snapshot("drained", 0, effects.Length);
+    var report = new
+    {
+        Prefix = prefix, Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+        ProducerSeconds = seconds, ElapsedSeconds = elapsed.Elapsed.TotalSeconds, Accepted = accepted.Count,
+        Completed = effects.Length, QueuedCancelled = 20, RunningCancelled = 20,
+        RunningCancellationMilliseconds = cancellationLatency.Elapsed.TotalMilliseconds,
+        InterruptedAtKill = interrupted, RetriedJobs = attempts.Count(e => (long)e.Value > 1),
+        HandlerInvocations = attempts.Sum(e => (long)e.Value),
+        DuplicateEffectAttempts = (long?)await db.StringGetAsync(prefix + ":duplicate-effects") ?? 0,
+        Pending = 0, Failed = 0, DeadLettered = 0, Snapshots = snapshots
+    };
+    await File.WriteAllTextAsync(Path.Combine(output, "recovery-results.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }), token);
+    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+}
+finally
+{
+    await timeout.CancelAsync();
+    if (producing is not null) try { await producing; } catch (OperationCanceledException) { }
+    foreach (var process in processes)
+    {
+        if (!process.HasExited) await StopWorkerAsync(process);
+        process.Dispose();
+    }
+    await Task.WhenAll(logs);
+    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    await host.StopAsync(cleanup.Token);
+    await ((ISupportsProvisioning)transport).DeleteAsync(DestinationAddress.ForQueue(queue), cleanup.Token);
+    await ((ISupportsProvisioning)transport).DeleteAsync(DestinationAddress.ForQueue(queue + ".deadletter"), cleanup.Token);
+}
+
+async Task SendAsync(string id, int delay)
+{
+    var receipt = await mediator.EnqueueAsync(new RecoveryWork(id, delay), token);
+    if (!receipt.IsSuccess) throw new Exception(receipt.Message);
+    if (!accepted.TryAdd(id, receipt.Value.JobId!)) throw new Exception("Repeated input id.");
+}
+async Task ProduceAsync()
+{
+    var duration = Stopwatch.StartNew();
+    while (duration.Elapsed.TotalSeconds < seconds)
+    {
+        await Parallel.ForEachAsync(Enumerable.Range(0, 100), new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = token },
+            async (_, _) => await SendAsync("load-" + Interlocked.Increment(ref index), 2));
+        await Task.Delay(200, token);
+    }
+}
+async Task WaitAsync(Func<Task<bool>> check)
+{
+    while (!await check()) await Task.Delay(50, token);
+}
+Process StartWorker(string name)
+{
+    var start = new ProcessStartInfo("/usr/bin/dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+    foreach (string argument in new[] { Assembly.GetExecutingAssembly().Location, "--prefix", prefix, "--worker", name }) start.ArgumentList.Add(argument);
+    var process = Process.Start(start) ?? throw new Exception("Could not start worker.");
+    processes.Add(process);
+    logs.Add(CaptureAsync(process.StandardOutput, Path.Combine(output, "recovery-" + name + ".stdout")));
+    logs.Add(CaptureAsync(process.StandardError, Path.Combine(output, "recovery-" + name + ".stderr")));
+    return process;
+}
+static async Task CaptureAsync(StreamReader reader, string path) => await File.WriteAllTextAsync(path, await reader.ReadToEndAsync());
+static async Task StopWorkerAsync(Process process)
+{
+    using var signal = Process.Start(new ProcessStartInfo("/bin/kill") { ArgumentList = { "-TERM", process.Id.ToString() } });
+    await signal!.WaitForExitAsync();
+    try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15)); }
+    catch (TimeoutException) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); throw; }
+    if (process.ExitCode != 0) throw new Exception($"Worker {process.Id} exited with {process.ExitCode}.");
+}
+void Snapshot(string phase, int pid, int count)
+{
+    snapshots.Add(new { Phase = phase, ElapsedSeconds = elapsed.Elapsed.TotalSeconds, ProcessId = pid, Count = count,
+        Workers = processes.Where(p => !p.HasExited).Select(p => { p.Refresh(); return new { p.Id, p.WorkingSet64, p.PeakWorkingSet64 }; }).ToArray() });
+    Console.Error.WriteLine($"{phase}: {count}, elapsed {elapsed.Elapsed.TotalSeconds:F1}s");
+}
+string? Read(string option) { int i = Array.IndexOf(args, option); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+
+public sealed record RunSettings(string Prefix, string WorkerId);
+public sealed record RecoveryWork(string Id, int DelayMilliseconds);
+[Queue(QueueName = "recovery", TrackProgress = true, Concurrency = 32, TimeoutSeconds = 5, MaxAttempts = 10, RetryDelaySeconds = 0)]
+public sealed class RecoveryHandler(IConnectionMultiplexer redis, RunSettings settings)
+{
+    public async Task HandleAsync(RecoveryWork message, MessageProcessingContext context, CancellationToken ct)
+    {
+        var db = redis.GetDatabase();
+        await db.HashIncrementAsync(settings.Prefix + ":attempts", message.Id);
+        await db.HashSetAsync(settings.Prefix + ":started", message.Id, settings.WorkerId);
+        await Task.Delay(message.DelayMilliseconds, ct);
+        ct.ThrowIfCancellationRequested();
+        // Idempotent application effect, required by at-least-once delivery.
+        if (!await db.HashSetAsync(settings.Prefix + ":effects", message.Id, settings.WorkerId, When.NotExists))
+            await db.StringIncrementAsync(settings.Prefix + ":duplicate-effects");
+    }
+}

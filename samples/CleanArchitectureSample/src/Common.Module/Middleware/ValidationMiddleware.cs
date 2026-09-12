@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Foundatio.Mediator;
+using Foundatio.Mediator.Distributed;
 using MiniValidation;
 
 namespace Common.Module.Middleware;
@@ -10,7 +11,7 @@ namespace Common.Module.Middleware;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false)]
 public sealed class SkipValidationAttribute : Attribute { }
 
-[Middleware(OrderAfter = [typeof(ObservabilityMiddleware)])]
+[Middleware(OrderAfter = [typeof(ObservabilityMiddleware)], OrderBefore = [typeof(QueueMiddleware)])]
 public static class ValidationMiddleware
 {
     private static readonly ConcurrentDictionary<Type, bool> _skipValidationCache = new();

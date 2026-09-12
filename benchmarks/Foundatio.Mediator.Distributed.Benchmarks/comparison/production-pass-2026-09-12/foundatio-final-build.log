@@ -1,0 +1,43 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+/home/ejsmith/.nuget/packages/aspire.hosting.apphost/13.5.3/build/Aspire.Hosting.AppHost.targets(157,5): warning ASPIRE010: Foundatio.AppHost is configured with AspireUseCliBundle=false. Some Aspire features require the Aspire CLI bundle. Set AspireUseCliBundle=true to enable those features, or suppress ASPIRE010 to continue without the bundle. See https://aka.ms/aspire/diagnostics/aspire010 for more information. [/tmp/foundatio-core-alternative/samples/Foundatio.AppHost/Foundatio.AppHost.csproj]
+  Foundatio -> /tmp/foundatio-core-alternative/src/Foundatio/bin/Release/net8.0/Foundatio.dll
+  Foundatio -> /tmp/foundatio-core-alternative/src/Foundatio/bin/Release/net10.0/Foundatio.dll
+  Foundatio.JsonNet -> /tmp/foundatio-core-alternative/src/Foundatio.JsonNet/bin/Release/net10.0/Foundatio.JsonNet.dll
+  Foundatio.Xunit.v3 -> /tmp/foundatio-core-alternative/src/Foundatio.Xunit.v3/bin/Release/net10.0/Foundatio.Xunit.v3.dll
+  Foundatio.Utf8Json -> /tmp/foundatio-core-alternative/src/Foundatio.Utf8Json/bin/Release/net8.0/Foundatio.Utf8Json.dll
+  Foundatio.DataProtection -> /tmp/foundatio-core-alternative/src/Foundatio.DataProtection/bin/Release/net10.0/Foundatio.DataProtection.dll
+  Foundatio.Testing -> /tmp/foundatio-core-alternative/src/Foundatio.Testing/bin/Release/net10.0/Foundatio.Testing.dll
+  Foundatio.DataProtection -> /tmp/foundatio-core-alternative/src/Foundatio.DataProtection/bin/Release/net8.0/Foundatio.DataProtection.dll
+  Foundatio.JsonNet -> /tmp/foundatio-core-alternative/src/Foundatio.JsonNet/bin/Release/net8.0/Foundatio.JsonNet.dll
+  Foundatio.Utf8Json -> /tmp/foundatio-core-alternative/src/Foundatio.Utf8Json/bin/Release/net10.0/Foundatio.Utf8Json.dll
+  Foundatio.Testing -> /tmp/foundatio-core-alternative/src/Foundatio.Testing/bin/Release/net8.0/Foundatio.Testing.dll
+  Foundatio.Xunit.v3 -> /tmp/foundatio-core-alternative/src/Foundatio.Xunit.v3/bin/Release/net8.0/Foundatio.Xunit.v3.dll
+  Foundatio.Extensions.Hosting -> /tmp/foundatio-core-alternative/src/Foundatio.Extensions.Hosting/bin/Release/net10.0/Foundatio.Extensions.Hosting.dll
+  Foundatio.Redis -> /tmp/foundatio-core-alternative/src/Foundatio.Redis/bin/Release/net10.0/Foundatio.Redis.dll
+  Foundatio.Aws -> /tmp/foundatio-core-alternative/src/Foundatio.Aws/bin/Release/net8.0/Foundatio.Aws.dll
+  Foundatio.MessagePack -> /tmp/foundatio-core-alternative/src/Foundatio.MessagePack/bin/Release/net8.0/Foundatio.MessagePack.dll
+  Foundatio.Xunit -> /tmp/foundatio-core-alternative/src/Foundatio.Xunit/bin/Release/net10.0/Foundatio.Xunit.dll
+  Foundatio.Extensions.Hosting -> /tmp/foundatio-core-alternative/src/Foundatio.Extensions.Hosting/bin/Release/net8.0/Foundatio.Extensions.Hosting.dll
+  Foundatio.MessagePack -> /tmp/foundatio-core-alternative/src/Foundatio.MessagePack/bin/Release/net10.0/Foundatio.MessagePack.dll
+  Foundatio.Xunit -> /tmp/foundatio-core-alternative/src/Foundatio.Xunit/bin/Release/net8.0/Foundatio.Xunit.dll
+  Foundatio.Aws -> /tmp/foundatio-core-alternative/src/Foundatio.Aws/bin/Release/net10.0/Foundatio.Aws.dll
+  Foundatio.Redis -> /tmp/foundatio-core-alternative/src/Foundatio.Redis/bin/Release/net8.0/Foundatio.Redis.dll
+  Foundatio.Benchmarks -> /tmp/foundatio-core-alternative/benchmarks/bin/Release/net10.0/Foundatio.Benchmarks.dll
+  Foundatio.Messaging.Benchmarks -> /tmp/foundatio-core-alternative/benchmarks/Messaging/bin/Release/net10.0/Foundatio.Messaging.Benchmarks.dll
+  Foundatio.Messaging.Benchmarks.Tests -> /tmp/foundatio-core-alternative/benchmarks/Messaging.Tests/bin/Release/net10.0/Foundatio.Messaging.Benchmarks.Tests.dll
+  Foundatio.MessagingSample -> /tmp/foundatio-core-alternative/samples/Foundatio.MessagingSample/bin/Release/net10.0/Foundatio.MessagingSample.dll
+  Foundatio.QuickstartSample -> /tmp/foundatio-core-alternative/samples/Foundatio.QuickstartSample/bin/Release/net10.0/Foundatio.QuickstartSample.dll
+  Foundatio.TestHarness -> /tmp/foundatio-core-alternative/src/Foundatio.TestHarness/bin/Release/net10.0/Foundatio.TestHarness.dll
+  Foundatio.AppHost -> /tmp/foundatio-core-alternative/samples/Foundatio.AppHost/bin/Release/net10.0/Foundatio.AppHost.dll
+  Foundatio.Redis.Tests -> /tmp/foundatio-core-alternative/tests/Foundatio.Redis.Tests/bin/Release/net10.0/Foundatio.Redis.Tests.dll
+  Foundatio.Aws.Tests -> /tmp/foundatio-core-alternative/tests/Foundatio.Aws.Tests/bin/Release/net10.0/Foundatio.Aws.Tests.dll
+  Foundatio.Tests -> /tmp/foundatio-core-alternative/tests/Foundatio.Tests/bin/Release/net10.0/Foundatio.Tests.dll
+
+Build succeeded.
+
+/home/ejsmith/.nuget/packages/aspire.hosting.apphost/13.5.3/build/Aspire.Hosting.AppHost.targets(157,5): warning ASPIRE010: Foundatio.AppHost is configured with AspireUseCliBundle=false. Some Aspire features require the Aspire CLI bundle. Set AspireUseCliBundle=true to enable those features, or suppress ASPIRE010 to continue without the bundle. See https://aka.ms/aspire/diagnostics/aspire010 for more information. [/tmp/foundatio-core-alternative/samples/Foundatio.AppHost/Foundatio.AppHost.csproj]
+    1 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:10.49

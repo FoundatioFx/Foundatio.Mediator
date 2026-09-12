@@ -26,6 +26,8 @@ public static class ServiceConfiguration
         // Demo user store for auth handlers
         services.AddSingleton<IDemoUserService, DemoUserService>();
 
+        services.AddSingleton<HostInfo>();
+
         return services;
     }
 }

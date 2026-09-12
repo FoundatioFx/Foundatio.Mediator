@@ -1,9 +1,69 @@
 name: Build
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  build:
-    uses: FoundatioFx/Foundatio/.github/workflows/build-workflow.yml@main
-    secrets: inherit
-    with:
-      new-test-runner: true
+  native-integration:
+    name: Native core and Mediator
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      localstack:
+        image: localstack/localstack:3.8.1
+        ports: ['4566:4566']
+        env:
+          SERVICES: sqs,sns
+        options: >-
+          --health-cmd "curl -fsS http://localhost:4566/_localstack/health" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      FOUNDATIO_REDIS_CONNECTION_STRING: localhost:6379
+      FOUNDATIO_AWS_CONNECTION_STRING: serviceurl=http://localhost:4566;accesskey=test;secretkey=test;region=us-east-1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Fetch the exact native core dependency
+        shell: pwsh
+        run: ./build/setup-foundatio-core.ps1
+      - name: Build native core and its provider tests
+        run: dotnet build .dependencies/Foundatio/Foundatio.slnx -c Release
+      - name: Test core delivery and providers
+        run: |
+          dotnet test --solution .dependencies/Foundatio/Foundatio.slnx -c Release --no-build
+      - name: Build Mediator and samples
+        run: dotnet build Foundatio.Mediator.slnx -c Release
+      - name: Test generated handlers and native integration
+        run: dotnet test --solution Foundatio.Mediator.slnx -c Release --no-build
+      - name: Smoke test the complete console workflow
+        run: dotnet run --project samples/DistributedConsoleSample -c Release --no-build
+      - name: Verify optimized benchmark assemblies
+        run: dotnet run --project benchmarks/Foundatio.Mediator.Distributed.Benchmarks -c Release --no-build -- --count 100 --concurrency 4
+
+  sample-web:
+    name: Sample frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: samples/CleanArchitectureSample/src/Web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: samples/CleanArchitectureSample/src/Web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build

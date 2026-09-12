@@ -1,9 +1,13 @@
 import { FetchClient } from '@foundatiofx/fetchclient';
+import { tenant } from '$lib/stores/tenant.svelte';
 
-// In development, use relative URLs so Vite's proxy handles the requests
-// In production (when served by ASP.NET Core), relative URLs also work
-const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-
+// Always use relative URLs so the Vite dev-server proxy (or ASP.NET Core in production) handles routing.
 export const api = new FetchClient({
-  baseUrl
+  baseUrl: ''
+});
+
+// The API's TenantHeaderProvider copies this header into every queued message and tracked job.
+api.use(async (context, next) => {
+  context.request.headers.set('X-Tenant', tenant.current);
+  await next();
 });

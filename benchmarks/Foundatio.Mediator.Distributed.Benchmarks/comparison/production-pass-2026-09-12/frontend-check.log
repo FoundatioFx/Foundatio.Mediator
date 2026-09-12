@@ -1,0 +1,8 @@
+
+> clean-architecture-frontend@1.0.0 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /tmp/mediator-core-alternative/samples/CleanArchitectureSample/src/Web
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings

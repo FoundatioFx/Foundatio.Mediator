@@ -1,0 +1,36 @@
+{
+  "capturedUtc": "2026-09-06T23:31:42.3000867+00:00",
+  "machineName": "codesmith",
+  "processorCount": 24,
+  "os": "Ubuntu 26.04.1 LTS",
+  "runtime": ".NET 10.0.11",
+  "frequency": 1000000000,
+  "serverGc": false,
+  "seed": 149,
+  "repetitions": 1,
+  "cases": [
+    "masstransit/sqs/queue/p128/s32/c32/f1/b1000/r0/w0"
+  ],
+  "command": [
+    "run",
+    "--framework",
+    "masstransit",
+    "--transport",
+    "sqs",
+    "--operation",
+    "queue",
+    "--count",
+    "5000",
+    "--concurrency",
+    "32",
+    "--producers",
+    "32",
+    "--output",
+    "/tmp/pr149-batching-confirmed/scale",
+    "--endpoint",
+    "http://localhost:14566",
+    "--timeout",
+    "300"
+  ],
+  "harnessSha256": "6597FF6E2D320455B30EAC47BC9CDC0BC824C1979D834842073BE74FB3E3D34D"
+}

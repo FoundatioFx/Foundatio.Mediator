@@ -64,3 +64,6 @@ nul
 
 # obj directory with mangled backslash path emitted by some build targets on Linux
 [Oo]bj\\*/
+
+# Pinned native core source for the distributed alternative
+.dependencies/

@@ -85,6 +85,40 @@ GET  /api/todos/{id}  → 200 OK / 404 Not Found
 
 Routes, HTTP methods, parameter binding, and OpenAPI metadata are all inferred from your message names and `Result` factory calls.
 
+### Go distributed
+
+Ready to scale out? Add `[Queue]` to any handler — same code, now processed asynchronously via a background queue:
+
+```csharp
+public record SendEmail(string To, string Subject, string Body);
+
+[Queue]
+public class SendEmailHandler(IEmailService email)
+{
+    public async Task HandleAsync(SendEmail msg, CancellationToken ct)
+        => await email.SendAsync(msg.To, msg.Subject, msg.Body, ct);
+}
+```
+
+The message is queued and processed by a background worker, with retries, dead-lettering, visibility renewal, and progress tracking built in.
+
+One setting decides which workers a process runs, so the same build is your API node, your whole app in one process, or a worker deployment you scale on its own:
+
+```csharp
+builder.Services.AddMediator()
+    .AddDistributedQueues(o => o.Workers = WorkerSelection.Parse(builder.Configuration["Distributed:Workers"]));
+// "all" (default), "none" for API nodes, or "exports,imports" to run just those groups
+```
+
+Broadcast events across all nodes in your cluster with a marker interface:
+
+```csharp
+public record ProductPriceChanged(string ProductId, decimal NewPrice) : IDistributedNotification;
+```
+
+Your handlers, middleware, DI, and error handling all work exactly the same — the distributed layer just changes _where_ execution happens. Transports for AWS SQS/SNS and Redis job state are included.
+
+
 **👉 [Getting Started Guide](https://mediator.foundatio.dev/guide/getting-started.html)** — step-by-step setup with code samples for ASP.NET Core and console apps.
 
 **📖 [Complete Documentation](https://mediator.foundatio.dev)**

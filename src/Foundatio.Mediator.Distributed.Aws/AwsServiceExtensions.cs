@@ -22,7 +22,7 @@ public static class AwsBuilderExtensions
     /// <returns>The mediator builder for chaining.</returns>
     /// <example>
     /// <code>
-    /// // LocalStack / dev — SDK clients target the emulator with test credentials
+    /// // Floci / dev — SDK clients target the emulator with test credentials
     /// services.AddMediator()
     ///     .AddDistributedQueues()
     ///     .AddDistributedNotifications()

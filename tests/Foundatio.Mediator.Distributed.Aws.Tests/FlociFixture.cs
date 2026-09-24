@@ -10,12 +10,12 @@ using Aspire.Hosting.Testing;
 namespace Foundatio.Mediator.Distributed.Aws.Tests;
 
 /// <summary>
-/// Aspire fixture that manages one LocalStack container for every AWS test class in the
-/// <see cref="LocalStackCollection"/>. When no container runtime is reachable the fixture
+/// Aspire fixture that manages one Floci container for every AWS test class in the
+/// <see cref="FlociCollection"/>. When no container runtime is reachable the fixture
 /// records a skip reason instead of failing, and <see cref="CreateSqsClient"/> /
 /// <see cref="CreateSnsClient"/> skip the calling test.
 /// </summary>
-public class LocalStackFixture : IAsyncLifetime
+public class FlociFixture : IAsyncLifetime
 {
     private static readonly TimeSpan s_runtimeProbeTimeout = TimeSpan.FromSeconds(15);
 
@@ -23,7 +23,7 @@ public class LocalStackFixture : IAsyncLifetime
     public DistributedApplication? App { get; private set; }
 
     /// <summary>
-    /// Why the LocalStack container could not be started, or <c>null</c> when it is running.
+    /// Why the Floci container could not be started, or <c>null</c> when it is running.
     /// </summary>
     public string? SkipReason { get; private set; }
 
@@ -41,20 +41,17 @@ public class LocalStackFixture : IAsyncLifetime
 
         var builder = DistributedApplicationTestingBuilder.Create();
 
-        builder.AddContainer("localstack", "localstack/localstack", "3.8.1")
+        builder.AddContainer("floci", "floci/floci", "2.1.0")
             .WithHttpEndpoint(targetPort: 4566, name: "main")
-            .WithHttpHealthCheck("/_localstack/health", endpointName: "main")
-            .WithEnvironment("SERVICES", "sqs,sns")
-            // Emulate the real 60-second re-creation block so the stable-host restart path is exercised.
-            .WithEnvironment("SQS_DELAY_RECENTLY_DELETED", "1");
+            .WithHttpHealthCheck("/_floci/health", endpointName: "main");
 
         App = await builder.BuildAsync();
         await App.StartAsync();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-        await App.ResourceNotifications.WaitForResourceHealthyAsync("localstack", cts.Token);
+        await App.ResourceNotifications.WaitForResourceHealthyAsync("floci", cts.Token);
 
-        ServiceUrl = App.GetEndpoint("localstack", "main").ToString().TrimEnd('/');
+        ServiceUrl = App.GetEndpoint("floci", "main").ToString().TrimEnd('/');
     }
 
     public IAmazonSQS CreateSqsClient()
@@ -91,7 +88,7 @@ public class LocalStackFixture : IAsyncLifetime
             });
 
             if (process is null)
-                return $"LocalStack tests skipped: '{runtime}' could not be started.";
+                return $"Floci tests skipped: '{runtime}' could not be started.";
 
             var stdout = process.StandardOutput.ReadToEndAsync();
             var stderr = process.StandardError.ReadToEndAsync();
@@ -104,21 +101,21 @@ public class LocalStackFixture : IAsyncLifetime
             catch (OperationCanceledException)
             {
                 try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
-                return $"LocalStack tests skipped: '{runtime} info' did not respond within {s_runtimeProbeTimeout.TotalSeconds:0} seconds.";
+                return $"Floci tests skipped: '{runtime} info' did not respond within {s_runtimeProbeTimeout.TotalSeconds:0} seconds.";
             }
 
             await stdout;
             if (process.ExitCode != 0)
-                return $"LocalStack tests skipped: '{runtime} info' exited with {process.ExitCode}: {(await stderr).Trim()}";
+                return $"Floci tests skipped: '{runtime} info' exited with {process.ExitCode}: {(await stderr).Trim()}";
 
             return null;
         }
         catch (Win32Exception)
         {
-            return $"LocalStack tests skipped: '{runtime}' is not installed.";
+            return $"Floci tests skipped: '{runtime}' is not installed.";
         }
     }
 }
 
-[CollectionDefinition(nameof(LocalStackCollection))]
-public class LocalStackCollection : ICollectionFixture<LocalStackFixture>;
+[CollectionDefinition(nameof(FlociCollection))]
+public class FlociCollection : ICollectionFixture<FlociFixture>;

@@ -116,7 +116,7 @@ public sealed class SqsQueueClient : IQueueClient
 
     /// <summary>
     /// Bounds the poll on the server, so a caller that only wants a quick look never has to cancel a request
-    /// LocalStack or SQS is still holding open.
+    /// the emulator or SQS is still holding open.
     /// </summary>
     public Task<IReadOnlyList<QueueMessage>> ReceiveDeadLettersAsync(string queueName, int maxCount, TimeSpan waitTime, CancellationToken cancellationToken = default)
         => ReceiveAsync(QueueDefinition.DeadLetterQueueNameFor(queueName), maxCount, null, waitTime, cancellationToken);

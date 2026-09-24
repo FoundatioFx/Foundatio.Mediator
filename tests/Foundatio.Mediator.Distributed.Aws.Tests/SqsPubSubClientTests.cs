@@ -11,14 +11,14 @@ using Microsoft.Extensions.Logging;
 namespace Foundatio.Mediator.Distributed.Aws.Tests;
 
 /// <summary>
-/// SNS+SQS pub/sub client tests running against the LocalStack container shared by <see cref="LocalStackCollection"/>.
+/// SNS+SQS pub/sub client tests running against the Floci container shared by <see cref="FlociCollection"/>.
 /// </summary>
-[Collection(nameof(LocalStackCollection))]
-public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper output) : TestWithLoggingBase(output)
+[Collection(nameof(FlociCollection))]
+public class SqsPubSubClientTests(FlociFixture fixture, ITestOutputHelper output) : TestWithLoggingBase(output)
 {
     private static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 
-    private SqsPubSubClient CreateClient(string? hostId = null, Action<SqsPubSubClientOptions>? configure = null, bool receiveNotifications = true)
+    private SqsPubSubClient CreateClient(string? hostId = null, Action<SqsPubSubClientOptions>? configure = null, bool receiveNotifications = true, IAmazonSQS? sqs = null)
     {
         var options = new SqsPubSubClientOptions
         {
@@ -37,7 +37,7 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
 
         return new SqsPubSubClient(
             fixture.CreateSnsClient(),
-            fixture.CreateSqsClient(),
+            sqs ?? fixture.CreateSqsClient(),
             options,
             notificationOptions,
             Log.CreateLogger<SqsPubSubClient>());
@@ -371,7 +371,9 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         }
         await first.DisposeAsync(); // deletes the queue; SQS blocks re-creation of that name for 60 seconds
 
-        await using var second = CreateClient(hostId);
+        // Floci allows immediate re-creation, so emulate the SQS block for the original name.
+        using var recentlyDeleted = new RecentlyDeletedSqs(fixture.ServiceUrl, queueName);
+        await using var second = CreateClient(hostId, sqs: recentlyDeleted);
         using var signal = new SemaphoreSlim(0);
         await using var sub = await second.SubscribeAsync(topic, (_, _) => { signal.Release(); return Task.CompletedTask; }, TestCancellationToken);
 
@@ -382,5 +384,21 @@ public class SqsPubSubClientTests(LocalStackFixture fixture, ITestOutputHelper o
         var queues = (await sqs.ListQueuesAsync(new ListQueuesRequest { QueueNamePrefix = queueName }, TestCancellationToken)).QueueUrls;
         var fallback = Assert.Single(queues);
         Assert.NotEqual(queueName, fallback[(fallback.LastIndexOf('/') + 1)..]);
+        Assert.Equal(1, recentlyDeleted.BlockedAttempts);
+    }
+
+    private sealed class RecentlyDeletedSqs(string endpoint, string deletedQueueName) : AmazonSQSClient(
+        new Amazon.Runtime.BasicAWSCredentials("test", "test"), new AmazonSQSConfig { ServiceURL = endpoint })
+    {
+        public int BlockedAttempts { get; private set; }
+        public override Task<CreateQueueResponse> CreateQueueAsync(CreateQueueRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.QueueName == deletedQueueName)
+            {
+                BlockedAttempts++;
+                throw new QueueDeletedRecentlyException("test recently deleted");
+            }
+            return base.CreateQueueAsync(request, cancellationToken);
+        }
     }
 }

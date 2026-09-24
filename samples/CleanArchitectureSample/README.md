@@ -77,7 +77,7 @@ src/
 │   │   └── TenantHeaderProvider.cs        # IQueueHeaderProvider + JobMetadataProvider source
 │   └── Handlers/EventHandler.cs           # SSE stream of IDispatchToClient notifications
 │
-├── AppHost/                               # Aspire: LocalStack (SQS/SNS), Redis, and either topology
+├── AppHost/                               # Aspire: Floci (SQS/SNS), Redis, and either topology
 ├── ServiceDefaults/                       # OpenTelemetry (incl. the Foundatio.Mediator.Distributed meter), health checks
 └── Web/                                   # SvelteKit SPA: Queues page, Live Events, orders, products, reports
 ```
@@ -322,7 +322,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-For an Aspire CLI run with isolated ports, set `SAMPLE_BASE_URL` to the frontend URL shown by Aspire. The suite checks anonymous monitoring and authorization, running/queued cancellation, deep links, validation, retries, single/bulk replay, confirmed flush with retained history, both locked jobs, worker events, pagination, stale refresh errors, and mobile overflow. Dashboard checks cover operational filters, unknown initial data, and the absence of sample controls; Try it checks cover sign-in returns and receipt navigation. Queue-details checks also cover isolated statistics, settings, browser navigation, sign-in return links, legacy links, missing queues, unavailable counts, and explicit dead-letter inspection. It creates and flushes demo work, so it deliberately refuses non-local URLs. Browser tests use real SQS/SNS in LocalStack and shared Redis; an already running local sample is required. Selected statistics and error responses are intercepted to verify otherwise intermittent states deterministically. The queue-refresh tests hold mocked responses to verify stable controls, DOM identity, focus, navigation, immediate removal after confirmed replay, and clear feedback when the retried job fails again. A dedicated transport test creates an unrecoverable export, retries it, verifies the original record is gone and a new failure has replay lineage, then purges only its own record.
+For an Aspire CLI run with isolated ports, set `SAMPLE_BASE_URL` to the frontend URL shown by Aspire. The suite checks anonymous monitoring and authorization, running/queued cancellation, deep links, validation, retries, single/bulk replay, confirmed flush with retained history, both locked jobs, worker events, pagination, stale refresh errors, and mobile overflow. Dashboard checks cover operational filters, unknown initial data, and the absence of sample controls; Try it checks cover sign-in returns and receipt navigation. Queue-details checks also cover isolated statistics, settings, browser navigation, sign-in return links, legacy links, missing queues, unavailable counts, and explicit dead-letter inspection. It creates and flushes demo work, so it deliberately refuses non-local URLs. Browser tests use SQS/SNS in Floci and shared Redis; an already running local sample is required. Selected statistics and error responses are intercepted to verify otherwise intermittent states deterministically. The queue-refresh tests hold mocked responses to verify stable controls, DOM identity, focus, navigation, immediate removal after confirmed replay, and clear feedback when the retried job fails again. A dedicated transport test creates an unrecoverable export, retries it, verifies the original record is gone and a new failure has replay lineage, then purges only its own record.
 
 ## Mediator Feature Walkthrough
 

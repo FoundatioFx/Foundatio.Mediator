@@ -4,11 +4,10 @@ var builder = DistributedApplication.CreateBuilder(args);
 // enqueue-only API and one worker deployment per group. Same project either way; only --mode/--workers differ.
 bool singleProcess = string.Equals(builder.Configuration["SAMPLE_TOPOLOGY"], "single", StringComparison.OrdinalIgnoreCase);
 
-// LocalStack provides SQS + SNS for local development
-var localstack = builder.AddContainer("localstack", "localstack/localstack", "3.8.1")
+// Floci provides SQS + SNS for local development
+var floci = builder.AddContainer("floci", "floci/floci", "2.1.0")
     .WithHttpEndpoint(targetPort: 4566, name: "main")
-    .WithHttpHealthCheck("/_localstack/health", endpointName: "main")
-    .WithEnvironment("SERVICES", "sqs,sns");
+    .WithHttpHealthCheck("/_floci/health", endpointName: "main");
 
 // Redis for shared persistence, distributed caching, job state, and the [QueueLock] lock
 var redis = builder.AddRedis("redis");
@@ -17,11 +16,11 @@ IResourceBuilder<ProjectResource> AddNode(string name, params string[] args) =>
     builder.AddProject<Projects.Api>(name)
         .WithHttpEndpoint()
         .WithHttpsEndpoint()
-        .WaitFor(localstack)
+        .WaitFor(floci)
         .WaitFor(redis)
-        .WithReference(localstack.GetEndpoint("main"))
+        .WithReference(floci.GetEndpoint("main"))
         .WithReference(redis)
-        .WithEnvironment("AWS__ServiceURL", localstack.GetEndpoint("main"))
+        .WithEnvironment("AWS__ServiceURL", floci.GetEndpoint("main"))
         .WithArgs(args);
 
 IResourceBuilder<ProjectResource> api;

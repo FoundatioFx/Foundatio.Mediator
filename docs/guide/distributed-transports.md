@@ -42,7 +42,7 @@ builder.Services.AddMediator()
 ```csharp
 .UseAws(aws =>
 {
-    aws.ServiceUrl = "http://localhost:4566";   // LocalStack; static test credentials unless aws.Credentials is set
+    aws.ServiceUrl = "http://localhost:4566";   // Floci (or another emulator); static test credentials unless aws.Credentials is set
     aws.Region = "us-east-1";
 
     aws.Queues.Provisioning = SqsProvisioningMode.Create;   // Create | Validate | None
@@ -120,15 +120,15 @@ One SNS topic per `ResourcePrefix` carries every distributed notification. Each 
 
 Processes are not always shut down gracefully. Subscription queues therefore carry a short retention (`SubscriptionQueueRetention`), heartbeat tags refreshed every `HeartbeatInterval`, and every starting process sweeps queues under the prefix whose heartbeat is older than `StaleSubscriptionAge`, unsubscribing and deleting them. A killed task leaves nothing behind for longer than the sweep interval.
 
-### LocalStack
+### Local emulation with Floci
+
+[Floci](https://github.com/floci-io/floci) is a free, open-source AWS emulator that serves SQS and SNS on port 4566.
 
 ```yaml
 services:
-  localstack:
-    image: localstack/localstack:3.8.1
+  floci:
+    image: floci/floci:2.1.0
     ports: ["4566:4566"]
-    environment:
-      - SERVICES=sqs,sns
 ```
 
 ```csharp

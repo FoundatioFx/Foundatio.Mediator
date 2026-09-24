@@ -41,7 +41,7 @@ internal sealed class DistributedInfrastructureInitializer(
 
             // Warm up the transport connections with one real call per transport.
             // The first AWS SDK call absorbs DNS resolution, TLS handshake, and
-            // endpoint discovery (~20s against cold LocalStack). Creating one queue
+            // endpoint discovery (up to ~20s against a cold local emulator). Creating one queue
             // and one topic first means the parallel batch below gets warm connections.
             var warmUpTasks = new List<Task>(2);
             if (options.QueueNames.Count > 0 && queueClient is not null)

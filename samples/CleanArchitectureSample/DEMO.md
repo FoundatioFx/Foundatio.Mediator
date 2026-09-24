@@ -19,7 +19,7 @@ dotnet run
 Wait for Aspire Dashboard to show all resources healthy:
 - 3 API replicas (green)
 - 3 Worker replicas (green)
-- LocalStack container (SQS/SNS)
+- Floci container (SQS/SNS)
 - Redis container
 - Vite frontend
 
@@ -77,7 +77,7 @@ samples/CleanArchitectureSample/src/
 
 > "This is a modular monolith — four independent domain modules that communicate exclusively through the mediator. No module directly references another's handlers or data layer. The Reports module queries Orders and Products, but only through message types — it has no idea how those modules store their data.
 >
-> The Api project is the composition root. It wires up all the modules, configures distributed messaging, and calls `MapMediatorEndpoints()` to auto-generate all the API routes. The AppHost uses .NET Aspire to orchestrate 2 API replicas, three worker groups (exports ×2, imports, events), LocalStack for SQS/SNS, and Redis — all running locally. The `single` launch profile runs the very same project once with every worker inside it."
+> The Api project is the composition root. It wires up all the modules, configures distributed messaging, and calls `MapMediatorEndpoints()` to auto-generate all the API routes. The AppHost uses .NET Aspire to orchestrate 2 API replicas, three worker groups (exports ×2, imports, events), Floci for SQS/SNS, and Redis — all running locally. The `single` launch profile runs the very same project once with every worker inside it."
 
 ### Show: `Api/Program.cs`
 
@@ -402,14 +402,14 @@ Switch to `https://localhost:5199/events` — show events streaming in real-time
 Open the Aspire Dashboard and show:
 - 3 `api-0`, `api-1`, `api-2` replicas
 - 3 `worker-0`, `worker-1`, `worker-2` replicas
-- `localstack` container (SQS + SNS)
+- `floci` container (SQS + SNS)
 - `redis` container
 
 ### Show: AppHost/Program.cs
 
 Open [samples/CleanArchitectureSample/src/AppHost/Program.cs](samples/CleanArchitectureSample/src/AppHost/Program.cs)
 
-> "The AppHost defines the topology. Three API replicas with `--mode api`. Three worker replicas with `--mode worker`. LocalStack provides SQS and SNS. Redis stores job state and serves as the L2 cache. All wired through Aspire resource references."
+> "The AppHost defines the topology. Three API replicas with `--mode api`. Three worker replicas with `--mode worker`. Floci provides SQS and SNS. Redis stores job state and serves as the L2 cache. All wired through Aspire resource references."
 
 ---
 

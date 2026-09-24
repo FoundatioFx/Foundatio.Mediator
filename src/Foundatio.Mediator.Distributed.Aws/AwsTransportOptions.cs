@@ -10,7 +10,7 @@ namespace Foundatio.Mediator.Distributed.Aws;
 public class AwsTransportOptions
 {
     /// <summary>
-    /// The AWS service URL (e.g. <c>"http://localhost:4566"</c> for LocalStack).
+    /// The AWS service URL (e.g. <c>"http://localhost:4566"</c> for a local emulator such as Floci).
     /// When set, the SQS and SNS SDK clients target this endpoint with <see cref="Region"/> as the signing region.
     /// When <c>null</c>, the clients come from the SDK's default credential and region chain (environment,
     /// profile, instance or task role). An <c>IAmazonSQS</c> or <c>IAmazonSimpleNotificationService</c>
@@ -25,7 +25,7 @@ public class AwsTransportOptions
 
     /// <summary>
     /// Optional AWS credentials. When <c>null</c> and <see cref="ServiceUrl"/> is set,
-    /// static test credentials (<c>"test"/"test"</c>) are used (suitable for LocalStack).
+    /// static test credentials (<c>"test"/"test"</c>) are used (suitable for local emulators such as Floci).
     /// When <c>null</c> and <see cref="ServiceUrl"/> is not set, the SDK's default credential chain is used.
     /// </summary>
     public AWSCredentials? Credentials { get; set; }

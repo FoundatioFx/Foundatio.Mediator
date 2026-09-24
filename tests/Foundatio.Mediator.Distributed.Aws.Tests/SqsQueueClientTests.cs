@@ -15,10 +15,10 @@ using Microsoft.Extensions.Time.Testing;
 namespace Foundatio.Mediator.Distributed.Aws.Tests;
 
 /// <summary>
-/// SQS queue client tests running against the LocalStack container shared by <see cref="LocalStackCollection"/>.
+/// SQS queue client tests running against the Floci container shared by <see cref="FlociCollection"/>.
 /// </summary>
-[Collection(nameof(LocalStackCollection))]
-public class SqsQueueClientTests(LocalStackFixture fixture, ITestOutputHelper output) : QueueClientTestBase(output)
+[Collection(nameof(FlociCollection))]
+public class SqsQueueClientTests(FlociFixture fixture, ITestOutputHelper output) : QueueClientTestBase(output)
 {
     protected override string TestQueueName => $"test-{Guid.NewGuid():N}";
 

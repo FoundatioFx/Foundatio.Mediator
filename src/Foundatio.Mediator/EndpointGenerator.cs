@@ -151,6 +151,14 @@ internal static class EndpointGenerator
         // serve the same API version — that would make routing nondeterministic.
         if (endpointDefaults.ApiVersions.Any())
         {
+            // Group registration uses its first prefix, so keep inconsistent groups conservative.
+            var inconsistentGroups = new HashSet<string>(handlers
+                .GroupBy(h => h.Endpoint!.Value.Group ?? "Default")
+                .Where(group => group.Select(h => (
+                    h.Endpoint!.Value.GroupRoutePrefix ?? "",
+                    h.Endpoint!.Value.GroupBypassGlobalPrefix)).Distinct().Skip(1).Any())
+                .Select(group => group.Key), StringComparer.Ordinal);
+
             var byRouteMethod = handlers
                 .Where(h => h.Endpoint!.Value.ApiVersions.Any())
                 .GroupBy(h => h.Endpoint!.Value.HttpMethod.ToUpperInvariant() + " " + h.Endpoint!.Value.Route.ToLowerInvariant())
@@ -169,6 +177,26 @@ internal static class EndpointGenerator
                         var overlap = versionsA.Intersect(versionsB, StringComparer.OrdinalIgnoreCase).ToList();
                         if (overlap.Count > 0)
                         {
+                            var endpointA = endpointsInGroup[i].Endpoint!.Value;
+                            var endpointB = endpointsInGroup[j].Endpoint!.Value;
+                            // Different groups can reuse a relative route without sharing a mapped path.
+                            // Parameterized prefixes remain conservative because their paths can overlap.
+                            if ((endpointA.Group ?? "Default") != (endpointB.Group ?? "Default")
+                                && !inconsistentGroups.Contains(endpointA.Group ?? "Default")
+                                && !inconsistentGroups.Contains(endpointB.Group ?? "Default")
+                                && (endpointDefaults.RoutePrefix?.IndexOf('{') ?? -1) < 0
+                                && (endpointA.GroupRoutePrefix?.IndexOf('{') ?? -1) < 0
+                                && (endpointB.GroupRoutePrefix?.IndexOf('{') ?? -1) < 0
+                                && !string.Equals(
+                                    ComputeFullDisplayRoute(endpointDefaults.RoutePrefix,
+                                        endpointA.GroupRoutePrefix ?? "", endpointA.Route,
+                                        endpointA.GroupBypassGlobalPrefix, endpointA.RouteBypassPrefixes),
+                                    ComputeFullDisplayRoute(endpointDefaults.RoutePrefix,
+                                        endpointB.GroupRoutePrefix ?? "", endpointB.Route,
+                                        endpointB.GroupBypassGlobalPrefix, endpointB.RouteBypassPrefixes),
+                                    StringComparison.OrdinalIgnoreCase))
+                                continue;
+
                             context.ReportDiagnostic(Diagnostic.Create(
                                 new DiagnosticDescriptor(
                                     "FMED017",

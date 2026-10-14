@@ -1,5 +1,8 @@
 <Project>
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Verify Open Source Maintenance Fee exemption: https://github.com/VerifyTests/Verify/blob/main/docs/maintenance-fee.md -->
+    <Verify_SponsorshipExemption>OpenSource</Verify_SponsorshipExemption>
+    <Verify_SponsorshipExemptionUntil>2027-10</Verify_SponsorshipExemptionUntil>
   </PropertyGroup>
 </Project>
